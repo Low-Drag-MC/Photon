@@ -1,0 +1,34 @@
+modLoader = "javafml"
+loaderVersion = "[${forge_version},)"
+#issueTrackerURL = ""
+license = "${mod_license}"
+
+[[mods]]
+modId = "ldlib"
+version = "${version}"
+displayName = "${mod_name}"
+authors = "KilaBash, WarmthDawn"
+description = "${mod_description}"
+logoFile = "icon.png"
+displayURL = "${mod_url}"
+
+[[dependencies.ldlib]]
+modId = "forge"
+mandatory = true
+versionRange = "[${forge_version},)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.ldlib]]
+modId = "minecraft"
+mandatory = true
+versionRange = "${minecraft_version}"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.ldlib]]
+modId="create"
+mandatory=true
+versionRange="${create_version}"
+ordering="NONE"
+side="BOTH"

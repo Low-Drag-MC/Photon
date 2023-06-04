@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "ldlib",
+  "version": "${version}",
+  "name": "${mod_name}",
+  "description": "${mod_description}",
+  "authors": [
+    "KilaBash"
+  ],
+  "contact": {
+    "homepage": "${mod_url}",
+    "sources": "${mod_url}"
+  },
+  "license": "${mod_license}",
+  "icon": "assets/ldlib/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.lowdragmc.lowdraglib.fabric.LDLibFabric"
+    ]
+  },
+  "mixins": [
+    "ldlib.mixins.json",
+    "ldlib-common.mixins.json"
+  ],
+  "depends": {
+    "minecraft": "${minecraft_version}",
+    "fabricloader": ">=${fabric_loader_version}",
+    "fabric-api": ">=${fabric_api_version}",
+    "create": "${create_version}"
+  }
+}
