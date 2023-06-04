@@ -43,7 +43,7 @@ public class EmittersList extends DraggableScrollableWidgetGroup {
                 .setTexture(Icons.EYE_OFF, Icons.EYE)
                 .setHoverTexture(ColorPattern.T_GRAY.rectTexture())
                 .setSupplier(emitter::isVisible));
-        selectableWidgetGroup.addWidget(new ImageWidget(14, 0, ToolPanel.WIDTH - 16, 10, new TextTexture().setSupplier(emitter::getName).setType(TextTexture.TextType.LEFT)));
+        selectableWidgetGroup.addWidget(new ImageWidget(14, 0, ToolPanel.WIDTH - 16, 10, new TextTexture().setSupplier(emitter::getName).setType(TextTexture.TextType.ROLL)));
         selectableWidgetGroup.setSelectedTexture(ColorPattern.T_GRAY.rectTexture());
         selectableWidgetGroup.setOnSelected(group -> {
             editor.openEmitterConfigurator(emitter);

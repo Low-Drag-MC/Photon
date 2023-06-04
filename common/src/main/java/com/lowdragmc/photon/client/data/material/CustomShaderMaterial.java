@@ -44,7 +44,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     private static final Map<ResourceLocation, ShaderInstance> COMPILED_SHADERS = new HashMap<>();
 
     @Configurable
-    public ResourceLocation shader = new ResourceLocation("ldlib:circle");
+    public ResourceLocation shader = new ResourceLocation("photon:circle");
 
     protected CompoundTag uniformTag = new CompoundTag();
 
