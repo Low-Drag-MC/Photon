@@ -1,0 +1,12 @@
+package com.lowdragmc.photon.forge;
+
+import com.lowdragmc.photon.Photon;
+import net.minecraftforge.fml.common.Mod;
+
+@Mod(Photon.MOD_ID)
+public class PhotonForge {
+    public PhotonForge() {
+        Photon.init();
+    }
+
+}

@@ -17,3 +17,6 @@ classes/
 .vscode
 .settings
 *.launch
+.architectury-transformer/debug.log
+forge/src/generated/resources/.cache/
+fabric/src/generated/resources/.cache/

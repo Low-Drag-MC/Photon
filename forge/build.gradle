@@ -1,19 +1,35 @@
 plugins {
-    id "com.github.johnrengelman.shadow" version "7.1.2"
+    alias(libs.plugins.shadow)
 }
+
+String getConfig(String key) {
+    return project.getParent().properties.get(key)
+}
+
+def mod_id = getConfig("mod_id")
+def common_project = project(":${mod_id}-common")
+def version = getConfig("version")
+def mod_license = getConfig("mod_license")
+def mod_name = getConfig("mod_name")
+def mod_description = getConfig("mod_description")
+def mod_url = getConfig("mod_url")
 
 architectury {
     platformSetupLoomIde()
     forge()
 }
 
+static def isJetBrainsRuntime() {
+    return System.getProperty('java.vm.vendor').contains('JetBrains')
+}
+
 loom {
-    accessWidenerPath = project(":common").loom.accessWidenerPath
+    accessWidenerPath = common_project.file("src/main/resources/${mod_id}.accesswidener")
 
     forge {
         mixinConfig(
                 "${mod_id}-common.mixins.json",
-                "${mod_id}.mixins.json"
+                "${mod_id}.mixins.json",
         )
 
         convertAccessWideners = true
@@ -21,6 +37,19 @@ loom {
 
         dataGen{
             mod(mod_id)
+        }
+    }
+
+    runConfigs.named("data").configure {
+        programArg("--existing=" + common_project.file("src/main/resources").absolutePath)
+    }
+
+    if (isJetBrainsRuntime()) {
+        runs {
+            client {
+                vmArgs '-XX:+AllowEnhancedClassRedefinition'
+                vmArgs '-XX:HotswapAgent=fatjar'
+            }
         }
     }
 }
@@ -31,7 +60,16 @@ configurations {
     compileClasspath.extendsFrom common
     runtimeClasspath.extendsFrom common
     developmentForge.extendsFrom common
+//    snapshotModImplementation.extendsFrom modImplementation
+//    snapshotModImplementation {
+//        resolutionStrategy.cacheChangingModulesFor(0, "seconds")
+//    }
 }
+
+//configurations.all {
+//    resolutionStrategy.cacheChangingModulesFor(0, "seconds")
+//    resolutionStrategy.cacheDynamicVersionsFor(0, "seconds")
+//}
 
 repositories {
     // mavens for Forge-exclusives
@@ -43,36 +81,36 @@ repositories {
             includeGroup("com.simibubi.create")
         }
     }
+    maven { url = "https://maven.parchmentmc.org" } // Parchment mappings
+    maven { url = "https://maven.quiltmc.org/repository/release" } // Quilt Mappings
+    maven { // TOP
+        url "https://maven.k-4u.nl"
+    }
 }
 
 dependencies {
-    forge("net.minecraftforge:forge:${minecraft_version}-${forge_version}")
-    common(project(path: ":common", configuration: "namedElements")) { transitive = false }
-    shadowCommon(project(path: ":common", configuration: "transformProductionForge")) { transitive = false }
+    forge forge.minecraftForge
 
-    // Create and its dependencies
-    modImplementation("com.simibubi.create:create-${minecraft_version}:${create_forge_version}:slim") { transitive = false }
-    modImplementation("com.tterrag.registrate:Registrate:${registrate_forge_version}")
-    modImplementation("com.jozufozu.flywheel:flywheel-forge-${flywheel_forge_minecraft_version}:${flywheel_forge_version}")
+    common(project(path: ":${mod_id}-common", configuration: "namedElements")) { transitive = false }
+    shadowCommon(project(path: ":${mod_id}-common", configuration: "transformProductionForge")) { transitive = false }
 
-    // Development QOL
-    modLocalRuntime("mezz.jei:jei-${minecraft_version}-forge:${jei_version}") { transitive = false }
+    // LDLib
+    modImplementation(forge.ldlib.forge) { transitive = false }
 
-    // if you would like to add integration with JEI, uncomment this line.
-//    modCompileOnly("mezz.jei:jei-${minecraft_version}:${jei_version}:api")
 }
 
 processResources {
     // set up properties for filling into metadata
     Map<String, String> properties = Map.of(
-            "version", version as String,
-            "forge_version", forge_version.split("\\.")[0], // only specify major version of forge
-            "minecraft_version", minecraft_version,
+            "version", version,
+            "mod_id", mod_id,
+            "forge_version", forge.versions.forgeShortVersion.get().split("\\.")[0], // only specify major version of forge
+            "minecraft_version", libs.versions.minecraft.get(),
             "mod_license", mod_license,
             "mod_name", mod_name,
             "mod_description", mod_description,
             "mod_url", mod_url,
-            "create_version", create_forge_version.split("-")[0] // cut off build number
+            "ldlib_version", forge.versions.ldlib.get()
     )
     properties.forEach((k, v) -> inputs.property(k, v))
 
@@ -100,7 +138,7 @@ jar {
 }
 
 sourcesJar {
-    def commonSources = project(":common").sourcesJar
+    def commonSources = common_project.sourcesJar
     dependsOn commonSources
     from commonSources.archiveFile.map { zipTree(it) }
 }
@@ -114,7 +152,7 @@ components.java {
 publishing {
     publications {
         mavenForge(MavenPublication) {
-            artifactId = rootProject.mod_id + "-" + project.name
+            artifactId = archivesBaseName
             from components.java
         }
     }

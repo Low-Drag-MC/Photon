@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "ldlib",
+  "id": "${mod_id}",
   "version": "${version}",
   "name": "${mod_name}",
   "description": "${mod_description}",
@@ -12,21 +12,24 @@
     "sources": "${mod_url}"
   },
   "license": "${mod_license}",
-  "icon": "assets/ldlib/icon.png",
+  "icon": "assets/${mod_id}/icon.png",
   "environment": "*",
   "entrypoints": {
     "main": [
-      "com.lowdragmc.lowdraglib.fabric.LDLibFabric"
+      "com.lowdragmc.photon.fabric.PhotonFabric"
+    ],
+    "client": [
+      "com.lowdragmc.photon.client.fabric.ClientProxyImpl"
     ]
   },
   "mixins": [
-    "ldlib.mixins.json",
-    "ldlib-common.mixins.json"
+    "${mod_id}.mixins.json",
+    "${mod_id}-common.mixins.json"
   ],
   "depends": {
     "minecraft": "${minecraft_version}",
     "fabricloader": ">=${fabric_loader_version}",
     "fabric-api": ">=${fabric_api_version}",
-    "create": "${create_version}"
+    "ldlib": "${ldlib_version}"
   }
 }

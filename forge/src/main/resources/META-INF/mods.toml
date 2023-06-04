@@ -4,31 +4,31 @@ loaderVersion = "[${forge_version},)"
 license = "${mod_license}"
 
 [[mods]]
-modId = "ldlib"
+modId = "${mod_id}"
 version = "${version}"
 displayName = "${mod_name}"
-authors = "KilaBash, WarmthDawn"
+authors = "KilaBash"
 description = "${mod_description}"
 logoFile = "icon.png"
 displayURL = "${mod_url}"
 
-[[dependencies.ldlib]]
+[[dependencies.${mod_id}]]
 modId = "forge"
 mandatory = true
 versionRange = "[${forge_version},)"
 ordering = "NONE"
 side = "BOTH"
 
-[[dependencies.ldlib]]
+[[dependencies.${mod_id}]]
 modId = "minecraft"
 mandatory = true
 versionRange = "${minecraft_version}"
 ordering = "NONE"
 side = "BOTH"
 
-[[dependencies.ldlib]]
-modId="create"
+[[dependencies.${mod_id}]]
+modId="ldlib"
 mandatory=true
-versionRange="${create_version}"
+versionRange="${ldlib_version}"
 ordering="NONE"
 side="BOTH"
