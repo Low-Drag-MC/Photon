@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.forge;
 
-import com.lowdragmc.lowdraglib.CommonProxy;
+import com.lowdragmc.photon.CommonProxy;
 import com.lowdragmc.photon.ServerCommands;
 import com.lowdragmc.photon.integration.LDLibPlugin;
 import net.minecraftforge.common.MinecraftForge;
