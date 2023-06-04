@@ -18,6 +18,7 @@ dependencyResolutionManagement {
 
         // Mod Dependencies Versions
         // Common
+        def jeiVersion = "11.5.0.297"
         def reiVersion = "9.1.580"
 
         // Fabric
@@ -39,7 +40,7 @@ dependencyResolutionManagement {
         def architecturyLoomVersion = "1.0-SNAPSHOT"
         def quiltFlowerVersion = "1.+"
         def macheteVersion = "1.+"
-        def ldLibVersion = "1.0.5"
+        def ldLibVersion = "1.0.6"
 
         fabric {
             def parchment = version("parchment", parchmentVersion)
@@ -61,6 +62,12 @@ dependencyResolutionManagement {
             def modMenu = version("modmenu", modMenuVersion)
             library("modmenu", "com.terraformersmc", "modmenu").versionRef(modMenu)
 
+            def jei = version("jei", jeiVersion)
+            library("jei-common-api", "mezz.jei", "jei-${minecraftVersion}-common-api").versionRef(jei)
+            library("jei-fabric-api", "mezz.jei", "jei-${minecraftVersion}-fabric-api").versionRef(jei)
+            library("jei-fabric-impl", "mezz.jei", "jei-${minecraftVersion}-fabric").versionRef(jei)
+            bundle("jei", ["jei-common-api", "jei-fabric-api"])
+
             def rei = version("rei", reiVersion)
             library("rei-plugin", "me.shedaniel", "RoughlyEnoughItems-default-plugin-fabric").versionRef(rei)
             library("rei-api", "me.shedaniel", "RoughlyEnoughItems-api-fabric").versionRef(rei)
@@ -78,6 +85,11 @@ dependencyResolutionManagement {
 
             def ldLib = version("ldlib", ldLibVersion)
             library("ldlib-forge", "com.lowdragmc.ldlib", "ldlib-forge-${minecraftVersion}").versionRef(ldLib)
+
+            def jei = version("jei", jeiVersion)
+            library("jei-common-api", "mezz.jei", "jei-${minecraftVersion}-common-api").versionRef(jei)
+            library("jei-forge-api", "mezz.jei", "jei-${minecraftVersion}-forge-api").versionRef(jei)
+            library("jei-forge-impl", "mezz.jei", "jei-${minecraftVersion}-forge").versionRef(jei)
 
             def rei = version("rei", reiVersion)
             library("rei-plugin", "me.shedaniel", "RoughlyEnoughItems-default-plugin-forge").versionRef(rei)

@@ -42,6 +42,11 @@ dependencies {
 
     modCompileOnly fabric.ldlib.common
 
+    // JEI
+    modCompileOnly fabric.jei.common.api
+    modCompileOnly fabric.jei.fabric.api
+    modCompileOnly fabric.jei.fabric.impl
+
 }
 
 publishing {

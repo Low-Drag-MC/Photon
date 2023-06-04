@@ -77,6 +77,11 @@ dependencies {
     // LDLib
     modImplementation(fabric.ldlib.fabric) { transitive = false }
 
+    // JEI
+    modCompileOnlyApi(fabric.jei.common.api) { transitive = false }
+    modCompileOnlyApi(fabric.jei.fabric.api) { transitive = false }
+    modImplementation(fabric.jei.fabric.impl) { transitive = false }
+
 }
 
 processResources {
