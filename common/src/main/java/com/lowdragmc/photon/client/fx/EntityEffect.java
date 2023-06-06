@@ -6,21 +6,26 @@ import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author KilaBash
  * @date 2023/6/5
- * @implNote BlockEffect
+ * @implNote EntityEffect
  */
 @Environment(EnvType.CLIENT)
-public class BlockEffect implements IFXEffect {
-    public static Map<BlockPos, List<BlockEffect>> CACHE = new HashMap<>();
+public class EntityEffect implements IFXEffect {
+    public static Map<Entity, List<EntityEffect>> CACHE = new HashMap<>();
     @Getter
     public final ResourceLocation fx;
     @Getter
@@ -40,7 +45,7 @@ public class BlockEffect implements IFXEffect {
     // runtime
     private BlockState lastState;
 
-    public BlockEffect(ResourceLocation fx, Level level, BlockPos pos, List<IParticleEmitter> emitters) {
+    public EntityEffect(ResourceLocation fx, Level level, BlockPos pos, List<IParticleEmitter> emitters) {
         this.fx = fx;
         this.emitters = emitters;
         this.level = level;
@@ -71,21 +76,22 @@ public class BlockEffect implements IFXEffect {
     public void start() {
         if (pos == null) return;
         var realPos= new Vector3(pos).add(xOffset + 0.5, yOffset + 0.5, zOffset + 0.5);
+//        EntityArgument.getOptionalEntities()
         if (!allowMulti) {
-            var effects = CACHE.computeIfAbsent(pos, p -> new ArrayList<>());
-            var iter = effects.iterator();
-            while (iter.hasNext()) {
-                var effect = iter.next();
-                boolean removed = false;
-                if (effect.emitters.stream().noneMatch(e -> e.self().isAlive())) {
-                    iter.remove();
-                    removed = true;
-                }
-                if (effect.fx.equals(fx) && !removed) {
-                    return;
-                }
-            }
-            effects.add(this);
+//            var effects = CACHE.computeIfAbsent(pos, p -> new ArrayList<>());
+//            var iter = effects.iterator();
+//            while (iter.hasNext()) {
+//                var effect = iter.next();
+//                boolean removed = false;
+//                if (effect.emitters.stream().noneMatch(e -> e.self().isAlive())) {
+//                    iter.remove();
+//                    removed = true;
+//                }
+//                if (effect.fx.equals(fx) && !removed) {
+//                    return;
+//                }
+//            }
+//            effects.add(this);
         }
         for (var emitter : emitters) {
             emitter.reset();

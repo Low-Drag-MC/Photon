@@ -32,6 +32,10 @@ public class LightOverLifetimeSetting extends ToggleGroup {
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, isDecimals = false, defaultValue = 15, min = 0, max = 15, wheelDur = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction blockLight = NumberFunction.constant(15);
 
+    public LightOverLifetimeSetting() {
+        this.enable = true;
+    }
+
     public int getLight(LParticle particle, float partialTicks) {
         int sky = skyLight.get(particle.getT(partialTicks), () -> particle.getMemRandom("sky-light")).intValue();
         int block = blockLight.get(particle.getT(partialTicks), () -> particle.getMemRandom("block-light")).intValue();

@@ -107,7 +107,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     @Configurable(name = "Physics", subConfigurable = true, tips = "The physics of particles.")
     protected final PhysicsSetting physics = new PhysicsSetting();
     @Getter
-    @Configurable(name = "Light", subConfigurable = true, tips = "Controls the light map of each particle during its lifetime.")
+    @Configurable(name = "Fixed Light", subConfigurable = true, tips = "Controls the light map of each particle during its lifetime.")
     protected final LightOverLifetimeSetting lights = new LightOverLifetimeSetting();
     @Getter
     @Configurable(name = "Velocity over Lifetime", subConfigurable = true, tips = "Controls the velocity of each particle during its lifetime.")

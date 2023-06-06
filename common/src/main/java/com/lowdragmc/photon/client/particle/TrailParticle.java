@@ -101,8 +101,8 @@ public abstract class TrailParticle extends LParticle {
 
         Vector3 tail = getTail();
         if (!isRemoved() && shouldAddTail(tail)) {
-                boolean shouldAdd = true;
-                if (squareDist > 0) {
+            boolean shouldAdd = true;
+            if (squareDist > 0) {
                 var last = tails.pollLast();
                 if (last != null) {
                     var distLast = tail.copy().subtract(last).magSquared();
@@ -125,7 +125,7 @@ public abstract class TrailParticle extends LParticle {
                 }
             }
             if (shouldAdd) {
-                tails.addLast(tail);
+                addNewTail(tail);
             }
         }
         removeTails();
@@ -139,6 +139,10 @@ public abstract class TrailParticle extends LParticle {
         if (lifetime > 0) {
             t = 1.0f * age / this.lifetime;
         }
+    }
+
+    protected void addNewTail(Vector3 tail) {
+        this.tails.add(tail);
     }
 
     @Override
@@ -196,7 +200,7 @@ public abstract class TrailParticle extends LParticle {
             } else {
                 float width = getWidth(tailIndex + 1, partialTicks);
                 var vec = tail.copy().subtract(lastTail);
-                var normal = vec.crossProduct(cameraPos.copy().subtract(tail)).normalize();
+                var normal = vec.crossProduct(tail.copy().subtract(cameraPos)).normalize();
                 var up = tail.copy().add(normal.copy().multiply(width)).subtract(cameraPos);
                 var down = tail.copy().add(normal.copy().multiply(-width)).subtract(cameraPos);
                 if (lastUp == null) {
@@ -213,7 +217,7 @@ public abstract class TrailParticle extends LParticle {
                 }
 
                 float u0, u1, v0, v1;
-                if (uvMode == UVMode.Stretch) {
+                if (getUvMode() == UVMode.Stretch) {
                     if (dynamicTailUVs != null) {
                         var uvs = dynamicTailUVs.apply(this, tailIndex, partialTicks);
                         u0 = uvs.x();

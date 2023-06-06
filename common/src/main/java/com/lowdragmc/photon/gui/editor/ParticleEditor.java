@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib.gui.editor.ui.menu.ViewMenu;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import lombok.Getter;
+import lombok.Setter;
 
 import javax.annotation.Nullable;
 import java.io.File;
@@ -25,6 +26,10 @@ public class ParticleEditor extends Editor {
     @Getter
     @Nullable
     protected EmittersList emittersList;
+    @Getter @Setter
+    private boolean draggable = false;
+    @Getter @Setter
+    private boolean dragAll = false;
 
     public ParticleEditor(File workSpace) {
         super(workSpace);

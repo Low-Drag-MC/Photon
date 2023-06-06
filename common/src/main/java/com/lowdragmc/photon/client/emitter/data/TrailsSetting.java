@@ -172,6 +172,15 @@ public class TrailsSetting extends ToggleGroup {
                 return width;
             });
 
+            if (emitter.getLights().isEnable()) {
+                trail.setDynamicLight((p, partialTicks) -> {
+                    if (emitter.getLights().isEnable()) {
+                        return emitter.getLights().getLight(p, partialTicks);
+                    }
+                    return p.getLight();
+                });
+            }
+
             emitter.emitParticle(trail);
         }
     }
