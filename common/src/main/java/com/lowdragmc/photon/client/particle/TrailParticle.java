@@ -91,7 +91,7 @@ public abstract class TrailParticle extends LParticle {
     }
 
     @Override
-    public final void tick() {
+    public void tick() {
         if (delay > 0) {
             delay--;
             return;
@@ -201,11 +201,11 @@ public abstract class TrailParticle extends LParticle {
                 float width = getWidth(tailIndex + 1, partialTicks);
                 var vec = tail.copy().subtract(lastTail);
                 var normal = vec.crossProduct(tail.copy().subtract(cameraPos)).normalize();
-                if (lastNormal != null) {
-                    if (lastNormal.angle(normal) > Mth.HALF_PI) {
-                        normal = normal.multiply(-1);
-                    }
-                }
+//                if (lastNormal != null) {
+//                    if (lastNormal.angle(normal) > Mth.HALF_PI) {
+//                        normal = normal.multiply(-1);
+//                    }
+//                }
                 var up = tail.copy().add(normal.copy().multiply(width)).subtract(cameraPos);
                 var down = tail.copy().add(normal.copy().multiply(-width)).subtract(cameraPos);
                 if (lastUp == null) {

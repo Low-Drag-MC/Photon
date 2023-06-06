@@ -1,6 +1,8 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.fx.BlockEffect;
+import com.lowdragmc.photon.client.fx.EntityEffect;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.core.mixins.accessor.ParticleEngineAccessor;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -29,6 +31,8 @@ public class ClientCommands {
                                     if (Minecraft.getInstance().particleEngine instanceof ParticleEngineAccessor accessor) {
                                         accessor.getParticles().entrySet().removeIf(entry -> entry.getKey() instanceof PhotonParticleRenderType);
                                     }
+                                    EntityEffect.CACHE.clear();
+                                    BlockEffect.CACHE.clear();
                                     return 1;
                                 }))
                         .then(createLiteral("clear_fx_cache")

@@ -134,6 +134,15 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     }
 
     @Override
+    protected void update() {
+        // effect first
+        if (fXEffect != null && fXEffect.updateEmitter(this)) {
+            return;
+        }
+        super.update();
+    }
+
+    @Override
     protected void addNewTail(Vector3 tail) {
         super.addNewTail(tail);
         tailsTime.addLast(new AtomicInteger(0));
