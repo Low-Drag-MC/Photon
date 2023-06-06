@@ -7,8 +7,8 @@ import com.lowdragmc.lowdraglib.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.lowdraglib.utils.Size;
-import com.lowdragmc.photon.client.data.number.NumberFunction;
-import com.lowdragmc.photon.client.data.number.NumberFunctionConfig;
+import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.emitter.data.number.NumberFunctionConfig;
 import lombok.Getter;
 
 import java.util.function.Consumer;

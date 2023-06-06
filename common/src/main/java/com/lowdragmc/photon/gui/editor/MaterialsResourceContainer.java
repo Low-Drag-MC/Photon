@@ -7,7 +7,7 @@ import com.lowdragmc.lowdraglib.gui.editor.ui.ResourcePanel;
 import com.lowdragmc.lowdraglib.gui.editor.ui.resource.ResourceContainer;
 import com.lowdragmc.lowdraglib.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
-import com.lowdragmc.photon.client.data.material.IMaterial;
+import com.lowdragmc.photon.client.emitter.data.material.IMaterial;
 
 /**
  * @author KilaBash

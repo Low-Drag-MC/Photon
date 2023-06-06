@@ -1,6 +1,8 @@
 package com.lowdragmc.photon;
 
 import com.lowdragmc.lowdraglib.Platform;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import dev.architectury.injectables.annotations.ExpectPlatform;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +18,16 @@ public class Photon {
 
     public static ResourceLocation id(String path) {
         return new ResourceLocation(MOD_ID, path);
+    }
+
+    @ExpectPlatform
+    public static boolean isStencilEnabled(RenderTarget target) {
+        throw new AssertionError();
+    }
+
+    @ExpectPlatform
+    public static boolean useCombinedDepthStencilAttachment() {
+        throw new AssertionError();
     }
 }
 

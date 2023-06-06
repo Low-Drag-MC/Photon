@@ -16,7 +16,7 @@
   "environment": "*",
   "entrypoints": {
     "main": [
-      "com.lowdragmc.photon.fabric.PhotonFabric"
+      "com.lowdragmc.photon.fabric.PhotonImpl"
     ],
     "client": [
       "com.lowdragmc.photon.client.fabric.ClientProxyImpl"

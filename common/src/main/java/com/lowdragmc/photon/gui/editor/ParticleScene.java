@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.gui.editor;
 
 import com.lowdragmc.lowdraglib.client.scene.ParticleManager;
+import com.lowdragmc.lowdraglib.client.scene.WorldSceneRenderer;
 import com.lowdragmc.lowdraglib.gui.editor.ui.ConfigPanel;
 import com.lowdragmc.lowdraglib.gui.editor.ui.MenuPanel;
 import com.lowdragmc.lowdraglib.gui.widget.SceneWidget;
@@ -20,12 +21,12 @@ import java.util.Set;
  * @date 2023/5/26
  * @implNote ParticleScene
  */
+@Environment(EnvType.CLIENT)
 public class ParticleScene extends SceneWidget {
     @Getter
     protected final TrackedDummyWorld level = new TrackedDummyWorld();
 
     @Getter
-    @Environment(EnvType.CLIENT)
     protected final ParticleManager particleManager = new ParticleManager();
 
     public ParticleScene(ParticleEditor editor) {
@@ -45,8 +46,8 @@ public class ParticleScene extends SceneWidget {
         this.level.clear();
         createScene(level);
         Set<BlockPos> plane = new HashSet<>();
-        for (int x = -1; x < 2; x++) {
-            for (int z = -1; z < 2; z++) {
+        for (int x = -5; x < 6; x++) {
+            for (int z = -5; z < 6; z++) {
                 plane.add(new BlockPos(x, 0, z));
                 level.addBlock(new BlockPos(x, 0, z), BlockInfo.fromBlock(Blocks.GRASS_BLOCK));
             }
@@ -55,4 +56,8 @@ public class ParticleScene extends SceneWidget {
         setRenderedCore(plane, null);
     }
 
+    @Override
+    public void renderBlockOverLay(WorldSceneRenderer renderer) {
+        super.renderBlockOverLay(renderer);
+    }
 }

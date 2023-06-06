@@ -6,6 +6,9 @@ import com.lowdragmc.lowdraglib.gui.editor.data.IProject;
 import com.lowdragmc.lowdraglib.gui.editor.data.Resources;
 import com.lowdragmc.lowdraglib.gui.editor.data.resource.ColorsResource;
 import com.lowdragmc.lowdraglib.gui.editor.data.resource.Resource;
+import com.lowdragmc.lowdraglib.gui.editor.ui.Editor;
+import com.lowdragmc.lowdraglib.gui.util.TreeBuilder;
+import com.lowdragmc.lowdraglib.gui.widget.DialogWidget;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
@@ -121,5 +124,29 @@ public class ParticleProject implements IProject {
         return null;
     }
 
-
+    @Override
+    public void attachMenu(Editor editor, String name, TreeBuilder.Menu menu) {
+        if (name.equals("file")) {
+            menu.branch("ldlib.gui.editor.menu.export", m -> m.leaf("FX", () -> {
+                File path = new File(Editor.INSTANCE.getWorkSpace(), "assets/photon/fx");
+                DialogWidget.showFileDialog(editor, "Export FX", path, false,
+                        DialogWidget.suffixFilter(".fx"), r -> {
+                            if (r != null && !r.isDirectory()) {
+                                if (!r.getName().endsWith(".fx")) {
+                                    r = new File(r.getParentFile(), r.getName() + ".fx");
+                                }
+                                try {
+                                    var tag = new CompoundTag();
+                                    var list = new ListTag();
+                                    for (var emitter : emitters) {
+                                        list.add(emitter.serializeNBT());
+                                    }
+                                    tag.put("emitters", list);
+                                    NbtIo.writeCompressed(tag, r);
+                                } catch (IOException ignored) {}
+                            }
+                        });
+            }));
+        }
+    }
 }

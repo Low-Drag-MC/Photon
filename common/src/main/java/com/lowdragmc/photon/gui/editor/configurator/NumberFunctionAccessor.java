@@ -3,8 +3,8 @@ package com.lowdragmc.photon.gui.editor.configurator;
 import com.lowdragmc.lowdraglib.gui.editor.accessors.TypesAccessor;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.ConfigAccessor;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.Configurator;
-import com.lowdragmc.photon.client.data.number.NumberFunction;
-import com.lowdragmc.photon.client.data.number.NumberFunctionConfig;
+import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.emitter.data.number.NumberFunctionConfig;
 
 import java.lang.reflect.Field;
 import java.util.function.Consumer;

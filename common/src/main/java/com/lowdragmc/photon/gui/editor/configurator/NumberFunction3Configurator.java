@@ -2,9 +2,9 @@ package com.lowdragmc.photon.gui.editor.configurator;
 
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ValueConfigurator;
 import com.lowdragmc.lowdraglib.utils.Size;
-import com.lowdragmc.photon.client.data.number.NumberFunction;
-import com.lowdragmc.photon.client.data.number.NumberFunction3;
-import com.lowdragmc.photon.client.data.number.NumberFunction3Config;
+import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.emitter.data.number.NumberFunction3;
+import com.lowdragmc.photon.client.emitter.data.number.NumberFunction3Config;
 import lombok.Getter;
 
 import java.util.function.Consumer;

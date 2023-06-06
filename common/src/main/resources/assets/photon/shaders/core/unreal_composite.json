@@ -1,0 +1,21 @@
+{
+    "blend": {
+        "func": "add",
+        "srcrgb": "one",
+        "dstrgb": "zero"
+    },
+    "vertex": "ldlib:fast_blit",
+    "fragment": "photon:unreal_composite",
+    "attributes": [ "Position" ],
+    "samplers": [
+        { "name": "DiffuseSampler" },
+        { "name": "HighLight" },
+        { "name": "BlurTexture1" },
+        { "name": "BlurTexture2" },
+        { "name": "BlurTexture3" }
+    ],
+    "uniforms": [
+        { "name": "BloomRadius",     "type": "float",     "count": 1,  "values": [ 1.0 ] },
+        { "name": "BloomIntensive",     "type": "float",     "count": 1,  "values": [ 1.7 ] }
+    ]
+}

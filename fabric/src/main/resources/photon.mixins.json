@@ -4,6 +4,8 @@
   "package": "com.lowdragmc.photon.fabric.core.mixins",
   "compatibilityLevel": "JAVA_17",
   "client": [
+    "ParticleEngineMixin",
+    "ShaderInstanceMixin"
   ],
   "mixins": [
   ],

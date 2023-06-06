@@ -10,7 +10,7 @@ import com.lowdragmc.lowdraglib.gui.editor.ui.resource.ResourceContainer;
 import com.lowdragmc.lowdraglib.gui.widget.DialogWidget;
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
 import com.lowdragmc.lowdraglib.utils.LocalizationUtils;
-import com.lowdragmc.photon.client.data.shape.MeshData;
+import com.lowdragmc.photon.client.emitter.data.shape.MeshData;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 

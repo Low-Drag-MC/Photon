@@ -4,7 +4,7 @@ import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.AnnotationDetector;
 import com.lowdragmc.lowdraglib.syncdata.IAccessor;
 import com.lowdragmc.lowdraglib.syncdata.payload.NbtTagPayload;
-import com.lowdragmc.photon.client.data.shape.IShape;
+import com.lowdragmc.photon.client.emitter.data.shape.IShape;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.lowdragmc.photon.gui.editor.accessor.IShapeAccessor;
 import com.lowdragmc.photon.gui.editor.accessor.NumberFunction3Accessor;

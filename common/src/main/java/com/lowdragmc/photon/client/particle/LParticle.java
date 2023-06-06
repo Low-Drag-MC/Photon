@@ -288,7 +288,7 @@ public abstract class LParticle extends Particle {
     }
 
     public void render(@Nonnull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
-        if (delay <= 0) {
+        if (delay <= 0 && (this.emitter == null || this.emitter.isVisible())) {
             renderInternal(pBuffer, pRenderInfo, pPartialTicks);
         }
     }
@@ -447,15 +447,13 @@ public abstract class LParticle extends Particle {
     public void addParticle(@Nullable IParticleEmitter emitter) {
         updateOrigin();
         this.emitter = emitter;
-        if (this.emitter == null) {
-            if (getLevel() instanceof DummyWorld dummyWorld) {
-                ParticleManager particleManager = dummyWorld.getParticleManager();
-                if (particleManager != null) {
-                    particleManager.addParticle(this);
-                }
-            } else {
-                Minecraft.getInstance().particleEngine.add(this);
+        if (getLevel() instanceof DummyWorld dummyWorld) {
+            ParticleManager particleManager = dummyWorld.getParticleManager();
+            if (particleManager != null) {
+                particleManager.addParticle(this);
             }
+        } else {
+            Minecraft.getInstance().particleEngine.add(this);
         }
     }
 

@@ -6,15 +6,16 @@ import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
 import com.lowdragmc.lowdraglib.utils.Vector3;
-import com.lowdragmc.photon.client.data.*;
-import com.lowdragmc.photon.client.data.number.*;
-import com.lowdragmc.photon.client.data.number.color.Color;
-import com.lowdragmc.photon.client.data.number.color.Gradient;
-import com.lowdragmc.photon.client.data.number.color.RandomColor;
-import com.lowdragmc.photon.client.data.number.color.RandomGradient;
-import com.lowdragmc.photon.client.data.number.curve.Curve;
-import com.lowdragmc.photon.client.data.number.curve.CurveConfig;
-import com.lowdragmc.photon.client.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.emitter.data.*;
+import com.lowdragmc.photon.client.emitter.data.number.*;
+import com.lowdragmc.photon.client.emitter.data.number.color.Color;
+import com.lowdragmc.photon.client.emitter.data.number.color.Gradient;
+import com.lowdragmc.photon.client.emitter.data.number.color.RandomColor;
+import com.lowdragmc.photon.client.emitter.data.number.color.RandomGradient;
+import com.lowdragmc.photon.client.emitter.data.number.curve.Curve;
+import com.lowdragmc.photon.client.emitter.data.number.curve.CurveConfig;
+import com.lowdragmc.photon.client.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.fx.IFXEffect;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
 import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
@@ -24,17 +25,15 @@ import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Vector4f;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.util.Mth;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
-import java.util.Map;
+import java.util.*;
 
 /**
  * @author KilaBash
@@ -148,16 +147,17 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     protected final UVAnimationSetting uvAnimation = new UVAnimationSetting();
     @Getter
     @Configurable(name = "Trails", subConfigurable = true, tips = "Attach trails to the particles.")
-    protected final TrailsSetting trails = new TrailsSetting();
+    protected final TrailsSetting trails = new TrailsSetting(this);
 
     // runtime
     @Getter
-    protected final Map<ParticleRenderType, LinkedList<LParticle>> particles = new LinkedHashMap<>();
-    @Getter
-    protected int particleAmount = 0;
+    protected final List<LParticle> particles = new ArrayList<>();
     protected final ParticleRenderType renderType = new RenderType();
     @Getter @Setter
     protected boolean visible = true;
+    @Nullable
+    @Getter @Setter
+    protected IFXEffect fXEffect;
 
     public ParticleEmitter() {
         super(null, 0, 0, 0);
@@ -170,8 +170,17 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
     @Override
     public void tick() {
+        // effect first
+        if (fXEffect != null && fXEffect.updateEmitter(this)) {
+            return;
+        }
+        // delay
+        if (delay > 0) {
+            delay--;
+            return;
+        }
         // emit new particle
-        if (!isRemoved() && particleAmount < maxParticles) {
+        if (!isRemoved() && getParticleAmount() < maxParticles) {
             var randomSource = getRandomSource();
             var number = emission.getEmissionCount(this.age, t, randomSource);
             for (int i = 0; i < number; i++) {
@@ -186,7 +195,9 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                 }
                 shape.setupParticle(particle);
                 particle.setSpeed(startSpeed.get(randomSource, t).floatValue());
-                particle.setSize(startSize.get(randomSource, t).floatValue());
+                var sizeScale = startSize.get(randomSource, t).floatValue();
+                var startedSize = new Vector3(sizeScale, sizeScale, sizeScale);
+                particle.setSize(sizeScale);
                 var rotation = startRotation.get(randomSource, t).multiply(Mth.TWO_PI / 360);
                 particle.setRoll((float) rotation.x);
                 particle.setPitch((float) rotation.y);
@@ -230,10 +241,10 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                             p.setSpeed(p.getVelocity().add(forceOverLifetime.getForce(p)));
                         }
                         if (sizeOverLifetime.isEnable()) {
-                            p.setQuadSize(sizeOverLifetime.getSize(p, 0));
+                            p.setQuadSize(sizeOverLifetime.getSize(startedSize, p, 0));
                         }
                         if (sizeBySpeed.isEnable()) {
-                            p.setQuadSize(sizeBySpeed.getSize(p));
+                            p.setQuadSize(sizeBySpeed.getSize(startedSize, p));
                         }
                         if (physics.isEnable()) {
                             p.setFriction(physics.getFrictionModifier(p));
@@ -275,7 +286,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                     particle.setDynamicSize((p, partialTicks) -> {
                         var size = p.getQuadSize(partialTicks);
                         if (sizeOverLifetime.isEnable()) {
-                            size = sizeOverLifetime.getSize(p, partialTicks);
+                            size = sizeOverLifetime.getSize(startedSize, p, partialTicks);
                         }
                         if (noise.isEnable()) {
                             size = size.copy().add(noise.getSize(p, partialTicks));
@@ -338,25 +349,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
         }
 
         // particles life cycle
-        var iter = particles.entrySet().iterator();
-        particleAmount = 0;
-        while (iter.hasNext()) {
-            var entry = iter.next();
-            var list = entry.getValue();
-            var iterator = list.iterator();
-            while (iterator.hasNext()) {
-                var p = iterator.next();
-                if (!p.isAlive()) {
-                    iterator.remove();
-                } else {
-                    p.tick();
-                }
-            }
-            particleAmount += list.size();
-            if (list.isEmpty()) {
-                iter.remove();
-            }
-        }
+        particles.removeIf(entry -> !entry.isAlive());
 
         if (this.age >= this.duration && !isLooping()) {
             this.remove();
@@ -374,7 +367,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
     @Override
     public boolean isAlive() {
-        return !removed || particleAmount != 0;
+        return !removed || getParticleAmount() != 0;
     }
 
     @Override
@@ -390,31 +383,17 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     }
 
     @Override
-    public final void render(VertexConsumer buffer, Camera renderInfo, float partialTicks) {
-        if (visible) {
-            particles.forEach((particleRenderType, lParticles) -> {
-                if (particleRenderType != ParticleRenderType.NO_RENDER) {
-                    Tesselator tesselator = Tesselator.getInstance();
-                    BufferBuilder bufferbuilder = tesselator.getBuilder();
-                    particleRenderType.begin(bufferbuilder, Minecraft.getInstance().getTextureManager());
-                    for(var particle : lParticles) {
-                        particle.render(bufferbuilder, renderInfo, partialTicks);
-                    }
-                    particleRenderType.end(tesselator);
-                }
-            });
-        }
-    }
-
-    @Override
     @Nonnull
     public final ParticleRenderType getRenderType() {
-        return ParticleRenderType.CUSTOM;
+        return ParticleRenderType.NO_RENDER;
     }
 
-    private class RenderType implements ParticleRenderType {
+    private class RenderType extends PhotonParticleRenderType {
         @Override
         public void begin(@Nonnull BufferBuilder bufferBuilder, @Nonnull TextureManager textureManager) {
+            if (renderer.isBloomEffect() && isVisible()) {
+                beginBloom();
+            }
             material.pre();
             material.getMaterial().begin(bufferBuilder, textureManager, false);
             Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
@@ -434,6 +413,9 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
             if (lastBlend != null) {
                 lastBlend.apply();
             }
+            if (renderer.isBloomEffect() && isVisible()) {
+                endBloom();
+            }
         }
     }
 
@@ -443,13 +425,13 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     //////////////////////////////////////
 
     public boolean emitParticle(LParticle particle) {
-        if (this.emitter != null) {
-            return this.emitter.emitParticle(particle);
-        } else {
-            particles.computeIfAbsent(particle.getRenderType(), type -> new LinkedList<>()).add(particle);
-            particle.addParticle(this);
-            particleAmount++;
-            return particleAmount <= maxParticles;
-        }
+        particles.add(particle);
+        particle.addParticle(this);
+        return getParticleAmount() <= maxParticles;
+    }
+
+    @Override
+    public boolean usingBloom() {
+        return renderer.isBloomEffect();
     }
 }

@@ -4,8 +4,10 @@
   "package": "com.lowdragmc.photon.core.mixins",
   "compatibilityLevel": "JAVA_17",
   "client": [
+    "ParticleManagerMixin",
     "accessor.BlendModeAccessor",
     "accessor.MinecraftAccessor",
+    "accessor.ParticleEngineAccessor",
     "accessor.ShaderInstanceAccessor"
   ],
   "mixins": [

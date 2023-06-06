@@ -4,7 +4,7 @@ import com.lowdragmc.lowdraglib.syncdata.AccessorOp;
 import com.lowdragmc.lowdraglib.syncdata.accessor.CustomObjectAccessor;
 import com.lowdragmc.lowdraglib.syncdata.payload.ITypedPayload;
 import com.lowdragmc.lowdraglib.syncdata.payload.NbtTagPayload;
-import com.lowdragmc.photon.client.data.shape.IShape;
+import com.lowdragmc.photon.client.emitter.data.shape.IShape;
 import net.minecraft.nbt.CompoundTag;
 
 /**

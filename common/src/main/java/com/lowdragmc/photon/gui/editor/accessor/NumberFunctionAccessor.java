@@ -4,7 +4,7 @@ import com.lowdragmc.lowdraglib.syncdata.AccessorOp;
 import com.lowdragmc.lowdraglib.syncdata.accessor.CustomObjectAccessor;
 import com.lowdragmc.lowdraglib.syncdata.payload.ITypedPayload;
 import com.lowdragmc.lowdraglib.syncdata.payload.NbtTagPayload;
-import com.lowdragmc.photon.client.data.number.NumberFunction;
+import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
 import net.minecraft.nbt.CompoundTag;
 
 /**
