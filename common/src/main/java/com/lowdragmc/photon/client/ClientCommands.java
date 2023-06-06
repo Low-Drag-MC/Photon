@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.core.mixins.accessor.ParticleEngineAccessor;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.fabricmc.api.EnvType;
@@ -22,13 +23,19 @@ public class ClientCommands {
     @SuppressWarnings("unchecked")
     public static <S> List<LiteralArgumentBuilder<S>> createClientCommands() {
         return List.of(
-                (LiteralArgumentBuilder<S>) createLiteral("photon_client").then(createLiteral("clear_particles")
-                        .executes(context -> {
-                            if (Minecraft.getInstance().particleEngine instanceof ParticleEngineAccessor accessor) {
-                                accessor.getParticles().entrySet().removeIf(entry -> entry.getKey() instanceof PhotonParticleRenderType);
-                            }
-                            return 1;
-                        }))
+                (LiteralArgumentBuilder<S>) createLiteral("photon_client")
+                        .then(createLiteral("clear_particles")
+                                .executes(context -> {
+                                    if (Minecraft.getInstance().particleEngine instanceof ParticleEngineAccessor accessor) {
+                                        accessor.getParticles().entrySet().removeIf(entry -> entry.getKey() instanceof PhotonParticleRenderType);
+                                    }
+                                    return 1;
+                                }))
+                        .then(createLiteral("clear_fx_cache")
+                                .executes(context -> {
+                                    FXHelper.clearCache();
+                                    return 1;
+                                }))
         );
     }
 }

@@ -2,22 +2,18 @@ package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.emitter.TrailEmitter;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.commands.arguments.EntityArgument;
-import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 /**
  * @author KilaBash
  * @date 2023/6/5
@@ -27,11 +23,9 @@ import java.util.Map;
 public class EntityEffect implements IFXEffect {
     public static Map<Entity, List<EntityEffect>> CACHE = new HashMap<>();
     @Getter
-    public final ResourceLocation fx;
-    @Getter
-    public final List<IParticleEmitter> emitters;
+    public final FX fx;
     public final Level level;
-    public final BlockPos pos;
+    public final Entity entity;
     @Setter
     private double xOffset, yOffset, zOffset;
     @Setter
@@ -40,16 +34,14 @@ public class EntityEffect implements IFXEffect {
     private boolean forcedDeath;
     @Setter
     private boolean allowMulti;
-    @Setter
-    private boolean checkState;
-    // runtime
-    private BlockState lastState;
+    //runtime
+    @Getter
+    private final List<IParticleEmitter> emitters = new ArrayList<>();
 
-    public EntityEffect(ResourceLocation fx, Level level, BlockPos pos, List<IParticleEmitter> emitters) {
+    public EntityEffect(FX fx, Level level, Entity entity) {
         this.fx = fx;
-        this.emitters = emitters;
         this.level = level;
-        this.pos = pos;
+        this.entity = entity;
     }
 
     @Override
@@ -61,45 +53,46 @@ public class EntityEffect implements IFXEffect {
 
     @Override
     public boolean updateEmitter(IParticleEmitter emitter) {
-        var state = level.getBlockState(pos);
-        if (lastState.getBlock() != state.getBlock() || (state != lastState && checkState)) {
+        if (entity.isRemoved()) {
             emitter.self().remove();
-            if (forcedDeath) {
-                emitter.getParticles().clear();
-                return true;
-            }
+            return true;
         }
+        emitter.self().setPos(entity.getX() + xOffset, entity.getY() + yOffset, entity.getZ() + zOffset);
         return false;
     }
 
     @Override
     public void start() {
-        if (pos == null) return;
-        var realPos= new Vector3(pos).add(xOffset + 0.5, yOffset + 0.5, zOffset + 0.5);
-//        EntityArgument.getOptionalEntities()
+        if (!entity.isAlive()) return;
+        this.emitters.clear();
+        this.emitters.addAll(fx.generateEmitters());
+        if (this.emitters.isEmpty()) return;
         if (!allowMulti) {
-//            var effects = CACHE.computeIfAbsent(pos, p -> new ArrayList<>());
-//            var iter = effects.iterator();
-//            while (iter.hasNext()) {
-//                var effect = iter.next();
-//                boolean removed = false;
-//                if (effect.emitters.stream().noneMatch(e -> e.self().isAlive())) {
-//                    iter.remove();
-//                    removed = true;
-//                }
-//                if (effect.fx.equals(fx) && !removed) {
-//                    return;
-//                }
-//            }
-//            effects.add(this);
+            var effects = CACHE.computeIfAbsent(entity, p -> new ArrayList<>());
+            var iter = effects.iterator();
+            while (iter.hasNext()) {
+                var effect = iter.next();
+                boolean removed = false;
+                if (effect.emitters.stream().noneMatch(e -> e.self().isAlive())) {
+                    iter.remove();
+                    removed = true;
+                }
+                if (effect.fx.equals(fx) && !removed) {
+                    return;
+                }
+            }
+            effects.add(this);
         }
+        var realPos = new Vector3(entity.getPosition(0)).add(xOffset, yOffset, zOffset);
         for (var emitter : emitters) {
             emitter.reset();
             emitter.self().setDelay(delay);
             emitter.setFXEffect(this);
+            if (emitter instanceof TrailEmitter trail) {
+                trail.setDieWhenRemoved(forcedDeath);
+            }
             emitter.emmitToLevel(level, realPos.x, realPos.y, realPos.z);
         }
-        lastState = level.getBlockState(pos);
     }
 
 }

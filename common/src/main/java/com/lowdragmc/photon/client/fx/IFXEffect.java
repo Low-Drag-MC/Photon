@@ -13,7 +13,10 @@ import java.util.List;
  */
 @Environment(EnvType.CLIENT)
 public interface IFXEffect {
-
+    /**
+     * get all emitters included in this effect.
+     */
+    FX getFx();
     /**
      * set effect offset
      */

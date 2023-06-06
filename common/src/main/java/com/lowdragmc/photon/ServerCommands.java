@@ -1,6 +1,7 @@
 package com.lowdragmc.photon;
 
 import com.lowdragmc.photon.command.BlockEffectCommand;
+import com.lowdragmc.photon.command.EntityEffectCommand;
 import com.lowdragmc.photon.gui.ParticleEditorFactory;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
@@ -27,6 +28,7 @@ public class ServerCommands {
                         .then(Commands.literal("fx")
                                 .then(Commands.argument("location", ResourceLocationArgument.id())
                                         .then(BlockEffectCommand.createCommand())
+                                        .then(EntityEffectCommand.createCommand())
                                 ))
 
         );

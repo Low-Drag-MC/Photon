@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.emitter.TrailEmitter;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -22,9 +23,7 @@ import java.util.*;
 public class BlockEffect implements IFXEffect {
     public static Map<BlockPos, List<BlockEffect>> CACHE = new HashMap<>();
     @Getter
-    public final ResourceLocation fx;
-    @Getter
-    public final List<IParticleEmitter> emitters;
+    public final FX fx;
     public final Level level;
     public final BlockPos pos;
     @Setter
@@ -38,11 +37,12 @@ public class BlockEffect implements IFXEffect {
     @Setter
     private boolean checkState;
     // runtime
+    @Getter
+    private final List<IParticleEmitter> emitters = new ArrayList<>();
     private BlockState lastState;
 
-    public BlockEffect(ResourceLocation fx, Level level, BlockPos pos, List<IParticleEmitter> emitters) {
+    public BlockEffect(FX fx, Level level, BlockPos pos) {
         this.fx = fx;
-        this.emitters = emitters;
         this.level = level;
         this.pos = pos;
     }
@@ -69,8 +69,9 @@ public class BlockEffect implements IFXEffect {
 
     @Override
     public void start() {
-        if (pos == null) return;
-        var realPos= new Vector3(pos).add(xOffset + 0.5, yOffset + 0.5, zOffset + 0.5);
+        this.emitters.clear();
+        this.emitters.addAll(fx.generateEmitters());
+        if (this.emitters.isEmpty()) return;
         if (!allowMulti) {
             var effects = CACHE.computeIfAbsent(pos, p -> new ArrayList<>());
             var iter = effects.iterator();
@@ -87,7 +88,11 @@ public class BlockEffect implements IFXEffect {
             }
             effects.add(this);
         }
+        var realPos= new Vector3(pos).add(xOffset + 0.5, yOffset + 0.5, zOffset + 0.5);
         for (var emitter : emitters) {
+            if (emitter instanceof TrailEmitter) {
+                continue;
+            }
             emitter.reset();
             emitter.self().setDelay(delay);
             emitter.setFXEffect(this);

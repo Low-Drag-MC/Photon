@@ -177,11 +177,6 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
         return bloomEffect;
     }
 
-    @Override
-    protected void update() {
-        super.update();
-    }
-
     private class RenderType extends PhotonParticleRenderType {
         @Override
         public void begin(@Nonnull BufferBuilder bufferBuilder, @Nonnull TextureManager textureManager) {

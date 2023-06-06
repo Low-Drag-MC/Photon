@@ -10,6 +10,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.client.renderer.texture.TextureManager;
 import org.lwjgl.opengl.GL11;
 
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -22,6 +23,19 @@ import javax.annotation.ParametersAreNonnullByDefault;
 @Environment(value= EnvType.CLIENT)
 @ParametersAreNonnullByDefault
 public abstract class PhotonParticleRenderType implements ParticleRenderType {
+
+    public final static PhotonParticleRenderType NO_RENDER = new PhotonParticleRenderType() {
+        @Override
+        public void begin(BufferBuilder builder, TextureManager textureManager) {
+
+        }
+
+        @Override
+        public void end(Tesselator tesselator) {
+
+        }
+    };
+
     public static boolean bloomMark = false;
 
     public static void renderBloom() {

@@ -25,10 +25,12 @@ import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Vector4f;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.util.Mth;
+import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -50,7 +52,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     @Setter
     @Getter
     @Configurable(tips = "The length of time (tick) the Particle Emitter is emitting particles. If the system is looping, this indicates the length of one cycle.")
-    @NumberRange(range = {0, Integer.MAX_VALUE})
+    @NumberRange(range = {1, Integer.MAX_VALUE})
     protected int duration = 100;
     @Setter
     @Getter
@@ -383,9 +385,13 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     }
 
     @Override
+    public void render(@NotNull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
+    }
+
+    @Override
     @Nonnull
     public final ParticleRenderType getRenderType() {
-        return ParticleRenderType.NO_RENDER;
+        return PhotonParticleRenderType.NO_RENDER;
     }
 
     private class RenderType extends PhotonParticleRenderType {

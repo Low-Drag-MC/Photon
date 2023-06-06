@@ -1,21 +1,17 @@
 package com.lowdragmc.photon.client.emitter;
 
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
-import com.lowdragmc.lowdraglib.gui.editor.runtime.AnnotationDetector;
 import com.lowdragmc.lowdraglib.syncdata.IAutoPersistedSerializable;
 import com.lowdragmc.photon.client.fx.IFXEffect;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.integration.LDLibPlugin;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.Level;
 
 import javax.annotation.Nullable;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 
 
 /**
@@ -71,6 +67,10 @@ public interface IParticleEmitter extends IConfigurable, IAutoPersistedSerializa
         return null;
     }
 
+    default IParticleEmitter copy() {
+        return deserializeWrapper(serializeNBT());
+    }
+
 
     /**
      * emitter name unique for one project
@@ -105,6 +105,5 @@ public interface IParticleEmitter extends IConfigurable, IAutoPersistedSerializa
     boolean usingBloom();
 
     void setFXEffect(IFXEffect effect);
-
 
 }
