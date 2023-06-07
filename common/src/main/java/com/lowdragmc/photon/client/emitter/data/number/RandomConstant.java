@@ -112,7 +112,7 @@ public class RandomConstant implements NumberFunction {
             a = nbt.getFloat("a");
         }
         if (nbt.contains("b", Tag.TAG_INT)) {
-            b = nbt.getInt("a");
+            b = nbt.getInt("b");
         } else {
             b = nbt.getFloat("b");
         }

@@ -35,7 +35,7 @@ public class ShapeSetting implements IConfigurable {
     private Vector3 position = Vector3.ZERO.copy();
     @Getter @Setter
     @Configurable(tips = "Rotate the emission shape.")
-    @NumberRange(range = {0, 360}, wheel = 10)
+    @NumberRange(range = {-Float.MAX_VALUE, Float.MAX_VALUE}, wheel = 10)
     private Vector3 rotation = Vector3.ZERO.copy();
     @Getter @Setter
     @Configurable(tips = "Scale the emission shape.")

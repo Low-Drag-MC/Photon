@@ -6,6 +6,7 @@ import net.minecraft.client.renderer.ShaderInstance;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -19,7 +20,7 @@ public interface ShaderInstanceAccessor {
     BlendMode getBlend();
 
     @Accessor
-    Map<String, Object> getSamplerMap();
+    List<String> getSamplerNames();
 
     @Accessor
     Map<String, Uniform> getUniformMap();

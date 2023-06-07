@@ -56,5 +56,7 @@ public interface IMaterial extends IConfigurable, ITagSerializable<CompoundTag> 
 
     CompoundTag serializeNBT(CompoundTag tag);
 
-    IMaterial copy();
+    default IMaterial copy() {
+        return deserializeWrapper(serializeNBT());
+    }
 }

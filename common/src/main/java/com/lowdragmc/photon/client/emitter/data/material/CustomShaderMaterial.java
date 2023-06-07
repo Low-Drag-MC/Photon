@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib.client.shader.Shaders;
 import com.lowdragmc.lowdraglib.gui.editor.ColorPattern;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
+import com.lowdragmc.lowdraglib.gui.editor.configurator.ColorConfigurator;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.NumberConfigurator;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.WrapperConfigurator;
@@ -13,6 +14,7 @@ import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.texture.ResourceTexture;
 import com.lowdragmc.lowdraglib.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib.gui.widget.*;
+import com.lowdragmc.lowdraglib.utils.ColorUtils;
 import com.lowdragmc.lowdraglib.utils.Size;
 import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -23,12 +25,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -53,7 +57,11 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     private Runnable uniformCache = null;
 
     public CustomShaderMaterial() {
-
+        var uniforms = new CompoundTag();
+        var list = new ListTag();
+        list.add(FloatTag.valueOf(0.3f));
+        uniforms.put("Radius", list);
+        uniformTag.put("uniforms", uniforms);
     }
 
     public CustomShaderMaterial(ResourceLocation shader) {
@@ -63,17 +71,23 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     @Override
     public CompoundTag serializeNBT(CompoundTag tag) {
         tag.putString("shader", shader.toString());
+        tag.put("uniform", uniformTag);
         return tag;
     }
 
     @Override
     public IMaterial copy() {
-        return new CustomShaderMaterial(shader);
+        var mat = new CustomShaderMaterial(shader);
+        mat.uniformTag = uniformTag.copy();
+        return mat;
     }
 
     @Override
     public void deserializeNBT(CompoundTag nbt) {
+        uniformCache = null;
+        compiledErrorMessage = null;
         shader = new ResourceLocation(nbt.getString("shader"));
+        uniformTag = nbt.getCompound("uniform");
     }
 
     public boolean isCompiledError() {
@@ -83,10 +97,10 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public void recompile() {
         uniformTag = new CompoundTag();
         uniformCache = null;
-        var shader = getShader();
-        COMPILED_SHADERS.remove(this.shader);
-        if (shader != Shaders.getParticleShader()) {
-            shader.close();
+        compiledErrorMessage = null;
+        var removed = COMPILED_SHADERS.remove(this.shader);
+        if (removed != null && removed != Shaders.getParticleShader()) {
+            removed.close();
         }
     }
 
@@ -111,16 +125,15 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     @Override
     public void setupUniform() {
-        var shader = getShader();
-        if (shader != Shaders.getParticleShader()) {
+        if (!isCompiledError()) {
             if (uniformCache != null) {
                 uniformCache.run();
-            } else if (!uniformTag.isEmpty() && shader instanceof ShaderInstanceAccessor shaderInstance) {
+            } else if (!uniformTag.isEmpty() && getShader() instanceof ShaderInstanceAccessor shaderInstance) {
                 // compile
                 uniformCache = () -> {};
                 if (uniformTag.contains("samplers")) {
                     var samplers = uniformTag.getCompound("samplers");
-                    var samplerMap = shaderInstance.getSamplerMap();
+                    var samplerNames = new HashSet<>(shaderInstance.getSamplerNames());
                     for (String key : samplers.getAllKeys()) {
                         var index = -1;
                         ResourceLocation texture = null;
@@ -128,7 +141,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                             index = Integer.parseInt(key);
                             texture = new ResourceLocation(samplers.getString(key));
                         } catch (Exception ignored) {}
-                        if (index >= 0 && texture != null && samplerMap.containsKey("Sampler" + index)) {
+                        if (index >= 0 && texture != null && samplerNames.contains("Sampler" + index)) {
                             final int finalIndex = index;
                             final ResourceLocation finalTexture = texture;
                             uniformCache = combineRunnable(uniformCache, () -> RenderSystem.setShaderTexture(finalIndex, finalTexture));
@@ -146,19 +159,19 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                                 var type = u.getType();
                                 if (type == 4) { // UT_FLOAT1
                                     final float value = data.getFloat(0);
-                                    uniformCache = combineRunnable(uniformCache, () -> shader.safeGetUniform(key).set(value));
+                                    uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value));
                                 }
                                 if (type == 5) { // UT_FLOAT2
                                     final float[] value = new float[] {data.getFloat(0), data.getFloat(1)};
-                                    uniformCache = combineRunnable(uniformCache, () -> shader.safeGetUniform(key).set(value[0], value[1]));
+                                    uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value[0], value[1]));
                                 }
                                 if (type == 6) { // UT_FLOAT3
                                     final float[] value = new float[] {data.getFloat(0), data.getFloat(1), data.getFloat(2)};
-                                    uniformCache = combineRunnable(uniformCache, () -> shader.safeGetUniform(key).set(value[0], value[1], value[2]));
+                                    uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value[0], value[1], value[2]));
                                 }
                                 if (type == 7) { // UT_FLOAT4
                                     final float[] value = new float[] {data.getFloat(0), data.getFloat(1), data.getFloat(2), data.getFloat(3)};
-                                    uniformCache = combineRunnable(uniformCache, () -> shader.safeGetUniform(key).set(value[0], value[1], value[2], value[3]));
+                                    uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value[0], value[1], value[2], value[3]));
                                 }
                             }
                         }
@@ -172,14 +185,14 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     @Override
     public IGuiTexture preview() {
-        return isCompiledError() ? new TextTexture(compiledErrorMessage, 0xffff0000) : preview;
+        return isCompiledError() ? new TextTexture(compiledErrorMessage == null ? "error" : compiledErrorMessage, 0xffff0000) : preview;
     }
 
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         WidgetGroup preview = new WidgetGroup(0, 0, 100, 120);
         WidgetGroup shaderConfigurator = new WidgetGroup(0, 0, 200, 0);
-        preview.addWidget(new ImageWidget(0, 0, 100, 100, () -> isCompiledError() ? new TextTexture(compiledErrorMessage, 0xffff0000) : this.preview).setBorder(2, ColorPattern.T_WHITE.color));
+        preview.addWidget(new ImageWidget(0, 0, 100, 100, () -> isCompiledError() ? new TextTexture(compiledErrorMessage == null ? "error" : compiledErrorMessage, 0xffff0000) : this.preview).setBorder(2, ColorPattern.T_WHITE.color));
         preview.addWidget(new ButtonWidget(0, 0, 100, 100, IGuiTexture.EMPTY, cd -> {
             if (Editor.INSTANCE == null) return;
             File path = new File(Editor.INSTANCE.getWorkSpace(), "assets/ldlib/shaders/core");
@@ -199,6 +212,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             updateShaderUniformConfigurator(shaderConfigurator);
             father.computeLayout();
         }));
+        updateShaderUniformConfigurator(shaderConfigurator);
         WrapperConfigurator base = new WrapperConfigurator("ldlib.gui.editor.group.shader", preview);
         base.setTips("ldlib.gui.editor.tips.click_select_shader");
 
@@ -210,16 +224,15 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     public void updateShaderUniformConfigurator(WidgetGroup group) {
         group.clearAllWidgets();
-        var shader = getShader();
-        if (shader == Shaders.getParticleShader()) {
+        if (isCompiledError()) {
             var box = new TextBoxWidget(0, 0, 200, List.of(compiledErrorMessage)).setFontColor(-1);
             group.addWidget(box);
             group.setSize(new Size(200, box.getSize().height));
         } else {
             int height = 5;
-            if (shader instanceof ShaderInstanceAccessor shaderInstance) {
-                var samplerMap = shaderInstance.getSamplerMap();
-                for (String samplerName : samplerMap.keySet()) {
+            if (getShader() instanceof ShaderInstanceAccessor shaderAccessor) {
+                var samplerNames = shaderAccessor.getSamplerNames();
+                for (String samplerName : samplerNames) {
                     if (samplerName.startsWith("Sampler")) {
                         var index = -1;
                         try {
@@ -229,7 +242,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                             WidgetGroup preview = new WidgetGroup(50, height + 10, 100, 100);
                             int finalIndex = index;
                             preview.addWidget(new ImageWidget(0, 0, 100, 100, () -> {
-                                if (uniformTag.getCompound("samplers").contains(String.valueOf(finalIndex))) {
+                                if (!uniformTag.getCompound("samplers").contains(String.valueOf(finalIndex))) {
                                     return IGuiTexture.EMPTY;
                                 } else {
                                     return new ResourceTexture(uniformTag.getCompound("samplers").getString(String.valueOf(finalIndex)));
@@ -255,11 +268,16 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                         }
                     }
                 }
-                var uniformMap = shaderInstance.getUniformMap();
+                var uniformMap = shaderAccessor.getUniformMap();
                 for (var entry : uniformMap.entrySet()) {
                     var uniformName = entry.getKey();
                     var uniform = entry.getValue();
                     var type = uniform.getType();
+                    if (uniformName.equals("GameTime") ||
+                            uniformName.equals("FogEnd") ||
+                            uniformName.equals("ColorModulator") ||
+                            uniformName.equals("FogStart") ||
+                            uniformName.equals("FogColor")) continue;
                     if (type == 4) {
                         height = addUniformConfigurator(uniformName, group, 0, height);
                     } else if (type == 5) {
@@ -270,10 +288,14 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                         height = addUniformConfigurator(uniformName+".y", group, 1, height);
                         height = addUniformConfigurator(uniformName+".z", group, 2, height);
                     } else if (type == 7) {
-                        height = addUniformConfigurator(uniformName+".x", group, 0, height);
-                        height = addUniformConfigurator(uniformName+".y", group, 1, height);
-                        height = addUniformConfigurator(uniformName+".z", group, 2, height);
-                        height = addUniformConfigurator(uniformName+".w", group, 3, height);
+                        if (uniformName.toLowerCase().contains("color")) {
+                            height = addColorUniformConfigurator(uniformName, group, height);
+                        } else {
+                            height = addUniformConfigurator(uniformName+".x", group, 0, height);
+                            height = addUniformConfigurator(uniformName+".y", group, 1, height);
+                            height = addUniformConfigurator(uniformName+".z", group, 2, height);
+                            height = addUniformConfigurator(uniformName+".w", group, 3, height);
+                        }
                     }
                     height += 5;
                 }
@@ -302,6 +324,37 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             uniformTag.put("uniforms", tag);
         }, 0, true);
         configurator.setRange(-Float.MAX_VALUE, Float.MAX_VALUE);
+        configurator.init(200);
+        configurator.addSelfPosition(0, height);
+        group.addWidget(configurator);
+        height += 15;
+        return height;
+    }
+
+    private int addColorUniformConfigurator(String uniformName, WidgetGroup group, int height) {
+        var configurator = new ColorConfigurator(uniformName, () -> {
+            var list = uniformTag.getCompound("uniforms").getList(uniformName, Tag.TAG_FLOAT);
+            if (list.size() < 3) {
+                return 0;
+            } else {
+                return ColorUtils.color(list.getFloat(3), list.getFloat(0), list.getFloat(1), list.getFloat(2));
+            }
+        }, number -> {
+            var list = uniformTag.getCompound("uniforms").getList(uniformName, Tag.TAG_FLOAT);
+            while (list.size() < 4) {
+                list.add(FloatTag.valueOf(0));
+            }
+            var color = number.intValue();
+            list.set(0, FloatTag.valueOf(ColorUtils.red(color)));
+            list.set(1, FloatTag.valueOf(ColorUtils.green(color)));
+            list.set(2, FloatTag.valueOf(ColorUtils.blue(color)));
+            list.set(3, FloatTag.valueOf(ColorUtils.alpha(color)));
+
+            var tag = uniformTag.getCompound("uniforms");
+            tag.put(uniformName, list);
+            uniformCache = null;
+            uniformTag.put("uniforms", tag);
+        }, 0, true);
         configurator.init(200);
         configurator.addSelfPosition(0, height);
         group.addWidget(configurator);

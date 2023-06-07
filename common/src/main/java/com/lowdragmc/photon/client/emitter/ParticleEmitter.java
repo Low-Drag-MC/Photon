@@ -81,7 +81,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     @Setter
     @Getter
     @Configurable(tips = "The start rotation of particles in degrees. (x-roll, y-pitch, z-yaw)" )
-    @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 360, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "duration", yAxis = "rotation")))
+    @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "duration", yAxis = "rotation")))
     protected NumberFunction3 startRotation = new NumberFunction3(0, 0, 0);
     @Setter
     @Getter
