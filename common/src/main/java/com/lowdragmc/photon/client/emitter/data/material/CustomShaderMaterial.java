@@ -212,7 +212,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         group.clearAllWidgets();
         var shader = getShader();
         if (shader == Shaders.getParticleShader()) {
-            var box = new TextBoxWidget(0, 0, 200, List.of(compiledErrorMessage));
+            var box = new TextBoxWidget(0, 0, 200, List.of(compiledErrorMessage)).setFontColor(-1);
             group.addWidget(box);
             group.setSize(new Size(200, box.getSize().height));
         } else {

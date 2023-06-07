@@ -114,6 +114,7 @@ public class TrailsSetting extends ToggleGroup {
         if (random.nextFloat() < ratio) { // has tail
             var pos = particle.getPos();
             var trail = new TrailParticle.Basic(emitter.getClientLevel(), pos.x, pos.y, pos.z, renderType);
+            trail.setDelay(particle.getDelay());
             trail.setLevel(emitter.getLevel());
             trail.setLifetime(particle.getLifetime());
             trail.setWidth((float) particle.getQuadSize(0).min());
