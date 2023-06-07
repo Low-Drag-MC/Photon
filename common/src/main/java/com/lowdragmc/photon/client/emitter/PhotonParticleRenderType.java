@@ -53,7 +53,7 @@ public abstract class PhotonParticleRenderType implements ParticleRenderType {
             }
 
             // render bloom effect
-            BloomEffect.renderBloom(input.width, input.height,
+            BloomEffect.renderBloom(background.width, background.height,
                     background.getColorTextureId(),
                     input.getColorTextureId(),
                     output);

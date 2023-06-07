@@ -40,14 +40,14 @@ public class BloomEffect {
 
     public static RenderTarget getInput() {
         if (INPUT == null) {
-            INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), false, GL11.GL_LINEAR);
+            INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), true);
             hookDepthBuffer(INPUT, MC.getMainRenderTarget().getDepthTextureId());
         }
         return INPUT;
     }
 
     public static RenderTarget getOutput() {
-        OUTPUT = resize(OUTPUT, MC.getWindow().getWidth(), MC.getWindow().getHeight(), false, GL11.GL_LINEAR);
+        OUTPUT = resize(OUTPUT, MC.getWindow().getWidth(), MC.getWindow().getHeight(), false);
         return OUTPUT;
     }
 
@@ -67,27 +67,31 @@ public class BloomEffect {
     public static void updateScreenSize(int width, int height) {
         if (LAST_WIDTH == width && LAST_HEIGHT == height) return;
 
-        SWAP2A = resize(SWAP2A, width / 2, height / 2, false, GL11.GL_LINEAR);
-        SWAP4A = resize(SWAP4A, width / 4, height / 4, false, GL11.GL_LINEAR);
-        SWAP8A = resize(SWAP8A, width / 8, height / 8, false, GL11.GL_LINEAR);
+        INPUT = resize(null, width, height, true);
+        hookDepthBuffer(INPUT, MC.getMainRenderTarget().getDepthTextureId());
+        OUTPUT = resize(OUTPUT, width, height, false);
+
+        SWAP2A = resize(SWAP2A, width / 2, height / 2, false);
+        SWAP4A = resize(SWAP4A, width / 4, height / 4, false);
+        SWAP8A = resize(SWAP8A, width / 8, height / 8, false);
 //        SWAP16A = resize(SWAP16A, width / 16, height / 16, false, GL11.GL_LINEAR);
 
-        SWAP2B = resize(SWAP2B, width / 2, height / 2, false, GL11.GL_LINEAR);
-        SWAP4B = resize(SWAP4B, width / 4, height / 4, false, GL11.GL_LINEAR);
-        SWAP8B = resize(SWAP8B, width / 8, height / 8, false, GL11.GL_LINEAR);
+        SWAP2B = resize(SWAP2B, width / 2, height / 2, false);
+        SWAP4B = resize(SWAP4B, width / 4, height / 4, false);
+        SWAP8B = resize(SWAP8B, width / 8, height / 8, false);
 //        SWAP16B = resize(SWAP16B, width / 16, height / 16, false, GL11.GL_LINEAR);
 
         LAST_WIDTH = width;
         LAST_HEIGHT = height;
     }
 
-    private static RenderTarget resize(@Nullable RenderTarget target, int width, int height, boolean useDepth, int filterMode) {
+    private static RenderTarget resize(@Nullable RenderTarget target, int width, int height, boolean useDepth) {
         if (target == null) {
             target = new TextureTarget(width, height, useDepth, Minecraft.ON_OSX);
             target.setClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         }
         target.resize(width, height, Minecraft.ON_OSX);
-        target.setFilterMode(filterMode);
+        target.setFilterMode(GL11.GL_LINEAR);
         return target;
     }
 
