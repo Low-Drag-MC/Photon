@@ -85,9 +85,9 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     @Override
     public void deserializeNBT(CompoundTag nbt) {
         uniformCache = null;
-        compiledErrorMessage = null;
         shader = new ResourceLocation(nbt.getString("shader"));
         uniformTag = nbt.getCompound("uniform");
+        compiledErrorMessage = "";
     }
 
     public boolean isCompiledError() {
@@ -97,7 +97,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public void recompile() {
         uniformTag = new CompoundTag();
         uniformCache = null;
-        compiledErrorMessage = null;
+        compiledErrorMessage = "";
         var removed = COMPILED_SHADERS.remove(this.shader);
         if (removed != null && removed != Shaders.getParticleShader()) {
             removed.close();
@@ -185,14 +185,14 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     @Override
     public IGuiTexture preview() {
-        return isCompiledError() ? new TextTexture(compiledErrorMessage == null ? "error" : compiledErrorMessage, 0xffff0000) : preview;
+        return isCompiledError() ? new TextTexture(compiledErrorMessage.isEmpty() ? "error" : compiledErrorMessage, 0xffff0000) : preview;
     }
 
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         WidgetGroup preview = new WidgetGroup(0, 0, 100, 120);
         WidgetGroup shaderConfigurator = new WidgetGroup(0, 0, 200, 0);
-        preview.addWidget(new ImageWidget(0, 0, 100, 100, () -> isCompiledError() ? new TextTexture(compiledErrorMessage == null ? "error" : compiledErrorMessage, 0xffff0000) : this.preview).setBorder(2, ColorPattern.T_WHITE.color));
+        preview.addWidget(new ImageWidget(0, 0, 100, 100, () -> isCompiledError() ? new TextTexture(compiledErrorMessage.isEmpty() ? "error" : compiledErrorMessage, 0xffff0000) : this.preview).setBorder(2, ColorPattern.T_WHITE.color));
         preview.addWidget(new ButtonWidget(0, 0, 100, 100, IGuiTexture.EMPTY, cd -> {
             if (Editor.INSTANCE == null) return;
             File path = new File(Editor.INSTANCE.getWorkSpace(), "assets/ldlib/shaders/core");
@@ -225,7 +225,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public void updateShaderUniformConfigurator(WidgetGroup group) {
         group.clearAllWidgets();
         if (isCompiledError()) {
-            var box = new TextBoxWidget(0, 0, 200, List.of(compiledErrorMessage)).setFontColor(-1);
+            var box = new TextBoxWidget(0, 0, 200, List.of(compiledErrorMessage.isEmpty() ? "error" : compiledErrorMessage)).setFontColor(-1);
             group.addWidget(box);
             group.setSize(new Size(200, box.getSize().height));
         } else {
