@@ -20,6 +20,9 @@
     ],
     "client": [
       "com.lowdragmc.photon.client.fabric.ClientProxyImpl"
+    ],
+    "ldlib_pugin": [
+      "com.lowdragmc.photon.integration.ldlib.fabric.LDLibPluginImpl"
     ]
   },
   "mixins": [
