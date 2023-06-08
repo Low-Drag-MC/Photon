@@ -1,5 +1,5 @@
 # Photon
-Photon is a VFX (visal effect) editor mod developed for minecraft which is inspired by unity.
+Photon is a VFX (visual effect) editor mod developed for minecraft which is inspired by unity.
 
 It includes unity's particle system and the trailing system. Can help modders create effects for their contents, and players can also enjoy effects by command.
 
