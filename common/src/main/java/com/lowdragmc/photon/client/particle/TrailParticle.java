@@ -186,7 +186,7 @@ public abstract class TrailParticle extends LParticle {
 
         tails.addLast(new Vector3(x, y, z));
         var iter = tails.iterator();
-        Vector3 lastUp = null, lastDown = null, lastNormal = null;
+        Vector3 lastUp = null, lastDown = null;
         Vector3 lastTail = null;
         float la = a;
         float lr = r;
@@ -201,11 +201,6 @@ public abstract class TrailParticle extends LParticle {
                 float width = getWidth(tailIndex + 1, partialTicks);
                 var vec = tail.copy().subtract(lastTail);
                 var normal = vec.crossProduct(tail.copy().subtract(cameraPos)).normalize();
-//                if (lastNormal != null) {
-//                    if (lastNormal.angle(normal) > Mth.HALF_PI) {
-//                        normal = normal.multiply(-1);
-//                    }
-//                }
                 var up = tail.copy().add(normal.copy().multiply(width)).subtract(cameraPos);
                 var down = tail.copy().add(normal.copy().multiply(-width)).subtract(cameraPos);
                 if (lastUp == null) {
@@ -272,7 +267,7 @@ public abstract class TrailParticle extends LParticle {
 
                 lastUp = up;
                 lastDown = down;
-                lastNormal = normal;
+                lastTail = tail;
                 la = ta;
                 lr = tr;
                 lg = tg;
