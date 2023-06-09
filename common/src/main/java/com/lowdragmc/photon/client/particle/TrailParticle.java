@@ -1,7 +1,8 @@
 package com.lowdragmc.photon.client.particle;
 
-import org.joml.Vector3f;
+import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.math.Vector4f;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -11,7 +12,6 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.util.Mth;
 import org.apache.commons.lang3.function.TriFunction;
-import org.joml.Vector4f;
 
 import javax.annotation.Nonnull;
 import java.util.LinkedList;
@@ -42,7 +42,7 @@ public abstract class TrailParticle extends LParticle {
     @Setter @Getter
     protected UVMode uvMode = UVMode.Stretch;
     @Setter
-    protected BiPredicate<TrailParticle, Vector3f> onAddTail;
+    protected BiPredicate<TrailParticle, Vector3> onAddTail;
     @Setter
     protected Predicate<TrailParticle> onRemoveTails;
     @Setter
@@ -53,7 +53,7 @@ public abstract class TrailParticle extends LParticle {
     protected TriFunction<LParticle, Integer, Float, Vector4f> dynamicTailUVs;
     //runtime
     @Getter
-    protected LinkedList<Vector3f> tails = new LinkedList<>();
+    protected LinkedList<Vector3> tails = new LinkedList<>();
 
 
     protected TrailParticle(ClientLevel level, double x, double y, double z) {
@@ -73,7 +73,7 @@ public abstract class TrailParticle extends LParticle {
         this.squareDist = minimumVertexDistance * minimumVertexDistance;
     }
 
-    protected boolean shouldAddTail(Vector3f newTail) {
+    protected boolean shouldAddTail(Vector3 newTail) {
         if (onAddTail != null) {
             return onAddTail.test(this, newTail);
         }
@@ -99,20 +99,20 @@ public abstract class TrailParticle extends LParticle {
 
         updateOrigin();
 
-        Vector3f tail = getTail();
+        Vector3 tail = getTail();
         if (!isRemoved() && shouldAddTail(tail)) {
             boolean shouldAdd = true;
             if (squareDist > 0) {
                 var last = tails.pollLast();
                 if (last != null) {
-                    var distLast = new Vector3f(tail).sub(last).lengthSquared();
+                    var distLast = tail.copy().subtract(last).magSquared();
                     if (distLast < squareDist) {
                         shouldAdd = false;
                         tails.addLast(last);
                     } else {
                         var last2 = tails.peekLast();
                         if (last2 != null) {
-                            var distLast2 = new Vector3f(tail).sub(last2).lengthSquared();
+                            var distLast2 = tail.copy().subtract(last2).magSquared();
                             if (distLast2 < squareDist) {
                                 shouldAdd = false;
                             } else if (distLast < distLast2) {
@@ -141,7 +141,7 @@ public abstract class TrailParticle extends LParticle {
         }
     }
 
-    protected void addNewTail(Vector3f tail) {
+    protected void addNewTail(Vector3 tail) {
         this.tails.add(tail);
     }
 
@@ -154,8 +154,8 @@ public abstract class TrailParticle extends LParticle {
         return true;
     }
 
-    protected Vector3f getTail() {
-        return new Vector3f((float) this.xo, (float) this.yo, (float) this.zo);
+    protected Vector3 getTail() {
+        return new Vector3(this.xo, this.yo, this.zo);
     }
 
     public void renderInternal(@Nonnull VertexConsumer buffer, @Nonnull Camera camera, float partialTicks) {
@@ -170,7 +170,7 @@ public abstract class TrailParticle extends LParticle {
             z += addition.z;
         }
 
-        Vector3f cameraPos = camera.getPosition().toVector3f();
+        Vector3 cameraPos = new Vector3(camera.getPosition());
         float a = getAlpha(partialTicks);
         float r = getRed(partialTicks);
         float g = getGreen(partialTicks);
@@ -184,98 +184,132 @@ public abstract class TrailParticle extends LParticle {
         }
         int light = dynamicLight == null ? this.getLight(partialTicks) : dynamicLight.apply(this, partialTicks);
 
-        tails.addLast(new Vector3f((float) x, (float) y, (float) z));
+        var pushHead = true;
+        if (tails.peekLast() != null && tails.peekLast().equals(new Vector3(x, y, z))) {
+            pushHead = false;
+        } else {
+            tails.addLast(new Vector3(x, y, z));
+        }
+
         var iter = tails.iterator();
-        Vector3f lastUp = null, lastDown = null;
-        Vector3f lastTail = null;
+        Vector3 lastUp = null, lastDown = null, lastNormal = null, tail = null;
         float la = a;
         float lr = r;
         float lg = g ;
         float lb = b;
         int tailIndex = 0;
         while (iter.hasNext()) {
-            var tail = iter.next();
-            if (lastTail == null) {
-                lastTail = tail;
+            var nextTail = iter.next();
+            if (tail == null) {
+                tail = nextTail;
             } else {
-                float width = getWidth(tailIndex + 1, partialTicks);
-                var vec = new Vector3f(tail).sub(lastTail);
-                var normal = vec.cross(new Vector3f(tail).sub(cameraPos)).normalize();
-                var up = new Vector3f(tail).add(new Vector3f(normal).mul(width)).sub(cameraPos);
-                var down = new Vector3f(tail).add(new Vector3f(normal).mul(-width)).sub(cameraPos);
-                if (lastUp == null) {
-                    width = getWidth(tailIndex, partialTicks);
-                    lastUp = new Vector3f(tail).add(new Vector3f(normal).mul(width)).sub(cameraPos);
-                    lastDown = new Vector3f(tail).add(new Vector3f(normal).mul(-width)).sub(cameraPos);
-                    if (dynamicTailColor != null) {
-                        var color = dynamicTailColor.apply(this, tailIndex, partialTicks);
-                        la *= color.w();
-                        lr *= color.x();
-                        lg *= color.y();
-                        lb *= color.z();
-                    }
+                float width = getWidth(tailIndex, partialTicks);
+
+                var vec = nextTail.copy().subtract(tail);
+                var normal = vec.crossProduct(tail.copy().subtract(cameraPos)).normalize();
+                if (lastNormal == null) {
+                    lastNormal= normal;
                 }
 
-                float u0, u1, v0, v1;
-                if (getUvMode() == UVMode.Stretch) {
-                    if (dynamicTailUVs != null) {
-                        var uvs = dynamicTailUVs.apply(this, tailIndex, partialTicks);
-                        u0 = uvs.x();
-                        v0 = uvs.y();
-                        u1 = uvs.z();
-                        v1 = uvs.w();
-                    } else {
-                        u0 = this.getU0(tailIndex, partialTicks);
-                        u1 = this.getU1(tailIndex, partialTicks);
-                        v0 = this.getV0(tailIndex, partialTicks);
-                        v1 = this.getV1(tailIndex, partialTicks);
-                    }
-                } else {
-                    if (dynamicUVs != null) {
-                        var uvs = dynamicUVs.apply(this, partialTicks);
-                        u0 = uvs.x();
-                        v0 = uvs.y();
-                        u1 = uvs.z();
-                        v1 = uvs.w();
-                    } else {
-                        u0 = this.getU0(partialTicks);
-                        u1 = this.getU1(partialTicks);
-                        v0 = this.getV0(partialTicks);
-                        v1 = this.getV1(partialTicks);
-                    }
-                }
+                var avgNormal = lastNormal.add(normal).divide(2);
+                var up = tail.copy().add(avgNormal.copy().multiply(width)).subtract(cameraPos);
+                var down = tail.copy().add(avgNormal.copy().multiply(-width)).subtract(cameraPos);
 
                 float ta = a;
                 float tr = r;
                 float tg = g ;
                 float tb = b;
                 if (dynamicTailColor != null) {
-                    var color = dynamicTailColor.apply(this, tailIndex + 1, partialTicks);
+                    var color = dynamicTailColor.apply(this, tailIndex, partialTicks);
                     ta *= color.w();
                     tr *= color.x();
                     tg *= color.y();
                     tb *= color.z();
                 }
 
-                buffer.vertex(lastUp.x, lastUp.y, lastUp.z).uv(u0, v0).color(lr, lg, lb, la).uv2(light).endVertex();
-                buffer.vertex(up.x, up.y, up.z).uv(u1, v0).color(tr, tg, tb, ta).uv2(light).endVertex();
-                buffer.vertex(down.x, down.y, down.z).uv(u1, v1).color(tr, tg, tb, ta).uv2(light).endVertex();
+                if (lastUp != null) {
+                    var uvs = getUVs(tailIndex - 1, partialTicks);
+                    float u0 = uvs.x(), u1 = uvs.z(), v0 = uvs.y(), v1 = uvs.w();
+                    pushBuffer(buffer, light, lastUp, lastDown, la, lr, lg, lb, u0, u1, v0, v1, ta, tr, tg, tb, up, down);
+                }
 
-                buffer.vertex(down.x, down.y, down.z).uv(u1, v1).color(tr, tg, tb, ta).uv2(light).endVertex();
-                buffer.vertex(lastDown.x, lastDown.y, lastDown.z).uv(u0, v1).color(lr, lg, lb, la).uv2(light).endVertex();
-                buffer.vertex(lastUp.x, lastUp.y, lastUp.z).uv(u0, v0).color(lr, lg, lb, la).uv2(light).endVertex();
-
-                lastUp = up;
-                lastDown = down;
-                lastTail = tail;
                 la = ta;
                 lr = tr;
                 lg = tg;
                 lb = tb;
+                lastUp = up;
+                lastDown = down;
+                tail = nextTail;
+                lastNormal = normal;
                 tailIndex++;
             }
         }
-        tails.pollLast();
+        // add head
+        if (tail != null && lastNormal != null) {
+            float width = getWidth(tailIndex, partialTicks);
+            var uvs = getUVs(tailIndex - 1, partialTicks);
+            float u0 = uvs.x(), u1 = uvs.z(), v0 = uvs.y(), v1 = uvs.w();
+
+            float ta = a;
+            float tr = r;
+            float tg = g ;
+            float tb = b;
+            if (dynamicTailColor != null) {
+                var color = dynamicTailColor.apply(this, tailIndex, partialTicks);
+                ta *= color.w();
+                tr *= color.x();
+                tg *= color.y();
+                tb *= color.z();
+            }
+            var up = tail.copy().add(lastNormal.copy().multiply(width)).subtract(cameraPos);
+            var down = tail.copy().add(lastNormal.copy().multiply(-width)).subtract(cameraPos);
+            pushBuffer(buffer, light, lastUp, lastDown, la, lr, lg, lb, u0, u1, v0, v1, ta, tr, tg, tb, up, down);
+        }
+        if (pushHead) {
+            tails.pollLast();
+        }
+    }
+
+    private void pushBuffer(@Nonnull VertexConsumer buffer, int light, Vector3 lastUp, Vector3 lastDown, float la, float lr, float lg, float lb, float u0, float u1, float v0, float v1, float ta, float tr, float tg, float tb, Vector3 up, Vector3 down) {
+        buffer.vertex(down.x, down.y, down.z).uv(u1, v1).color(tr, tg, tb, ta).uv2(light).endVertex();
+        buffer.vertex(up.x, up.y, up.z).uv(u1, v0).color(tr, tg, tb, ta).uv2(light).endVertex();
+        buffer.vertex(lastUp.x, lastUp.y, lastUp.z).uv(u0, v0).color(lr, lg, lb, la).uv2(light).endVertex();
+
+        buffer.vertex(lastUp.x, lastUp.y, lastUp.z).uv(u0, v0).color(lr, lg, lb, la).uv2(light).endVertex();
+        buffer.vertex(lastDown.x, lastDown.y, lastDown.z).uv(u0, v1).color(lr, lg, lb, la).uv2(light).endVertex();
+        buffer.vertex(down.x, down.y, down.z).uv(u1, v1).color(tr, tg, tb, ta).uv2(light).endVertex();
+    }
+
+    public Vector4f getUVs(int tailIndex, float partialTicks) {
+        float u0, u1, v0, v1;
+        if (getUvMode() == UVMode.Stretch) {
+            if (dynamicTailUVs != null) {
+                var uvs = dynamicTailUVs.apply(this, tailIndex, partialTicks);
+                u0 = uvs.x();
+                v0 = uvs.y();
+                u1 = uvs.z();
+                v1 = uvs.w();
+            } else {
+                u0 = this.getU0(tailIndex, partialTicks);
+                u1 = this.getU1(tailIndex, partialTicks);
+                v0 = this.getV0(tailIndex, partialTicks);
+                v1 = this.getV1(tailIndex, partialTicks);
+            }
+        } else {
+            if (dynamicUVs != null) {
+                var uvs = dynamicUVs.apply(this, partialTicks);
+                u0 = uvs.x();
+                v0 = uvs.y();
+                u1 = uvs.z();
+                v1 = uvs.w();
+            } else {
+                u0 = this.getU0(partialTicks);
+                u1 = this.getU1(partialTicks);
+                v0 = this.getV0(partialTicks);
+                v1 = this.getV1(partialTicks);
+            }
+        }
+        return new Vector4f(u0, v0, u1, v1);
     }
 
     public float getWidth(int tail, float pPartialTicks) {
