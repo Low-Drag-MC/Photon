@@ -74,18 +74,8 @@ configurations {
 repositories {
     // mavens for Forge-exclusives
     maven { url = "https://maven.theillusivec4.top/" } // Curios
-    maven { // Create Forge and Registrate Forge
-        url = "https://maven.tterrag.com/"
-        content {
-            includeGroup("com.tterrag.registrate")
-            includeGroup("com.simibubi.create")
-        }
-    }
     maven { url = "https://maven.parchmentmc.org" } // Parchment mappings
     maven { url = "https://maven.quiltmc.org/repository/release" } // Quilt Mappings
-    maven { // TOP
-        url "https://maven.k-4u.nl"
-    }
 }
 
 dependencies {
@@ -97,18 +87,6 @@ dependencies {
     // LDLib
     modImplementation(forge.ldlib.forge) { transitive = false }
 
-    // JEI
-    modCompileOnly forge.jei.common.api
-    modCompileOnly forge.jei.forge.api
-    modCompileOnly forge.jei.forge.impl
-
-    // REI
-    modCompileOnly forge.rei.plugin
-    modCompileOnly forge.rei.api
-    modImplementation forge.rei.forge
-
-    // TOP
-    modImplementation(forge.theoneprobe) { transitive = false }
 }
 
 processResources {
