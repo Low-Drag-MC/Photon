@@ -6,6 +6,7 @@ import com.mojang.blaze3d.vertex.*;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.texture.TextureManager;
@@ -52,7 +53,7 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
     public class ShaderTexture implements IGuiTexture {
 
         @Override
-        public void draw(PoseStack stack, int mouseX, int mouseY, float x, float y, int width, int height) {
+        public void draw(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, int width, int height) {
             //sub area is just different width and height
             float imageU = 0;
             float imageV = 0;
@@ -63,7 +64,7 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
             begin(bufferbuilder, Minecraft.getInstance().getTextureManager(), false);
             var lightTexture = Minecraft.getInstance().gameRenderer.lightTexture();
             lightTexture.turnOnLightLayer();
-            var mat = stack.last().pose();
+            var mat = graphics.pose().last().pose();
             bufferbuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
 
             bufferbuilder.vertex(mat, x, y + height, 0).uv(imageU, imageV + imageHeight).color(-1).uv2(LightTexture.FULL_BRIGHT).endVertex();

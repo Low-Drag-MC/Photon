@@ -3,6 +3,7 @@ package com.lowdragmc.photon.fabric.core.mixins;
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.particle.ParticleEngine;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;

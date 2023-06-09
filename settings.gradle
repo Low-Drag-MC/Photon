@@ -14,19 +14,19 @@ dependencyResolutionManagement {
     }
     versionCatalogs {
         // Minecraft Version
-        def minecraftVersion = "1.19.4"
+        def minecraftVersion = "1.20"
 
         // Mod Dependencies Versions
 
         // Fabric
-        def fabricLoaderVersion = "0.14.19" // https://fabricmc.net/develop/
-        def fabricApiVersion = "0.81.1" // https://fabricmc.net/develop/
+        def fabricLoaderVersion = "0.14.21" // https://fabricmc.net/develop/
+        def fabricApiVersion = "0.83.0" // https://fabricmc.net/develop/
 
         // Forge
-        def forgeVersion = "45.0.64"
+        def forgeVersion = "46.0.1"
 
         // Libs
-        def quiltMappingsVersion = "9"  // https://lambdaurora.dev/tools/import_quilt.html
+        def quiltMappingsVersion = "1"  // https://lambdaurora.dev/tools/import_quilt.html
         def parchmentVersion = "1.19.3:2023.03.12" // https://parchmentmc.org/docs/getting-started
         def shadowVersion = "7.1.2"
         def architecturyPluginVersion = "3.4-SNAPSHOT"

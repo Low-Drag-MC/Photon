@@ -6,6 +6,7 @@ import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.WrapperConfigurator;
 import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
+import net.minecraft.client.gui.GuiGraphics;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import com.lowdragmc.lowdraglib.utils.noise.PerlinNoise;
@@ -136,11 +137,11 @@ public class NoiseSetting extends ToggleGroup {
 
         @Override
         @Environment(EnvType.CLIENT)
-        public void draw(PoseStack stack, int mouseX, int mouseY, float x, float y, int width, int height) {
+        public void draw(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, int width, int height) {
             // render color bar
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
-            Matrix4f mat = stack.last().pose();
+            Matrix4f mat = graphics.pose().last().pose();
             Tesselator tesselator = Tesselator.getInstance();
             BufferBuilder buffer = tesselator.getBuilder();
             RenderSystem.setShader(GameRenderer::getPositionColorShader);

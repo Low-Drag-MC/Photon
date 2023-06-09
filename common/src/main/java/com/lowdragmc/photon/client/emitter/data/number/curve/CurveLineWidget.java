@@ -18,6 +18,7 @@ import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
@@ -137,9 +138,9 @@ public class CurveLineWidget extends WidgetGroup {
                     .setNodeTexture(new IGuiTexture() {
                         @Override
                         @Environment(EnvType.CLIENT)
-                        public void draw(PoseStack stack, int mouseX, int mouseY, float x, float y, int width, int height) {
-                            ColorPattern.BLACK.rectTexture().draw(stack, mouseX, mouseY, x, y, width, height);
-                            Icons.RIGHT.draw(stack, mouseX, mouseY, x + width - height + 3, y + 3, height - 6, height - 6);
+                        public void draw(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, int width, int height) {
+                            ColorPattern.BLACK.rectTexture().draw(graphics, mouseX, mouseY, x, y, width, height);
+                            Icons.RIGHT.draw(graphics, mouseX, mouseY, x + width - height + 3, y + 3, height - 6, height - 6);
                         }
                     })
                     .setLeafTexture(ColorPattern.BLACK.rectTexture())
@@ -297,61 +298,61 @@ public class CurveLineWidget extends WidgetGroup {
 
     @Override
     @Environment(EnvType.CLIENT)
-    public void drawInBackground(@NotNull PoseStack poseStack, int mouseX, int mouseY, float partialTicks) {
+    public void drawInBackground(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         // render background
         if (backgroundTexture != null) {
             Position pos = getPosition();
             Size size = getSize();
-            backgroundTexture.draw(poseStack, mouseX, mouseY, pos.x, pos.y, size.width, size.height);
+            backgroundTexture.draw(graphics, mouseX, mouseY, pos.x, pos.y, size.width, size.height);
         }
         if (hoverTexture != null && isMouseOverElement(mouseX, mouseY)) {
             Position pos = getPosition();
             Size size = getSize();
-            hoverTexture.draw(poseStack, mouseX, mouseY, pos.x, pos.y, size.width, size.height);
+            hoverTexture.draw(graphics, mouseX, mouseY, pos.x, pos.y, size.width, size.height);
         }
         // render grid
         if (renderGrid) {
             var pos = getPosition();
             var size = getSize();
             for (int i = 0; i < gridSize.width; i++) {
-                DrawerHelper.drawSolidRect(poseStack, pos.x + i * getSize().width / gridSize.width, pos.y, 1, size.height, ColorPattern.T_GRAY.color);
+                DrawerHelper.drawSolidRect(graphics, pos.x + i * getSize().width / gridSize.width, pos.y, 1, size.height, ColorPattern.T_GRAY.color);
             }
             for (int i = 0; i < gridSize.height; i++) {
-                DrawerHelper.drawSolidRect(poseStack, pos.x, pos.y + i * getSize().height / gridSize.height, size.width, 1, ColorPattern.T_GRAY.color);
+                DrawerHelper.drawSolidRect(graphics, pos.x, pos.y + i * getSize().height / gridSize.height, size.width, 1, ColorPattern.T_GRAY.color);
             }
         }
         // render lines
         var points = curves.stream().flatMap(curve -> curve.getPoints(100).stream().map(this::getPointPosition).toList().stream()).collect(Collectors.toList());
-        DrawerHelper.drawLines(poseStack, points, -1, -1, 0.5f);
+        DrawerHelper.drawLines(graphics, points, -1, -1, 0.5f);
         Collections.reverse(points);
-        DrawerHelper.drawLines(poseStack, points, -1, -1, 0.5f);
+        DrawerHelper.drawLines(graphics, points, -1, -1, 0.5f);
         // render outer lines
         if (curves.get(0).p0.x > 0) {
-            DrawerHelper.drawLines(poseStack, List.of(getPointPosition(new Vec2(0, curves.get(0).p0.y)), getPointPosition(curves.get(0).p0)), ColorPattern.T_RED.color, ColorPattern.T_RED.color, 0.3f);
+            DrawerHelper.drawLines(graphics, List.of(getPointPosition(new Vec2(0, curves.get(0).p0.y)), getPointPosition(curves.get(0).p0)), ColorPattern.T_RED.color, ColorPattern.T_RED.color, 0.3f);
         }
         if (curves.get(curves.size() - 1).p1.x < 1) {
-            DrawerHelper.drawLines(poseStack, List.of(getPointPosition(new Vec2(1, curves.get(curves.size() - 1).p1.y)), getPointPosition(curves.get(curves.size() - 1).p1)), ColorPattern.T_RED.color, ColorPattern.T_RED.color, 0.3f);
+            DrawerHelper.drawLines(graphics, List.of(getPointPosition(new Vec2(1, curves.get(curves.size() - 1).p1.y)), getPointPosition(curves.get(curves.size() - 1).p1)), ColorPattern.T_RED.color, ColorPattern.T_RED.color, 0.3f);
         }
         // render control lines
         if (selectedPoint >= 0) {
             if (selectedPoint > 0) { //render left
                 var curve = curves.get(selectedPoint - 1);
-                DrawerHelper.drawLines(poseStack, List.of(getPointPosition(curve.c1), getPointPosition(curve.p1)), ColorPattern.T_GREEN.color, ColorPattern.T_GREEN.color, 0.3f);
-                renderControlPoint(curve.c1, poseStack);
+                DrawerHelper.drawLines(graphics, List.of(getPointPosition(curve.c1), getPointPosition(curve.p1)), ColorPattern.T_GREEN.color, ColorPattern.T_GREEN.color, 0.3f);
+                renderControlPoint(curve.c1, graphics);
             }
             if (selectedPoint < curves.size()) { //render right
                 var curve = curves.get(selectedPoint);
-                DrawerHelper.drawLines(poseStack, List.of(getPointPosition(curve.c0), getPointPosition(curve.p0)), ColorPattern.T_GREEN.color, ColorPattern.T_GREEN.color, 0.3f);
-                renderControlPoint(curve.c0, poseStack);
+                DrawerHelper.drawLines(graphics, List.of(getPointPosition(curve.c0), getPointPosition(curve.p0)), ColorPattern.T_GREEN.color, ColorPattern.T_GREEN.color, 0.3f);
+                renderControlPoint(curve.c0, graphics);
             }
         }
         // render points
         for (int i = 0; i < curves.size(); i++) {
             var curve = curves.get(i);
             if (i == 0) {
-                renderPoint(curve.p0, selectedPoint == 0, poseStack, mouseX, mouseY);
+                renderPoint(curve.p0, selectedPoint == 0, graphics, mouseX, mouseY);
             }
-            renderPoint(curve.p1, selectedPoint == i + 1, poseStack, mouseX, mouseY);
+            renderPoint(curve.p1, selectedPoint == i + 1, graphics, mouseX, mouseY);
         }
         // render children
         for (Widget widget : widgets) {
@@ -359,9 +360,9 @@ public class CurveLineWidget extends WidgetGroup {
                 RenderSystem.setShaderColor(1, 1, 1, 1);
                 RenderSystem.enableBlend();
                 if (widget.inAnimate()) {
-                    widget.getAnimation().drawInBackground(poseStack, mouseX, mouseY, partialTicks);
+                    widget.getAnimation().drawInBackground(graphics, mouseX, mouseY, partialTicks);
                 } else {
-                    widget.drawInBackground(poseStack, mouseX, mouseY, partialTicks);
+                    widget.drawInBackground(graphics, mouseX, mouseY, partialTicks);
                 }
             }
         }
@@ -369,8 +370,8 @@ public class CurveLineWidget extends WidgetGroup {
 
     @Override
     @Environment(EnvType.CLIENT)
-    public void drawInForeground(@NotNull PoseStack poseStack, int mouseX, int mouseY, float partialTicks) {
-        super.drawInForeground(poseStack, mouseX, mouseY, partialTicks);
+    public void drawInForeground(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+        super.drawInForeground(graphics, mouseX, mouseY, partialTicks);
         if (gui != null && gui.getModularUIGui() != null && hoverTips != null) {
             for (int i = 0; i < curves.size(); i++) {
                 var curve = curves.get(i);
@@ -391,22 +392,22 @@ public class CurveLineWidget extends WidgetGroup {
     }
 
     @Environment(EnvType.CLIENT)
-    protected void renderPoint(Vec2 point, boolean isSelected, @NotNull PoseStack poseStack, int mouseX, int mouseY) {
+    protected void renderPoint(Vec2 point, boolean isSelected, @NotNull GuiGraphics graphics, int mouseX, int mouseY) {
         var position = getPointPosition(point);
         if (isSelected) {
-            ColorPattern.RED.rectTexture().setRadius(2).draw(poseStack, mouseX, mouseY, position.x - 2, position.y - 2, 4, 4);
+            ColorPattern.RED.rectTexture().setRadius(2).draw(graphics, mouseX, mouseY, position.x - 2, position.y - 2, 4, 4);
         } else {
-            ColorPattern.GRAY.rectTexture().setRadius(2).draw(poseStack, mouseX, mouseY, position.x - 2, position.y - 2, 4, 4);
+            ColorPattern.GRAY.rectTexture().setRadius(2).draw(graphics, mouseX, mouseY, position.x - 2, position.y - 2, 4, 4);
             if (isMouseOver((int) (position.x - 2), (int) (position.y - 2), 4, 4, mouseX, mouseY)) {
-                ColorPattern.WHITE.borderTexture(1).setRadius(2).draw(poseStack, mouseX, mouseY, position.x - 2, position.y - 2, 4, 4);
+                ColorPattern.WHITE.borderTexture(1).setRadius(2).draw(graphics, mouseX, mouseY, position.x - 2, position.y - 2, 4, 4);
             }
         }
 
     }
 
     @Environment(EnvType.CLIENT)
-    protected void renderControlPoint(Vec2 point, @NotNull PoseStack poseStack) {
+    protected void renderControlPoint(Vec2 point, @NotNull GuiGraphics graphics) {
         var position = getPointPosition(point);
-        ColorPattern.GREEN.rectTexture().setRadius(1).draw(poseStack, 0, 0, position.x - 1, position.y - 1, 2, 2);
+        ColorPattern.GREEN.rectTexture().setRadius(1).draw(graphics, 0, 0, position.x - 1, position.y - 1, 2, 2);
     }
 }

@@ -7,6 +7,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.phys.Vec2;
 
 import java.util.ArrayList;
@@ -37,13 +38,13 @@ public class CurveTexture extends TransformTexture {
 
     @Override
     @Environment(EnvType.CLIENT)
-    protected void drawInternal(PoseStack poseStack, int mouseX, int mouseY, float x, float y, int width, int height) {
+    protected void drawInternal(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, int width, int height) {
         List<Vec2> points = new ArrayList<>();
         for (int i = 0; i < width; i++) {
             float coordX = i * 1f / width;
             points.add(new Vec2(coordX, curves.getCurveY(coordX)));
         }
         points.add(new Vec2(1, curves.getCurveY(1)));
-        DrawerHelper.drawLines(poseStack, points.stream().map(coord -> new Vec2(x + width * coord.x, y + height * (1 - coord.y))).toList(), color, color, this.width);
+        DrawerHelper.drawLines(graphics, points.stream().map(coord -> new Vec2(x + width * coord.x, y + height * (1 - coord.y))).toList(), color, color, this.width);
     }
 }

@@ -14,6 +14,7 @@ import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.lowdraglib.utils.BlockInfo;
 import com.lowdragmc.lowdraglib.utils.TrackedDummyWorld;
 import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
+import net.minecraft.client.gui.GuiGraphics;
 import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.mojang.blaze3d.platform.Window;
@@ -128,10 +129,10 @@ public class ParticleScene extends SceneWidget {
         if (editor.isDraggable() && editor.getEmittersList() != null) {
             var selected = editor.getEmittersList().getSelected();
             if (selected != null) {
-                PoseStack matrixStack = new PoseStack();
+                PoseStack poseStack = new PoseStack();
                 var position = selected.self().getPos(Minecraft.getInstance().getFrameTime());
                 var aabb = new AABB(position.x - 0.1, position.y - 0.1, position.z - 0.1, position.x + 0.1, position.y + 0.1, position.z + 0.1);
-                renderSelectedEmitter(matrixStack, aabb, 1, 0, 0);
+                renderSelectedEmitter(poseStack, aabb, 1, 0, 0);
 
                 //un project
                 Vector3f hitPos = unProject(currentMouseX, currentMouseY);

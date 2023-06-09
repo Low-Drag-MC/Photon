@@ -6,6 +6,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
 
 import java.util.function.Function;
@@ -25,11 +26,11 @@ public class GradientColorTexture  extends TransformTexture {
 
     @Override
     @Environment(EnvType.CLIENT)
-    protected void drawInternal(PoseStack stack, int mouseX, int mouseY, float posx, float posy, int width, int height) {
+    protected void drawInternal(GuiGraphics graphics, int mouseX, int mouseY, float posx, float posy, int width, int height) {
         // render color bar
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
-        var mat = stack.last().pose();
+        var mat = graphics.pose().last().pose();
         Tesselator tesselator = Tesselator.getInstance();
         BufferBuilder buffer = tesselator.getBuilder();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);

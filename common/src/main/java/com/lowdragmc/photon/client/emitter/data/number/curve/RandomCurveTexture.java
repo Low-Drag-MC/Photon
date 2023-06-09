@@ -8,6 +8,7 @@ import com.mojang.blaze3d.vertex.*;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.phys.Vec2;
 
@@ -41,14 +42,14 @@ public class RandomCurveTexture extends TransformTexture {
 
     @Override
     @Environment(EnvType.CLIENT)
-    protected void drawInternal(PoseStack poseStack, int mouseX, int mouseY, float x, float y, int width, int height) {
+    protected void drawInternal(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, int width, int height) {
         // render area
         BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        var matrix = poseStack.last().pose();
+        var matrix = graphics.pose().last().pose();
         Function<Vec2, Vec2> getPointPosition = coord -> new Vec2(x + width * coord.x, y + height * (1 - coord.y));
         for (int i = 0; i < width; i++) {
             float x0 = i * 1f / width;
@@ -72,19 +73,19 @@ public class RandomCurveTexture extends TransformTexture {
 
         BufferUploader.drawWithShader(bufferBuilder.end());
         // render lines
-        renderLines(poseStack, curves0, x, y, width, height);
-        renderLines(poseStack, curves1, x, y, width, height);
+        renderLines(graphics, curves0, x, y, width, height);
+        renderLines(graphics, curves1, x, y, width, height);
     }
 
     @Environment(EnvType.CLIENT)
-    private void renderLines(PoseStack poseStack, ECBCurves curves, float x, float y, int width, int height) {
+    private void renderLines(GuiGraphics graphics, ECBCurves curves, float x, float y, int width, int height) {
         List<Vec2> points = new ArrayList<>();
         for (int i = 0; i < width; i++) {
             float coordX = i * 1f / width;
             points.add(new Vec2(coordX, curves.getCurveY(coordX)));
         }
         points.add(new Vec2(1, curves.getCurveY(1)));
-        DrawerHelper.drawLines(poseStack, points.stream().map(coord -> new Vec2(x + width * coord.x, y + height * (1 - coord.y))).toList(), color, color, this.width);
+        DrawerHelper.drawLines(graphics, points.stream().map(coord -> new Vec2(x + width * coord.x, y + height * (1 - coord.y))).toList(), color, color, this.width);
     }
 
 }
