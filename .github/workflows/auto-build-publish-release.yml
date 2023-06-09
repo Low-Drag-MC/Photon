@@ -1,0 +1,77 @@
+name: 1.19.2 Auto Build
+
+on:
+  push:
+    branches:
+      - '1.19.2'
+    paths:
+      - 'gradle.properties'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      MAVEN_PASS: ${{ secrets.MAVEN_PASS }}
+      MAVEN_USER: ${{ secrets.MAVEN_USER }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build and Publish
+        uses: gradle/gradle-build-action@v2.4.2
+        with:
+          arguments: build publish
+
+      - name: Upload Jars
+        uses: actions/upload-artifact@v3
+        with:
+          name: Photon
+          path: |
+            fabric/build/libs/
+            forge/build/libs/
+
+      - name: Get Forge file name
+        id: forge_jar
+        run: |
+          MESSAGE=$(ls forge/build/libs/* | grep sources.jar -v | grep shadow.jar -v)
+          echo file_path=$MESSAGE >> $GITHUB_OUTPUT
+      - name: Upload to CurseForge
+        uses: itsmeow/curseforge-upload@v3
+        with:
+          token: ${{ secrets.CURSEFORGE_TOKEN }}
+          project_id: 871522
+          game_endpoint: minecraft
+          file_path: ${{ steps.forge_jar.outputs.file_path }}
+          changelog: See recent commits [here](https://github.com/Low-Drag-MC/Photon/commits/${{ github.sha }}). This is only marked as a beta release so CurseForge shows it on the front page.
+          changelog_type: markdown
+          game_versions: "Minecraft 1.19:1.19.2,Java 17,Forge"
+          release_type: beta
+
+      - name: Get Fabric file name
+        id: fabric_jar
+        run: |
+          MESSAGE=$(ls fabric/build/libs/* | grep sources.jar -v | grep shadow.jar -v)
+          echo file_path=$MESSAGE >> $GITHUB_OUTPUT
+      - name: Upload to CurseForge
+        uses: itsmeow/curseforge-upload@v3
+        with:
+          token: ${{ secrets.CURSEFORGE_TOKEN }}
+          project_id: 871522
+          game_endpoint: minecraft
+          file_path: ${{ steps.fabric_jar.outputs.file_path }}
+          changelog: See recent commits [here](https://github.com/Low-Drag-MC/Photon/commits/${{ github.sha }}). This is only marked as a beta release so CurseForge shows it on the front page.
+          changelog_type: markdown
+          game_versions: "Minecraft 1.19:1.19.2,Java 17,Fabric"
+          release_type: beta
