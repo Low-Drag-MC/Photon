@@ -37,7 +37,7 @@ jobs:
       - name: Upload Jars
         uses: actions/upload-artifact@v3
         with:
-          name: LDLib
+          name: Photon
           path: |
             fabric/build/libs/
             forge/build/libs/
@@ -51,10 +51,10 @@ jobs:
         uses: itsmeow/curseforge-upload@v3
         with:
           token: ${{ secrets.CURSEFORGE_TOKEN }}
-          project_id: 626676
+          project_id: 871522
           game_endpoint: minecraft
           file_path: ${{ steps.forge_jar.outputs.file_path }}
-          changelog: See recent commits [here](https://github.com/Low-Drag-MC/LDLib/commits/${{ github.sha }}). This is only marked as a beta release so CurseForge shows it on the front page.
+          changelog: See recent commits [here](https://github.com/Low-Drag-MC/Photon/commits/${{ github.sha }}). This is only marked as a beta release so CurseForge shows it on the front page.
           changelog_type: markdown
           game_versions: "Minecraft 1.19:1.19.2,Java 17,Forge"
           release_type: beta
@@ -68,10 +68,10 @@ jobs:
         uses: itsmeow/curseforge-upload@v3
         with:
           token: ${{ secrets.CURSEFORGE_TOKEN }}
-          project_id: 626676
+          project_id: 871522
           game_endpoint: minecraft
           file_path: ${{ steps.fabric_jar.outputs.file_path }}
-          changelog: See recent commits [here](https://github.com/Low-Drag-MC/LDLib/commits/${{ github.sha }}). This is only marked as a beta release so CurseForge shows it on the front page.
+          changelog: See recent commits [here](https://github.com/Low-Drag-MC/Photon/commits/${{ github.sha }}). This is only marked as a beta release so CurseForge shows it on the front page.
           changelog_type: markdown
           game_versions: "Minecraft 1.19:1.19.2,Java 17,Fabric"
           release_type: beta
