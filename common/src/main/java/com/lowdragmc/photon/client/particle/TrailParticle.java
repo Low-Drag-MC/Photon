@@ -184,98 +184,132 @@ public abstract class TrailParticle extends LParticle {
         }
         int light = dynamicLight == null ? this.getLight(partialTicks) : dynamicLight.apply(this, partialTicks);
 
-        tails.addLast(new Vector3(x, y, z));
+        var pushHead = true;
+        if (tails.peekLast() != null && tails.peekLast().equals(new Vector3(x, y, z))) {
+            pushHead = false;
+        } else {
+            tails.addLast(new Vector3(x, y, z));
+        }
+
         var iter = tails.iterator();
-        Vector3 lastUp = null, lastDown = null;
-        Vector3 lastTail = null;
+        Vector3 lastUp = null, lastDown = null, lastNormal = null, tail = null;
         float la = a;
         float lr = r;
         float lg = g ;
         float lb = b;
         int tailIndex = 0;
         while (iter.hasNext()) {
-            var tail = iter.next();
-            if (lastTail == null) {
-                lastTail = tail;
+            var nextTail = iter.next();
+            if (tail == null) {
+                tail = nextTail;
             } else {
-                float width = getWidth(tailIndex + 1, partialTicks);
-                var vec = tail.copy().subtract(lastTail);
+                float width = getWidth(tailIndex, partialTicks);
+
+                var vec = nextTail.copy().subtract(tail);
                 var normal = vec.crossProduct(tail.copy().subtract(cameraPos)).normalize();
-                var up = tail.copy().add(normal.copy().multiply(width)).subtract(cameraPos);
-                var down = tail.copy().add(normal.copy().multiply(-width)).subtract(cameraPos);
-                if (lastUp == null) {
-                    width = getWidth(tailIndex, partialTicks);
-                    lastUp = tail.copy().add(normal.copy().multiply(width)).subtract(cameraPos);
-                    lastDown = tail.copy().add(normal.copy().multiply(-width)).subtract(cameraPos);
-                    if (dynamicTailColor != null) {
-                        var color = dynamicTailColor.apply(this, tailIndex, partialTicks);
-                        la *= color.w();
-                        lr *= color.x();
-                        lg *= color.y();
-                        lb *= color.z();
-                    }
+                if (lastNormal == null) {
+                    lastNormal= normal;
                 }
 
-                float u0, u1, v0, v1;
-                if (getUvMode() == UVMode.Stretch) {
-                    if (dynamicTailUVs != null) {
-                        var uvs = dynamicTailUVs.apply(this, tailIndex, partialTicks);
-                        u0 = uvs.x();
-                        v0 = uvs.y();
-                        u1 = uvs.z();
-                        v1 = uvs.w();
-                    } else {
-                        u0 = this.getU0(tailIndex, partialTicks);
-                        u1 = this.getU1(tailIndex, partialTicks);
-                        v0 = this.getV0(tailIndex, partialTicks);
-                        v1 = this.getV1(tailIndex, partialTicks);
-                    }
-                } else {
-                    if (dynamicUVs != null) {
-                        var uvs = dynamicUVs.apply(this, partialTicks);
-                        u0 = uvs.x();
-                        v0 = uvs.y();
-                        u1 = uvs.z();
-                        v1 = uvs.w();
-                    } else {
-                        u0 = this.getU0(partialTicks);
-                        u1 = this.getU1(partialTicks);
-                        v0 = this.getV0(partialTicks);
-                        v1 = this.getV1(partialTicks);
-                    }
-                }
+                var avgNormal = lastNormal.add(normal).divide(2);
+                var up = tail.copy().add(avgNormal.copy().multiply(width)).subtract(cameraPos);
+                var down = tail.copy().add(avgNormal.copy().multiply(-width)).subtract(cameraPos);
 
                 float ta = a;
                 float tr = r;
                 float tg = g ;
                 float tb = b;
                 if (dynamicTailColor != null) {
-                    var color = dynamicTailColor.apply(this, tailIndex + 1, partialTicks);
+                    var color = dynamicTailColor.apply(this, tailIndex, partialTicks);
                     ta *= color.w();
                     tr *= color.x();
                     tg *= color.y();
                     tb *= color.z();
                 }
 
-                buffer.vertex(lastUp.x, lastUp.y, lastUp.z).uv(u0, v0).color(lr, lg, lb, la).uv2(light).endVertex();
-                buffer.vertex(up.x, up.y, up.z).uv(u1, v0).color(tr, tg, tb, ta).uv2(light).endVertex();
-                buffer.vertex(down.x, down.y, down.z).uv(u1, v1).color(tr, tg, tb, ta).uv2(light).endVertex();
+                if (lastUp != null) {
+                    var uvs = getUVs(tailIndex - 1, partialTicks);
+                    float u0 = uvs.x(), u1 = uvs.z(), v0 = uvs.y(), v1 = uvs.w();
+                    pushBuffer(buffer, light, lastUp, lastDown, la, lr, lg, lb, u0, u1, v0, v1, ta, tr, tg, tb, up, down);
+                }
 
-                buffer.vertex(down.x, down.y, down.z).uv(u1, v1).color(tr, tg, tb, ta).uv2(light).endVertex();
-                buffer.vertex(lastDown.x, lastDown.y, lastDown.z).uv(u0, v1).color(lr, lg, lb, la).uv2(light).endVertex();
-                buffer.vertex(lastUp.x, lastUp.y, lastUp.z).uv(u0, v0).color(lr, lg, lb, la).uv2(light).endVertex();
-
-                lastUp = up;
-                lastDown = down;
-                lastTail = tail;
                 la = ta;
                 lr = tr;
                 lg = tg;
                 lb = tb;
+                lastUp = up;
+                lastDown = down;
+                tail = nextTail;
+                lastNormal = normal;
                 tailIndex++;
             }
         }
-        tails.pollLast();
+        // add head
+        if (tail != null && lastNormal != null) {
+            float width = getWidth(tailIndex, partialTicks);
+            var uvs = getUVs(tailIndex - 1, partialTicks);
+            float u0 = uvs.x(), u1 = uvs.z(), v0 = uvs.y(), v1 = uvs.w();
+
+            float ta = a;
+            float tr = r;
+            float tg = g ;
+            float tb = b;
+            if (dynamicTailColor != null) {
+                var color = dynamicTailColor.apply(this, tailIndex, partialTicks);
+                ta *= color.w();
+                tr *= color.x();
+                tg *= color.y();
+                tb *= color.z();
+            }
+            var up = tail.copy().add(lastNormal.copy().multiply(width)).subtract(cameraPos);
+            var down = tail.copy().add(lastNormal.copy().multiply(-width)).subtract(cameraPos);
+            pushBuffer(buffer, light, lastUp, lastDown, la, lr, lg, lb, u0, u1, v0, v1, ta, tr, tg, tb, up, down);
+        }
+        if (pushHead) {
+            tails.pollLast();
+        }
+    }
+
+    private void pushBuffer(@Nonnull VertexConsumer buffer, int light, Vector3 lastUp, Vector3 lastDown, float la, float lr, float lg, float lb, float u0, float u1, float v0, float v1, float ta, float tr, float tg, float tb, Vector3 up, Vector3 down) {
+        buffer.vertex(down.x, down.y, down.z).uv(u1, v1).color(tr, tg, tb, ta).uv2(light).endVertex();
+        buffer.vertex(up.x, up.y, up.z).uv(u1, v0).color(tr, tg, tb, ta).uv2(light).endVertex();
+        buffer.vertex(lastUp.x, lastUp.y, lastUp.z).uv(u0, v0).color(lr, lg, lb, la).uv2(light).endVertex();
+
+        buffer.vertex(lastUp.x, lastUp.y, lastUp.z).uv(u0, v0).color(lr, lg, lb, la).uv2(light).endVertex();
+        buffer.vertex(lastDown.x, lastDown.y, lastDown.z).uv(u0, v1).color(lr, lg, lb, la).uv2(light).endVertex();
+        buffer.vertex(down.x, down.y, down.z).uv(u1, v1).color(tr, tg, tb, ta).uv2(light).endVertex();
+    }
+
+    public Vector4f getUVs(int tailIndex, float partialTicks) {
+        float u0, u1, v0, v1;
+        if (getUvMode() == UVMode.Stretch) {
+            if (dynamicTailUVs != null) {
+                var uvs = dynamicTailUVs.apply(this, tailIndex, partialTicks);
+                u0 = uvs.x();
+                v0 = uvs.y();
+                u1 = uvs.z();
+                v1 = uvs.w();
+            } else {
+                u0 = this.getU0(tailIndex, partialTicks);
+                u1 = this.getU1(tailIndex, partialTicks);
+                v0 = this.getV0(tailIndex, partialTicks);
+                v1 = this.getV1(tailIndex, partialTicks);
+            }
+        } else {
+            if (dynamicUVs != null) {
+                var uvs = dynamicUVs.apply(this, partialTicks);
+                u0 = uvs.x();
+                v0 = uvs.y();
+                u1 = uvs.z();
+                v1 = uvs.w();
+            } else {
+                u0 = this.getU0(partialTicks);
+                u1 = this.getU1(partialTicks);
+                v0 = this.getV0(partialTicks);
+                v1 = this.getV1(partialTicks);
+            }
+        }
+        return new Vector4f(u0, v0, u1, v1);
     }
 
     public float getWidth(int tail, float pPartialTicks) {
