@@ -1,4 +1,4 @@
-name: 1.19.2 Auto Build
+name: 1.20 Auto Build
 
 on:
   push:
@@ -56,7 +56,7 @@ jobs:
           file_path: ${{ steps.forge_jar.outputs.file_path }}
           changelog: See recent commits [here](https://github.com/Low-Drag-MC/Photon/commits/${{ github.sha }}). This is only marked as a beta release so CurseForge shows it on the front page.
           changelog_type: markdown
-          game_versions: "Minecraft 1.19:1.19.2,Java 17,Forge"
+          game_versions: "Minecraft 1.20:1.20,Java 17,Forge"
           release_type: beta
 
       - name: Get Fabric file name
@@ -73,5 +73,5 @@ jobs:
           file_path: ${{ steps.fabric_jar.outputs.file_path }}
           changelog: See recent commits [here](https://github.com/Low-Drag-MC/Photon/commits/${{ github.sha }}). This is only marked as a beta release so CurseForge shows it on the front page.
           changelog_type: markdown
-          game_versions: "Minecraft 1.19:1.19.2,Java 17,Fabric"
+          game_versions: "Minecraft 1.20:1.20,Java 17,Fabric"
           release_type: beta
