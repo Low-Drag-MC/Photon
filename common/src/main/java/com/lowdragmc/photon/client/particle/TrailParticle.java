@@ -1,8 +1,6 @@
 package com.lowdragmc.photon.client.particle;
 
-import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.math.Vector4f;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -12,6 +10,8 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.util.Mth;
 import org.apache.commons.lang3.function.TriFunction;
+import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 import javax.annotation.Nonnull;
 import java.util.LinkedList;
@@ -42,7 +42,7 @@ public abstract class TrailParticle extends LParticle {
     @Setter @Getter
     protected UVMode uvMode = UVMode.Stretch;
     @Setter
-    protected BiPredicate<TrailParticle, Vector3> onAddTail;
+    protected BiPredicate<TrailParticle, Vector3f> onAddTail;
     @Setter
     protected Predicate<TrailParticle> onRemoveTails;
     @Setter
@@ -53,7 +53,7 @@ public abstract class TrailParticle extends LParticle {
     protected TriFunction<LParticle, Integer, Float, Vector4f> dynamicTailUVs;
     //runtime
     @Getter
-    protected LinkedList<Vector3> tails = new LinkedList<>();
+    protected LinkedList<Vector3f> tails = new LinkedList<>();
 
 
     protected TrailParticle(ClientLevel level, double x, double y, double z) {
@@ -73,7 +73,7 @@ public abstract class TrailParticle extends LParticle {
         this.squareDist = minimumVertexDistance * minimumVertexDistance;
     }
 
-    protected boolean shouldAddTail(Vector3 newTail) {
+    protected boolean shouldAddTail(Vector3f newTail) {
         if (onAddTail != null) {
             return onAddTail.test(this, newTail);
         }
@@ -99,20 +99,20 @@ public abstract class TrailParticle extends LParticle {
 
         updateOrigin();
 
-        Vector3 tail = getTail();
+        Vector3f tail = getTail();
         if (!isRemoved() && shouldAddTail(tail)) {
             boolean shouldAdd = true;
             if (squareDist > 0) {
                 var last = tails.pollLast();
                 if (last != null) {
-                    var distLast = tail.copy().subtract(last).magSquared();
+                    var distLast = new Vector3f(tail).sub(last).lengthSquared();
                     if (distLast < squareDist) {
                         shouldAdd = false;
                         tails.addLast(last);
                     } else {
                         var last2 = tails.peekLast();
                         if (last2 != null) {
-                            var distLast2 = tail.copy().subtract(last2).magSquared();
+                            var distLast2 = new Vector3f(tail).sub(last2).lengthSquared();
                             if (distLast2 < squareDist) {
                                 shouldAdd = false;
                             } else if (distLast < distLast2) {
@@ -141,7 +141,7 @@ public abstract class TrailParticle extends LParticle {
         }
     }
 
-    protected void addNewTail(Vector3 tail) {
+    protected void addNewTail(Vector3f tail) {
         this.tails.add(tail);
     }
 
@@ -154,8 +154,8 @@ public abstract class TrailParticle extends LParticle {
         return true;
     }
 
-    protected Vector3 getTail() {
-        return new Vector3(this.xo, this.yo, this.zo);
+    protected Vector3f getTail() {
+        return new Vector3f((float) this.xo, (float) this.yo, (float) this.zo);
     }
 
     public void renderInternal(@Nonnull VertexConsumer buffer, @Nonnull Camera camera, float partialTicks) {
@@ -170,7 +170,7 @@ public abstract class TrailParticle extends LParticle {
             z += addition.z;
         }
 
-        Vector3 cameraPos = new Vector3(camera.getPosition());
+        Vector3f cameraPos = camera.getPosition().toVector3f();
         float a = getAlpha(partialTicks);
         float r = getRed(partialTicks);
         float g = getGreen(partialTicks);
@@ -185,14 +185,14 @@ public abstract class TrailParticle extends LParticle {
         int light = dynamicLight == null ? this.getLight(partialTicks) : dynamicLight.apply(this, partialTicks);
 
         var pushHead = true;
-        if (tails.peekLast() != null && tails.peekLast().equals(new Vector3(x, y, z))) {
+        if (tails.peekLast() != null && tails.peekLast().equals(new Vector3f((float) x, (float) y, (float) z))) {
             pushHead = false;
         } else {
-            tails.addLast(new Vector3(x, y, z));
+            tails.addLast(new Vector3f((float) x, (float) y, (float) z));
         }
 
         var iter = tails.iterator();
-        Vector3 lastUp = null, lastDown = null, lastNormal = null, tail = null;
+        Vector3f lastUp = null, lastDown = null, lastNormal = null, tail = null;
         float la = a;
         float lr = r;
         float lg = g ;
@@ -205,15 +205,15 @@ public abstract class TrailParticle extends LParticle {
             } else {
                 float width = getWidth(tailIndex, partialTicks);
 
-                var vec = nextTail.copy().subtract(tail);
-                var normal = vec.crossProduct(tail.copy().subtract(cameraPos)).normalize();
+                var vec = new Vector3f(nextTail).sub(tail);
+                var normal = vec.cross(new Vector3f(tail).sub(cameraPos)).normalize();
                 if (lastNormal == null) {
                     lastNormal= normal;
                 }
 
-                var avgNormal = lastNormal.add(normal).divide(2);
-                var up = tail.copy().add(avgNormal.copy().multiply(width)).subtract(cameraPos);
-                var down = tail.copy().add(avgNormal.copy().multiply(-width)).subtract(cameraPos);
+                var avgNormal = lastNormal.add(normal).div(2);
+                var up = new Vector3f(tail).add(new Vector3f(avgNormal).mul(width)).sub(cameraPos);
+                var down = new Vector3f(tail).add(new Vector3f(avgNormal).mul(-width)).sub(cameraPos);
 
                 float ta = a;
                 float tr = r;
@@ -261,8 +261,8 @@ public abstract class TrailParticle extends LParticle {
                 tg *= color.y();
                 tb *= color.z();
             }
-            var up = tail.copy().add(lastNormal.copy().multiply(width)).subtract(cameraPos);
-            var down = tail.copy().add(lastNormal.copy().multiply(-width)).subtract(cameraPos);
+            var up = new Vector3f(tail).add(new Vector3f(lastNormal).mul(width)).sub(cameraPos);
+            var down = new Vector3f(tail).add(new Vector3f(lastNormal).mul(-width)).sub(cameraPos);
             pushBuffer(buffer, light, lastUp, lastDown, la, lr, lg, lb, u0, u1, v0, v1, ta, tr, tg, tb, up, down);
         }
         if (pushHead) {
@@ -270,7 +270,7 @@ public abstract class TrailParticle extends LParticle {
         }
     }
 
-    private void pushBuffer(@Nonnull VertexConsumer buffer, int light, Vector3 lastUp, Vector3 lastDown, float la, float lr, float lg, float lb, float u0, float u1, float v0, float v1, float ta, float tr, float tg, float tb, Vector3 up, Vector3 down) {
+    private void pushBuffer(@Nonnull VertexConsumer buffer, int light, Vector3f lastUp, Vector3f lastDown, float la, float lr, float lg, float lb, float u0, float u1, float v0, float v1, float ta, float tr, float tg, float tb, Vector3f up, Vector3f down) {
         buffer.vertex(down.x, down.y, down.z).uv(u1, v1).color(tr, tg, tb, ta).uv2(light).endVertex();
         buffer.vertex(up.x, up.y, up.z).uv(u1, v0).color(tr, tg, tb, ta).uv2(light).endVertex();
         buffer.vertex(lastUp.x, lastUp.y, lastUp.z).uv(u0, v0).color(lr, lg, lb, la).uv2(light).endVertex();
