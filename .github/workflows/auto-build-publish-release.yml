@@ -58,6 +58,7 @@ jobs:
           changelog_type: markdown
           game_versions: "Minecraft 1.19:1.19.2,Java 17,Forge"
           release_type: beta
+          relations: ldlib:requiredDependency
 
       - name: Get Fabric file name
         id: fabric_jar
@@ -75,3 +76,4 @@ jobs:
           changelog_type: markdown
           game_versions: "Minecraft 1.19:1.19.2,Java 17,Fabric"
           release_type: beta
+          relations: ldlib:requiredDependency
