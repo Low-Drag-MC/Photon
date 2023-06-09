@@ -11,11 +11,11 @@ import com.lowdragmc.photon.client.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.emitter.data.number.curve.RandomCurve;
 import com.lowdragmc.photon.client.particle.LParticle;
-import com.mojang.math.Vector4f;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.joml.Vector4f;
 
 /**
  * @author KilaBash

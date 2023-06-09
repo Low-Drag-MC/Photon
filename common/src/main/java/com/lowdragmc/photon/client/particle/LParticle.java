@@ -2,12 +2,8 @@ package com.lowdragmc.photon.client.particle;
 
 import com.lowdragmc.lowdraglib.client.scene.ParticleManager;
 import com.lowdragmc.lowdraglib.utils.DummyWorld;
-import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.math.Quaternion;
-import com.mojang.math.Vector3f;
-import com.mojang.math.Vector4f;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -27,6 +23,9 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -45,9 +44,9 @@ import java.util.function.Function;
 @ParametersAreNonnullByDefault
 public abstract class LParticle extends Particle {
     private static final double MAXIMUM_COLLISION_VELOCITY_SQUARED = Mth.square(100.0);
-    private static final Function<LParticle, Vector3> ADDITION = p -> Vector3.ZERO;
+    private static final Function<LParticle, Vector3f> ADDITION = p -> new Vector3f(0 ,0, 0);
     private static final Function<LParticle, Float> MULTIPLIER = p -> 1f;
-    protected Vector3 quadSize = new Vector3(1, 1, 1);
+    protected Vector3f quadSize = new Vector3f(1, 1, 1);
     @Setter @Getter
     protected boolean moveless;
     @Setter @Getter
@@ -60,14 +59,14 @@ public abstract class LParticle extends Particle {
     protected float yaw, pitch;
     @Nullable
     @Setter @Getter
-    protected Quaternion quaternion;
+    protected Quaternionf quaternion;
     @Nullable
     private Level realLevel;
     @Setter
     @Nullable
     protected Consumer<LParticle> onUpdate;
     @Setter
-    protected Function<LParticle, Vector3> velocityAddition = ADDITION;
+    protected Function<LParticle, Vector3f> velocityAddition = ADDITION;
     @Setter
     protected Function<LParticle, Float> velocityMultiplier = MULTIPLIER;
     @Setter
@@ -75,13 +74,13 @@ public abstract class LParticle extends Particle {
     protected BiFunction<LParticle, Float, Vector4f> dynamicColor = null;
     @Setter
     @Nullable
-    protected BiFunction<LParticle, Float, Vector3> dynamicSize = null;
+    protected BiFunction<LParticle, Float, Vector3f> dynamicSize = null;
     @Setter
     @Nullable
-    protected BiFunction<LParticle, Float, Vector3> rotationAddition = null;
+    protected BiFunction<LParticle, Float, Vector3f> rotationAddition = null;
     @Setter
     @Nullable
-    protected BiFunction<LParticle, Float, Vector3> positionAddition = null;
+    protected BiFunction<LParticle, Float, Vector3f> positionAddition = null;
     @Setter
     @Nullable
     protected BiFunction<LParticle, Float, Vector4f> dynamicUVs = null;
@@ -137,12 +136,12 @@ public abstract class LParticle extends Particle {
     @Nonnull
     @Deprecated
     public LParticle scale(float pScale) {
-        this.quadSize = new Vector3(pScale, pScale, pScale);
+        this.quadSize = new Vector3f(pScale, pScale, pScale);
         this.setSize(pScale, pScale);
         return this;
     }
 
-    public void setQuadSize(Vector3 size) {
+    public void setQuadSize(Vector3f size) {
         this.quadSize = size;
         this.setSize((float) size.x, (float) size.y);
     }
@@ -279,7 +278,7 @@ public abstract class LParticle extends Particle {
     }
 
     protected int getLightColor(float partialTick) {
-        BlockPos blockPos = new BlockPos(this.x, this.y, this.z);
+        BlockPos blockPos = new BlockPos((int) this.x, (int) this.y, (int) this.z);
         var level = getLevel();
         if (level != null && (level.hasChunkAt(blockPos) || level instanceof DummyWorld)) {
             return LevelRenderer.getLightColor(level, blockPos);
@@ -318,7 +317,7 @@ public abstract class LParticle extends Particle {
             b *= color.z();
         }
 
-        Vector3 size, rotation = new Vector3(getRoll(partialTicks), this.pitch, this.yaw);
+        Vector3f size, rotation = new Vector3f(getRoll(partialTicks), this.pitch, this.yaw);
         if (dynamicSize != null) {
             size = dynamicSize.apply(this, partialTicks);
         } else {
@@ -328,27 +327,27 @@ public abstract class LParticle extends Particle {
             rotation = rotation.add(this.rotationAddition.apply(this, partialTicks));
         }
 
-        Quaternion quaternion = this.quaternion;
+        Quaternionf quaternion = this.quaternion;
         if (quaternion == null) {
             quaternion = camera.rotation();
         }
-        if (!rotation.isZero()) {
-            quaternion = new Quaternion(quaternion);
+        if (!(rotation.x == 0 && rotation.y == 0 && rotation.z == 0)) {
+            quaternion = new Quaternionf(quaternion);
             if (rotation.y != 0) {
-                quaternion.mul(Vector3f.XP.rotation((float) rotation.y));
+                quaternion.rotateX(rotation.y);
             }
             if (rotation.z != 0) {
-                quaternion.mul(Vector3f.YP.rotation((float) rotation.z));
+                quaternion.rotateY(rotation.z);
             }
-            quaternion.mul(Vector3f.ZP.rotation((float) rotation.x));
+            quaternion.rotateZ(rotation.x);
         }
 
         Vector3f[] rawVertexes = new Vector3f[]{new Vector3f(-1.0F, -1.0F, 0.0F), new Vector3f(-1.0F, 1.0F, 0.0F), new Vector3f(1.0F, 1.0F, 0.0F), new Vector3f(1.0F, -1.0F, 0.0F)};
 
         for(int i = 0; i < 4; ++i) {
             Vector3f vertex = rawVertexes[i];
-            vertex.transform(quaternion);
-            vertex.mul((float) size.x, (float) size.y, (float) size.z);
+            vertex = quaternion.transform(vertex);
+            vertex.mul(size.x, size.y, size.z);
             vertex.add(x, y, z);
         }
 
@@ -390,7 +389,7 @@ public abstract class LParticle extends Particle {
         return this.bCol;
     }
 
-    public Vector3 getQuadSize(float partialTicks) {
+    public Vector3f getQuadSize(float partialTicks) {
         return this.quadSize;
     }
 
@@ -436,8 +435,8 @@ public abstract class LParticle extends Particle {
         return age;
     }
 
-    public Vector3 getVelocity() {
-        return new Vector3(this.xd, this.yd, this.zd);
+    public Vector3f getVelocity() {
+        return new Vector3f((float) this.xd, (float) this.yd, (float) this.zd);
     }
 
     public boolean isRemoved() {
@@ -465,7 +464,7 @@ public abstract class LParticle extends Particle {
         this.age = age;
     }
 
-    public void setSpeed(Vector3 vec) {
+    public void setSpeed(Vector3f vec) {
         super.setParticleSpeed(vec.x, vec.y, vec.z);
     }
 
@@ -475,12 +474,12 @@ public abstract class LParticle extends Particle {
         this.zd *= mul;
     }
 
-    public Vector3 getPos() {
+    public Vector3f getPos() {
         return getPos(0);
     }
 
-    public Vector3 getPos(float partialTicks) {
-        return new Vector3((float)Mth.lerp(partialTicks, this.xo, this.x),
+    public Vector3f getPos(float partialTicks) {
+        return new Vector3f((float)Mth.lerp(partialTicks, this.xo, this.x),
                 (float)Mth.lerp(partialTicks, this.yo, this.y),
                 (float)Mth.lerp(partialTicks, this.zo, this.z));
     }
@@ -489,7 +488,7 @@ public abstract class LParticle extends Particle {
         return t + partialTicks / lifetime;
     }
 
-    public void setPos(Vector3 realPos, boolean origin) {
+    public void setPos(Vector3f realPos, boolean origin) {
         setPos(realPos.x, realPos.y, realPos.z, origin);
     }
 
@@ -497,10 +496,10 @@ public abstract class LParticle extends Particle {
         return memRandom.apply(object);
     }
 
-    public void setRotation(Vector3 rotation) {
-        setRoll((float) rotation.x);
-        setPitch((float) rotation.y);
-        setYaw((float) rotation.z);
+    public void setRotation(Vector3f rotation) {
+        setRoll(rotation.x);
+        setPitch(rotation.y);
+        setYaw(rotation.z);
     }
 
     public ClientLevel getClientLevel() {

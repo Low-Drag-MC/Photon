@@ -6,7 +6,7 @@ import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.SelectorConfigurator;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.data.shape.Cone;
 import com.lowdragmc.photon.client.emitter.data.shape.IShape;
 import com.lowdragmc.photon.client.particle.LParticle;
@@ -32,18 +32,18 @@ public class ShapeSetting implements IConfigurable {
     @Getter @Setter
     @Configurable(tips = "Translate the emission shape.")
     @NumberRange(range = {-1000, 1000})
-    private Vector3 position = Vector3.ZERO.copy();
+    private Vector3f position = new Vector3f(0 ,0, 0);
     @Getter @Setter
     @Configurable(tips = "Rotate the emission shape.")
     @NumberRange(range = {-Float.MAX_VALUE, Float.MAX_VALUE}, wheel = 10)
-    private Vector3 rotation = Vector3.ZERO.copy();
+    private Vector3f rotation = new Vector3f(0 ,0, 0);
     @Getter @Setter
     @Configurable(tips = "Scale the emission shape.")
     @NumberRange(range = {0, 1000})
-    private Vector3 scale = Vector3.ONE.copy();
+    private Vector3f scale = new Vector3f(1, 1, 1);
 
     public void setupParticle(LParticle particle) {
-        shape.nextPosVel(particle, position.copy(), rotation.copy().multiply(Mth.TWO_PI / 360), scale.copy());
+        shape.nextPosVel(particle, new Vector3f(position), new Vector3f(rotation).mul(Mth.TWO_PI / 360), new Vector3f(scale));
     }
 
     @Override

@@ -13,12 +13,12 @@ import com.lowdragmc.lowdraglib.gui.widget.SwitchWidget;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.lowdraglib.utils.BlockInfo;
 import com.lowdragmc.lowdraglib.utils.TrackedDummyWorld;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
-import com.mojang.math.Vector3f;
 import lombok.Getter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -138,10 +138,10 @@ public class ParticleScene extends SceneWidget {
 
                 if (draggingSelected) {
                     var pos = selected.self().getPos();
-                    var vec = new Vector3(hitPos).subtract(new Vector3(renderer.getEyePos()));
-                    var lookVec = pos.subtract(new Vector3(renderer.getEyePos()));
-                    var mag = lookVec.mag();
-                    var draggedPos = new Vector3(renderer.getEyePos()).add(lookVec.project(vec).normalize().multiply(mag));
+                    var vec = new Vector3f(hitPos).sub(new Vector3f(renderer.getEyePos()));
+                    var lookVec = pos.sub(new Vector3f(renderer.getEyePos()));
+                    var mag = lookVec.length();
+                    var draggedPos = new Vector3f(renderer.getEyePos()).add(Vector3fHelper.project(lookVec, vec).normalize().mul(mag));
                     selected.self().setPos(draggedPos, true);
                     if (editor.isDragAll() && editor.getCurrentProject() instanceof ParticleProject project) {
                         for (IParticleEmitter emitter : project.getEmitters()) {
@@ -200,7 +200,6 @@ public class ParticleScene extends SceneWidget {
         poseStack.pushPose();
 
         Tesselator tessellator = Tesselator.getInstance();
-        RenderSystem.disableTexture();
         BufferBuilder buffer = tessellator.getBuilder();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
@@ -209,7 +208,6 @@ public class ParticleScene extends SceneWidget {
 
         poseStack.popPose();
 
-        RenderSystem.enableTexture();
         RenderSystem.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         RenderSystem.setShaderColor(1, 1, 1, 1);
     }

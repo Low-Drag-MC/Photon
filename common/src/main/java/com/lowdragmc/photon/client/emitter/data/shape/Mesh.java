@@ -11,7 +11,8 @@ import com.lowdragmc.lowdraglib.gui.texture.GuiTextureGroup;
 import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.gui.editor.MeshesResource;
 import com.lowdragmc.photon.gui.editor.ParticleProject;
@@ -41,24 +42,24 @@ public class Mesh implements IShape {
     private final MeshData meshData = new MeshData();
 
     @Override
-    public void nextPosVel(LParticle particle, Vector3 position, Vector3 rotation, Vector3 scale) {
-        Vector3 pos = null;
+    public void nextPosVel(LParticle particle, Vector3f position, Vector3f rotation, Vector3f scale) {
+        Vector3f pos = null;
         var random = particle.getRandomSource();
         var t = random.nextFloat();
         if (type == Type.Vertex) {
             pos = meshData.getRandomVertex(t);
             if (pos != null) {
-                pos = pos.copy();
+                pos = new Vector3f(pos);
             }
         } else if (type == Type.Edge) {
             var edge = meshData.getRandomEdge(t);
             if (edge != null) {
-                pos = edge.b.copy().subtract(edge.a).multiply(random.nextFloat()).add(edge.a);
+                pos = new Vector3f(edge.b).sub(edge.a).mul(random.nextFloat()).add(edge.a);
             }
         } else if (type == Type.Triangle) {
             var triangle = meshData.getRandomTriangle(t);
             if (triangle != null) {
-                var sqrtR = Math.sqrt(random.nextFloat());
+                var sqrtR = (float) Math.sqrt(random.nextFloat());
                 var A = (1 - sqrtR);
                 var r2 = random.nextFloat();
                 var B = (sqrtR * (1 - r2));
@@ -66,13 +67,13 @@ public class Mesh implements IShape {
                 var x = A * triangle.a.x + B * triangle.b.x + C * triangle.c.x;
                 var y = A * triangle.a.y + B * triangle.b.y + C * triangle.c.y;
                 var z = A * triangle.a.z + B * triangle.b.z + C * triangle.c.z;
-                pos = new Vector3(x, y, z);
+                pos = new Vector3f(x, y, z);
             }
         }
         if (pos != null) {
-            pos.multiply(scale);
-            particle.setPos(pos.copy().rotateYXY(rotation).add(position).add(particle.getPos()), true);
-            particle.setSpeed(new Vector3(0, 0, 0));
+            pos.mul(scale);
+            particle.setPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getPos()), true);
+            particle.setSpeed(new Vector3f(0, 0, 0));
         }
     }
 

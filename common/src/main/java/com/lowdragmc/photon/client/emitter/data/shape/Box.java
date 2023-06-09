@@ -2,7 +2,8 @@ package com.lowdragmc.photon.client.emitter.data.shape;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.particle.LParticle;
 import lombok.Getter;
 import lombok.Setter;
@@ -25,12 +26,12 @@ public class Box implements IShape {
     private Type emitFrom = Type.Volume;
 
     @Override
-    public void nextPosVel(LParticle particle, Vector3 position, Vector3 rotation, Vector3 scale) {
+    public void nextPosVel(LParticle particle, Vector3f position, Vector3f rotation, Vector3f scale) {
         var random = particle.getRandomSource();
-        scale = new Vector3(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z)).multiply(0.5f);
-        Vector3 pos = new Vector3(random.nextDouble() * 2 * scale.x - scale.x,
-                random.nextDouble() * 2 * scale.y - scale.y,
-                random.nextDouble() * 2 * scale.z - scale.z);
+        scale = new Vector3f(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z)).mul(0.5f);
+        Vector3f pos = new Vector3f(random.nextFloat() * 2 * scale.x - scale.x,
+                random.nextFloat() * 2 * scale.y - scale.y,
+                random.nextFloat() * 2 * scale.z - scale.z);
         if (emitFrom == Type.Shell) {
             double xy = scale.x * scale.y;
             double yz = scale.y * scale.z;
@@ -56,7 +57,7 @@ public class Box implements IShape {
                 pos.y = random.nextFloat() > 0.5 ? scale.y : -scale.y;
             }
         }
-        particle.setPos(pos.copy().rotateYXY(rotation).add(position).add(particle.getPos()), true);
-        particle.setSpeed(new Vector3(0, 0.05, 0).rotateYXY(rotation));
+        particle.setPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getPos()), true);
+        particle.setSpeed(Vector3fHelper.rotateYXY(new Vector3f(0, 0.05f, 0), rotation));
     }
 }

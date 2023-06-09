@@ -5,7 +5,7 @@ import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.data.*;
 import com.lowdragmc.photon.client.emitter.data.number.*;
 import com.lowdragmc.photon.client.emitter.data.number.color.Color;
@@ -22,7 +22,6 @@ import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
 import com.mojang.blaze3d.shaders.BlendMode;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
-import com.mojang.math.Vector4f;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Camera;
@@ -31,6 +30,7 @@ import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.util.Mth;
 import org.jetbrains.annotations.NotNull;
+import org.joml.Vector4f;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -198,9 +198,9 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                 shape.setupParticle(particle);
                 particle.setSpeed(startSpeed.get(randomSource, t).floatValue());
                 var sizeScale = startSize.get(randomSource, t).floatValue();
-                var startedSize = new Vector3(sizeScale, sizeScale, sizeScale);
+                var startedSize = new Vector3f(sizeScale, sizeScale, sizeScale);
                 particle.setSize(sizeScale);
-                var rotation = startRotation.get(randomSource, t).multiply(Mth.TWO_PI / 360);
+                var rotation = startRotation.get(randomSource, t).mul(Mth.TWO_PI / 360);
                 particle.setRoll((float) rotation.x);
                 particle.setPitch((float) rotation.y);
                 particle.setYaw((float) rotation.z);
@@ -216,7 +216,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
                 if (velocityOverLifetime.isEnable() || inheritVelocity.isEnable()) {
                     particle.setVelocityAddition(p -> {
-                        var addition = new Vector3(0, 0, 0);
+                        var addition = new Vector3f(0, 0, 0);
                         if (velocityOverLifetime.isEnable()) {
                             addition.add(velocityOverLifetime.getVelocityAddition(p, this));
                         }
@@ -291,7 +291,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                             size = sizeOverLifetime.getSize(startedSize, p, partialTicks);
                         }
                         if (noise.isEnable()) {
-                            size = size.copy().add(noise.getSize(p, partialTicks));
+                            size = new Vector3f(size).add(noise.getSize(p, partialTicks));
                         }
                         return size;
                     });
@@ -299,7 +299,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
                 if (rotationOverLifetime.isEnable() || rotationBySpeed.isEnable() || noise.isEnable()) {
                     particle.setRotationAddition((p, partialTicks) -> {
-                        var addition = new Vector3(0, 0, 0);
+                        var addition = new Vector3f(0, 0, 0);
                         if (rotationOverLifetime.isEnable()) {
                             addition.add(rotationOverLifetime.getRotation(p, partialTicks));
                         }
@@ -318,7 +318,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                        if (noise.isEnable()) {
                            return noise.getPosition(p, partialTicks);
                        }
-                       return Vector3.ZERO;
+                       return new Vector3f(0 ,0, 0);
                     });
                 }
 

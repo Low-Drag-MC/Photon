@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client.emitter.data;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.emitter.data.number.NumberFunctionConfig;
@@ -38,14 +38,14 @@ public class InheritVelocitySetting extends ToggleGroup {
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1f, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction multiply = NumberFunction.constant(1);
 
-    public Vector3 getVelocityAddition(LParticle particle, LParticle emitter, Vector3 emitterVelocityWhenBorn) {
+    public Vector3f getVelocityAddition(LParticle particle, LParticle emitter, Vector3f emitterVelocityWhenBorn) {
         var mul = multiply.get(particle.getT(), () -> particle.getMemRandom(this)).floatValue();
         if (mode == Mode.Initial) {
-            return emitterVelocityWhenBorn.copy().multiply(mul);
+            return new Vector3f(emitterVelocityWhenBorn).mul(mul);
         } else if (mode == Mode.Current) {
-            return emitter.getVelocity().multiply(mul);
+            return emitter.getVelocity().mul(mul);
         }
-        return Vector3.ZERO;
+        return new Vector3f(0 ,0, 0);
     }
 
 }

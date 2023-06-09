@@ -45,7 +45,6 @@ public class RandomCurveTexture extends TransformTexture {
         // render area
         BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
         RenderSystem.enableBlend();
-        RenderSystem.disableTexture();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
@@ -72,7 +71,6 @@ public class RandomCurveTexture extends TransformTexture {
         }
 
         BufferUploader.drawWithShader(bufferBuilder.end());
-        RenderSystem.enableTexture();
         // render lines
         renderLines(poseStack, curves0, x, y, width, height);
         renderLines(poseStack, curves1, x, y, width, height);

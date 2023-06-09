@@ -7,7 +7,7 @@ import com.lowdragmc.lowdraglib.gui.editor.ui.view.FloatViewWidget;
 import com.lowdragmc.lowdraglib.gui.texture.*;
 import com.lowdragmc.lowdraglib.gui.widget.*;
 import com.lowdragmc.lowdraglib.utils.LocalizationUtils;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.core.mixins.accessor.MinecraftAccessor;
 import it.unimi.dsi.fastutil.booleans.BooleanConsumer;
 import net.minecraft.client.Minecraft;
@@ -104,7 +104,7 @@ public class ParticleInfoView extends FloatViewWidget {
             if (list != null) {
                 var selected = list.getSelected();
                 if (selected != null) {
-                    selected.self().setPos(new Vector3(0.5, 3, 0.5), true);
+                    selected.self().setPos(new Vector3f(0.5f, 3, 0.5f), true);
                 }
             }
         }));

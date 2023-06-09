@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.fx;
 
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.emitter.TrailEmitter;
 import lombok.Getter;
@@ -83,7 +83,7 @@ public class EntityEffect implements IFXEffect {
             }
             effects.add(this);
         }
-        var realPos = new Vector3(entity.getPosition(0)).add(xOffset, yOffset, zOffset);
+        var realPos = entity.getPosition(0).toVector3f().add((float) xOffset, (float) yOffset, (float) zOffset);
         for (var emitter : emitters) {
             emitter.reset();
             emitter.self().setDelay(delay);

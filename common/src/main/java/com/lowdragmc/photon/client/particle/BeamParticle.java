@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.particle;
 
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3f;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
 import lombok.Setter;
@@ -20,26 +21,26 @@ import javax.annotation.Nonnull;
 @Environment(EnvType.CLIENT)
 public abstract class BeamParticle extends LParticle {
     @Getter
-    protected Vector3 from, end;
+    protected Vector3f from, end;
     @Setter @Getter
     protected float width;
     @Setter @Getter
     protected float emit;
 
-    protected BeamParticle(ClientLevel level, Vector3 from, Vector3 end) {
+    protected BeamParticle(ClientLevel level, Vector3f from, Vector3f end) {
         super(level, from.x, from.y, from.z);
         this.setBeam(from, end);
         width = 0.5f;
     }
 
-    public void setBeam(Vector3 from, Vector3 end) {
+    public void setBeam(Vector3f from, Vector3f end) {
         this.from = from;
         this.end = end;
-        setBoundingBox(new AABB(from.vec3(), end.vec3()));
+        setBoundingBox(new AABB(new Vec3(from), new Vec3(end)));
     }
 
     public void renderInternal(@Nonnull VertexConsumer pBuffer, @Nonnull Camera camera, float partialTicks) {
-        var cameraPos = new Vector3(camera.getPosition());
+        var cameraPos = camera.getPosition().toVector3f();
 
         float offset = - emit * (getAge() + partialTicks);
         float u0 = getU0(partialTicks) + offset;
@@ -61,16 +62,16 @@ public abstract class BeamParticle extends LParticle {
             b *= color.z();
         }
 
-        Vector3 direction = end.copy().subtract(from);
+        Vector3f direction = new Vector3f(end).sub(from);
 
-        Vector3 toO = from.copy().subtract(cameraPos);
-        Vector3 n = toO.copy().crossProduct(direction).normalize().multiply(beamHeight);
+        Vector3f toO = new Vector3f(from).sub(cameraPos);
+        Vector3f n = new Vector3f(toO).cross(direction).normalize().mul(beamHeight);
 
 
-        var p0 = from.copy().add(n).subtract(cameraPos);
-        var p1 = from.copy().add(n.multiply(-1)).subtract(cameraPos);
-        var p3 = end.copy().add(n).subtract(cameraPos);
-        var p4 = end.copy().add(n.multiply(-1)).subtract(cameraPos);
+        var p0 = new Vector3f(from).add(n).sub(cameraPos);
+        var p1 = new Vector3f(from).add(n.mul(-1)).sub(cameraPos);
+        var p3 = new Vector3f(toO).add(n).sub(cameraPos);
+        var p4 = new Vector3f(toO).add(n.mul(-1)).sub(cameraPos);
 
         pBuffer.vertex(p1.x, p1.y, p1.z).uv(u0, v0).color(r, g, b, a).uv2(lightColor).endVertex();
         pBuffer.vertex(p0.x, p0.y, p0.z).uv(u0, v1).color(r, g, b, a).uv2(lightColor).endVertex();

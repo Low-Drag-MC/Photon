@@ -3,7 +3,8 @@ package com.lowdragmc.photon.client.emitter.data.shape;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.particle.LParticle;
 import lombok.Getter;
 import lombok.Setter;
@@ -31,7 +32,7 @@ public class Sphere implements IShape {
     private float arc = 360;
 
     @Override
-    public void nextPosVel(LParticle particle, Vector3 position, Vector3 rotation, Vector3 scale) {
+    public void nextPosVel(LParticle particle, Vector3f position, Vector3f rotation, Vector3f scale) {
         var random = particle.getRandomSource();
         var outer = radius;
         var inner = (1 - radiusThickness) * radius;
@@ -42,11 +43,11 @@ public class Sphere implements IShape {
         var theta = Math.acos(2 * random.nextDouble() - 1);
         var phi = arc * Mth.TWO_PI * random.nextDouble() / 360;
 
-        var pos = new Vector3(r * Math.sin(theta) * Math.cos(phi),
-                r * Math.sin(theta) * Math.sin(phi),
-                r * Math.cos(theta)).multiply(scale);
+        var pos = new Vector3f((float) (r * Math.sin(theta) * Math.cos(phi)),
+                (float) (r * Math.sin(theta) * Math.sin(phi)),
+                (float) (r * Math.cos(theta))).mul(scale);
 
-        particle.setPos(pos.copy().rotateYXY(rotation).add(position).add(particle.getPos()), true);
-        particle.setSpeed(pos.copy().normalize().multiply(0.05).rotateYXY(rotation));
+        particle.setPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getPos()), true);
+        particle.setSpeed(Vector3fHelper.rotateYXY(new Vector3f(pos).normalize().mul(0.05f), rotation));
     }
 }

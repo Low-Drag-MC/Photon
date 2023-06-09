@@ -2,7 +2,7 @@ package com.lowdragmc.photon.client.emitter.data.shape;
 
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.syncdata.IAutoPersistedSerializable;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.integration.LDLibPlugin;
 import net.minecraft.nbt.CompoundTag;
@@ -29,5 +29,5 @@ public interface IShape extends IConfigurable, IAutoPersistedSerializable {
         return null;
     }
 
-    void nextPosVel(LParticle particle, Vector3 position, Vector3 rotation, Vector3 scale);
+    void nextPosVel(LParticle particle, Vector3f position, Vector3f rotation, Vector3f scale);
 }

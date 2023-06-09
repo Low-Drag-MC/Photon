@@ -4,10 +4,10 @@ import com.lowdragmc.lowdraglib.gui.texture.TransformTexture;
 import com.lowdragmc.lowdraglib.utils.GradientColor;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
-import com.mojang.math.Matrix4f;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.renderer.GameRenderer;
+import org.joml.Matrix4f;
 
 import java.util.function.Function;
 
@@ -30,10 +30,9 @@ public class RandomGradientColorTexture extends TransformTexture {
     @Environment(EnvType.CLIENT)
     protected void drawInternal(PoseStack stack, int mouseX, int mouseY, float posx, float posy, int width, int height) {
         // render color bar
-        RenderSystem.disableTexture();
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
-        Matrix4f mat = stack.last().pose();
+        var mat = stack.last().pose();
         Tesselator tesselator = Tesselator.getInstance();
         BufferBuilder buffer = tesselator.getBuilder();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
@@ -48,7 +47,6 @@ public class RandomGradientColorTexture extends TransformTexture {
         drawGradient(posy, width, mat, buffer, getXPosition, yh, gradientColor1);
 
         tesselator.end();
-        RenderSystem.enableTexture();
     }
 
     static void drawGradient(float posy, int width, Matrix4f mat, BufferBuilder buffer, Function<Float, Float> getXPosition, float yh, GradientColor gradientColor) {

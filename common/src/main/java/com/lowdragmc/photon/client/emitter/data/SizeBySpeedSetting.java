@@ -3,7 +3,7 @@ package com.lowdragmc.photon.client.emitter.data;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.utils.Range;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.emitter.data.number.curve.RandomCurve;
@@ -39,11 +39,11 @@ public class SizeBySpeedSetting extends ToggleGroup {
     @Configurable(tips = "Remaps speed in the defined range to a size.")
     @NumberRange(range = {0, 1000})
     protected Range speedRange = new Range(0f, 1f);
-    public Vector3 getSize(Vector3 startedSize, LParticle particle) {
-        var value = particle.getVelocity().mag() * 20;
-        var t = (float) ((value - speedRange.getA().floatValue()) / (speedRange.getB().floatValue() - speedRange.getA().floatValue()));
+    public Vector3f getSize(Vector3f startedSize, LParticle particle) {
+        var value = particle.getVelocity().length() * 20;
+        var t = (value - speedRange.getA().floatValue()) / (speedRange.getB().floatValue() - speedRange.getA().floatValue());
         return size.get(t, () -> particle.getMemRandom("sbs0")).add(startedSize)
-                .multiply(scale.get(t, () -> particle.getMemRandom("sbs1")).doubleValue());
+                .mul(scale.get(t, () -> particle.getMemRandom("sbs1")).floatValue());
     }
 
 }

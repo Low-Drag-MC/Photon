@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client.emitter.data;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.emitter.data.number.NumberFunctionConfig;
@@ -40,12 +40,12 @@ public class RotationOverLifetimeSetting extends ToggleGroup {
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "lifetime", yAxis = "yaw"))
     protected NumberFunction yaw = NumberFunction.constant(0);
 
-    public Vector3 getRotation(LParticle particle, float partialTicks) {
+    public Vector3f getRotation(LParticle particle, float partialTicks) {
         var t = particle.getT(partialTicks);
-        return new Vector3(
-                roll.get(t, () -> particle.getMemRandom("rol0")).doubleValue(),
-                pitch.get(t, () -> particle.getMemRandom("rol1")).doubleValue(),
-                yaw.get(t, () -> particle.getMemRandom("rol2")).doubleValue()).multiply(Mth.TWO_PI / 360);
+        return new Vector3f(
+                roll.get(t, () -> particle.getMemRandom("rol0")).floatValue(),
+                pitch.get(t, () -> particle.getMemRandom("rol1")).floatValue(),
+                yaw.get(t, () -> particle.getMemRandom("rol2")).floatValue()).mul(Mth.TWO_PI / 360);
     }
 
 }

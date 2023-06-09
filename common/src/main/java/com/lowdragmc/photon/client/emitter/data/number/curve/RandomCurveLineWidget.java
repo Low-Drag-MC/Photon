@@ -355,7 +355,6 @@ public class RandomCurveLineWidget extends WidgetGroup {
         // render area
         BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
         RenderSystem.enableBlend();
-        RenderSystem.disableTexture();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
@@ -382,7 +381,6 @@ public class RandomCurveLineWidget extends WidgetGroup {
         }
 
         BufferUploader.drawWithShader(bufferBuilder.end());
-        RenderSystem.enableTexture();
 
         // render lines
         var points0 = curves0.stream().flatMap(curve -> curve.getPoints(100).stream().map(this::getPointPosition).toList().stream()).collect(Collectors.toList());

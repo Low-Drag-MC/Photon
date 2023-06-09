@@ -14,8 +14,8 @@ import static com.mojang.blaze3d.platform.GlStateManager.SourceFactor;
 public class BlendMode {
     public enum BlendFuc {
         ADD(32774),
-        SUBTRACT(32778),
-        REVERSE_SUBTRACT(32779),
+        sub(32778),
+        REVERSE_sub(32779),
         MIN(32775),
         MAX(32776);
         public final int op;

@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client.emitter.data;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.emitter.data.number.curve.RandomCurve;
@@ -26,8 +26,8 @@ public class ForceOverLifetimeSetting extends ToggleGroup {
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "force")))
     protected NumberFunction3 force = new NumberFunction3(0, 0, 0);
 
-    public Vector3 getForce(LParticle particle) {
-        return force.get(particle.getT(), () -> particle.getMemRandom(this)).multiply(0.05);
+    public Vector3f getForce(LParticle particle) {
+        return force.get(particle.getT(), () -> particle.getMemRandom(this)).mul(0.05f);
     }
 
 }

@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.fx;
 
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.emitter.TrailEmitter;
 import lombok.Getter;
@@ -8,7 +8,6 @@ import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -88,7 +87,7 @@ public class BlockEffect implements IFXEffect {
             }
             effects.add(this);
         }
-        var realPos= new Vector3(pos).add(xOffset + 0.5, yOffset + 0.5, zOffset + 0.5);
+        var realPos= new Vector3f(pos.getX(), pos.getY(), pos.getZ()).add((float) (xOffset + 0.5f), (float) (yOffset + 0.5f), (float) (zOffset + 0.5f));
         for (var emitter : emitters) {
             if (emitter instanceof TrailEmitter) {
                 continue;

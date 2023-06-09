@@ -1,7 +1,8 @@
 package com.lowdragmc.photon.client.emitter.data;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
+import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.data.number.*;
 import com.lowdragmc.photon.client.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.emitter.data.number.curve.CurveConfig;
@@ -55,53 +56,53 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1f, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction speedModifier = NumberFunction.constant(1);
 
-    public Vector3 getVelocityAddition(LParticle particle, LParticle emitter) {
+    public Vector3f getVelocityAddition(LParticle particle, LParticle emitter) {
         var center = emitter.getPos();
         var lifetime = particle.getT();
-        var addition = linear.get(lifetime, () -> particle.getMemRandom("vol0")).multiply(0.05);
+        var addition = linear.get(lifetime, () -> particle.getMemRandom("vol0")).mul(0.05f);
         var orbitalVec = orbital.get(lifetime, () -> particle.getMemRandom("vol1"));
-        if (!orbitalVec.isZero()) {
+        if (!Vector3fHelper.isZero(orbitalVec)) {
             if (orbitalMode == OrbitalMode.AngularVelocity) {
-                var toPoint = particle.getPos().copy().subtract(center.copy().add(offset.get(lifetime, () -> particle.getMemRandom("vol2"))));
+                var toPoint = new Vector3f(particle.getPos()).sub(new Vector3f(center).add(offset.get(lifetime, () -> particle.getMemRandom("vol2"))));
                 if (orbitalVec.x != 0) {
-                    var radiusVec = toPoint.copy().subtract(toPoint.copy().project(Vector3.X));
-                    addition.add(radiusVec.copy().rotate(orbitalVec.x * 0.05f, Vector3.X).subtract(radiusVec));
+                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(1, 0, 0)));
+                    addition.add(new Vector3f(radiusVec).rotateX(orbitalVec.x * 0.05f).sub(radiusVec));
                 }
                 if (orbitalVec.y != 0) {
-                    var radiusVec = toPoint.copy().subtract(toPoint.copy().project(Vector3.Y));
-                    addition.add(radiusVec.copy().rotate(orbitalVec.y * 0.05f, Vector3.Y).subtract(radiusVec));
+                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 1, 0)));
+                    addition.add(new Vector3f(radiusVec).rotateY(orbitalVec.y * 0.05f).sub(radiusVec));
                 }
                 if (orbitalVec.z != 0) {
-                    var radiusVec = toPoint.copy().subtract(toPoint.copy().project(Vector3.Z));
-                    addition.add(radiusVec.copy().rotate(orbitalVec.z * 0.05f, Vector3.Z).subtract(radiusVec));
+                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 0, 1)));
+                    addition.add(new Vector3f(radiusVec).rotateZ(orbitalVec.z * 0.05f).sub(radiusVec));
                 }
             } else if (orbitalMode == OrbitalMode.LinearVelocity) {
-                var toPoint = particle.getPos().copy().subtract(center.copy().add(offset.get(lifetime, () -> particle.getMemRandom("vol2"))));
+                var toPoint = particle.getPos().sub(new Vector3f(center).add(offset.get(lifetime, () -> particle.getMemRandom("vol2"))));
                 if (orbitalVec.x != 0) {
-                    var radiusVec = toPoint.copy().subtract(toPoint.copy().project(Vector3.X));
-                    var r = radiusVec.mag();
-                    addition.add(radiusVec.copy().rotate(orbitalVec.x * 0.05f / r, Vector3.X).subtract(radiusVec));
+                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(1, 0, 0)));
+                    var r = radiusVec.length();
+                    addition.add(new Vector3f(radiusVec).rotateX(orbitalVec.x * 0.05f / r).sub(radiusVec));
                 }
                 if (orbitalVec.y != 0) {
-                    var radiusVec = toPoint.copy().subtract(toPoint.copy().project(Vector3.Y));
-                    var r = radiusVec.mag();
-                    addition.add(radiusVec.copy().rotate(orbitalVec.y * 0.05f / r, Vector3.Y).subtract(radiusVec));
+                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 1, 0)));
+                    var r = radiusVec.length();
+                    addition.add(new Vector3f(radiusVec).rotateY(orbitalVec.y * 0.05f / r).sub(radiusVec));
                 }
                 if (orbitalVec.z != 0) {
-                    var radiusVec = toPoint.copy().subtract(toPoint.copy().project(Vector3.Z));
-                    var r = radiusVec.mag();
-                    addition.add(radiusVec.copy().rotate(orbitalVec.z * 0.05f / r, Vector3.Z).subtract(radiusVec));
+                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 0, 1)));
+                    var r = radiusVec.length();
+                    addition.add(new Vector3f(radiusVec).rotateZ(orbitalVec.z * 0.05f / r).sub(radiusVec));
                 }
             } else if (orbitalMode == OrbitalMode.FixedVelocity) {
-                var toCenter = center.copy().add(offset.get(lifetime, () -> particle.getMemRandom("vol2"))).subtract(particle.getPos());
+                var toCenter = new Vector3f(center).add(offset.get(lifetime, () -> particle.getMemRandom("vol2"))).sub(particle.getPos());
                 if (orbitalVec.x != 0) {
-                    addition.add(toCenter.copy().crossProduct(Vector3.X).normalize().multiply(orbitalVec.x * 0.05));
+                    addition.add(new Vector3f(toCenter).cross(new Vector3f(1, 0, 0)).normalize().mul(orbitalVec.x * 0.05f));
                 }
                 if (orbitalVec.y != 0) {
-                    addition.add(toCenter.copy().crossProduct(Vector3.Y).normalize().multiply(orbitalVec.y * 0.05));
+                    addition.add(new Vector3f(toCenter).cross(new Vector3f(0, 1, 0)).normalize().mul(orbitalVec.y * 0.05f));
                 }
                 if (orbitalVec.z != 0) {
-                    addition.add(toCenter.copy().crossProduct(Vector3.Z).normalize().multiply(orbitalVec.z * 0.05));
+                    addition.add(new Vector3f(toCenter).cross(new Vector3f(0, 0, 1)).normalize().mul(orbitalVec.z * 0.05f));
                 }
             }
         }

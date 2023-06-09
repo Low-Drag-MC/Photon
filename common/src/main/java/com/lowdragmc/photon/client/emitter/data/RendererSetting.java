@@ -2,12 +2,11 @@ package com.lowdragmc.photon.client.emitter.data;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.photon.client.particle.LParticle;
-import com.mojang.math.Quaternion;
-import com.mojang.math.Vector3f;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.joml.Quaternionf;
 
 import javax.annotation.Nullable;
 
@@ -24,16 +23,16 @@ public class RendererSetting {
         Vertical(0, 0);
 
         @Nullable
-        final Quaternion quaternion;
+        final Quaternionf quaternion;
 
-        Mode(@Nullable Quaternion quaternion) {
+        Mode(@Nullable Quaternionf quaternion) {
             this.quaternion = quaternion;
         }
 
         Mode(float yRot, float xRot) {
-            this.quaternion = new Quaternion(Quaternion.ONE);
-            this.quaternion.mul(Vector3f.YP.rotationDegrees(-yRot));
-            this.quaternion.mul(Vector3f.XP.rotationDegrees(xRot));
+            this.quaternion = new Quaternionf();
+            this.quaternion.rotateY((float) Math.toRadians(-yRot));
+            this.quaternion.rotateX((float) Math.toRadians(xRot));
         }
     }
 

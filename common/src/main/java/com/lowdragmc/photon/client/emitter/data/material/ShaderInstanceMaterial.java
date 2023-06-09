@@ -3,7 +3,6 @@ package com.lowdragmc.photon.client.emitter.data.material;
 import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
-import com.mojang.math.Matrix4f;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
@@ -64,7 +63,7 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
             begin(bufferbuilder, Minecraft.getInstance().getTextureManager(), false);
             var lightTexture = Minecraft.getInstance().gameRenderer.lightTexture();
             lightTexture.turnOnLightLayer();
-            Matrix4f mat = stack.last().pose();
+            var mat = stack.last().pose();
             bufferbuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
 
             bufferbuilder.vertex(mat, x, y + height, 0).uv(imageU, imageV + imageHeight).color(-1).uv2(LightTexture.FULL_BRIGHT).endVertex();

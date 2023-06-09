@@ -22,13 +22,13 @@ import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.client.particle.TrailParticle;
 import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
 import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
+import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
 import com.mojang.blaze3d.shaders.BlendMode;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.math.Vector4f;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -36,6 +36,7 @@ import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.texture.TextureManager;
+import org.joml.Vector4f;
 
 import javax.annotation.Nonnull;
 
@@ -117,7 +118,7 @@ public class TrailsSetting extends ToggleGroup {
             trail.setDelay(particle.getDelay());
             trail.setLevel(emitter.getLevel());
             trail.setLifetime(particle.getLifetime());
-            trail.setWidth((float) particle.getQuadSize(0).min());
+            trail.setWidth(Vector3fHelper.min(particle.getQuadSize(0)));
             trail.setUvMode(uvMode);
             trail.setMinimumVertexDistance(minimumVertexDistance);
             trail.setOnUpdate(p -> {
@@ -129,7 +130,7 @@ public class TrailsSetting extends ToggleGroup {
             trail.setOnRemoveTails(t -> {
                 var maxTails = lifetime.get(t.getT(), () -> t.getMemRandom("trails-lifetime")).floatValue() * particle.getLifetime();
                 if (sizeAffectsLifetime) {
-                    maxTails = (float) (maxTails * (particle.getQuadSize(0).min() / t.getWidth()));
+                    maxTails = maxTails * (Vector3fHelper.min(particle.getQuadSize(0)) / t.getWidth());
                 }
                 var tails = t.getTails();
                 while (tails.size() > maxTails) {
@@ -167,7 +168,7 @@ public class TrailsSetting extends ToggleGroup {
             trail.setDynamicTailWidth((t, tail, partialTicks) -> {
                 var width = t.getWidth();
                 if (sizeAffectsWidth) {
-                    width = (float) (particle.getQuadSize(partialTicks).min());
+                    width = Vector3fHelper.min(particle.getQuadSize(partialTicks));
                 }
                 width = width * widthOverTrail.get(tail / (t.getTails().size() - 1f), () -> t.getMemRandom("trails-widthOverTrail")).floatValue();
                 return width;

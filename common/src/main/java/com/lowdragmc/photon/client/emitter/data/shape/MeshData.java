@@ -12,7 +12,7 @@ import com.lowdragmc.lowdraglib.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget;
 import com.lowdragmc.lowdraglib.gui.widget.DialogWidget;
 import com.lowdragmc.lowdraglib.syncdata.ITagSerializable;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import org.joml.Vector3f;
 import lombok.Getter;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.resources.model.BlockModelRotation;
@@ -37,7 +37,7 @@ import java.util.List;
  */
 public class MeshData implements ITagSerializable<CompoundTag>, IConfigurable {
     public String meshName = "";
-    public final List<Vector3> vertices = new ArrayList<>();
+    public final List<Vector3f> vertices = new ArrayList<>();
     public final List<Edge> edges = new ArrayList<>();
     public final List<Triangle> triangles = new ArrayList<>();
     @Getter
@@ -65,7 +65,7 @@ public class MeshData implements ITagSerializable<CompoundTag>, IConfigurable {
     public void loadFromModel(ResourceLocation modelLocation) {
         var random = RandomSource.create();
         var bakedModel = ModelFactory.getUnBakedModel(modelLocation).bake(
-                ModelFactory.getModeBakery(),
+                ModelFactory.getModeBaker(),
                 Material::sprite,
                 BlockModelRotation.X0_Y0,
                 modelLocation);
@@ -82,12 +82,12 @@ public class MeshData implements ITagSerializable<CompoundTag>, IConfigurable {
         double sumArea = 0;
         for (var quad : quads) {
             var vertices = quad.getVertices();
-            Vector3[] points = new Vector3[4];
+            Vector3f[] points = new Vector3f[4];
             for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++) {
                 int offset = vertexIndex * IQuadTransformer.STRIDE + IQuadTransformer.POSITION;
-                points[vertexIndex] = new Vector3(Float.intBitsToFloat(vertices[offset]) - 0.5,
-                        Float.intBitsToFloat(vertices[offset + 1]) - 0.5,
-                        Float.intBitsToFloat(vertices[offset + 2]) - 0.5);
+                points[vertexIndex] = new Vector3f(Float.intBitsToFloat(vertices[offset]) - 0.5f,
+                        Float.intBitsToFloat(vertices[offset + 1]) - 0.5f,
+                        Float.intBitsToFloat(vertices[offset + 2]) - 0.5f);
                 // add vertexes
                 this.vertices.add(points[vertexIndex]);
             }
@@ -106,7 +106,7 @@ public class MeshData implements ITagSerializable<CompoundTag>, IConfigurable {
     }
 
     @Nullable
-    public Vector3 getRandomVertex(float t) {
+    public Vector3f getRandomVertex(float t) {
         if (vertices.isEmpty()) return null;
         return vertices.get((int) (vertices.size() * t));
     }
@@ -139,7 +139,7 @@ public class MeshData implements ITagSerializable<CompoundTag>, IConfigurable {
         return triangles.get(triangles.size() - 1);
     }
 
-    private double addEdge(Vector3 a, Vector3 b) {
+    private double addEdge(Vector3f a, Vector3f b) {
         var ab = new Edge(a, b);
         if (ab.length > 0) {
             edges.add(ab);
@@ -147,7 +147,7 @@ public class MeshData implements ITagSerializable<CompoundTag>, IConfigurable {
         return ab.length;
     }
 
-    private double addTriangle(Vector3 a, Vector3 b, Vector3 c) {
+    private double addTriangle(Vector3f a, Vector3f b, Vector3f c) {
         var abc = new Triangle(a, b, c);
         if (abc.area > 0) {
             triangles.add(abc);
@@ -185,14 +185,14 @@ public class MeshData implements ITagSerializable<CompoundTag>, IConfigurable {
         return tag;
     }
 
-    private void saveVector3(ListTag list, Vector3 vec) {
+    private void saveVector3(ListTag list, Vector3f vec) {
         list.add(FloatTag.valueOf((float) vec.x));
         list.add(FloatTag.valueOf((float) vec.y));
         list.add(FloatTag.valueOf((float) vec.z));
     }
 
-    private Vector3 loadVector3(ListTag list, int index) {
-        return new Vector3(list.getFloat(index), list.getFloat(index + 1), list.getFloat(index + 2));
+    private Vector3f loadVector3(ListTag list, int index) {
+        return new Vector3f(list.getFloat(index), list.getFloat(index + 1), list.getFloat(index + 2));
     }
 
     @Override
@@ -238,24 +238,24 @@ public class MeshData implements ITagSerializable<CompoundTag>, IConfigurable {
 
     public static class Edge {
 
-        public final Vector3 a, b;
+        public final Vector3f a, b;
 
         public final double length;
 
-        public Edge(Vector3 a, Vector3 b) {
+        public Edge(Vector3f a, Vector3f b) {
             this.a = a;
             this.b = b;
-            length = a.copy().subtract(b).mag();
+            length = new Vector3f(a).sub(b).length();
         }
     }
 
     public static class Triangle {
 
-        public final Vector3 a, b, c;
+        public final Vector3f a, b, c;
 
         public final double area;
 
-        public Triangle(Vector3 a, Vector3 b, Vector3 c) {
+        public Triangle(Vector3f a, Vector3f b, Vector3f c) {
             this.a = a;
             this.b = b;
             this.c = c;
