@@ -67,3 +67,37 @@ jobs:
           retry-attempts: 2
           retry-delay: 10000
           fail-mode: fail
+
+      - name: mc-publish-forge
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          # Only include this section if you wish to publish
+          # your assets on Modrinth.
+          modrinth-id: gzevkJbM
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+
+          # Only include this section if you wish to publish
+          # your assets on CurseForge.
+          curseforge-id: 871522
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+
+          files: |
+            forge/build/libs/!(*-@(dev|sources|javadoc)).jar
+            forge/build/libs/*-@(dev|sources|javadoc).jar
+
+          name: Photon for Minecraft 1.19.2
+          version: mc1.17.1-0.3.2
+          version-type: beta
+
+          loaders: |
+            forge
+          game-versions: |
+            1.19.2
+          game-version-filter: none
+          dependencies: |
+            ldlib@1.0.7(required){modrinth:B1CBVXHX}{curseforge:626676}
+          java: |
+            17
+          retry-attempts: 2
+          retry-delay: 10000
+          fail-mode: fail
