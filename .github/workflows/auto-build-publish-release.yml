@@ -49,10 +49,7 @@ jobs:
 
           files: |
             fabric/build/libs/!(*-@(dev|sources|javadoc)).jar
-            fabric/build/libs/*-@(dev|sources|javadoc).jar
 
-          name: Photon for Minecraft 1.19.2
-          version: mc1.17.1-0.3.2
           version-type: beta
 
           loaders: |
@@ -83,10 +80,7 @@ jobs:
 
           files: |
             forge/build/libs/!(*-@(dev|sources|javadoc)).jar
-            forge/build/libs/*-@(dev|sources|javadoc).jar
 
-          name: Photon for Minecraft 1.19.2
-          version: mc1.17.1-0.3.2
           version-type: beta
 
           loaders: |
