@@ -334,17 +334,15 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                     });
                 }
 
-                if (lights.isEnable()) {
-                    particle.setDynamicLight((p, partialTicks) -> {
-                        if (usingBloom()) {
-                            return LightTexture.FULL_BRIGHT;
-                        }
-                        if (lights.isEnable()) {
-                            return lights.getLight(p, partialTicks);
-                        }
-                        return p.getLight();
-                    });
-                }
+                particle.setDynamicLight((p, partialTicks) -> {
+                    if (usingBloom()) {
+                        return LightTexture.FULL_BRIGHT;
+                    }
+                    if (lights.isEnable()) {
+                        return lights.getLight(p, partialTicks);
+                    }
+                    return p.getLight();
+                });
 
                 if (trails.isEnable()) {
                     trails.setup(this, particle);
