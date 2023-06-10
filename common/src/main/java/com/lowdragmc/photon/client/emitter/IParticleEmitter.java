@@ -1,17 +1,23 @@
 package com.lowdragmc.photon.client.emitter;
 
+import com.lowdragmc.lowdraglib.client.scene.ParticleManager;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.syncdata.IAutoPersistedSerializable;
+import com.lowdragmc.lowdraglib.utils.DummyWorld;
 import com.lowdragmc.photon.client.fx.IFXEffect;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.integration.LDLibPlugin;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.Level;
 
 import javax.annotation.Nullable;
-import java.util.List;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Queue;
 
 
 /**
@@ -37,7 +43,7 @@ public interface IParticleEmitter extends IConfigurable, IAutoPersistedSerializa
      * get amount of existing particle which emitted from it.
      */
     default int getParticleAmount() {
-        return getParticles().size();
+        return getParticles().values().stream().mapToInt(Collection::size).sum();
     }
 
     /**
@@ -46,7 +52,15 @@ public interface IParticleEmitter extends IConfigurable, IAutoPersistedSerializa
     default void emmitToLevel(Level level, double x, double y, double z) {
         self().setPos(x, y, z, true);
         self().setLevel(level);
-        self().addParticle(null);
+        self().prepareForEmitting(null);
+        if (level instanceof DummyWorld dummyWorld) {
+            ParticleManager particleManager = dummyWorld.getParticleManager();
+            if (particleManager != null) {
+                particleManager.addParticle(self());
+            }
+        } else {
+            Minecraft.getInstance().particleEngine.add(self());
+        }
     }
 
     /**
@@ -82,7 +96,7 @@ public interface IParticleEmitter extends IConfigurable, IAutoPersistedSerializa
     /**
      * particles emitted from this emitter
      */
-    List<LParticle> getParticles();
+    Map<ParticleRenderType, Queue<LParticle>> getParticles();
 
     /**
      * emit particle from this emitter

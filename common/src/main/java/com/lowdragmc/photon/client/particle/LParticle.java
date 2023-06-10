@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.particle;
 
-import com.lowdragmc.lowdraglib.client.scene.ParticleManager;
 import com.lowdragmc.lowdraglib.utils.DummyWorld;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -10,7 +9,6 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.Util;
 import net.minecraft.client.Camera;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleRenderType;
@@ -42,7 +40,8 @@ import java.util.function.Function;
  */
 @Environment(EnvType.CLIENT)
 @ParametersAreNonnullByDefault
-public abstract class LParticle extends Particle {
+public abstract class
+LParticle extends Particle {
     private static final double MAXIMUM_COLLISION_VELOCITY_SQUARED = Mth.square(100.0);
     private static final Function<LParticle, Vector3f> ADDITION = p -> new Vector3f(0 ,0, 0);
     private static final Function<LParticle, Float> MULTIPLIER = p -> 1f;
@@ -373,6 +372,10 @@ public abstract class LParticle extends Particle {
         buffer.vertex(rawVertexes[3].x(), rawVertexes[3].y(), rawVertexes[3].z()).uv(u0, v1).color(r, g, b, a).uv2(light).endVertex();
     }
 
+    public boolean shouldCull() {
+        return cull;
+    }
+
     public float getAlpha(float partialTicks) {
         return this.alpha;
     }
@@ -411,10 +414,6 @@ public abstract class LParticle extends Particle {
         return getLightColor(pPartialTick);
     }
 
-    public boolean shouldCull() {
-        return cull;
-    }
-
     public float getU0(float pPartialTicks) {
         return 0;
     }
@@ -443,17 +442,9 @@ public abstract class LParticle extends Particle {
         return removed;
     }
 
-    public void addParticle(@Nullable IParticleEmitter emitter) {
+    public void prepareForEmitting(@Nullable IParticleEmitter emitter) {
         updateOrigin();
         this.emitter = emitter;
-        if (getLevel() instanceof DummyWorld dummyWorld) {
-            ParticleManager particleManager = dummyWorld.getParticleManager();
-            if (particleManager != null) {
-                particleManager.addParticle(this);
-            }
-        } else {
-            Minecraft.getInstance().particleEngine.add(this);
-        }
     }
 
     public void resetAge() {

@@ -9,6 +9,7 @@ import com.lowdragmc.lowdraglib.utils.ColorUtils;
 import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.emitter.data.MaterialSetting;
+import com.lowdragmc.photon.client.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.emitter.data.material.CustomShaderMaterial;
 import com.lowdragmc.photon.client.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
@@ -30,6 +31,7 @@ import lombok.Setter;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.texture.TextureManager;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector4f;
@@ -37,9 +39,7 @@ import org.joml.Vector4f;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -81,9 +81,8 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     @Configurable(name = "Material", subConfigurable = true, tips = "Open Reference for Tail Material.")
     protected final MaterialSetting material = new MaterialSetting();
     @Getter
-    @Setter
-    @Configurable(tips = "Render particles with the bloom effect.")
-    protected boolean bloomEffect = false;
+    @Configurable(name = "Renderer", subConfigurable = true, tips = "Specifies how the particles are rendered.")
+    protected final RendererSetting renderer = new RendererSetting();
     @Getter
     @Configurable(name = "Fixed Light", subConfigurable = true, tips = "Controls the light map of each particle during its lifetime.")
     protected final LightOverLifetimeSetting lights = new LightOverLifetimeSetting();
@@ -91,6 +90,8 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     // runtime
     @Getter
     protected final ParticleRenderType renderType = new RenderType();
+    @Getter
+    protected final Map<ParticleRenderType, Queue<LParticle>> particles = Map.of(renderType, new ArrayDeque<>(1));
     @Getter @Setter
     protected boolean visible = true;
     @Nullable
@@ -101,7 +102,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     protected TrailEmitter() {
         super(null, 0, 0, 0);
         material.setMaterial(new CustomShaderMaterial());
-        material.setCull(false);
+        particles.get(renderType).add(this);
         super.setLifetime(-1);
         super.setUvMode(uvMode);
         super.setMinimumVertexDistance(minVertexDistance);
@@ -125,6 +126,9 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
         });
         super.setDynamicTailWidth((t, tail, partialTicks) -> 0.2f * widthOverTrail.get(tail / (t.getTails().size() - 1f), () -> t.getMemRandom("trails-widthOverTrail")).floatValue());
         super.setDynamicLight((t, partialTicks) -> {
+            if (usingBloom()) {
+                return LightTexture.FULL_BRIGHT;
+            }
             if (lights.isEnable()) {
                 return lights.getLight(t, partialTicks);
             }
@@ -138,6 +142,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
         if (fXEffect != null && fXEffect.updateEmitter(this)) {
             return;
         }
+        renderer.setupQuaternion(this);
         super.update();
     }
 
@@ -172,14 +177,9 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
 
     @Override
     public void render(@NotNull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
-        if (isVisible()) {
+        if (delay <= 0 && isVisible() && PhotonParticleRenderType.checkLayer(renderer.getLayer())) {
             super.render(pBuffer, pRenderInfo, pPartialTicks);
         }
-    }
-
-    @Override
-    public List<LParticle> getParticles() {
-        return Collections.singletonList(this);
     }
 
     @Override
@@ -189,7 +189,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
 
     @Override
     public boolean usingBloom() {
-        return bloomEffect;
+        return renderer.isBloomEffect();
     }
 
     private class RenderType extends PhotonParticleRenderType {

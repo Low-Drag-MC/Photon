@@ -1,8 +1,10 @@
 package com.lowdragmc.photon;
 
+import com.lowdragmc.lowdraglib.LDLib;
 import com.lowdragmc.lowdraglib.Platform;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import dev.architectury.injectables.annotations.ExpectPlatform;
+import net.irisshaders.iris.api.v0.IrisApi;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +30,17 @@ public class Photon {
     @ExpectPlatform
     public static boolean useCombinedDepthStencilAttachment() {
         throw new AssertionError();
+    }
+
+    public static boolean isShaderModInstalled() {
+        return LDLib.isModLoaded("iris") || LDLib.isModLoaded("oculus");
+    }
+
+    public static boolean isUsingShaderPack() {
+        if (isShaderModInstalled()) {
+            return IrisApi.getInstance().isShaderPackInUse();
+        }
+        return false;
     }
 }
 

@@ -21,9 +21,13 @@ dependencyResolutionManagement {
         // Fabric
         def fabricLoaderVersion = "0.14.19" // https://fabricmc.net/develop/
         def fabricApiVersion = "0.81.1" // https://fabricmc.net/develop/
+        def sodiumVersion = "mc1.19.4-0.4.10"
+        def irisVersion = "1.6.4+1.19.4"
 
         // Forge
         def forgeVersion = "45.0.64"
+        def rubidiumVersion = "0.6.4"
+        def oculusVersion = "1.19.4-1.5.2"
 
         // Libs
         def quiltMappingsVersion = "9"  // https://lambdaurora.dev/tools/import_quilt.html
@@ -49,6 +53,11 @@ dependencyResolutionManagement {
             library("ldlib-common", "com.lowdragmc.ldlib", "ldlib-common-${minecraftVersion}").versionRef(ldLib)
             library("ldlib-fabric", "com.lowdragmc.ldlib", "ldlib-fabric-${minecraftVersion}").versionRef(ldLib)
 
+            def sodium = version("sodium", sodiumVersion)
+            library("sodium", "maven.modrinth", "sodium").versionRef(sodium)
+
+            def iris = version("iris", irisVersion)
+            library("iris", "maven.modrinth", "iris").versionRef(iris)
         }
 
         forge {
@@ -59,6 +68,11 @@ dependencyResolutionManagement {
             def ldLib = version("ldlib", ldLibVersion)
             library("ldlib-forge", "com.lowdragmc.ldlib", "ldlib-forge-${minecraftVersion}").versionRef(ldLib)
 
+            def rubidium = version("rubidium", rubidiumVersion)
+            library("rubidium", "maven.modrinth", "rubidium").versionRef(rubidium)
+
+            def oculus = version("oculus", oculusVersion)
+            library("oculus", "maven.modrinth", "oculus").versionRef(oculus)
         }
 
         libs {

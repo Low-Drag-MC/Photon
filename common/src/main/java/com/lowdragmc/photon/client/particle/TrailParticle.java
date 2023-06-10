@@ -184,6 +184,12 @@ public abstract class TrailParticle extends LParticle {
         }
         int light = dynamicLight == null ? this.getLight(partialTicks) : dynamicLight.apply(this, partialTicks);
 
+        // fixed rotation
+        Vector3f fixedVec = null;
+        if (quaternion != null) {
+            fixedVec = quaternion.transform(new Vector3f(0, 0, 1));
+        }
+
         var pushHead = true;
         if (tails.peekLast() != null && tails.peekLast().equals(new Vector3f((float) x, (float) y, (float) z))) {
             pushHead = false;
@@ -206,7 +212,8 @@ public abstract class TrailParticle extends LParticle {
                 float width = getWidth(tailIndex, partialTicks);
 
                 var vec = new Vector3f(nextTail).sub(tail);
-                var normal = vec.cross(new Vector3f(tail).sub(cameraPos)).normalize();
+                var toTail = fixedVec == null ? new Vector3f(tail).sub(cameraPos) : fixedVec;
+                var normal = vec.cross(toTail).normalize();
                 if (lastNormal == null) {
                     lastNormal= normal;
                 }

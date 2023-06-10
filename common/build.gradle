@@ -38,6 +38,9 @@ dependencies {
 
     modCompileOnly fabric.ldlib.common
 
+    // Iris
+    modCompileOnly(fabric.sodium) { transitive = false }
+    modCompileOnly(fabric.iris) { transitive = false }
 }
 
 publishing {

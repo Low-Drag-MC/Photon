@@ -27,6 +27,8 @@ import lombok.Setter;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.util.Mth;
 import org.jetbrains.annotations.NotNull;
@@ -153,8 +155,8 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
     // runtime
     @Getter
-    protected final List<LParticle> particles = new ArrayList<>();
-    protected final ParticleRenderType renderType = new RenderType();
+    protected final Map<ParticleRenderType, Queue<LParticle>> particles = new HashMap<>();
+    protected final PhotonParticleRenderType renderType = new RenderType();
     @Getter @Setter
     protected boolean visible = true;
     @Nullable
@@ -163,6 +165,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
     public ParticleEmitter() {
         super(null, 0, 0, 0);
+        setCull(false);
     }
 
     public LParticle createRawParticle() {
@@ -333,6 +336,9 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
                 if (lights.isEnable()) {
                     particle.setDynamicLight((p, partialTicks) -> {
+                        if (usingBloom()) {
+                            return LightTexture.FULL_BRIGHT;
+                        }
                         if (lights.isEnable()) {
                             return lights.getLight(p, partialTicks);
                         }
@@ -351,7 +357,17 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
         }
 
         // particles life cycle
-        particles.removeIf(entry -> !entry.isAlive());
+        for (var queue : particles.values()) {
+            var iter = queue.iterator();
+            while (iter.hasNext()) {
+                var particle = iter.next();
+                if (!particle.isAlive()) {
+                    iter.remove();
+                } else {
+                    particle.tick();
+                }
+            }
+        }
 
         if (this.age >= this.duration && !isLooping()) {
             this.remove();
@@ -385,13 +401,32 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     }
 
     @Override
-    public void render(@NotNull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
+    public void render(@NotNull VertexConsumer buffer, Camera camera, float pPartialTicks) {
+        if (delay <= 0 && isVisible() && PhotonParticleRenderType.checkLayer(renderer.getLayer())) {
+            for(var entry : this.particles.entrySet()) {
+                var type = entry.getKey();
+                if (type == ParticleRenderType.NO_RENDER) continue;
+                var queue = entry.getValue();
+
+                RenderSystem.setShader(GameRenderer::getParticleShader);
+                RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+                Tesselator tesselator = Tesselator.getInstance();
+                BufferBuilder bufferbuilder = tesselator.getBuilder();
+
+                type.begin(bufferbuilder, Minecraft.getInstance().getTextureManager());
+                for (var particle : queue) {
+//                if (clippingHelper != null && particle.shouldCull() && !clippingHelper.isVisible(particle.getBoundingBox())) continue;
+                    particle.render(bufferbuilder, camera, pPartialTicks);
+                }
+                type.end(tesselator);
+            }
+        }
     }
 
     @Override
     @Nonnull
     public final ParticleRenderType getRenderType() {
-        return PhotonParticleRenderType.NO_RENDER;
+        return PhotonParticleRenderType.PHOTON_NO_RENDER;
     }
 
     private class RenderType extends PhotonParticleRenderType {
@@ -431,8 +466,8 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     //////////////////////////////////////
 
     public boolean emitParticle(LParticle particle) {
-        particles.add(particle);
-        particle.addParticle(this);
+        particle.prepareForEmitting(this);
+        particles.computeIfAbsent(particle.getRenderType(), type -> new LinkedList<>()).add(particle);
         return getParticleAmount() <= maxParticles;
     }
 

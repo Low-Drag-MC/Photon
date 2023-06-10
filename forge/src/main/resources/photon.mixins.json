@@ -2,9 +2,12 @@
   "required": true,
   "minVersion": "0.8",
   "package": "com.lowdragmc.photon.forge.core.mixins",
+  "plugin": "com.lowdragmc.photon.forge.core.PhotonMixinPlugin",
   "compatibilityLevel": "JAVA_17",
   "client": [
-    "ParticleEngineMixin"
+    "ParticleEngineMixin",
+    "LevelRendererMixin",
+    "no_iris.ParticleEngineMixin"
   ],
   "mixins": [
   ],
