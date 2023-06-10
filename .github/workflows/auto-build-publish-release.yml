@@ -48,8 +48,9 @@ jobs:
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
 
           files: |
-            fabric/build/libs/!(*-@(dev|sources|javadoc)).jar
+            fabric/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
 
+          name: Photon Editor 1.0.2
           version-type: beta
 
           loaders: |
@@ -79,8 +80,9 @@ jobs:
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
 
           files: |
-            forge/build/libs/!(*-@(dev|sources|javadoc)).jar
+            forge/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
 
+          name: Photon Editor 1.0.2
           version-type: beta
 
           loaders: |
