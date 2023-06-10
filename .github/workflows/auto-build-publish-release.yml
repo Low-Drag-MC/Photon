@@ -34,46 +34,68 @@ jobs:
         with:
           arguments: build publish
 
-      - name: Upload Jars
-        uses: actions/upload-artifact@v3
+      - name: mc-publish-fabric
+        uses: Kir-Antipov/mc-publish@v3.3
         with:
-          name: Photon
-          path: |
-            fabric/build/libs/
-            forge/build/libs/
+          # Only include this section if you wish to publish
+          # your assets on Modrinth.
+          modrinth-id: gzevkJbM
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
 
-      - name: Get Forge file name
-        id: forge_jar
-        run: |
-          MESSAGE=$(ls forge/build/libs/* | grep sources.jar -v | grep shadow.jar -v)
-          echo file_path=$MESSAGE >> $GITHUB_OUTPUT
-      - name: Upload to CurseForge
-        uses: itsmeow/curseforge-upload@v3
-        with:
-          token: ${{ secrets.CURSEFORGE_TOKEN }}
-          project_id: 871522
-          game_endpoint: minecraft
-          file_path: ${{ steps.forge_jar.outputs.file_path }}
-          changelog: See recent commits [here](https://github.com/Low-Drag-MC/Photon/commits/${{ github.sha }}). This is only marked as a beta release so CurseForge shows it on the front page.
-          changelog_type: markdown
-          game_versions: "Minecraft 1.20:1.20,Java 17,Forge"
-          release_type: beta
-          relations: ldlib:requiredDependency
+          # Only include this section if you wish to publish
+          # your assets on CurseForge.
+          curseforge-id: 871522
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
 
-      - name: Get Fabric file name
-        id: fabric_jar
-        run: |
-          MESSAGE=$(ls fabric/build/libs/* | grep sources.jar -v | grep shadow.jar -v)
-          echo file_path=$MESSAGE >> $GITHUB_OUTPUT
-      - name: Upload to CurseForge
-        uses: itsmeow/curseforge-upload@v3
+          files: |
+            fabric/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
+
+          name: Photon Editor 1.0.2-fabric
+          version: mc1.20-fabric-1.0.2
+          version-type: beta
+
+          loaders: |
+            fabric
+          game-versions: |
+            1.20
+          game-version-filter: none
+          dependencies: |
+            ldlib@1.0.7(required){modrinth:B1CBVXHX}{curseforge:626676}
+          java: |
+            17
+          retry-attempts: 2
+          retry-delay: 10000
+          fail-mode: fail
+
+      - name: mc-publish-forge
+        uses: Kir-Antipov/mc-publish@v3.3
         with:
-          token: ${{ secrets.CURSEFORGE_TOKEN }}
-          project_id: 871522
-          game_endpoint: minecraft
-          file_path: ${{ steps.fabric_jar.outputs.file_path }}
-          changelog: See recent commits [here](https://github.com/Low-Drag-MC/Photon/commits/${{ github.sha }}). This is only marked as a beta release so CurseForge shows it on the front page.
-          changelog_type: markdown
-          game_versions: "Minecraft 1.20:1.20,Java 17,Fabric"
-          release_type: beta
-          relations: ldlib:requiredDependency
+          # Only include this section if you wish to publish
+          # your assets on Modrinth.
+          modrinth-id: gzevkJbM
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+
+          # Only include this section if you wish to publish
+          # your assets on CurseForge.
+          curseforge-id: 871522
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+
+          files: |
+            forge/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
+
+          name: Photon Editor 1.0.2-forge
+          version: mc1.20-forge-1.0.2
+          version-type: beta
+
+          loaders: |
+            forge
+          game-versions: |
+            1.20
+          game-version-filter: none
+          dependencies: |
+            ldlib@1.0.7(required){modrinth:B1CBVXHX}{curseforge:626676}
+          java: |
+            17
+          retry-attempts: 2
+          retry-delay: 10000
+          fail-mode: fail

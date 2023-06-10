@@ -36,10 +36,20 @@ public class RendererSetting {
         }
     }
 
+    public enum Layer {
+        Opaque,
+        Translucent
+    }
+
     @Getter
     @Setter
     @Configurable(tips = "Defines the render mode of the particle renderer.")
     protected Mode renderMode = Mode.Billboard;
+
+    @Getter
+    @Setter
+    @Configurable(tips = "Defines the render layer of the particle renderer.")
+    protected Layer layer = Layer.Translucent;
 
     @Getter
     @Setter

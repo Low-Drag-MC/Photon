@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor;
 
+import com.lowdragmc.lowdraglib.Platform;
 import com.lowdragmc.lowdraglib.client.scene.ParticleManager;
 import com.lowdragmc.lowdraglib.client.scene.WorldSceneRenderer;
 import com.lowdragmc.lowdraglib.client.utils.RenderUtils;
@@ -16,6 +17,8 @@ import com.lowdragmc.lowdraglib.utils.TrackedDummyWorld;
 import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
 import net.minecraft.client.gui.GuiGraphics;
 import org.joml.Vector3f;
+import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -44,7 +47,7 @@ public class ParticleScene extends SceneWidget {
     @Getter
     protected final TrackedDummyWorld level = new TrackedDummyWorld();
     @Getter
-    protected final ParticleManager particleManager = new ParticleManager();
+    protected final PhotonParticleManager particleManager = new PhotonParticleManager();
     @Getter
     protected final ParticleEditor editor;
     @Getter
@@ -57,7 +60,9 @@ public class ParticleScene extends SceneWidget {
         this.editor = editor;
         setRenderFacing(false);
         setRenderSelect(false);
-        useCacheBuffer();
+        if (!Photon.isShaderModInstalled() || Platform.isForge()) {
+            useCacheBuffer();
+        }
         resetScene();
         var buttonGroup = initButtons();
         buttonGroup.addSelfPosition((getSize().width - buttonGroup.getSize().width) / 2, 10);
