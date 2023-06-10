@@ -50,7 +50,7 @@ jobs:
           files: |
             fabric/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
 
-          name: Photon Fabric 1.0.2-fabric
+          name: Photon Editor 1.0.2-fabric
           version-type: beta
 
           loaders: |
