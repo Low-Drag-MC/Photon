@@ -27,10 +27,14 @@ dependencyResolutionManagement {
         def lazyDfuVersion = "0.1.3"
         def modMenuVersion = "4.1.2"
         def topFabricVersion = "1.19-6.0.0"
+        def sodiumVersion = "mc1.19.2-0.4.4"
+        def irisVersion = "1.6.4+1.19.2"
 
         // Forge
         def forgeVersion = "43.2.0"
         def topForgeVersion = "1.19-6.2.0-6"
+        def rubidiumVersion = "0.6.2b"
+        def oculusVersion = "1.19.2-1.2.8a"
 
         // Libs
         def quiltMappingsVersion = "21"  // https://lambdaurora.dev/tools/import_quilt.html
@@ -76,6 +80,12 @@ dependencyResolutionManagement {
             def theoneprobe = version("theoneprobe", topFabricVersion)
             library("theoneprobe", "mcjty.theoneprobe", "theoneprobe-fabric").versionRef(theoneprobe)
 
+            def sodium = version("sodium", sodiumVersion)
+            library("sodium", "maven.modrinth", "sodium").versionRef(sodium)
+
+            def iris = version("iris", irisVersion)
+            library("iris", "maven.modrinth", "iris").versionRef(iris)
+
         }
 
         forge {
@@ -98,6 +108,12 @@ dependencyResolutionManagement {
 
             def theoneprobe = version("theoneprobe", topForgeVersion)
             library("theoneprobe", "mcjty.theoneprobe", "theoneprobe").versionRef(theoneprobe)
+
+            def rubidium = version("rubidium", rubidiumVersion)
+            library("rubidium", "maven.modrinth", "rubidium").versionRef(rubidium)
+
+            def oculus = version("oculus", oculusVersion)
+            library("oculus", "maven.modrinth", "oculus").versionRef(oculus)
         }
 
         libs {

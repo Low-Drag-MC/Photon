@@ -1,6 +1,10 @@
 package com.lowdragmc.photon.client.emitter.data.material;
 
+import com.lowdragmc.lowdraglib.client.shader.management.ShaderManager;
+import com.lowdragmc.lowdraglib.gui.editor.ui.Editor;
 import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
+import com.lowdragmc.photon.Photon;
+import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Matrix4f;
@@ -11,6 +15,8 @@ import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.nbt.CompoundTag;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 
@@ -31,13 +37,67 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
     }
 
     @Override
-    public final void begin(BufferBuilder builder, TextureManager textureManager, boolean isInstancing) {
-        RenderSystem.setShader(this::getShader);
-        setupUniform();
+    public void begin(BufferBuilder builder, TextureManager textureManager, boolean isInstancing) {
+        if (Photon.isUsingShaderPack() && Editor.INSTANCE == null) {
+            var lastShader = RenderSystem.getShader();
+
+            ShaderManager.getTempTarget().clear(false);
+            ShaderManager.getTempTarget().bindWrite(true);
+            int lastID = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+
+            float imageU = 0;
+            float imageV = 0;
+            float imageWidth = 1;
+            float imageHeight = 1;
+            Tesselator tessellator = Tesselator.getInstance();
+            BufferBuilder bufferbuilder = tessellator.getBuilder();
+            RenderSystem.setShader(this::getShader);
+            setupUniform();
+
+            RenderSystem.backupProjectionMatrix();
+            var mat = new Matrix4f();
+            mat.setIdentity();
+            RenderSystem.setProjectionMatrix(mat);
+
+            var stack = RenderSystem.getModelViewStack();
+            stack.pushPose();
+            stack.setIdentity();
+            RenderSystem.applyModelViewMatrix();
+
+            var lightTexture = Minecraft.getInstance().gameRenderer.lightTexture();
+            lightTexture.turnOnLightLayer();
+            bufferbuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
+
+
+
+            bufferbuilder.vertex(-1, -1, 0).uv(imageU, imageV).color(-1).uv2(LightTexture.FULL_BRIGHT).endVertex();
+            bufferbuilder.vertex(1, -1, 0).uv(imageU + imageWidth, imageV).color(-1).uv2(LightTexture.FULL_BRIGHT).endVertex();
+            bufferbuilder.vertex(1, 1, 0).uv(imageU + imageWidth, imageV + imageHeight).color(-1).uv2(LightTexture.FULL_BRIGHT).endVertex();
+            bufferbuilder.vertex(-1, 1, 0).uv(imageU, imageV + imageHeight).color(-1).uv2(LightTexture.FULL_BRIGHT).endVertex();
+
+            tessellator.end();
+            lightTexture.turnOffLightLayer();
+            RenderSystem.restoreProjectionMatrix();
+
+            stack.popPose();
+            RenderSystem.applyModelViewMatrix();
+
+            GlStateManager._glBindFramebuffer(36160, lastID);
+            if (!ShaderManager.getInstance().hasViewPort()) {
+                var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+                GlStateManager._viewport(0, 0, mainTarget.viewWidth, mainTarget.viewHeight);
+            }
+
+            RenderSystem.setShaderTexture(0, ShaderManager.getTempTarget().getColorTextureId());
+            RenderSystem.setShader(() -> lastShader);
+        } else {
+            RenderSystem.setShader(this::getShader);
+            setupUniform();
+        }
     }
 
     @Override
-    public final void end(Tesselator tesselator, boolean isInstancing) {
+    public void end(Tesselator tesselator, boolean isInstancing) {
     }
 
     @Override

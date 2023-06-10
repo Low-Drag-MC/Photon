@@ -109,6 +109,10 @@ dependencies {
 
     // TOP
     modImplementation(forge.theoneprobe) { transitive = false }
+
+    // Oculus
+    modImplementation(forge.rubidium) { transitive = false }
+    modImplementation(forge.oculus) { transitive = false }
 }
 
 processResources {

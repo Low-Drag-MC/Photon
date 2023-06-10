@@ -35,6 +35,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.texture.TextureManager;
 
 import javax.annotation.Nonnull;
@@ -173,14 +174,15 @@ public class TrailsSetting extends ToggleGroup {
                 return width;
             });
 
-            if (emitter.getLights().isEnable()) {
-                trail.setDynamicLight((p, partialTicks) -> {
-                    if (emitter.getLights().isEnable()) {
-                        return emitter.getLights().getLight(p, partialTicks);
-                    }
-                    return p.getLight();
-                });
-            }
+            trail.setDynamicLight((p, partialTicks) -> {
+                if (emitter.usingBloom()) {
+                    return LightTexture.FULL_BRIGHT;
+                }
+                if (emitter.getLights().isEnable()) {
+                    return emitter.getLights().getLight(p, partialTicks);
+                }
+                return p.getLight();
+            });
 
             emitter.emitParticle(trail);
         }

@@ -184,6 +184,14 @@ public abstract class TrailParticle extends LParticle {
         }
         int light = dynamicLight == null ? this.getLight(partialTicks) : dynamicLight.apply(this, partialTicks);
 
+        // fixed rotation
+        Vector3 fixedVec = null;
+        if (quaternion != null) {
+            var rotation = quaternion.toXYZ();
+            var zVec = Vector3.Z.copy();
+            fixedVec = zVec.rotate(rotation.x(), Vector3.X).rotate(rotation.y(), Vector3.Y).rotate(rotation.z(), Vector3.Z);
+        }
+
         var pushHead = true;
         if (tails.peekLast() != null && tails.peekLast().equals(new Vector3(x, y, z))) {
             pushHead = false;
@@ -206,7 +214,9 @@ public abstract class TrailParticle extends LParticle {
                 float width = getWidth(tailIndex, partialTicks);
 
                 var vec = nextTail.copy().subtract(tail);
-                var normal = vec.crossProduct(tail.copy().subtract(cameraPos)).normalize();
+                var toTail = fixedVec == null ? tail.copy().subtract(cameraPos) : fixedVec;
+
+                var normal = vec.crossProduct(toTail).normalize();
                 if (lastNormal == null) {
                     lastNormal= normal;
                 }

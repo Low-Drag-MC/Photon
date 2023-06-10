@@ -27,6 +27,13 @@ subprojects {
         mavenCentral()
         maven { url = "https://maven.shedaniel.me/" } // Cloth Config, REI
         maven {
+            name = "Modrinth"
+            url = "https://api.modrinth.com/maven"
+            content {
+                includeGroup "maven.modrinth"
+            }
+        } // Modrinth File
+        maven {
             url "https://cursemaven.com"
             content {
                 includeGroup "curse.maven"

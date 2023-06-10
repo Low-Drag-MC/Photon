@@ -47,6 +47,10 @@ dependencies {
     modCompileOnly fabric.jei.fabric.api
     modCompileOnly fabric.jei.fabric.impl
 
+    // Iris
+    modCompileOnly(fabric.sodium) { transitive = false }
+    modCompileOnly(fabric.iris) { transitive = false }
+
 }
 
 publishing {

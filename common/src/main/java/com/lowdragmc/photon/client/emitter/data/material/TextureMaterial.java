@@ -14,10 +14,13 @@ import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget;
 import com.lowdragmc.lowdraglib.gui.widget.DialogWidget;
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
+import com.lowdragmc.photon.Photon;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferBuilder;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.renderer.ShaderInstance;
+import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 
@@ -77,6 +80,16 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     public void setupUniform() {
         RenderSystem.setShaderTexture(0, texture);
         Shaders.getParticleShader().safeGetUniform("DiscardThreshold").set(discardThreshold);
+    }
+
+    @Override
+    public void begin(BufferBuilder builder, TextureManager textureManager, boolean isInstancing) {
+        if (Photon.isUsingShaderPack() && Editor.INSTANCE == null) {
+            RenderSystem.setShaderTexture(0, texture);
+        } else {
+            RenderSystem.setShader(this::getShader);
+            setupUniform();
+        }
     }
 
     @Override

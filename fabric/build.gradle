@@ -82,6 +82,13 @@ dependencies {
     modCompileOnlyApi(fabric.jei.fabric.api) { transitive = false }
     modImplementation(fabric.jei.fabric.impl) { transitive = false }
 
+    // Iris
+    modImplementation(fabric.sodium) { transitive = false }
+    implementation 'org.joml:joml:1.10.4'
+    modImplementation(fabric.iris) { transitive = false }
+    implementation 'org.anarres:jcpp:1.4.14'
+    implementation 'io.github.douira:glsl-transformer:2.0.0-pre13'
+
 }
 
 processResources {
