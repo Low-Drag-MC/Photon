@@ -29,6 +29,8 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -93,7 +95,8 @@ LParticle extends Particle {
     @Nullable
     protected IParticleEmitter emitter;
     @Getter
-    protected Function<Object, Float> memRandom = Util.memoize(o -> getRandomSource().nextFloat());
+    protected Map<Object, Float> memRandom = new ConcurrentHashMap<>();
+
     @Getter
     protected boolean stoppedByCollision;
 
@@ -484,7 +487,11 @@ LParticle extends Particle {
     }
 
     public float getMemRandom(Object object) {
-        return memRandom.apply(object);
+        return memRandom.computeIfAbsent(object, o -> random.nextFloat());
+    }
+
+    public float getMemRandom(Object object, Function<RandomSource, Float> randomFunc) {
+        return memRandom.computeIfAbsent(object, o -> randomFunc.apply(random));
     }
 
     public void setRotation(Vector3f rotation) {

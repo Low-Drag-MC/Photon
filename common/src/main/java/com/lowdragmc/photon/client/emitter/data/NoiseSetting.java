@@ -87,16 +87,22 @@ public class NoiseSetting extends ToggleGroup {
         return value;
     }
 
+    public void setupSeed(LParticle particle) {
+        noise.setSeed(particle.getMemRandom("noise-seed", randomSource -> (float) randomSource.nextGaussian()) * 255);
+    }
+
     public Vector3f getRotation(LParticle particle, float partialTicks) {
+        setupSeed(particle);
         var t = particle.getT(partialTicks);
         var degree = rotation.get(t, () -> particle.getMemRandom("noise-rotation")).floatValue();
         if (degree != 0) {
-            return new Vector3f(degree, 0, 0).mul((float) (getNoise((t + 10 * particle.getMemRandom("noise-rotation-degree")) * 100) * Mth.TWO_PI / 360));
+            return new Vector3f(degree, 0, 0).mul(getNoise((t + 10 * particle.getMemRandom("noise-rotation-degree")) * 100) * Mth.TWO_PI / 360);
         }
         return new Vector3f(0 ,0, 0);
     }
 
     public Vector3f getSize(LParticle particle, float partialTicks) {
+        setupSeed(particle);
         var t = particle.getT(partialTicks);
         var scale = size.get(t, () -> particle.getMemRandom("noise-size")).floatValue();
         if (scale != 0) {
@@ -106,6 +112,7 @@ public class NoiseSetting extends ToggleGroup {
     }
 
     public Vector3f getPosition(LParticle particle, float partialTicks) {
+        setupSeed(particle);
         var t = particle.getT(partialTicks);
         var offset = position.get(t, () -> particle.getMemRandom("noise-position"));
         if (!(offset.x == 0 && offset.y == 0 && offset.z == 0)) {
