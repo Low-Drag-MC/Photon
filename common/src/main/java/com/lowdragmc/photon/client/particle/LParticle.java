@@ -521,7 +521,7 @@ LParticle extends Particle {
 
     public void resetParticle() {
         resetAge();
-        this.memRandom = Util.memoize(o -> getRandomSource().nextFloat());
+        this.memRandom.clear();
         this.stoppedByCollision = false;
         this.removed = false;
         this.onGround = false;

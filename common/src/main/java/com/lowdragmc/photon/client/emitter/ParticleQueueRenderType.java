@@ -4,6 +4,7 @@ import com.lowdragmc.photon.client.particle.LParticle;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.Tesselator;
+import lombok.Getter;
 import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
@@ -30,15 +31,19 @@ public class ParticleQueueRenderType extends PhotonParticleRenderType {
     protected final Map<ParticleRenderType, List<Queue<LParticle>>> particles = new HashMap<>();
     private Camera camera;
     private float pPartialTicks;
+    @Getter
+    private boolean isRenderingQueue;
 
     @Override
     public void begin(BufferBuilder builder, TextureManager textureManager) {
         particles.clear();
         camera = null;
+        isRenderingQueue = false;
     }
 
     @Override
     public void end(Tesselator tesselator) {
+        isRenderingQueue = true;
         var frustum = PhotonParticleRenderType.getFRUSTUM();
         for (var entry : particles.entrySet()) {
             var type = entry.getKey();
@@ -57,6 +62,7 @@ public class ParticleQueueRenderType extends PhotonParticleRenderType {
                 type.end(tesselator);
             }
         }
+        isRenderingQueue = false;
     }
 
     public void pipeQueue(@Nonnull ParticleRenderType type, @Nonnull Queue<LParticle> queue, Camera camera, float pPartialTicks) {
