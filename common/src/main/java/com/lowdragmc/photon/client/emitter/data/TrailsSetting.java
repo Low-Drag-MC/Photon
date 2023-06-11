@@ -3,7 +3,6 @@ package com.lowdragmc.photon.client.emitter.data;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
-import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
 import com.lowdragmc.photon.client.emitter.data.material.CustomShaderMaterial;
 import com.lowdragmc.photon.client.emitter.data.number.Constant;
@@ -17,7 +16,8 @@ import com.lowdragmc.photon.client.emitter.data.number.color.RandomGradient;
 import com.lowdragmc.photon.client.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.emitter.ParticleEmitter;
+import com.lowdragmc.photon.client.emitter.particle.ParticleConfig;
+import com.lowdragmc.photon.client.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.client.particle.TrailParticle;
 import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
@@ -34,7 +34,6 @@ import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.texture.TextureManager;
 import org.joml.Vector4f;
@@ -103,10 +102,10 @@ public class TrailsSetting extends ToggleGroup {
     protected final MaterialSetting material = new MaterialSetting();
 
     //runtime
-    protected final ParticleRenderType renderType;
+    protected final PhotonParticleRenderType renderType;
 
-    public TrailsSetting(IParticleEmitter emitter) {
-        renderType = new RenderType(emitter);
+    public TrailsSetting(ParticleConfig config) {
+        renderType = new RenderType(config);
         material.setMaterial(new CustomShaderMaterial());
         material.cull = false;
     }
@@ -179,8 +178,8 @@ public class TrailsSetting extends ToggleGroup {
                 if (emitter.usingBloom()) {
                     return LightTexture.FULL_BRIGHT;
                 }
-                if (emitter.getLights().isEnable()) {
-                    return emitter.getLights().getLight(p, partialTicks);
+                if (emitter.getConfig().getLights().isEnable()) {
+                    return emitter.getConfig().getLights().getLight(p, partialTicks);
                 }
                 return p.getLight();
             });
@@ -190,14 +189,15 @@ public class TrailsSetting extends ToggleGroup {
     }
 
     private class RenderType extends PhotonParticleRenderType {
-        final IParticleEmitter emitter;
-        public RenderType(IParticleEmitter emitter) {
-            this.emitter = emitter;
+        protected final ParticleConfig config;
+
+        public RenderType(ParticleConfig config) {
+            this.config = config;
         }
 
         @Override
         public void begin(@Nonnull BufferBuilder bufferBuilder, @Nonnull TextureManager textureManager) {
-            if (emitter != null && emitter.usingBloom() && emitter.isVisible()) {
+            if (config.getRenderer().isBloomEffect()) {
                 beginBloom();
             }
             material.pre();
@@ -219,9 +219,22 @@ public class TrailsSetting extends ToggleGroup {
             if (lastBlend != null) {
                 lastBlend.apply();
             }
-            if (emitter != null && emitter.usingBloom() && emitter.isVisible()) {
+            if (config.getRenderer().isBloomEffect()) {
                 endBloom();
             }
+        }
+
+        @Override
+        public int hashCode() {
+            return config.hashCode();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof RenderType type) {
+                return type.config.equals(config);
+            }
+            return super.equals(obj);
         }
     }
 }

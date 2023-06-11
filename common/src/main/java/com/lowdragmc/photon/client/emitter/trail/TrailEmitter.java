@@ -1,23 +1,17 @@
-package com.lowdragmc.photon.client.emitter;
+package com.lowdragmc.photon.client.emitter.trail;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.ConfigSetter;
-import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
-import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
+import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
+import com.lowdragmc.lowdraglib.gui.editor.runtime.PersistedParser;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
+import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
+import net.minecraft.nbt.CompoundTag;
 import org.joml.Vector3f;
-import com.lowdragmc.photon.client.emitter.data.LightOverLifetimeSetting;
-import com.lowdragmc.photon.client.emitter.data.MaterialSetting;
-import com.lowdragmc.photon.client.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.emitter.data.material.CustomShaderMaterial;
-import com.lowdragmc.photon.client.emitter.data.number.Constant;
-import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
-import com.lowdragmc.photon.client.emitter.data.number.NumberFunctionConfig;
-import com.lowdragmc.photon.client.emitter.data.number.color.Color;
-import com.lowdragmc.photon.client.emitter.data.number.color.Gradient;
-import com.lowdragmc.photon.client.emitter.data.number.curve.Curve;
-import com.lowdragmc.photon.client.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.fx.IFXEffect;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.client.particle.TrailParticle;
@@ -50,48 +44,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 @ParametersAreNonnullByDefault
 @LDLRegister(name = "trail", group = "emitter")
 public class TrailEmitter extends TrailParticle implements IParticleEmitter {
+    public static int VERSION = 1;
+
     @Setter
     @Getter
     @Persisted
     protected String name = "particle emitter";
-
-    @Setter
     @Getter
-    @Configurable(tips = "How long the tail should be (ticks)[O, infinity].")
-    @NumberRange(range = {0f, Integer.MAX_VALUE})
-    protected int time = 20;
+    @Persisted
+    protected final TrailConfig config;
     @Getter
-    @Configurable(tips = "The minimum distance each trail can travel before adding a new vertex.")
-    @NumberRange(range = {0f, Float.MAX_VALUE})
-    protected float minVertexDistance = 0.05f;
-    @Setter @Getter
-    @Configurable(tips = "Should the U coordinate be stretched or tiled?")
-    protected TrailParticle.UVMode uvMode = TrailParticle.UVMode.Stretch;
-    @Setter
-    @Getter
-    @Configurable(tips = "Select a width for the trail from its start to end vertex.")
-    @NumberFunctionConfig(types = {Constant.class, Curve.class}, min = 0, defaultValue = 1f, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "trail position", yAxis = "width"))
-    protected NumberFunction widthOverTrail = NumberFunction.constant(2f);
-    @Setter
-    @Getter
-    @Configurable(tips = "Select a color for the trail from its start to end vertex.")
-    @NumberFunctionConfig(types = {Color.class, Gradient.class}, defaultValue = -1)
-    protected NumberFunction colorOverTrail = new Gradient();
-    @Getter
-    @Configurable(name = "Material", subConfigurable = true, tips = "Open Reference for Tail Material.")
-    protected final MaterialSetting material = new MaterialSetting();
-    @Getter
-    @Configurable(name = "Renderer", subConfigurable = true, tips = "Specifies how the particles are rendered.")
-    protected final RendererSetting renderer = new RendererSetting();
-    @Getter
-    @Configurable(name = "Fixed Light", subConfigurable = true, tips = "Controls the light map of each particle during its lifetime.")
-    protected final LightOverLifetimeSetting lights = new LightOverLifetimeSetting();
+    protected final PhotonParticleRenderType renderType;
 
     // runtime
     @Getter
-    protected final ParticleRenderType renderType = new RenderType();
-    @Getter
-    protected final Map<ParticleRenderType, Queue<LParticle>> particles = Map.of(renderType, new ArrayDeque<>(1));
+    protected final Map<ParticleRenderType, Queue<LParticle>> particles;
     @Getter @Setter
     protected boolean visible = true;
     @Nullable
@@ -99,20 +66,66 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     protected IFXEffect fXEffect;
     protected LinkedList<AtomicInteger> tailsTime = new LinkedList<>();
 
-    protected TrailEmitter() {
+    public TrailEmitter() {
+        this(new TrailConfig());
+    }
+
+    public TrailEmitter(TrailConfig config) {
         super(null, 0, 0, 0);
-        material.setMaterial(new CustomShaderMaterial());
+        this.config = config;
+        this.renderType = new RenderType(config);
+        this.particles = Map.of(renderType, new ArrayDeque<>(1));
+        init();
+    }
+
+    @Override
+    public IParticleEmitter copy(boolean deep) {
+        if (deep) {
+            return IParticleEmitter.super.copy();
+        }
+        return new TrailEmitter(config);
+    }
+
+    @Override
+    public CompoundTag serializeNBT() {
+        var tag = IParticleEmitter.super.serializeNBT();
+        tag.putInt("_version", VERSION);
+        return tag;
+    }
+
+    @Override
+    public void deserializeNBT(CompoundTag tag) {
+        var version = tag.contains("_version") ? tag.getInt("_version") : 0;
+        if (version == 0) { // legacy version
+            name = tag.getString("name");
+            PersistedParser.deserializeNBT(tag, new HashMap<>(), config.getClass(), config);
+            return;
+        }
+        IParticleEmitter.super.deserializeNBT(tag);
+    }
+
+    @Override
+    public void buildConfigurator(ConfiguratorGroup father) {
+        ConfiguratorParser.createConfigurators(father, new HashMap<>(), config.getClass(), config);
+    }
+
+    //////////////////////////////////////
+    //*****     particle logic     *****//
+    //////////////////////////////////////
+
+    public void init() {
+        config.material.setMaterial(new CustomShaderMaterial());
         particles.get(renderType).add(this);
         super.setLifetime(-1);
         super.setUvMode(uvMode);
-        super.setMinimumVertexDistance(minVertexDistance);
+        super.setMinimumVertexDistance(config.minVertexDistance);
         super.setOnRemoveTails(t -> {
             var iterT = tailsTime.iterator();
             var iter = tails.iterator();
             while (iter.hasNext() && iterT.hasNext()) {
                 var tailTime = iterT.next();
                 iter.next();
-                if (tailTime.getAndAdd(1) > time) {
+                if (tailTime.getAndAdd(1) > config.time) {
                     iterT.remove();
                     iter.remove();
                 }
@@ -121,16 +134,16 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
         });
         super.setDieWhenRemoved(false);
         super.setDynamicTailColor((t, tail, partialTicks) -> {
-            int color = colorOverTrail.get(tail / (t.getTails().size() - 1f), () -> t.getMemRandom("trails-colorOverTrail")).intValue();
+            int color = config.colorOverTrail.get(tail / (t.getTails().size() - 1f), () -> t.getMemRandom("trails-colorOverTrail")).intValue();
             return new Vector4f(ColorUtils.red(color), ColorUtils.green(color), ColorUtils.blue(color), ColorUtils.alpha(color));
         });
-        super.setDynamicTailWidth((t, tail, partialTicks) -> 0.2f * widthOverTrail.get(tail / (t.getTails().size() - 1f), () -> t.getMemRandom("trails-widthOverTrail")).floatValue());
+        super.setDynamicTailWidth((t, tail, partialTicks) -> 0.2f * config.widthOverTrail.get(tail / (t.getTails().size() - 1f), () -> t.getMemRandom("trails-widthOverTrail")).floatValue());
         super.setDynamicLight((t, partialTicks) -> {
             if (usingBloom()) {
                 return LightTexture.FULL_BRIGHT;
             }
-            if (lights.isEnable()) {
-                return lights.getLight(t, partialTicks);
+            if (config.lights.isEnable()) {
+                return config.lights.getLight(t, partialTicks);
             }
             return t.getLight();
         });
@@ -142,7 +155,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
         if (fXEffect != null && fXEffect.updateEmitter(this)) {
             return;
         }
-        renderer.setupQuaternion(this);
+        config.renderer.setupQuaternion(this);
         super.update();
     }
 
@@ -156,7 +169,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     @ConfigSetter(field = "minVertexDistance")
     public void setMinimumVertexDistance(float minimumVertexDistance) {
         super.setMinimumVertexDistance(minimumVertexDistance);
-        this.minVertexDistance = minimumVertexDistance;
+        config.minVertexDistance = minimumVertexDistance;
     }
 
     @Override
@@ -177,7 +190,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
 
     @Override
     public void render(@NotNull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
-        if (delay <= 0 && isVisible() && PhotonParticleRenderType.checkLayer(renderer.getLayer())) {
+        if (delay <= 0 && isVisible() && PhotonParticleRenderType.checkLayer(config.renderer.getLayer())) {
             super.render(pBuffer, pRenderInfo, pPartialTicks);
         }
     }
@@ -189,17 +202,23 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
 
     @Override
     public boolean usingBloom() {
-        return renderer.isBloomEffect();
+        return config.renderer.isBloomEffect();
     }
 
-    private class RenderType extends PhotonParticleRenderType {
+    private static class RenderType extends PhotonParticleRenderType {
+        protected final TrailConfig config;
+
+        public RenderType(TrailConfig config) {
+            this.config = config;
+        }
+
         @Override
         public void begin(@Nonnull BufferBuilder bufferBuilder, @Nonnull TextureManager textureManager) {
-            if (usingBloom() && isVisible()) {
+            if (config.renderer.isBloomEffect()) {
                 beginBloom();
             }
-            material.pre();
-            material.getMaterial().begin(bufferBuilder, textureManager, false);
+            config.material.pre();
+            config.material.getMaterial().begin(bufferBuilder, textureManager, false);
             Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
             bufferBuilder.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.PARTICLE);
         }
@@ -212,14 +231,27 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
                 BlendModeAccessor.setLastApplied(shader.getBlend());
             }
             tesselator.end();
-            material.getMaterial().end(tesselator, false);
-            material.post();
+            config.material.getMaterial().end(tesselator, false);
+            config.material.post();
             if (lastBlend != null) {
                 lastBlend.apply();
             }
-            if (usingBloom() && isVisible()) {
+            if (config.renderer.isBloomEffect()) {
                 endBloom();
             }
+        }
+
+        @Override
+        public int hashCode() {
+            return config.hashCode();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof RenderType type) {
+                return type.config.equals(config);
+            }
+            return super.equals(obj);
         }
     }
 
