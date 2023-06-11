@@ -49,7 +49,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     @Persisted
     protected String name = "particle emitter";
     @Getter
-    @Persisted
+    @Persisted(subPersisted = true)
     protected final ParticleConfig config;
     protected final PhotonParticleRenderType renderType;
 
@@ -340,7 +340,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
     @Override
     public void render(@NotNull VertexConsumer buffer, Camera camera, float pPartialTicks) {
-        if (delay <= 0 && isVisible() && PhotonParticleRenderType.checkLayer(config.renderer.getLayer())) {
+        if (!ParticleQueueRenderType.INSTANCE.isRenderingQueue() && delay <= 0 && isVisible() && PhotonParticleRenderType.checkLayer(config.renderer.getLayer())) {
             for(var entry : this.particles.entrySet()) {
                 var type = entry.getKey();
                 if (type == ParticleRenderType.NO_RENDER) continue;
