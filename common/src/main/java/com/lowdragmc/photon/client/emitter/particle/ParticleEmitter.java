@@ -6,11 +6,12 @@ import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.PersistedParser;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
+import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.emitter.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
+import com.mojang.math.Vector4f;
 import net.minecraft.nbt.CompoundTag;
-import org.joml.Vector3f;
 import com.lowdragmc.photon.client.fx.IFXEffect;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
@@ -27,7 +28,6 @@ import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.util.Mth;
 import org.jetbrains.annotations.NotNull;
-import org.joml.Vector4f;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -121,12 +121,12 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
         config.shape.setupParticle(particle);
         particle.setSpeed(config.startSpeed.get(randomSource, t).floatValue());
         var sizeScale = config.startSize.get(randomSource, t).floatValue();
-        var startedSize = new Vector3f(sizeScale, sizeScale, sizeScale);
+        var startedSize = new Vector3(sizeScale, sizeScale, sizeScale);
         particle.setSize(sizeScale);
-        var rotation = config.startRotation.get(randomSource, t).mul(Mth.TWO_PI / 360);
-        particle.setRoll(rotation.x);
-        particle.setPitch(rotation.y);
-        particle.setYaw(rotation.z);
+        var rotation = config.startRotation.get(randomSource, t).multiply(Mth.TWO_PI / 360);
+        particle.setRoll((float) rotation.x);
+        particle.setPitch((float) rotation.y);
+        particle.setYaw((float) rotation.z);
         particle.setARGBColor(config.startColor.get(randomSource, t).intValue());
         config.renderer.setupQuaternion(particle);
         if (config.physics.isEnable()) {
@@ -139,7 +139,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
         if (config.velocityOverLifetime.isEnable() || config.inheritVelocity.isEnable()) {
             particle.setVelocityAddition(p -> {
-                var addition = new Vector3f(0, 0, 0);
+                var addition = new Vector3(0, 0, 0);
                 if (config.velocityOverLifetime.isEnable()) {
                     addition.add(config.velocityOverLifetime.getVelocityAddition(p, this));
                 }
@@ -214,7 +214,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                     size = config.sizeOverLifetime.getSize(startedSize, p, partialTicks);
                 }
                 if (config.noise.isEnable()) {
-                    size = new Vector3f(size).add(config.noise.getSize(p, partialTicks));
+                    size = new Vector3(size).add(config.noise.getSize(p, partialTicks));
                 }
                 return size;
             });
@@ -222,7 +222,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
         if (config.rotationOverLifetime.isEnable() || config.rotationBySpeed.isEnable() || config.noise.isEnable()) {
             particle.setRotationAddition((p, partialTicks) -> {
-                var addition = new Vector3f(0, 0, 0);
+                var addition = new Vector3(0, 0, 0);
                 if (config.rotationOverLifetime.isEnable()) {
                     addition.add(config.rotationOverLifetime.getRotation(p, partialTicks));
                 }
@@ -241,7 +241,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                 if (config.noise.isEnable()) {
                     return config.noise.getPosition(p, partialTicks);
                 }
-                return new Vector3f(0 ,0, 0);
+                return new Vector3(0 ,0, 0);
             });
         }
 

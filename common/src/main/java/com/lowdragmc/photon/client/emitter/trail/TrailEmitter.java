@@ -7,11 +7,12 @@ import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.PersistedParser;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
+import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.emitter.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
+import com.mojang.math.Vector4f;
 import net.minecraft.nbt.CompoundTag;
-import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.data.material.CustomShaderMaterial;
 import com.lowdragmc.photon.client.fx.IFXEffect;
 import com.lowdragmc.photon.client.particle.LParticle;
@@ -29,7 +30,6 @@ import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.texture.TextureManager;
 import org.jetbrains.annotations.NotNull;
-import org.joml.Vector4f;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -161,7 +161,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     }
 
     @Override
-    protected void addNewTail(Vector3f tail) {
+    protected void addNewTail(Vector3 tail) {
         super.addNewTail(tail);
         tailsTime.addLast(new AtomicInteger(0));
     }
