@@ -6,7 +6,9 @@ import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.WrapperConfigurator;
 import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
-import com.lowdragmc.lowdraglib.utils.Vector3;
+import net.minecraft.client.gui.GuiGraphics;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import com.lowdragmc.lowdraglib.utils.noise.PerlinNoise;
 import com.lowdragmc.photon.client.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.emitter.data.number.curve.CurveConfig;
@@ -15,7 +17,6 @@ import com.lowdragmc.photon.client.emitter.data.number.*;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
-import com.mojang.math.Matrix4f;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -73,7 +74,7 @@ public class NoiseSetting extends ToggleGroup {
     protected NumberFunction size = NumberFunction.constant(0);
 
 
-    public double getNoise(float t) {
+    public float getNoise(float t) {
         var input = t * frequency;
         float value = (float)switch (quality) {
             case Noise1D -> noise.noise(input);
@@ -86,35 +87,42 @@ public class NoiseSetting extends ToggleGroup {
         return value;
     }
 
-    public Vector3 getRotation(LParticle particle, float partialTicks) {
+    public void setupSeed(LParticle particle) {
+        noise.setSeed(particle.getMemRandom("noise-seed", randomSource -> (float) randomSource.nextGaussian()) * 255);
+    }
+
+    public Vector3f getRotation(LParticle particle, float partialTicks) {
+        setupSeed(particle);
         var t = particle.getT(partialTicks);
         var degree = rotation.get(t, () -> particle.getMemRandom("noise-rotation")).floatValue();
         if (degree != 0) {
-            return new Vector3(degree, 0, 0).multiply(getNoise((t + 10 * particle.getMemRandom("noise-rotation-degree")) * 100) * Mth.TWO_PI / 360);
+            return new Vector3f(degree, 0, 0).mul(getNoise((t + 10 * particle.getMemRandom("noise-rotation-degree")) * 100) * Mth.TWO_PI / 360);
         }
-        return Vector3.ZERO;
+        return new Vector3f(0 ,0, 0);
     }
 
-    public Vector3 getSize(LParticle particle, float partialTicks) {
+    public Vector3f getSize(LParticle particle, float partialTicks) {
+        setupSeed(particle);
         var t = particle.getT(partialTicks);
         var scale = size.get(t, () -> particle.getMemRandom("noise-size")).floatValue();
         if (scale != 0) {
-            return new Vector3(scale, scale, scale).multiply(getNoise((t + 10 * particle.getMemRandom("noise-size-scale")) * 100));
+            return new Vector3f(scale, scale, scale).mul(getNoise((t + 10 * particle.getMemRandom("noise-size-scale")) * 100));
         }
-        return Vector3.ZERO;
+        return new Vector3f(0 ,0, 0);
     }
 
-    public Vector3 getPosition(LParticle particle, float partialTicks) {
+    public Vector3f getPosition(LParticle particle, float partialTicks) {
+        setupSeed(particle);
         var t = particle.getT(partialTicks);
         var offset = position.get(t, () -> particle.getMemRandom("noise-position"));
-        if (!offset.isZero()) {
-            offset.multiply(
+        if (!(offset.x == 0 && offset.y == 0 && offset.z == 0)) {
+            offset.mul(
                     getNoise((t + 10 * particle.getMemRandom("noise-position-x")) * 100),
                     getNoise((t + 10 * particle.getMemRandom("noise-position-y")) * 100),
                     getNoise((t + 10 * particle.getMemRandom("noise-position-z")) * 100));
             return offset;
         }
-        return Vector3.ZERO;
+        return new Vector3f(0 ,0, 0);
     }
 
     @Override
@@ -136,12 +144,11 @@ public class NoiseSetting extends ToggleGroup {
 
         @Override
         @Environment(EnvType.CLIENT)
-        public void draw(PoseStack stack, int mouseX, int mouseY, float x, float y, int width, int height) {
+        public void draw(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, int width, int height) {
             // render color bar
-            RenderSystem.disableTexture();
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
-            Matrix4f mat = stack.last().pose();
+            Matrix4f mat = graphics.pose().last().pose();
             Tesselator tesselator = Tesselator.getInstance();
             BufferBuilder buffer = tesselator.getBuilder();
             RenderSystem.setShader(GameRenderer::getPositionColorShader);
@@ -181,7 +188,6 @@ public class NoiseSetting extends ToggleGroup {
             }
 
             tesselator.end();
-            RenderSystem.enableTexture();
         }
     }
 }

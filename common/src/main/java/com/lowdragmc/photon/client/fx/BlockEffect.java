@@ -2,7 +2,7 @@ package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
-import com.lowdragmc.photon.client.emitter.TrailEmitter;
+import com.lowdragmc.photon.client.emitter.trail.TrailEmitter;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;

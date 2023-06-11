@@ -82,6 +82,10 @@ public interface IParticleEmitter extends IConfigurable, IAutoPersistedSerializa
     }
 
     default IParticleEmitter copy() {
+        return copy(false);
+    }
+
+    default IParticleEmitter copy(boolean deep) {
         return deserializeWrapper(serializeNBT());
     }
 
