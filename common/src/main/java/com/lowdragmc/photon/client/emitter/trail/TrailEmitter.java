@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib.gui.editor.runtime.PersistedParser;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.emitter.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
 import net.minecraft.nbt.CompoundTag;
 import org.joml.Vector3f;
@@ -51,9 +52,8 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     @Persisted
     protected String name = "particle emitter";
     @Getter
-    @Persisted
+    @Persisted(subPersisted = true)
     protected final TrailConfig config;
-    @Getter
     protected final PhotonParticleRenderType renderType;
 
     // runtime
@@ -68,6 +68,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
 
     public TrailEmitter() {
         this(new TrailConfig());
+        config.material.setMaterial(new CustomShaderMaterial());
     }
 
     public TrailEmitter(TrailConfig config) {
@@ -114,7 +115,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     //////////////////////////////////////
 
     public void init() {
-        config.material.setMaterial(new CustomShaderMaterial());
+        particles.get(renderType).clear();
         particles.get(renderType).add(this);
         super.setLifetime(-1);
         super.setUvMode(uvMode);
@@ -190,9 +191,17 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
 
     @Override
     public void render(@NotNull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
-        if (delay <= 0 && isVisible() && PhotonParticleRenderType.checkLayer(config.renderer.getLayer())) {
+        if (ParticleQueueRenderType.INSTANCE.isRenderingQueue()) {
             super.render(pBuffer, pRenderInfo, pPartialTicks);
+        } else if (delay <= 0 && isVisible() && PhotonParticleRenderType.checkLayer(config.renderer.getLayer())) {
+            ParticleQueueRenderType.INSTANCE.pipeQueue(renderType, particles.get(renderType), pRenderInfo, pPartialTicks);
         }
+    }
+
+    @Override
+    @Nonnull
+    public ParticleRenderType getRenderType() {
+        return ParticleQueueRenderType.INSTANCE;
     }
 
     @Override
