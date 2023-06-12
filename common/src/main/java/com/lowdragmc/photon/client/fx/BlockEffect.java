@@ -2,7 +2,6 @@ package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
-import com.lowdragmc.photon.client.emitter.trail.TrailEmitter;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -58,11 +57,8 @@ public class BlockEffect implements IFXEffect {
     public boolean updateEmitter(IParticleEmitter emitter) {
         var state = level.getBlockState(pos);
         if (lastState.getBlock() != state.getBlock() || (state != lastState && checkState)) {
-            emitter.self().remove();
-            if (forcedDeath) {
-                emitter.getParticles().clear();
-                return true;
-            }
+            emitter.remove(forcedDeath);
+            return forcedDeath;
         }
         return false;
     }
@@ -90,9 +86,6 @@ public class BlockEffect implements IFXEffect {
         }
         var realPos= new Vector3(pos).add(xOffset + 0.5, yOffset + 0.5, zOffset + 0.5);
         for (var emitter : emitters) {
-            if (emitter instanceof TrailEmitter) {
-                continue;
-            }
             emitter.reset();
             emitter.self().setDelay(delay);
             emitter.setFXEffect(this);

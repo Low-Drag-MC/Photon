@@ -2,7 +2,6 @@ package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
-import com.lowdragmc.photon.client.emitter.trail.TrailEmitter;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -54,10 +53,11 @@ public class EntityEffect implements IFXEffect {
     @Override
     public boolean updateEmitter(IParticleEmitter emitter) {
         if (entity.isRemoved()) {
-            emitter.self().remove();
-            return true;
+            emitter.remove(forcedDeath);
+            return forcedDeath;
+        } else {
+            emitter.self().setPos(entity.getX() + xOffset, entity.getY() + yOffset, entity.getZ() + zOffset);
         }
-        emitter.self().setPos(entity.getX() + xOffset, entity.getY() + yOffset, entity.getZ() + zOffset);
         return false;
     }
 
@@ -88,9 +88,6 @@ public class EntityEffect implements IFXEffect {
             emitter.reset();
             emitter.self().setDelay(delay);
             emitter.setFXEffect(this);
-            if (emitter instanceof TrailEmitter trail) {
-                trail.setDieWhenRemoved(forcedDeath);
-            }
             emitter.emmitToLevel(level, realPos.x, realPos.y, realPos.z);
         }
     }

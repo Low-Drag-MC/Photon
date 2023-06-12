@@ -422,4 +422,12 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     public boolean usingBloom() {
         return config.renderer.isBloomEffect();
     }
+
+    @Override
+    public void remove(boolean force) {
+        remove();
+        if (force) {
+            particles.clear();
+        }
+    }
 }

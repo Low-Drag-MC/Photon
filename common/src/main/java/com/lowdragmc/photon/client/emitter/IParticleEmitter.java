@@ -89,6 +89,12 @@ public interface IParticleEmitter extends IConfigurable, IAutoPersistedSerializa
         return deserializeWrapper(serializeNBT());
     }
 
+    /**
+     * force - remove without waiting.
+     */
+    default void remove(boolean force) {
+        self().remove();
+    }
 
     /**
      * emitter name unique for one project
@@ -98,7 +104,9 @@ public interface IParticleEmitter extends IConfigurable, IAutoPersistedSerializa
     void setName(String name);
 
     /**
-     * particles emitted from this emitter
+     * particles emitted from this emitter.
+     * <br>
+     * you should not modify it, just read data.
      */
     Map<ParticleRenderType, Queue<LParticle>> getParticles();
 
@@ -123,5 +131,4 @@ public interface IParticleEmitter extends IConfigurable, IAutoPersistedSerializa
     boolean usingBloom();
 
     void setFXEffect(IFXEffect effect);
-
 }
