@@ -55,7 +55,7 @@ public class ParticleQueueRenderType extends PhotonParticleRenderType {
                 type.begin(bufferbuilder, Minecraft.getInstance().getTextureManager());
                 for (var queue : list) {
                     for (var particle : queue) {
-                        if (frustum != null && particle.shouldCull() && !frustum.isVisible(particle.getBoundingBox())) continue;
+//                        if (frustum != null && particle.shouldCull() && !frustum.isVisible(particle.getBoundingBox())) continue;
                         particle.render(bufferbuilder, camera, pPartialTicks);
                     }
                 }
