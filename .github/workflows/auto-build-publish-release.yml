@@ -50,9 +50,10 @@ jobs:
           files: |
             fabric/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
 
-          name: Photon Editor 1.0.2-fabric
-          version: mc1.20-fabric-1.0.2
+          name: Photon Editor 1.0.3-fabric
+          version: mc1.20-fabric-1.0.3
           version-type: beta
+          changelog-file: CHANGELOG.*
 
           loaders: |
             fabric
@@ -83,9 +84,10 @@ jobs:
           files: |
             forge/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
 
-          name: Photon Editor 1.0.2-forge
-          version: mc1.20-forge-1.0.2
+          name: Photon Editor 1.0.3-forge
+          version: mc1.20-forge-1.0.3
           version-type: beta
+          changelog-file: CHANGELOG.*
 
           loaders: |
             forge
