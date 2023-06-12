@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
@@ -12,7 +13,7 @@ import java.util.List;
  * @date 2023/6/6
  * @implNote FX
  */
-public record FX(ResourceLocation location, List<IParticleEmitter> emitters) {
+public record FX(ResourceLocation location, List<IParticleEmitter> emitters, CompoundTag rawData) {
 
     public Collection<? extends IParticleEmitter> generateEmitters() {
         List<IParticleEmitter> list = new ArrayList<>(emitters.size());
