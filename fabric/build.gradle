@@ -19,6 +19,10 @@ architectury {
     fabric()
 }
 
+static def isJetBrainsRuntime() {
+    return System.getProperty('java.vm.vendor').contains('JetBrains')
+}
+
 loom {
     accessWidenerPath = common_project.file("src/main/resources/${mod_id}.accesswidener")
 
@@ -33,6 +37,15 @@ loom {
         }
         client {
             programArgs("--username", "Player")
+        }
+    }
+
+    if (isJetBrainsRuntime()) {
+        runs {
+            client {
+                vmArgs '-XX:+AllowEnhancedClassRedefinition'
+                vmArgs '-XX:HotswapAgent=fatjar'
+            }
         }
     }
 }
