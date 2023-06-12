@@ -1,7 +1,6 @@
 package com.lowdragmc.photon.command;
 
 import com.lowdragmc.lowdraglib.networking.IHandlerContext;
-import com.lowdragmc.lowdraglib.networking.IPacket;
 import com.lowdragmc.lowdraglib.networking.LDLNetworking;
 import com.lowdragmc.photon.client.fx.EntityEffect;
 import com.lowdragmc.photon.client.fx.FXHelper;
@@ -21,9 +20,7 @@ import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 
@@ -33,24 +30,14 @@ import java.util.List;
  * @implNote EntityEffectCommand
  */
 @NoArgsConstructor
-public class EntityEffectCommand implements IPacket {
+public class EntityEffectCommand extends EffectCommand {
 
     @Setter
-    private ResourceLocation location;
-    @Setter
-    private List<Entity> entities;
-    @Setter
-    private Vec3 offset = Vec3.ZERO;
-    @Setter
-    private int delay;
-    @Setter
-    private boolean forcedDeath;
-    @Setter
-    private boolean allowMulti;
+    protected List<Entity> entities;
     // client
     private int[] ids = new int[0];
 
-    public static LiteralArgumentBuilder<CommandSourceStack> createCommand() {
+    public static LiteralArgumentBuilder<CommandSourceStack> createServerCommand() {
         return Commands.literal("entity")
                 .then(Commands.argument("entities", EntityArgument.entities())
                         .executes(c -> execute(c, 0))
@@ -67,6 +54,7 @@ public class EntityEffectCommand implements IPacket {
     private static int execute(CommandContext<CommandSourceStack> context, int feature) throws CommandSyntaxException {
         var command = new EntityEffectCommand();
         command.setLocation(ResourceLocationArgument.getId(context, "location"));
+        command.setData(EffectCommand.loadData(command.location));
         command.setEntities(EntityArgument.getEntities(context, "entities").stream().map(e -> (Entity) e).toList());
         if (feature >= 1) {
             command.setOffset(Vec3Argument.getVec3(context, "offset"));
@@ -86,38 +74,28 @@ public class EntityEffectCommand implements IPacket {
 
     @Override
     public void encode(FriendlyByteBuf buf) {
-        buf.writeResourceLocation(location);
+        super.encode(buf);
         buf.writeVarInt(entities.size());
         for (Entity entity : entities) {
             buf.writeVarInt(entity.getId());
         }
-        buf.writeDouble(offset.x);
-        buf.writeDouble(offset.y);
-        buf.writeDouble(offset.z);
-        buf.writeVarInt(delay);
-        buf.writeBoolean(forcedDeath);
-        buf.writeBoolean(allowMulti);
     }
 
     @Override
     public void decode(FriendlyByteBuf buf) {
-        location = buf.readResourceLocation();
-        var size = buf.readVarInt();
-        ids = new int[size];
-        for (int i = 0; i < size; i++) {
+        super.decode(buf);
+        ids = new int[buf.readVarInt()];
+        for (int i = 0; i < ids.length; i++) {
             ids[i] = buf.readVarInt();
         }
-        offset = new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble());
-        delay = buf.readVarInt();
-        forcedDeath = buf.readBoolean();
-        allowMulti = buf.readBoolean();
     }
 
     @Override
     @Environment(EnvType.CLIENT)
     public void execute(IHandlerContext handler) {
         var level = handler.getLevel();
-        var fx = FXHelper.getFX(location);
+        if (data == null) return;
+        var fx = FXHelper.getFX(location, data);
         if (fx != null) {
             for (var id : ids) {
                 var entity = level.getEntity(id);
