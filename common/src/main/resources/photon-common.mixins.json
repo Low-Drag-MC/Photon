@@ -11,6 +11,7 @@
     "accessor.ShaderInstanceAccessor"
   ],
   "mixins": [
+    "ArgumentTypeInfosMixin"
   ],
   "injectors": {
     "defaultRequire": 1

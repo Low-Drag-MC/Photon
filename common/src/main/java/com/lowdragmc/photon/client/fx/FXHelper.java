@@ -10,6 +10,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 
 import javax.annotation.Nullable;
+import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -21,12 +22,15 @@ import java.util.Map;
  * @implNote FXHelper
  */
 @Environment(EnvType.CLIENT)
+@ParametersAreNonnullByDefault
 public class FXHelper {
     private final static Map<ResourceLocation, FX> CACHE = new HashMap<>();
     public static final String FX_PATH = "fx/";
 
-    public static void clearCache() {
+    public static int clearCache() {
+        var count = CACHE.size();
         CACHE.clear();
+        return count;
     }
 
     @Nullable
@@ -35,20 +39,35 @@ public class FXHelper {
             ResourceLocation resourceLocation = new ResourceLocation(fxLocation.getNamespace(), FX_PATH + fxLocation.getPath() + ".fx");
             try (var inputStream = Minecraft.getInstance().getResourceManager().open(resourceLocation);) {
                 var tag = NbtIo.readCompressed(inputStream);
-                List<IParticleEmitter> emitters = new ArrayList<>();
-                for (var nbt : tag.getList("emitters", Tag.TAG_COMPOUND)) {
-                    if (nbt instanceof CompoundTag data) {
-                        var emitter = IParticleEmitter.deserializeWrapper(data);
-                        if (emitter != null) {
-                            emitters.add(emitter);
-                        }
-                    }
-                }
-                return new FX(fxLocation, emitters);
+                return new FX(fxLocation, getEmitters(tag), tag);
             } catch (Exception ignored) {
                 return null;
             }
         });
+    }
+
+    /**
+     * it is called when command require to emit particle by a given tag from server.
+     * it will always check whether the cache location and tag match.
+     */
+    public static FX getFX(ResourceLocation fxLocation, CompoundTag tag) {
+        if (!CACHE.containsKey(fxLocation) || !CACHE.get(fxLocation).rawData().equals(tag)) {
+            CACHE.put(fxLocation, new FX(fxLocation, getEmitters(tag), tag));
+        }
+        return CACHE.get(fxLocation);
+    }
+
+    public static List<IParticleEmitter> getEmitters(CompoundTag tag) {
+        List<IParticleEmitter> emitters = new ArrayList<>();
+        for (var nbt : tag.getList("emitters", Tag.TAG_COMPOUND)) {
+            if (nbt instanceof CompoundTag data) {
+                var emitter = IParticleEmitter.deserializeWrapper(data);
+                if (emitter != null) {
+                    emitters.add(emitter);
+                }
+            }
+        }
+        return emitters;
     }
 
 }

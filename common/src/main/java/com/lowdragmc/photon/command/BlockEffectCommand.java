@@ -1,7 +1,6 @@
 package com.lowdragmc.photon.command;
 
 import com.lowdragmc.lowdraglib.networking.IHandlerContext;
-import com.lowdragmc.lowdraglib.networking.IPacket;
 import com.lowdragmc.lowdraglib.networking.LDLNetworking;
 import com.lowdragmc.photon.client.fx.BlockEffect;
 import com.lowdragmc.photon.client.fx.FXHelper;
@@ -11,7 +10,6 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -22,33 +20,23 @@ import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.phys.Vec3;
 
 /**
  * @author KilaBash
  * @date 2023/6/5
  * @implNote BlockEffectCommand
  */
-@NoArgsConstructor
-public class BlockEffectCommand implements IPacket {
+public class BlockEffectCommand extends EffectCommand {
+    @Setter
+    protected BlockPos pos;
+    @Setter
+    protected boolean checkState;
 
-    @Setter
-    private ResourceLocation location;
-    @Setter
-    private BlockPos pos;
-    @Setter
-    private Vec3 offset = Vec3.ZERO;
-    @Setter
-    private int delay;
-    @Setter
-    private boolean forcedDeath;
-    @Setter
-    private boolean allowMulti;
-    @Setter
-    private boolean checkState;
+    public BlockEffectCommand() {
+        super();
+    }
 
-    public static LiteralArgumentBuilder<CommandSourceStack> createCommand() {
+    public static LiteralArgumentBuilder<CommandSourceStack> createServerCommand() {
         return Commands.literal("block")
                 .then(Commands.argument("pos", BlockPosArgument.blockPos())
                         .executes(c -> execute(c, 0))
@@ -67,6 +55,7 @@ public class BlockEffectCommand implements IPacket {
     private static int execute(CommandContext<CommandSourceStack> context, int feature) throws CommandSyntaxException {
         var command = new BlockEffectCommand();
         command.setLocation(ResourceLocationArgument.getId(context, "location"));
+        command.setData(EffectCommand.loadData(command.location));
         command.setPos(BlockPosArgument.getLoadedBlockPos(context, "pos"));
         if (feature >= 1) {
             command.setOffset(Vec3Argument.getVec3(context, "offset"));
@@ -89,33 +78,23 @@ public class BlockEffectCommand implements IPacket {
 
     @Override
     public void encode(FriendlyByteBuf buf) {
-        buf.writeResourceLocation(location);
+        super.encode(buf);
         buf.writeBlockPos(pos);
-        buf.writeDouble(offset.x);
-        buf.writeDouble(offset.y);
-        buf.writeDouble(offset.z);
-        buf.writeVarInt(delay);
-        buf.writeBoolean(forcedDeath);
-        buf.writeBoolean(allowMulti);
         buf.writeBoolean(checkState);
     }
 
     @Override
     public void decode(FriendlyByteBuf buf) {
-        location = buf.readResourceLocation();
+        super.decode(buf);
         pos = buf.readBlockPos();
-        offset = new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble());
-        delay = buf.readVarInt();
-        forcedDeath = buf.readBoolean();
-        allowMulti = buf.readBoolean();
         checkState = buf.readBoolean();
     }
 
     @Override
     @Environment(EnvType.CLIENT)
     public void execute(IHandlerContext handler) {
-        if (handler.getLevel().isLoaded(pos)) {
-            var fx = FXHelper.getFX(location);
+        if (handler.getLevel().isLoaded(pos) && data != null) {
+            var fx = FXHelper.getFX(location, data);
             if (fx != null) {
                 var effect = new BlockEffect(fx, handler.getLevel(), pos);
                 effect.setOffset(offset.x, offset.y, offset.z);
