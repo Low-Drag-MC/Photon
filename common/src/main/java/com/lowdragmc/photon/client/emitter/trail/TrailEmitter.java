@@ -214,6 +214,14 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
         return config.renderer.isBloomEffect();
     }
 
+    @Override
+    public void remove(boolean force) {
+        remove();
+        if (force) {
+            dieWhenRemoved = true;
+        }
+    }
+
     private static class RenderType extends PhotonParticleRenderType {
         protected final TrailConfig config;
 
