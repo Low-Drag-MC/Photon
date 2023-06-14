@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.emitter;
 
 import com.lowdragmc.lowdraglib.client.scene.ParticleManager;
+import com.lowdragmc.lowdraglib.gui.editor.ILDLRegisterClient;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.syncdata.IAutoPersistedSerializable;
 import com.lowdragmc.lowdraglib.utils.DummyWorld;
@@ -26,7 +27,7 @@ import java.util.Queue;
  * @implNote IParticleEmitter
  */
 @Environment(EnvType.CLIENT)
-public interface IParticleEmitter extends IConfigurable, IAutoPersistedSerializable {
+public interface IParticleEmitter extends IConfigurable, ILDLRegisterClient, IAutoPersistedSerializable {
 
     default LParticle self() {
         return (LParticle) this;

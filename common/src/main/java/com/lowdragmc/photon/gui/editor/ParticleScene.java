@@ -42,7 +42,6 @@ import java.util.Set;
  * @date 2023/5/26
  * @implNote ParticleScene
  */
-@Environment(EnvType.CLIENT)
 public class ParticleScene extends SceneWidget {
     @Getter
     protected final TrackedDummyWorld level = new TrackedDummyWorld();

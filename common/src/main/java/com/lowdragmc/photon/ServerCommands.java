@@ -1,14 +1,12 @@
 package com.lowdragmc.photon;
 
 import com.lowdragmc.photon.command.BlockEffectCommand;
-import com.lowdragmc.photon.command.EffectCommand;
 import com.lowdragmc.photon.command.EntityEffectCommand;
 import com.lowdragmc.photon.command.FxLocationArgument;
 import com.lowdragmc.photon.gui.ParticleEditorFactory;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.network.chat.Component;
 
 import java.util.List;
 
@@ -32,11 +30,6 @@ public class ServerCommands {
                                         .then(BlockEffectCommand.createServerCommand())
                                         .then(EntityEffectCommand.createServerCommand())
                                 ))
-                        .then(Commands.literal("clear_server_fx_cache").requires(source -> source.hasPermission(2))
-                                .executes(context -> {
-                                    context.getSource().sendSystemMessage(Component.literal("clear server cache fx: " + EffectCommand.clearCache()));
-                                    return 1;
-                                }))
 
         );
     }
