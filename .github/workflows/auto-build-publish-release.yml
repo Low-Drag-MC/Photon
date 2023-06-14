@@ -50,8 +50,8 @@ jobs:
           files: |
             fabric/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
 
-          name: Photon Editor 1.0.3.a-fabric
-          version: mc1.19.2-fabric-1.0.3.a
+          name: Photon Editor 1.0.3.b-fabric
+          version: mc1.19.2-fabric-1.0.3.b
           version-type: beta
           changelog-file: CHANGELOG.*
 
@@ -60,8 +60,6 @@ jobs:
           game-versions: |
             1.19.2
           game-version-filter: none
-          dependencies: |
-            ldlib@1.0.7(required){modrinth:B1CBVXHX}{curseforge:626676}
           java: |
             17
           retry-attempts: 2
@@ -84,8 +82,8 @@ jobs:
           files: |
             forge/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
 
-          name: Photon Editor 1.0.3.a-forge
-          version: mc1.19.2-forge-1.0.3.a
+          name: Photon Editor 1.0.3.b-forge
+          version: mc1.19.2-forge-1.0.3.b
           version-type: beta
           changelog-file: CHANGELOG.*
 
@@ -94,8 +92,6 @@ jobs:
           game-versions: |
             1.19.2
           game-version-filter: none
-          dependencies: |
-            ldlib@1.0.7(required){modrinth:B1CBVXHX}{curseforge:626676}
           java: |
             17
           retry-attempts: 2

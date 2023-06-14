@@ -89,6 +89,7 @@ dependencies {
 
     // LDLib
     modImplementation(fabric.ldlib.fabric) { transitive = false }
+    include(fabric.ldlib.fabric)
 
     // JEI
     modCompileOnlyApi(fabric.jei.common.api) { transitive = false }

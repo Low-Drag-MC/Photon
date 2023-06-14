@@ -96,6 +96,7 @@ dependencies {
 
     // LDLib
     modImplementation(forge.ldlib.forge) { transitive = false }
+    include(forge.ldlib.forge)
 
     // JEI
     modCompileOnly forge.jei.common.api
