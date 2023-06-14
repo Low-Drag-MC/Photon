@@ -46,17 +46,6 @@ public class FXHelper {
         });
     }
 
-    /**
-     * it is called when command require to emit particle by a given tag from server.
-     * it will always check whether the cache location and tag match.
-     */
-    public static FX getFX(ResourceLocation fxLocation, CompoundTag tag) {
-        if (!CACHE.containsKey(fxLocation) || !CACHE.get(fxLocation).rawData().equals(tag)) {
-            CACHE.put(fxLocation, new FX(fxLocation, getEmitters(tag), tag));
-        }
-        return CACHE.get(fxLocation);
-    }
-
     public static List<IParticleEmitter> getEmitters(CompoundTag tag) {
         List<IParticleEmitter> emitters = new ArrayList<>();
         for (var nbt : tag.getList("emitters", Tag.TAG_COMPOUND)) {

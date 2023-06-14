@@ -54,7 +54,6 @@ public class EntityEffectCommand extends EffectCommand {
     private static int execute(CommandContext<CommandSourceStack> context, int feature) throws CommandSyntaxException {
         var command = new EntityEffectCommand();
         command.setLocation(ResourceLocationArgument.getId(context, "location"));
-        command.setData(EffectCommand.loadData(command.location));
         command.setEntities(EntityArgument.getEntities(context, "entities").stream().map(e -> (Entity) e).toList());
         if (feature >= 1) {
             command.setOffset(Vec3Argument.getVec3(context, "offset"));
@@ -94,8 +93,7 @@ public class EntityEffectCommand extends EffectCommand {
     @Environment(EnvType.CLIENT)
     public void execute(IHandlerContext handler) {
         var level = handler.getLevel();
-        if (data == null) return;
-        var fx = FXHelper.getFX(location, data);
+        var fx = FXHelper.getFX(location);
         if (fx != null) {
             for (var id : ids) {
                 var entity = level.getEntity(id);

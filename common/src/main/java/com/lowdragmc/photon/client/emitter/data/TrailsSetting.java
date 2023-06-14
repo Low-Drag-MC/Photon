@@ -181,7 +181,7 @@ public class TrailsSetting extends ToggleGroup {
                 if (emitter.getConfig().getLights().isEnable()) {
                     return emitter.getConfig().getLights().getLight(p, partialTicks);
                 }
-                return p.getLight();
+                return p.getLight(partialTicks);
             });
 
             emitter.emitParticle(trail);

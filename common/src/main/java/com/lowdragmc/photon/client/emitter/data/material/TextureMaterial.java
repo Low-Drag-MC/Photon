@@ -34,7 +34,6 @@ import java.io.File;
  */
 @Environment(EnvType.CLIENT)
 @ParametersAreNonnullByDefault
-@LDLRegister(name = "texture", group = "material")
 public class TextureMaterial extends ShaderInstanceMaterial {
 
     @Configurable
