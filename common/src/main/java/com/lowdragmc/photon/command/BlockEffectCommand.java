@@ -55,7 +55,6 @@ public class BlockEffectCommand extends EffectCommand {
     private static int execute(CommandContext<CommandSourceStack> context, int feature) throws CommandSyntaxException {
         var command = new BlockEffectCommand();
         command.setLocation(ResourceLocationArgument.getId(context, "location"));
-        command.setData(EffectCommand.loadData(command.location));
         command.setPos(BlockPosArgument.getLoadedBlockPos(context, "pos"));
         if (feature >= 1) {
             command.setOffset(Vec3Argument.getVec3(context, "offset"));
@@ -93,8 +92,8 @@ public class BlockEffectCommand extends EffectCommand {
     @Override
     @Environment(EnvType.CLIENT)
     public void execute(IHandlerContext handler) {
-        if (handler.getLevel().isLoaded(pos) && data != null) {
-            var fx = FXHelper.getFX(location, data);
+        if (handler.getLevel().isLoaded(pos)) {
+            var fx = FXHelper.getFX(location);
             if (fx != null) {
                 var effect = new BlockEffect(fx, handler.getLevel(), pos);
                 effect.setOffset(offset.x, offset.y, offset.z);

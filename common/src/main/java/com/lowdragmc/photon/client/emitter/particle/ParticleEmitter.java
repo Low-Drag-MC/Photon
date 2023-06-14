@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.emitter.particle;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
+import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.PersistedParser;
@@ -40,7 +41,7 @@ import java.util.*;
  * @implNote ParticleEmitter
  */
 @ParametersAreNonnullByDefault
-@LDLRegister(name = "particle", group = "emitter")
+@LDLRegisterClient(name = "particle", group = "emitter")
 public class ParticleEmitter extends LParticle implements IParticleEmitter {
     public static int VERSION = 1;
 
@@ -261,7 +262,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
             if (config.lights.isEnable()) {
                 return config.lights.getLight(p, partialTicks);
             }
-            return p.getLight();
+            return p.getLight(partialTicks);
         });
 
         if (config.trails.isEnable()) {

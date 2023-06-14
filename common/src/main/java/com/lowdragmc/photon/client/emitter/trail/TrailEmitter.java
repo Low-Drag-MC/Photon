@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.emitter.trail;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
+import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.PersistedParser;
@@ -43,7 +44,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @implNote TrailEmitter
  */
 @ParametersAreNonnullByDefault
-@LDLRegister(name = "trail", group = "emitter")
+@LDLRegisterClient(name = "trail", group = "emitter")
 public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     public static int VERSION = 1;
 
@@ -146,7 +147,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
             if (config.lights.isEnable()) {
                 return config.lights.getLight(t, partialTicks);
             }
-            return t.getLight();
+            return t.getLight(partialTicks);
         });
     }
 

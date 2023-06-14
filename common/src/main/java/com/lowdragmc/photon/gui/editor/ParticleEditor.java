@@ -9,6 +9,8 @@ import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import lombok.Getter;
 import lombok.Setter;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
 
 import javax.annotation.Nullable;
 import java.io.File;
@@ -21,7 +23,7 @@ import java.io.File;
 @LDLRegister(name = "editor.particle", group = "editor")
 public class ParticleEditor extends Editor {
 
-    @Getter
+    @Environment(EnvType.CLIENT)
     protected ParticleScene particleScene;
     @Getter
     @Nullable
@@ -33,6 +35,11 @@ public class ParticleEditor extends Editor {
 
     public ParticleEditor(File workSpace) {
         super(workSpace);
+    }
+
+    @Environment(EnvType.CLIENT)
+    public ParticleScene getParticleScene() {
+        return particleScene;
     }
 
     @Override

@@ -412,7 +412,7 @@ LParticle extends Particle {
         return roll;
     }
 
-    protected int getLight(float pPartialTick) {
+    public int getLight(float pPartialTick) {
         if (light >= 0) return light;
         if (getLevel() == null) return 0xf000f0;
         return getLightColor(pPartialTick);

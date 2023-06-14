@@ -43,7 +43,6 @@ import java.util.Map;
  */
 @Environment(EnvType.CLIENT)
 @ParametersAreNonnullByDefault
-@LDLRegister(name = "custom shader", group = "material")
 public class CustomShaderMaterial extends ShaderInstanceMaterial {
     private static final Map<ResourceLocation, ShaderInstance> COMPILED_SHADERS = new HashMap<>();
 
