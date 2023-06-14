@@ -86,6 +86,7 @@ dependencies {
 
     // LDLib
     modImplementation(forge.ldlib.forge) { transitive = false }
+    include(forge.ldlib.forge)
 
     // Oculus
     modImplementation(forge.rubidium) { transitive = false }

@@ -88,6 +88,7 @@ dependencies {
 
     // LDLib
     modImplementation(fabric.ldlib.fabric) { transitive = false }
+    include(fabric.ldlib.fabric)
 
     // Iris
     modImplementation(fabric.sodium) { transitive = false }
