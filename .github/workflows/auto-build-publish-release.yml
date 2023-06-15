@@ -1,11 +1,13 @@
 name: 1.19.2 Auto Build
 
 on:
-  push:
-    branches:
-      - '1.19.2'
-    paths:
-      - 'gradle.properties'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish build files"
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -34,7 +36,23 @@ jobs:
         with:
           arguments: build publish
 
+      - name: Set fabric file env
+        id: fabric_file
+        run: |
+          echo "fabric_file=$FABRIC_FILE_NAME" >> "$GITHUB_ENV"
+      - name: Set forge file env
+        id: forge_file
+        run: |
+          echo "forge_file=$FABRIC_FORGE_NAME" >> "$GITHUB_ENV"
+
+      - name: "echo file name"
+        id: ""
+        run: |
+          echo $fabric_file
+          echo forge_file
+
       - name: mc-publish-fabric
+        if: ${{inputs.publish}}
         uses: Kir-Antipov/mc-publish@v3.3
         with:
           # Only include this section if you wish to publish
@@ -50,7 +68,7 @@ jobs:
           files: |
             fabric/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
 
-          name: Photon Editor 1.0.3.b-fabric
+          name: ${{env.fabric_file}}
           version: mc1.19.2-fabric-1.0.3.b
           version-type: beta
           changelog-file: CHANGELOG.*
@@ -68,6 +86,7 @@ jobs:
 
       - name: mc-publish-forge
         uses: Kir-Antipov/mc-publish@v3.3
+        if: ${{inputs.publish}}
         with:
           # Only include this section if you wish to publish
           # your assets on Modrinth.
@@ -82,7 +101,7 @@ jobs:
           files: |
             forge/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
 
-          name: Photon Editor 1.0.3.b-forge
+          name: ${{env.forge_file}}
           version: mc1.19.2-forge-1.0.3.b
           version-type: beta
           changelog-file: CHANGELOG.*

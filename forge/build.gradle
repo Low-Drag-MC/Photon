@@ -186,3 +186,7 @@ publishing {
         }
     }
 }
+
+if (System.getenv("GITHUB_ACTIONS") == "true"){
+    System.setProperty("FORGE_FILE_NAME", archivesBaseName)
+}
