@@ -1,11 +1,6 @@
-name: 1.20 Auto Build
+name: Auto Build, Publish, Releasing
 
-on:
-  push:
-    branches:
-      - '1.20'
-    paths:
-      - 'gradle.properties'
+on: workflow_dispatch
 
 jobs:
   build:
@@ -34,6 +29,14 @@ jobs:
         with:
           arguments: build publish
 
+      - name: Get Version
+        id: var
+        run: |
+          MESSAGE=$(ls fabric/build/libs/* | grep sources.jar -v | grep shadow.jar -v | awk -F 'photon-fabric-|.jar' '{print $2}')
+          echo fabric_version=$MESSAGE >> $GITHUB_OUTPUT
+          MESSAGE=$(ls forge/build/libs/* | grep sources.jar -v | grep shadow.jar -v | awk -F 'photon-forge-|.jar' '{print $2}')
+          echo forge_version=$MESSAGE >> $GITHUB_OUTPUT
+
       - name: mc-publish-fabric
         uses: Kir-Antipov/mc-publish@v3.3
         with:
@@ -49,16 +52,17 @@ jobs:
 
           files: |
             fabric/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
+            fabric/build/libs/*-@(dev|sources|javadoc|dev-shadow).jar
 
-          name: Photon Editor 1.0.3.b-fabric
-          version: mc1.20-fabric-1.0.3.b
+          name: Photon Editor ${{ steps.var.outputs.fabric_version }}-fabric
+          version: mc${{ steps.var.outputs.fabric_version }}-fabric
           version-type: beta
           changelog-file: CHANGELOG.*
 
           loaders: |
             fabric
           game-versions: |
-            1.20
+            ${{ github.ref_name }}
           game-version-filter: none
           java: |
             17
@@ -81,16 +85,17 @@ jobs:
 
           files: |
             forge/build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
+            forge/build/libs/*-@(dev|sources|javadoc|dev-shadow).jar
 
-          name: Photon Editor 1.0.3.b-forge
-          version: mc1.20-forge-1.0.3.b
+          name: Photon Editor ${{ steps.var.outputs.forge_version }}-forge
+          version: mc${{ steps.var.outputs.forge_version }}-forge
           version-type: beta
           changelog-file: CHANGELOG.*
 
           loaders: |
             forge
           game-versions: |
-            1.20
+            ${{ github.ref_name }}
           game-version-filter: none
           java: |
             17
