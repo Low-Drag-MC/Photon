@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.command;
 
 import com.lowdragmc.lowdraglib.networking.IHandlerContext;
-import com.lowdragmc.lowdraglib.networking.LDLNetworking;
+import com.lowdragmc.photon.PhotonNetworking;
 import com.lowdragmc.photon.client.fx.BlockEffect;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.mojang.brigadier.Command;
@@ -71,7 +71,7 @@ public class BlockEffectCommand extends EffectCommand {
         if (feature >= 5) {
             command.setCheckState(BoolArgumentType.getBool(context, "check state"));
         }
-        LDLNetworking.NETWORK.sendToTrackingChunk(command, context.getSource().getLevel().getChunkAt(command.pos));
+        PhotonNetworking.NETWORK.sendToTrackingChunk(command, context.getSource().getLevel().getChunkAt(command.pos));
         return Command.SINGLE_SUCCESS;
     }
 

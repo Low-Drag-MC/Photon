@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.fabric;
 
-import com.lowdragmc.photon.CommonProxy;
+import com.lowdragmc.photon.PhotonCommonProxy;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.ServerCommands;
 import com.mojang.blaze3d.pipeline.RenderTarget;
@@ -15,7 +15,7 @@ public class PhotonImpl implements ModInitializer {
         // register server commands
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> ServerCommands.createServerCommands().forEach(dispatcher::register));
         // init common features
-        CommonProxy.init();
+        PhotonCommonProxy.init();
     }
 
     public static boolean isStencilEnabled(RenderTarget fbo) {

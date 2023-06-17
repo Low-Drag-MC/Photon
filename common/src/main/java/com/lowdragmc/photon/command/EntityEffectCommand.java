@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.command;
 
 import com.lowdragmc.lowdraglib.networking.IHandlerContext;
-import com.lowdragmc.lowdraglib.networking.LDLNetworking;
+import com.lowdragmc.photon.PhotonNetworking;
 import com.lowdragmc.photon.client.fx.EntityEffect;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.mojang.brigadier.Command;
@@ -67,7 +67,7 @@ public class EntityEffectCommand extends EffectCommand {
         if (feature >= 4) {
             command.setAllowMulti(BoolArgumentType.getBool(context, "allow multi"));
         }
-        LDLNetworking.NETWORK.sendToAll(command);
+        PhotonNetworking.NETWORK.sendToAll(command);
         return Command.SINGLE_SUCCESS;
     }
 
