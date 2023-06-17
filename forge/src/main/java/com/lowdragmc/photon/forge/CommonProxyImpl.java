@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.forge;
 
-import com.lowdragmc.photon.CommonProxy;
+import com.lowdragmc.photon.PhotonCommonProxy;
 import com.lowdragmc.photon.ServerCommands;
 import com.lowdragmc.photon.integration.LDLibPlugin;
 import net.minecraftforge.common.MinecraftForge;
@@ -17,7 +17,7 @@ public class CommonProxyImpl {
         // register server commands
         MinecraftForge.EVENT_BUS.addListener(this::registerCommand);
         // init common features
-        CommonProxy.init();
+        PhotonCommonProxy.init();
         // register payloads
         LDLibPlugin.init();
     }

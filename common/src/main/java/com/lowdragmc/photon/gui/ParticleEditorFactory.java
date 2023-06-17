@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.gui;
 
 import com.lowdragmc.lowdraglib.LDLib;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.gui.editor.ParticleEditor;
 import com.lowdragmc.lowdraglib.gui.factory.UIFactory;
 import com.lowdragmc.lowdraglib.gui.modular.IUIHolder;
@@ -13,7 +14,7 @@ public class ParticleEditorFactory extends UIFactory<ParticleEditorFactory> impl
 	public static final ParticleEditorFactory INSTANCE = new ParticleEditorFactory();
 
 	private ParticleEditorFactory(){
-
+		super(Photon.id("editor"));
 	}
 
 	@Override
