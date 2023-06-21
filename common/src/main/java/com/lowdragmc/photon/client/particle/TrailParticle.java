@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.particle;
 
 import com.lowdragmc.lowdraglib.utils.Vector3;
+import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Vector4f;
 import lombok.Getter;
@@ -9,7 +10,6 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Camera;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.util.Mth;
 import org.apache.commons.lang3.function.TriFunction;
 
@@ -353,14 +353,14 @@ public abstract class TrailParticle extends LParticle {
 
     public static class Basic extends TrailParticle {
         @Getter
-        final ParticleRenderType renderType;
+        final PhotonParticleRenderType renderType;
 
-        public Basic(ClientLevel level, double x, double y, double z, ParticleRenderType renderType) {
+        public Basic(ClientLevel level, double x, double y, double z, PhotonParticleRenderType renderType) {
             super(level, x, y, z);
             this.renderType = renderType;
         }
 
-        public Basic(ClientLevel level, double x, double y, double z, double sX, double sY, double sZ, ParticleRenderType renderType) {
+        public Basic(ClientLevel level, double x, double y, double z, double sX, double sY, double sZ, PhotonParticleRenderType renderType) {
             super(level, x, y, z, sX, sY, sZ);
             this.renderType = renderType;
         }

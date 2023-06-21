@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.emitter.particle;
 
-import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
@@ -26,8 +25,8 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.util.Mth;
+import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nonnull;
@@ -56,7 +55,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
     // runtime
     @Getter
-    protected final Map<ParticleRenderType, Queue<LParticle>> particles = new HashMap<>();
+    protected final Map<PhotonParticleRenderType, Queue<LParticle>> particles = new LinkedHashMap<>();
     @Getter @Setter
     protected boolean visible = true;
     @Nullable
@@ -173,13 +172,11 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                     p.setQuadSize(config.sizeBySpeed.getSize(startedSize, p));
                 }
                 if (config.physics.isEnable()) {
-                    p.setFriction(config.physics.getFrictionModifier(p));
-                    p.setGravity(config.physics.getGravityModifier(p));
+                    config.physics.setupParticlePhysics(p);
                 }
                 if (config.noise.isEnable()) {
                     p.setPos(p.getPos(1).add(config.noise.getPosition(p, 0)), false);
                 }
-
             });
         }
 
@@ -297,13 +294,18 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
         // particles life cycle
         for (var queue : particles.values()) {
-            var iter = queue.iterator();
-            while (iter.hasNext()) {
-                var particle = iter.next();
-                if (!particle.isAlive()) {
-                    iter.remove();
-                } else {
-                    particle.tick();
+            if (config.parallelUpdate) { // parallel stream for particles tick.
+                queue.removeIf(p -> !p.isAlive());
+                queue.parallelStream().forEach(LParticle::tick);
+            } else {
+                var iter = queue.iterator();
+                while (iter.hasNext()) {
+                    var particle = iter.next();
+                    if (!particle.isAlive()) {
+                        iter.remove();
+                    } else {
+                        particle.tick();
+                    }
                 }
             }
         }
@@ -341,7 +343,10 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
     @Override
     public void render(@NotNull VertexConsumer buffer, Camera camera, float pPartialTicks) {
-        if (!ParticleQueueRenderType.INSTANCE.isRenderingQueue() && delay <= 0 && isVisible() && PhotonParticleRenderType.checkLayer(config.renderer.getLayer())) {
+        if (!ParticleQueueRenderType.INSTANCE.isRenderingQueue() && delay <= 0 && isVisible() &&
+                PhotonParticleRenderType.checkLayer(config.renderer.getLayer()) &&
+                (!config.renderer.getCull().isEnable() ||
+                        PhotonParticleRenderType.checkFrustum(config.renderer.getCull().getCullAABB(this, pPartialTicks)))) {
             for(var entry : this.particles.entrySet()) {
                 var type = entry.getKey();
                 if (type == ParticleRenderType.NO_RENDER) continue;
@@ -355,43 +360,53 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
     @Override
     @Nonnull
-    public final ParticleRenderType getRenderType() {
+    public final PhotonParticleRenderType getRenderType() {
         return ParticleQueueRenderType.INSTANCE;
     }
 
     private static class RenderType extends PhotonParticleRenderType {
         protected final ParticleConfig config;
+        private BlendMode lastBlend = null;
+
         public RenderType(ParticleConfig config) {
             this.config = config;
         }
 
         @Override
-        public void begin(@Nonnull BufferBuilder bufferBuilder, @Nonnull TextureManager textureManager) {
+        public void prepareStatus() {
             if (config.renderer.isBloomEffect()) {
                 beginBloom();
             }
             config.material.pre();
-            config.material.getMaterial().begin(bufferBuilder, textureManager, false);
-            Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
-            bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
-        }
-
-        @Override
-        public void end(@Nonnull Tesselator tesselator) {
-            BlendMode lastBlend = null;
+            config.material.getMaterial().begin(false);
             if (RenderSystem.getShader() instanceof ShaderInstanceAccessor shader) {
                 lastBlend = BlendModeAccessor.getLastApplied();
                 BlendModeAccessor.setLastApplied(shader.getBlend());
             }
-            tesselator.end();
-            config.material.getMaterial().end(tesselator, false);
+            Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
+        }
+
+        @Override
+        public void begin(@Nonnull BufferBuilder bufferBuilder) {
+            bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
+        }
+
+        @Override
+        public void releaseStatus() {
+            config.material.getMaterial().end(false);
             config.material.post();
             if (lastBlend != null) {
                 lastBlend.apply();
+                lastBlend = null;
             }
             if (config.renderer.isBloomEffect()) {
                 endBloom();
             }
+        }
+
+        @Override
+        public boolean isParallel() {
+            return config.isParallelRendering();
         }
 
         @Override
@@ -415,8 +430,14 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
     public boolean emitParticle(LParticle particle) {
         particle.prepareForEmitting(this);
-        particles.computeIfAbsent(particle.getRenderType(), type -> new LinkedList<>()).add(particle);
+        particles.computeIfAbsent(particle.getRenderType(), type -> new ArrayDeque<>(config.maxParticles)).add(particle);
         return getParticleAmount() <= config.maxParticles;
+    }
+
+    @Override
+    @Nullable
+    public AABB getCullBox(float partialTicks) {
+        return config.renderer.getCull().isEnable() ? config.renderer.getCull().getCullAABB(this, partialTicks) : null;
     }
 
     @Override

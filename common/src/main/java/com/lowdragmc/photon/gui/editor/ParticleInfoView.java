@@ -24,7 +24,7 @@ import java.util.function.Supplier;
 public class ParticleInfoView extends FloatViewWidget {
 
     public ParticleInfoView() {
-        super(100, 100, 200, 120, false);
+        super(100, 100, 200, 135, false);
     }
 
     @Override
@@ -76,25 +76,8 @@ public class ParticleInfoView extends FloatViewWidget {
         }, 3, content.widgets.size() * 15 + 3, 194, 10, new ProgressTexture(ColorPattern.T_GRAY.rectTexture().setRadius(5).setRadius(5), ColorPattern.GREEN.rectTexture().setRadius(5).setRadius(5))));
         // fps
         addInformation("FPS", () -> MinecraftAccessor.getFps() + " fps");
-        // visible
-        addToggle("Visible", () -> {
-            var list = getEditor().getEmittersList();
-            if (list != null) {
-                var selected = list.getSelected();
-                if (selected != null) {
-                    return selected.isVisible();
-                }
-            }
-            return false;
-        }, visible -> {
-            var list = getEditor().getEmittersList();
-            if (list != null) {
-                var selected = list.getSelected();
-                if (selected != null) {
-                    selected.setVisible(visible);
-                }
-            }
-        });
+        // cpu time
+        addInformation("CPU Time", () ->  "%d us".formatted(getEditor().getParticleScene().getParticleManager().getCPUTime()));
         // draggable
         var group = addToggle("Draggable", () -> getEditor().isDraggable(), draggable -> getEditor().setDraggable(draggable));
         var textWidth = Minecraft.getInstance().font.width(LocalizationUtils.format("Draggable")) + 6;
@@ -109,6 +92,7 @@ public class ParticleInfoView extends FloatViewWidget {
             }
         }));
         addToggle("Drag All", () -> getEditor().isDragAll(), draggable -> getEditor().setDragAll(draggable));
+        addToggle("Cull-box", () -> getEditor().isRenderCullBox(), cull -> getEditor().setRenderCullBox(cull));
 
     }
 

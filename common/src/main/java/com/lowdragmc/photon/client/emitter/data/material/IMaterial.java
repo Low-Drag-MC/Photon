@@ -41,9 +41,9 @@ public interface IMaterial extends IConfigurable, ITagSerializable<CompoundTag> 
         return null;
     }
 
-    void begin(BufferBuilder builder, TextureManager textureManager, boolean isInstancing);
+    void begin(boolean isInstancing);
 
-    void end(Tesselator tesselator, boolean isInstancing);
+    void end(boolean isInstancing);
 
     IGuiTexture preview();
 

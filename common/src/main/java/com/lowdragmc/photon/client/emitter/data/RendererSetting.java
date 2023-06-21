@@ -1,6 +1,8 @@
 package com.lowdragmc.photon.client.emitter.data;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
+import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
+import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.mojang.math.Quaternion;
 import com.mojang.math.Vector3f;
@@ -8,6 +10,7 @@ import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.world.phys.AABB;
 
 import javax.annotation.Nullable;
 
@@ -57,8 +60,30 @@ public class RendererSetting {
     @Configurable(tips = "Render particles with the bloom effect.")
     protected boolean bloomEffect = false;
 
+    @Getter
+    @Configurable(name = "cull", subConfigurable = true, tips = "Cull particles that are out of view.")
+    protected final Cull cull = new Cull();
+
     public void setupQuaternion(LParticle particle) {
         particle.setQuaternion(renderMode.quaternion);
     }
 
+    public static class Cull extends ToggleGroup {
+        @Setter
+        @Getter
+        @Configurable
+        @NumberRange(range = {-10000, 10000})
+        protected Vector3 from = new Vector3(-0.5f, -0.5f, -0.5f);
+
+        @Setter
+        @Getter
+        @Configurable
+        @NumberRange(range = {-10000, 10000})
+        protected Vector3 to = new Vector3(0.5f, 0.5f, 0.5f);
+
+        public AABB getCullAABB(LParticle particle, float partialTicks) {
+            var pos = particle.getPos(partialTicks);
+            return new AABB(from.x, from.y, from.z, to.x, to.y, to.z).move(pos.x, pos.y, pos.z);
+        }
+    }
 }

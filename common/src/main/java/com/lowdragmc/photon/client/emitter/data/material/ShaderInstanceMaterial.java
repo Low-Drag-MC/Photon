@@ -37,7 +37,7 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
     }
 
     @Override
-    public void begin(BufferBuilder builder, TextureManager textureManager, boolean isInstancing) {
+    public void begin(boolean isInstancing) {
         if (Photon.isUsingShaderPack() && Editor.INSTANCE == null) {
             var lastShader = RenderSystem.getShader();
 
@@ -97,7 +97,7 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
     }
 
     @Override
-    public void end(Tesselator tesselator, boolean isInstancing) {
+    public void end(boolean isInstancing) {
     }
 
     @Override
@@ -121,7 +121,7 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
             float imageHeight = 1;
             Tesselator tessellator = Tesselator.getInstance();
             BufferBuilder bufferbuilder = tessellator.getBuilder();
-            begin(bufferbuilder, Minecraft.getInstance().getTextureManager(), false);
+            begin(false);
             var lightTexture = Minecraft.getInstance().gameRenderer.lightTexture();
             lightTexture.turnOnLightLayer();
             Matrix4f mat = stack.last().pose();

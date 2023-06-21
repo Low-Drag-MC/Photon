@@ -26,7 +26,6 @@ import com.mojang.blaze3d.shaders.BlendMode;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.math.Vector4f;
 import lombok.Getter;
@@ -35,7 +34,6 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.texture.TextureManager;
 
 import javax.annotation.Nonnull;
 
@@ -189,38 +187,47 @@ public class TrailsSetting extends ToggleGroup {
 
     private class RenderType extends PhotonParticleRenderType {
         protected final ParticleConfig config;
+        private BlendMode lastBlend = null;
 
         public RenderType(ParticleConfig config) {
             this.config = config;
         }
 
         @Override
-        public void begin(@Nonnull BufferBuilder bufferBuilder, @Nonnull TextureManager textureManager) {
+        public void prepareStatus() {
             if (config.getRenderer().isBloomEffect()) {
                 beginBloom();
             }
             material.pre();
-            material.getMaterial().begin(bufferBuilder, textureManager, false);
-            Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
-            bufferBuilder.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.PARTICLE);
-        }
-
-        @Override
-        public void end(@Nonnull Tesselator tesselator) {
-            BlendMode lastBlend = null;
+            material.getMaterial().begin(false);
             if (RenderSystem.getShader() instanceof ShaderInstanceAccessor shader) {
                 lastBlend = BlendModeAccessor.getLastApplied();
                 BlendModeAccessor.setLastApplied(shader.getBlend());
             }
-            tesselator.end();
-            material.getMaterial().end(tesselator, false);
+            Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
+        }
+
+        @Override
+        public void begin(@Nonnull BufferBuilder bufferBuilder) {
+            bufferBuilder.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.PARTICLE);
+        }
+
+        @Override
+        public void releaseStatus() {
+            material.getMaterial().end(false);
             material.post();
             if (lastBlend != null) {
                 lastBlend.apply();
+                lastBlend = null;
             }
             if (config.getRenderer().isBloomEffect()) {
                 endBloom();
             }
+        }
+
+        @Override
+        public boolean isParallel() {
+            return config.isParallelRendering();
         }
 
         @Override

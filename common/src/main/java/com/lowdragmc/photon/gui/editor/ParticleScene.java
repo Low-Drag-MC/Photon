@@ -23,8 +23,6 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Vector3f;
 import lombok.Getter;
-import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
@@ -129,13 +127,14 @@ public class ParticleScene extends SceneWidget {
     @Override
     public void renderBlockOverLay(WorldSceneRenderer renderer) {
         hoverSelected = false;
+        renderBox(new PoseStack(), new AABB(0, 0, 0, 0, 0, 0), 0, 0, 0);
         if (editor.isDraggable() && editor.getEmittersList() != null) {
             var selected = editor.getEmittersList().getSelected();
             if (selected != null) {
                 PoseStack matrixStack = new PoseStack();
                 var position = selected.self().getPos(Minecraft.getInstance().getFrameTime());
                 var aabb = new AABB(position.x - 0.1, position.y - 0.1, position.z - 0.1, position.x + 0.1, position.y + 0.1, position.z + 0.1);
-                renderSelectedEmitter(matrixStack, aabb, 1, 0, 0);
+                renderBox(matrixStack, aabb, 1, 0, 0);
 
                 //un project
                 Vector3f hitPos = unProject(currentMouseX, currentMouseY);
@@ -161,6 +160,16 @@ public class ParticleScene extends SceneWidget {
                     if (result.isPresent()) {
                         hoverSelected = true;
                     }
+                }
+            }
+        }
+        if (editor.isRenderCullBox() && editor.getEmittersList() != null) {
+            var selected = editor.getEmittersList().getSelected();
+            if (selected != null) {
+                PoseStack poseStack = new PoseStack();
+                var aabb = selected.getCullBox(Minecraft.getInstance().getFrameTime());
+                if (aabb != null) {
+                    renderBox(poseStack, aabb, 0.5f, 0.5f, 0.5f);
                 }
             }
         }
@@ -197,7 +206,7 @@ public class ParticleScene extends SceneWidget {
         return super.mouseReleased(mouseX, mouseY, button);
     }
 
-    public static void renderSelectedEmitter(PoseStack poseStack, AABB aabb, float r, float g, float b) {
+    public static void renderBox(PoseStack poseStack, AABB aabb, float r, float g, float b) {
         RenderSystem.enableBlend();
         RenderSystem.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
 
