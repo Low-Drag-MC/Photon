@@ -1,4 +1,9 @@
 ## ChangeLog
 
-* fix ldlib network
-* fix dedicated server crash
+* add cull-box
+* support parallel update
+* support parallel rendering
+* fix noise
+* fix entity effect
+* add cpu time
+* add more physics features (bounce)
