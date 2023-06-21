@@ -36,16 +36,31 @@ public class PhysicsSetting extends ToggleGroup {
     @Configurable(tips = "The gravity of particles over lifetime.")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "gravity"))
     protected NumberFunction gravity = NumberFunction.constant(0);
-
+    @Setter
+    @Getter
+    @Configurable(tips = "The possibility of bounce when it has physics.")
+    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 1, curveConfig = @CurveConfig(xAxis = "duration", yAxis = "bounce chance"))
+    protected NumberFunction bounceChance = NumberFunction.constant(1);
+    @Setter
+    @Getter
+    @Configurable(tips = "The bounce rate of speed when collision happens.")
+    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 1, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "bounce rate"))
+    protected NumberFunction bounceRate =NumberFunction.constant(1);
+    @Setter
+    @Getter
+    @Configurable(tips = "Addition velocity for other two axis gaussian noise when collision happens.")
+    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "spread"))
+    protected NumberFunction bounceSpreadRate = NumberFunction.constant(0);
 
     public PhysicsSetting() {
     }
 
-    public float getFrictionModifier(LParticle particle) {
-        return friction.get(particle.getT(), () -> particle.getMemRandom("friction")).floatValue();
+    public void setupParticlePhysics(LParticle particle) {
+        particle.setFriction(friction.get(particle.getT(), () -> particle.getMemRandom("friction")).floatValue());
+        particle.setGravity(gravity.get(particle.getT(), () -> particle.getMemRandom("gravity")).floatValue());
+        particle.setBounceChance(bounceChance.get(particle.getT(), () -> particle.getMemRandom("bounce_chance")).floatValue());
+        particle.setBounceRate(bounceRate.get(particle.getT(), () -> particle.getMemRandom("bounce_rate")).floatValue());
+        particle.setBounceSpreadRate(bounceSpreadRate.get(particle.getT(), () -> particle.getMemRandom("bounce_spread_rate")).floatValue());
     }
 
-    public float getGravityModifier(LParticle particle) {
-        return gravity.get(particle.getT(), () -> particle.getMemRandom("gravity")).floatValue();
-    }
 }

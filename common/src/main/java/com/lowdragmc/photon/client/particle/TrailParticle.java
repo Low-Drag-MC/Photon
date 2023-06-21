@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.particle;
 
+import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
 import lombok.Setter;
@@ -350,14 +351,14 @@ public abstract class TrailParticle extends LParticle {
 
     public static class Basic extends TrailParticle {
         @Getter
-        final ParticleRenderType renderType;
+        final PhotonParticleRenderType renderType;
 
-        public Basic(ClientLevel level, double x, double y, double z, ParticleRenderType renderType) {
+        public Basic(ClientLevel level, double x, double y, double z, PhotonParticleRenderType renderType) {
             super(level, x, y, z);
             this.renderType = renderType;
         }
 
-        public Basic(ClientLevel level, double x, double y, double z, double sX, double sY, double sZ, ParticleRenderType renderType) {
+        public Basic(ClientLevel level, double x, double y, double z, double sX, double sY, double sZ, PhotonParticleRenderType renderType) {
             super(level, x, y, z, sX, sY, sZ);
             this.renderType = renderType;
         }

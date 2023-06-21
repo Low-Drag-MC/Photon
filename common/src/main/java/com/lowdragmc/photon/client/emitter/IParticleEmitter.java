@@ -14,6 +14,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 
 import javax.annotation.Nullable;
 import java.util.Collection;
@@ -109,7 +110,7 @@ public interface IParticleEmitter extends IConfigurable, ILDLRegisterClient, IAu
      * <br>
      * you should not modify it, just read data.
      */
-    Map<ParticleRenderType, Queue<LParticle>> getParticles();
+    Map<PhotonParticleRenderType, Queue<LParticle>> getParticles();
 
     /**
      * emit particle from this emitter
@@ -125,6 +126,14 @@ public interface IParticleEmitter extends IConfigurable, ILDLRegisterClient, IAu
      * set particle visible
      */
     void setVisible(boolean visible);
+
+    /**
+     * get the box of cull.
+     * <br>
+     * return null - culling disabled.
+     */
+    @Nullable
+    AABB getCullBox(float partialTicks);
 
     /**
      * use bloom effect

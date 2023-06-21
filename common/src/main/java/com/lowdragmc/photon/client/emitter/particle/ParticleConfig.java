@@ -62,8 +62,18 @@ public class ParticleConfig {
     @Setter
     @Getter
     @Configurable(tips = "The number of particles in the system will be limited by this number. Emission will be temporarily halted if this is reached")
-    @NumberRange(range = {0, 10000})
+    @NumberRange(range = {0, 100000}, wheel = 100)
     protected int maxParticles = 2000;
+    @Setter
+    @Getter
+    @Configurable(tips = {"Should particles be updated in parallel threads. It will improve performance when you have massive particles. e.g., use it can improve noise calculation performance.",
+            "§cThis does not always improve performance and sometimes degrade performance§r"})
+    protected boolean parallelUpdate = false;
+    @Setter
+    @Getter
+    @Configurable(tips = {"Should particles be rendered in parallel threads. It will improve performance when you have massive particles. e.g., use it can improve trail particles",
+            "§cThis does not always improve performance and sometimes degrade performance§r"})
+    protected boolean parallelRendering = false;
     @Getter
     @Configurable(name = "Emission", subConfigurable = true, tips = "Emission of the emitter. This controls the rate at which particles are emitted as well as burst emissions.")
     protected EmissionSetting emission = new EmissionSetting();
@@ -113,7 +123,7 @@ public class ParticleConfig {
     @Configurable(name = "Rotation by Speed", subConfigurable = true, tips = "Controls the angular velocity of each particle based on its speed.")
     protected final RotationBySpeedSetting rotationBySpeed = new RotationBySpeedSetting();
     @Getter
-    @Configurable(name = "Noise", subConfigurable = true, tips = "Add noise/turbulence to particle movement.")
+    @Configurable(name = "Noise", subConfigurable = true, tips = "Add noise/turbulence to particle movement. If you have many particles, you should also check parallelUpdate for better performance.")
     protected final NoiseSetting noise = new NoiseSetting();
     @Getter
     @Configurable(name = "UV Animation", subConfigurable = true, tips = "Particle UV animation. This allows you to specify a texture sheet (a texture with multiple tiles/subframes) and animate or randomize over it per particle.")

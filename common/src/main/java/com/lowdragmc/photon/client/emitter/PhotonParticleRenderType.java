@@ -15,6 +15,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.texture.TextureManager;
+import net.minecraft.world.phys.AABB;
 import org.lwjgl.opengl.GL11;
 
 import javax.annotation.Nullable;
@@ -30,23 +31,6 @@ import java.util.List;
 @Environment(value= EnvType.CLIENT)
 @ParametersAreNonnullByDefault
 public abstract class PhotonParticleRenderType implements ParticleRenderType {
-
-    public final static PhotonParticleRenderType PHOTON_NO_RENDER = new PhotonParticleRenderType() {
-        @Override
-        public void begin(BufferBuilder builder, TextureManager textureManager) {
-
-        }
-
-        @Override
-        public void end(Tesselator tesselator) {
-
-        }
-
-        @Override
-        public String toString() {
-            return "Photon NO_RENDER";
-        }
-    };
 
     @Getter
     @Nullable
@@ -148,8 +132,65 @@ public abstract class PhotonParticleRenderType implements ParticleRenderType {
         }
     }
 
+    public boolean isParallel() {
+        return false;
+    }
+
+    @Override
+    @Deprecated
+    public final void begin(BufferBuilder builder, TextureManager textureManager) {
+        prepareStatus();
+        begin(builder);
+    }
+
+    @Override
+    @Deprecated
+    public final void end(Tesselator tesselator) {
+        end(tesselator.getBuilder());
+        releaseStatus();
+    }
+
+    /**
+     * setup opengl environment, setup shaders, uniforms.
+     */
+    public void prepareStatus() {
+
+    }
+
+    /**
+     * setup buffer builder, which may be called in async.
+     */
+    public void begin(BufferBuilder builder) {
+
+    }
+
+    /**
+     * upload the buffer builder. In the render thread
+     */
+    public void end(BufferBuilder builder) {
+        BufferUploader.drawWithShader(builder.end());
+    }
+
+    /**
+     * restore opengl environment.
+     */
+    public void releaseStatus() {
+
+    }
+
+    /**
+     * check is specific layer
+     */
     public static boolean checkLayer(RendererSetting.Layer layer) {
         return LAYER == layer;
+    }
+
+    /**
+     * do cull checking
+     */
+    public static boolean checkFrustum(AABB aabb) {
+        if (FRUSTUM == null) return true;
+        return FRUSTUM.isVisible(aabb);
     }
 
     public static Comparator<ParticleRenderType> makeParticleRenderTypeComparator(List<ParticleRenderType> renderOrder) {

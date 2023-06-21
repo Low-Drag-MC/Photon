@@ -2,16 +2,15 @@ package com.lowdragmc.photon.client.particle;
 
 import com.lowdragmc.lowdraglib.utils.DummyWorld;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.Util;
 import net.minecraft.client.Camera;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
-import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.FastColor;
@@ -29,7 +28,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -47,17 +45,50 @@ LParticle extends Particle {
     private static final double MAXIMUM_COLLISION_VELOCITY_SQUARED = Mth.square(100.0);
     private static final Function<LParticle, Vector3f> ADDITION = p -> new Vector3f(0 ,0, 0);
     private static final Function<LParticle, Float> MULTIPLIER = p -> 1f;
+    /**
+     * Quad Size of Particles.
+     */
     protected Vector3f quadSize = new Vector3f(1, 1, 1);
+    /**
+     * Can particle move by speed.
+     */
     @Setter @Getter
     protected boolean moveless;
+    /**
+     * Delay time before tick and rendering
+     */
     @Setter @Getter
     protected int delay;
+    /**
+     * Lighting map value, -1: get light from world.
+     */
     @Setter @Getter
     protected int light = -1;
+    /**
+     * Should we do cull check
+     */
     @Setter @Getter
     protected boolean cull = true;
+    /**
+     * Rotation of yaw, pitch
+     */
     @Setter @Getter
     protected float yaw, pitch;
+    /**
+     * possibility of bounce when it has physics.
+     */
+    @Setter @Getter
+    protected float bounceChance = 1;
+    /**
+     * bounce rate of speed when collision happens.
+     */
+    @Setter @Getter
+    protected float bounceRate = 1;
+    /**
+     * addition speed for other two axis gaussian noise when collision happens.
+     */
+    @Setter @Getter
+    protected float bounceSpreadRate = 0;
     @Nullable
     @Setter @Getter
     protected Quaternionf quaternion;
@@ -95,10 +126,7 @@ LParticle extends Particle {
     @Nullable
     protected IParticleEmitter emitter;
     @Getter
-    protected Map<Object, Float> memRandom = new ConcurrentHashMap<>();
-
-    @Getter
-    protected boolean stoppedByCollision;
+    protected ConcurrentHashMap<Object, Float> memRandom = new ConcurrentHashMap<>();
 
     protected LParticle(ClientLevel level, double x, double y, double z) {
         super(level, x, y, z);
@@ -245,18 +273,16 @@ LParticle extends Particle {
             if (this.onGround && this.friction != 1.0) {
                 this.xd *= 0.7F;
                 this.zd *= 0.7F;
+                this.yd *= 0.7F;
             }
         }
     }
 
     @Override
     public void move(double x, double y, double z) {
-        if (this.stoppedByCollision) {
-            return;
-        }
-        double d = x;
-        double e = y;
-        double f = z;
+        double moveX = x;
+        double moveY = y;
+        double moveZ = z;
         if (this.hasPhysics && getLevel() != null && (x != 0.0 || y != 0.0 || z != 0.0) && x * x + y * y + z * z < MAXIMUM_COLLISION_VELOCITY_SQUARED) {
             Vec3 vec3 = Entity.collideBoundingBox(null, new Vec3(x, y, z), this.getBoundingBox(), getLevel(), List.of());
             x = vec3.x;
@@ -267,15 +293,38 @@ LParticle extends Particle {
             this.setBoundingBox(this.getBoundingBox().move(x, y, z));
             this.setLocationFromBoundingbox();
         }
-        if (Math.abs(e) >= (double)1.0E-5f && Math.abs(y) < (double)1.0E-5f) {
-            this.stoppedByCollision = true;
-        }
-        boolean bl = this.onGround = e != y && e < 0.0;
-        if (d != x) {
-            this.xd = 0.0;
-        }
-        if (f != z) {
-            this.zd = 0.0;
+        if (!this.onGround && this.hasPhysics) {
+            if (Math.abs(moveY) >= 1.0E-5 && Math.abs(y) < 1.0E-5) {
+                if (bounceChance < 1 && bounceChance < random.nextFloat()) {
+                    this.onGround = true;
+                } else {
+                    this.yd = -this.yd * bounceRate;
+                    if (bounceSpreadRate > 0) {
+                        this.xd += bounceSpreadRate * random.nextGaussian();
+                        this.zd += bounceSpreadRate * random.nextGaussian();
+                    }
+                }
+            } else if (Math.abs(moveX) >= 1.0E-5 && Math.abs(x) < 1.0E-5) {
+                if (bounceChance < 1 && bounceChance < random.nextFloat()) {
+                    this.onGround = true;
+                } else {
+                    this.xd = -this.xd * bounceRate;
+                    if (bounceSpreadRate > 0) {
+                        this.yd += bounceSpreadRate * random.nextGaussian();
+                        this.zd += bounceSpreadRate * random.nextGaussian();
+                    }
+                }
+            } else if (Math.abs(moveZ) >= 1.0E-5 && Math.abs(z) < 1.0E-5) {
+                if (bounceChance < 1 && bounceChance < random.nextFloat()) {
+                    this.onGround = true;
+                } else {
+                    this.zd = -this.zd * bounceRate;
+                    if (bounceSpreadRate > 0) {
+                        this.xd += bounceSpreadRate * random.nextGaussian();
+                        this.yd += bounceSpreadRate * random.nextGaussian();
+                    }
+                }
+            }
         }
     }
 
@@ -487,11 +536,13 @@ LParticle extends Particle {
     }
 
     public float getMemRandom(Object object) {
-        return memRandom.computeIfAbsent(object, o -> random.nextFloat());
+        return getMemRandom(object, RandomSource::nextFloat);
     }
 
     public float getMemRandom(Object object, Function<RandomSource, Float> randomFunc) {
-        return memRandom.computeIfAbsent(object, o -> randomFunc.apply(random));
+        var value = memRandom.get(object);
+        if (value == null) return memRandom.computeIfAbsent(object, o -> randomFunc.apply(random));
+        return value;
     }
 
     public void setRotation(Vector3f rotation) {
@@ -522,23 +573,26 @@ LParticle extends Particle {
     public void resetParticle() {
         resetAge();
         this.memRandom.clear();
-        this.stoppedByCollision = false;
         this.removed = false;
         this.onGround = false;
         this.emitter = null;
         this.t = 0;
     }
 
+    @Override
+    @Nonnull
+    public abstract PhotonParticleRenderType getRenderType();
+
     public static class Basic extends LParticle {
         @Getter
-        final ParticleRenderType renderType;
+        final PhotonParticleRenderType renderType;
 
-        public Basic(ClientLevel level, double x, double y, double z, ParticleRenderType renderType) {
+        public Basic(ClientLevel level, double x, double y, double z, PhotonParticleRenderType renderType) {
             super(level, x, y, z);
             this.renderType = renderType;
         }
 
-        public Basic(ClientLevel level, double x, double y, double z, double sX, double sY, double sZ, ParticleRenderType renderType) {
+        public Basic(ClientLevel level, double x, double y, double z, double sX, double sY, double sZ, PhotonParticleRenderType renderType) {
             super(level, x, y, z, sX, sY, sZ);
             this.renderType = renderType;
         }

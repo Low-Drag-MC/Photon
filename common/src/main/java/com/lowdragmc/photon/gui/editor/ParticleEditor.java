@@ -32,6 +32,8 @@ public class ParticleEditor extends Editor {
     private boolean draggable = false;
     @Getter @Setter
     private boolean dragAll = false;
+    @Getter @Setter
+    private boolean renderCullBox = false;
 
     public ParticleEditor(File workSpace) {
         super(workSpace);
