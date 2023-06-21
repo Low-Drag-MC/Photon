@@ -1,7 +1,6 @@
 package com.lowdragmc.photon.client.emitter.trail;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.ConfigSetter;
-import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
@@ -12,6 +11,7 @@ import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.emitter.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.phys.AABB;
 import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.data.material.CustomShaderMaterial;
 import com.lowdragmc.photon.client.fx.IFXEffect;
@@ -26,9 +26,7 @@ import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.texture.TextureManager;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector4f;
 
@@ -59,7 +57,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
 
     // runtime
     @Getter
-    protected final Map<ParticleRenderType, Queue<LParticle>> particles;
+    protected final Map<PhotonParticleRenderType, Queue<LParticle>> particles;
     @Getter @Setter
     protected boolean visible = true;
     @Nullable
@@ -194,20 +192,33 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     public void render(@NotNull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
         if (ParticleQueueRenderType.INSTANCE.isRenderingQueue()) {
             super.render(pBuffer, pRenderInfo, pPartialTicks);
-        } else if (delay <= 0 && isVisible() && PhotonParticleRenderType.checkLayer(config.renderer.getLayer())) {
+        } else if (delay <= 0 && isVisible() &&
+                PhotonParticleRenderType.checkLayer(config.renderer.getLayer())  &&
+                (!config.renderer.getCull().isEnable() ||
+                        PhotonParticleRenderType.checkFrustum(config.renderer.getCull().getCullAABB(this, pPartialTicks)))) {
             ParticleQueueRenderType.INSTANCE.pipeQueue(renderType, particles.get(renderType), pRenderInfo, pPartialTicks);
         }
     }
 
     @Override
     @Nonnull
-    public ParticleRenderType getRenderType() {
+    public PhotonParticleRenderType getRenderType() {
         return ParticleQueueRenderType.INSTANCE;
     }
+
+    //////////////////////////////////////
+    //********      Emitter    *********//
+    //////////////////////////////////////
 
     @Override
     public boolean emitParticle(LParticle particle) {
         return false;
+    }
+
+    @Override
+    @Nullable
+    public AABB getCullBox(float partialTicks) {
+        return config.renderer.getCull().isEnable() ? config.renderer.getCull().getCullAABB(this, partialTicks) : null;
     }
 
     @Override
@@ -225,38 +236,48 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
 
     private static class RenderType extends PhotonParticleRenderType {
         protected final TrailConfig config;
+        private BlendMode lastBlend = null;
+
 
         public RenderType(TrailConfig config) {
             this.config = config;
         }
 
         @Override
-        public void begin(@Nonnull BufferBuilder bufferBuilder, @Nonnull TextureManager textureManager) {
+        public void prepareStatus() {
             if (config.renderer.isBloomEffect()) {
                 beginBloom();
             }
             config.material.pre();
-            config.material.getMaterial().begin(bufferBuilder, textureManager, false);
-            Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
-            bufferBuilder.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.PARTICLE);
-        }
-
-        @Override
-        public void end(@Nonnull Tesselator tesselator) {
-            BlendMode lastBlend = null;
+            config.material.getMaterial().begin(false);
             if (RenderSystem.getShader() instanceof ShaderInstanceAccessor shader) {
                 lastBlend = BlendModeAccessor.getLastApplied();
                 BlendModeAccessor.setLastApplied(shader.getBlend());
             }
-            tesselator.end();
-            config.material.getMaterial().end(tesselator, false);
+            Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
+        }
+
+        @Override
+        public void begin(@Nonnull BufferBuilder bufferBuilder) {
+            bufferBuilder.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.PARTICLE);
+        }
+
+        @Override
+        public void releaseStatus() {
+            config.material.getMaterial().end(false);
             config.material.post();
             if (lastBlend != null) {
                 lastBlend.apply();
+                lastBlend = null;
             }
             if (config.renderer.isBloomEffect()) {
                 endBloom();
             }
+        }
+
+        @Override
+        public boolean isParallel() {
+            return config.isParallelRendering();
         }
 
         @Override

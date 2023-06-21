@@ -51,7 +51,7 @@ public class EntityEffect implements IFXEffect {
 
     @Override
     public boolean updateEmitter(IParticleEmitter emitter) {
-        if (entity.isRemoved()) {
+        if (!entity.isAlive()) {
             emitter.remove(forcedDeath);
             return forcedDeath;
         } else {

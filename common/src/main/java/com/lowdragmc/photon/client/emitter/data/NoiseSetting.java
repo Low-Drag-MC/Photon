@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.emitter.data;
 
+import com.lowdragmc.lowdraglib.LDLib;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
@@ -38,7 +39,7 @@ public class NoiseSetting extends ToggleGroup {
         Noise3D
     }
 
-    private final PerlinNoise noise = new PerlinNoise();
+    private final ThreadLocal<PerlinNoise> noise = ThreadLocal.withInitial(PerlinNoise::new);
 
     @Setter
     @Getter
@@ -77,9 +78,9 @@ public class NoiseSetting extends ToggleGroup {
     public float getNoise(float t) {
         var input = t * frequency;
         float value = (float)switch (quality) {
-            case Noise1D -> noise.noise(input);
-            case Noise2D -> noise.noise(input, input);
-            case Noise3D -> noise.noise(input, input, input);
+            case Noise1D -> noise.get().noise(input);
+            case Noise2D -> noise.get().noise(input, input);
+            case Noise3D -> noise.get().noise(input, input, input);
         };
         if (remap.isEnable()) {
             value = remap.remapCurve.get((value + 1) / 2, () -> 0f).floatValue();
@@ -88,7 +89,7 @@ public class NoiseSetting extends ToggleGroup {
     }
 
     public void setupSeed(LParticle particle) {
-        noise.setSeed(particle.getMemRandom("noise-seed", randomSource -> (float) randomSource.nextGaussian()) * 255);
+        noise.get().setSeed(particle.getMemRandom("noise-seed", randomSource -> (float) randomSource.nextGaussian()) * 255);
     }
 
     public Vector3f getRotation(LParticle particle, float partialTicks) {
@@ -128,7 +129,7 @@ public class NoiseSetting extends ToggleGroup {
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         super.buildConfigurator(father);
-        father.addConfigurator(0, new WrapperConfigurator("Noise preview", new ImageWidget(0, 0, 100, 100, new NoisePreview())));
+        father.addConfigurator(0, new WrapperConfigurator("Noise preview", new ImageWidget(0, 0, 100, 100, new NoisePreview(LDLib.random.nextGaussian() * 255))));
     }
 
 
@@ -142,9 +143,16 @@ public class NoiseSetting extends ToggleGroup {
 
     private class NoisePreview implements IGuiTexture {
 
+        private final double seed;
+
+        public NoisePreview(double seed) {
+            this.seed = seed;
+        }
+
         @Override
         @Environment(EnvType.CLIENT)
         public void draw(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, int width, int height) {
+            noise.get().setSeed(seed);
             // render color bar
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
@@ -156,7 +164,7 @@ public class NoiseSetting extends ToggleGroup {
 
             for (int i = 0; i < width; i++) {
                 if (quality == Quality.Noise1D) {
-                    var value = ((float) noise.noise(i * frequency) + 1) / 2;
+                    var value = ((float) noise.get().noise(i * frequency) + 1) / 2;
                     if (remap.isEnable()) {
                         value = (remap.remapCurve.get(value, () -> 0f).floatValue() + 1) / 2;
                     }
@@ -168,9 +176,9 @@ public class NoiseSetting extends ToggleGroup {
                     for (int j = 0; j < height; j++) {
                         float value;
                         if (quality == Quality.Noise2D) {
-                            value = ((float) noise.noise(i * frequency, j * frequency) + 1) / 2;
+                            value = ((float) noise.get().noise(i * frequency, j * frequency) + 1) / 2;
                         } else {
-                            value = ((float) noise.noise(i * frequency, j * frequency, 1) + 1) / 2;
+                            value = ((float) noise.get().noise(i * frequency, j * frequency, 1) + 1) / 2;
                         }
 
                         if (remap.isEnable()) {

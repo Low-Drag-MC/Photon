@@ -33,6 +33,11 @@ public class TrailConfig {
     protected float minVertexDistance = 0.05f;
     @Setter
     @Getter
+    @Configurable(tips = {"Should particles be rendered in parallel threads. It will improve performance when you have massive particles. e.g., use it can improve trail particles",
+            "§cThis does not always improve performance and sometimes degrade performance§r"})
+    protected boolean parallelRendering = false;
+    @Setter
+    @Getter
     @Configurable(tips = "Should the U coordinate be stretched or tiled?")
     protected TrailParticle.UVMode uvMode = TrailParticle.UVMode.Stretch;
     @Setter

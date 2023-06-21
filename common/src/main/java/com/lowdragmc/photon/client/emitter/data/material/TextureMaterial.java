@@ -3,7 +3,6 @@ package com.lowdragmc.photon.client.emitter.data.material;
 import com.lowdragmc.lowdraglib.client.shader.Shaders;
 import com.lowdragmc.lowdraglib.gui.editor.ColorPattern;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
-import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.WrapperConfigurator;
@@ -16,11 +15,9 @@ import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.photon.Photon;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.renderer.ShaderInstance;
-import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 
@@ -82,7 +79,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     }
 
     @Override
-    public void begin(BufferBuilder builder, TextureManager textureManager, boolean isInstancing) {
+    public void begin(boolean isInstancing) {
         if (Photon.isUsingShaderPack() && Editor.INSTANCE == null) {
             RenderSystem.setShaderTexture(0, texture);
         } else {
