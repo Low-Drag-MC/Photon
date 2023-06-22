@@ -233,13 +233,13 @@ LParticle extends Particle {
 
         updateOrigin();
 
-        if (this.age++ >= this.lifetime && lifetime > 0) {
+        if (this.age++ >= getLifetime() && getLifetime() > 0) {
             this.remove();
         }
         update();
 
-        if (lifetime > 0) {
-            t = 1.0f * age / this.lifetime;
+        if (getLifetime() > 0) {
+            t = 1.0f * age / getLifetime();
         }
     }
 
@@ -529,7 +529,7 @@ LParticle extends Particle {
     }
 
     public float getT(float partialTicks) {
-        return t + partialTicks / lifetime;
+        return t + partialTicks / getLifetime();
     }
 
     public void setPos(Vector3 realPos, boolean origin) {
