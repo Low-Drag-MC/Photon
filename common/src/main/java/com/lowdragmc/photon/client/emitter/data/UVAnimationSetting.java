@@ -31,30 +31,30 @@ public class UVAnimationSetting extends ToggleGroup {
 
     @Setter
     @Getter
-    @Configurable(tips = "Defines the tiling of the texture.")
+    @Configurable(tips = "photon.emitter.config.uvAnimation.tiles")
     @NumberRange(range = {1, Integer.MAX_VALUE})
     protected Range tiles = new Range(1, 1);
 
     @Setter
     @Getter
-    @Configurable(tips = "Specifies the animation type: Whole Sheet or SingleRow.Whole Sheet will animate over the whole texture sheet from left to right, top to bottom. SingleRow will animate a single row in the sheet from left to right.")
+    @Configurable(tips = "photon.emitter.config.uvAnimation.animation")
     protected Animation animation = Animation.WholeSheet;
 
     @Setter
     @Getter
-    @Configurable(tips = "Controls the uv animation frame of each particle over its lifetime. On the horizontal axis you will find the lifetime.On the vertical axis you will find the sheet index.")
+    @Configurable(tips = "photon.emitter.config.uvAnimation.frameOverTime")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, curveConfig = @CurveConfig(bound = {0, 4}, xAxis = "lifetime", yAxis = "frame over time"))
     protected NumberFunction frameOverTime = NumberFunction.constant(0);
 
     @Setter
     @Getter
-    @Configurable(tips = "Phase the animation, so it starts on a frame other than 0.")
+    @Configurable(tips = "photon.emitter.config.uvAnimation.startFrame")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class}, min = 0)
     protected NumberFunction startFrame = NumberFunction.constant(0);
 
     @Setter
     @Getter
-    @Configurable(tips = "Specifies how many times the animation will loop during the lifetime of the particle.")
+    @Configurable(tips = "photon.emitter.config.uvAnimation.cycle")
     @NumberRange(range = {0, Integer.MAX_VALUE}, wheel = 1)
     protected float cycle = 1;
 

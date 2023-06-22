@@ -24,31 +24,31 @@ public class PhysicsSetting extends ToggleGroup {
 
     @Setter
     @Getter
-    @Configurable(tips = "Check for collisions of particles.")
+    @Configurable(tips = "photon.emitter.config.physics.hasCollision")
     protected boolean hasCollision = true;
     @Setter
     @Getter
-    @Configurable(tips = "The friction of particles over lifetime. (0-infinite friction, 1-frictionless)")
+    @Configurable(tips = "photon.emitter.config.physics.friction")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 0.98f, curveConfig = @CurveConfig(xAxis = "duration", yAxis = "friction"))
     protected NumberFunction friction = NumberFunction.constant(0.98);
     @Setter
     @Getter
-    @Configurable(tips = "The gravity of particles over lifetime.")
+    @Configurable(tips = "photon.emitter.config.physics.gravity")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "gravity"))
     protected NumberFunction gravity = NumberFunction.constant(0);
     @Setter
     @Getter
-    @Configurable(tips = "The possibility of bounce when it has physics.")
+    @Configurable(tips = "photon.emitter.config.physics.bounceChance")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 1, curveConfig = @CurveConfig(xAxis = "duration", yAxis = "bounce chance"))
     protected NumberFunction bounceChance = NumberFunction.constant(1);
     @Setter
     @Getter
-    @Configurable(tips = "The bounce rate of speed when collision happens.")
+    @Configurable(tips = "photon.emitter.config.physics.bounceRate")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 1, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "bounce rate"))
     protected NumberFunction bounceRate =NumberFunction.constant(1);
     @Setter
     @Getter
-    @Configurable(tips = "Addition velocity for other two axis gaussian noise when collision happens.")
+    @Configurable(tips = "photon.emitter.config.physics.bounceSpreadRate")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "spread"))
     protected NumberFunction bounceSpreadRate = NumberFunction.constant(0);
 

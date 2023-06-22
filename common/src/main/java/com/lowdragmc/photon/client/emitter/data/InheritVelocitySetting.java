@@ -29,12 +29,12 @@ public class InheritVelocitySetting extends ToggleGroup {
 
     @Setter
     @Getter
-    @Configurable(tips = "Specifies whether the emitter velocity is inherited as a one-shot when a particle is born, always using the current emitter velocity, or using the emitter velocity when the particle was born.")
+    @Configurable(tips = "photon.emitter.config.inheritVelocity.mode")
     protected Mode mode = Mode.Initial;
 
     @Setter
     @Getter
-    @Configurable(tips = "Controls the amount of emitter velocity inherited during each particle's lifetime.")
+    @Configurable(tips = "photon.emitter.config.inheritVelocity.multiply")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1f, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction multiply = NumberFunction.constant(1);
 

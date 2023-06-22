@@ -22,7 +22,7 @@ public class ForceOverLifetimeSetting extends ToggleGroup {
 
     @Setter
     @Getter
-    @Configurable(tips = "Apply force. (e.g. gravity)")
+    @Configurable(tips = "photon.emitter.config.forceOverLifetime.force")
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "force")))
     protected NumberFunction3 force = new NumberFunction3(0, 0, 0);
 

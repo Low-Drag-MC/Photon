@@ -46,21 +46,21 @@ public class RendererSetting {
 
     @Getter
     @Setter
-    @Configurable(tips = "Defines the render mode of the particle renderer.")
+    @Configurable(tips = "photon.emitter.config.renderer.renderMode")
     protected Mode renderMode = Mode.Billboard;
 
     @Getter
     @Setter
-    @Configurable(tips = "Defines the render layer of the particle renderer.")
+    @Configurable(tips = "photon.emitter.config.renderer.layer")
     protected Layer layer = Layer.Translucent;
 
     @Getter
     @Setter
-    @Configurable(tips = "Render particles with the bloom effect.")
+    @Configurable(tips = "photon.emitter.config.renderer.bloomEffect")
     protected boolean bloomEffect = false;
 
     @Getter
-    @Configurable(name = "cull", subConfigurable = true, tips = "Cull particles that are out of view.")
+    @Configurable(name = "cull", subConfigurable = true, tips = "photon.emitter.config.renderer.cull")
     protected final Cull cull = new Cull();
 
     public void setupQuaternion(LParticle particle) {

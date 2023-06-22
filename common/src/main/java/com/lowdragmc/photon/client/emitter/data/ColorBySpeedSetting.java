@@ -23,12 +23,12 @@ public class ColorBySpeedSetting extends ToggleGroup {
 
     @Setter
     @Getter
-    @Configurable(tips = "Controls the color during its lifetime.")
+    @Configurable(tips = "photon.emitter.config.colorBySpeed.color")
     @NumberFunctionConfig(types = {Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction color = new Gradient();
     @Setter
     @Getter
-    @Configurable(tips = "Remaps speed in the defined range to a color.")
+    @Configurable(tips = "photon.emitter.config.colorBySpeed.speedRange")
     @NumberRange(range = {0, 1000})
     protected Range speedRange = new Range(0f, 1f);
 
