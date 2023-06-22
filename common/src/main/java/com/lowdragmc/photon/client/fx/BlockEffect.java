@@ -54,8 +54,7 @@ public class BlockEffect implements IFXEffect {
 
     @Override
     public boolean updateEmitter(IParticleEmitter emitter) {
-        var state = level.getBlockState(pos);
-        if (lastState.getBlock() != state.getBlock() || (state != lastState && checkState)) {
+        if (!level.isLoaded(pos) || lastState.getBlock() != level.getBlockState(pos).getBlock() || (checkState && level.getBlockState(pos) != lastState)) {
             emitter.remove(forcedDeath);
             return forcedDeath;
         }
