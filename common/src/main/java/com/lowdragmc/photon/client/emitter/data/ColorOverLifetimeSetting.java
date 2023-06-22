@@ -21,7 +21,7 @@ public class ColorOverLifetimeSetting extends ToggleGroup {
 
     @Setter
     @Getter
-    @Configurable(tips = "Controls the color during its lifetime.")
+    @Configurable(tips = "photon.emitter.config.colorOverLifetime.color")
     @NumberFunctionConfig(types = {Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction color = new Gradient();
 

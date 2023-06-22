@@ -7,3 +7,5 @@
 * fix entity effect
 * add cpu time
 * add more physics features (bounce)
+* add the beam emitter
+* add lang

@@ -35,7 +35,7 @@ public class Mesh implements IShape {
 
     @Getter
     @Setter
-    @Configurable(tips = "Generate particles from vertices, edges or triangles.")
+    @Configurable(tips = "photon.emitter.config.shape.mesh.type")
     private Type type = Type.Triangle;
 
     @Getter

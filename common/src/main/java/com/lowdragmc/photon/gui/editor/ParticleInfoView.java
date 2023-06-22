@@ -41,9 +41,9 @@ public class ParticleInfoView extends FloatViewWidget {
         super.initWidget();
         content.setBackground(new GuiTextureGroup(ColorPattern.T_BLACK.rectTexture().setBottomRadius(5f), ColorPattern.GRAY.borderTexture(-1).setBottomRadius(5f)));
         // actions
-        addButton("Restart", () -> getEditor().restartScene());
+        addButton("photon.gui.editor.particle_info.restart", () -> getEditor().restartScene());
         // particles
-        addInformation("Particles", () -> {
+        addInformation("photon.gui.editor.particle_info.particles", () -> {
             var list = getEditor().getEmittersList();
             if (list != null) {
                 var selected = list.getSelected();
@@ -54,7 +54,7 @@ public class ParticleInfoView extends FloatViewWidget {
             return "0";
         });
         // lifetime
-        addInformation("Time", () -> {
+        addInformation("photon.gui.editor.particle_info.time", () -> {
             var list = getEditor().getEmittersList();
             if (list != null) {
                 var selected = list.getSelected();
@@ -77,12 +77,12 @@ public class ParticleInfoView extends FloatViewWidget {
         // fps
         addInformation("FPS", () -> MinecraftAccessor.getFps() + " fps");
         // cpu time
-        addInformation("CPU Time", () ->  "%d us".formatted(getEditor().getParticleScene().getParticleManager().getCPUTime()));
+        addInformation("photon.gui.editor.particle_info.cpu_time", () ->  "%d us".formatted(getEditor().getParticleScene().getParticleManager().getCPUTime()));
         // draggable
-        var group = addToggle("Draggable", () -> getEditor().isDraggable(), draggable -> getEditor().setDraggable(draggable));
-        var textWidth = Minecraft.getInstance().font.width(LocalizationUtils.format("Draggable")) + 6;
+        var group = addToggle("photon.gui.editor.particle_info.draggable", () -> getEditor().isDraggable(), draggable -> getEditor().setDraggable(draggable));
+        var textWidth = Minecraft.getInstance().font.width(LocalizationUtils.format("photon.gui.editor.particle_info.draggable")) + 6;
         group.addWidget(new ButtonWidget(textWidth + (194 - textWidth - 70) / 2, 0, 70, 10,
-                new GuiTextureGroup(ColorPattern.T_GRAY.rectTexture().setRadius(5).setRadius(5), new TextTexture("reset pos").setWidth(194)), cd -> {
+                new GuiTextureGroup(ColorPattern.T_GRAY.rectTexture().setRadius(5).setRadius(5), new TextTexture("photon.gui.editor.particle_info.reset_pos").setWidth(194)), cd -> {
             var list = getEditor().getEmittersList();
             if (list != null) {
                 var selected = list.getSelected();
@@ -91,8 +91,8 @@ public class ParticleInfoView extends FloatViewWidget {
                 }
             }
         }));
-        addToggle("Drag All", () -> getEditor().isDragAll(), draggable -> getEditor().setDragAll(draggable));
-        addToggle("Cull-box", () -> getEditor().isRenderCullBox(), cull -> getEditor().setRenderCullBox(cull));
+        addToggle("photon.gui.editor.particle_info.drag_all", () -> getEditor().isDragAll(), draggable -> getEditor().setDragAll(draggable));
+        addToggle("photon.gui.editor.particle_info.cull_box", () -> getEditor().isRenderCullBox(), cull -> getEditor().setRenderCullBox(cull));
 
     }
 

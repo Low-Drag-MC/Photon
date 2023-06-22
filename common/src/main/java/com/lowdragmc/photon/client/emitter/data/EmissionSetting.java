@@ -48,18 +48,18 @@ public class EmissionSetting implements IConfigurable, ITagSerializable<Compound
 
     @Setter
     @Getter
-    @Configurable(tips = "The number of particles emitted per tick. The decimal part calculates the probability.")
+    @Configurable(tips = "photon.emitter.config.emission.emissionRate")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 0.5f, curveConfig = @CurveConfig(bound = {0, 5}, xAxis = "duration", yAxis = "emission rate"))
     protected NumberFunction emissionRate = NumberFunction.constant(0.5f);
 
     @Setter
     @Getter
-    @Configurable(tips = "The emission mode of the decimal part, fixed interval emission or random emission.")
+    @Configurable(tips = "photon.emitter.config.emission.emissionMode")
     protected Mode emissionMode = Mode.Exacting;
 
     @Setter
     @Getter
-    @Configurable(tips = "Emission of extra particles at specific times during the duration of the system.", persisted = false)
+    @Configurable(tips = "photon.emitter.config.emission.bursts", persisted = false)
     protected List<Burst> bursts = new ArrayList<>();
 
     @Override
@@ -146,21 +146,21 @@ public class EmissionSetting implements IConfigurable, ITagSerializable<Compound
     }
 
     public static class Burst {
-        @Configurable(tips = "When the burst will trigger. (tick)")
+        @Configurable(tips = "photon.emitter.config.emission.bursts.time")
         @NumberRange(range = {0, Integer.MAX_VALUE}, wheel = 1)
         public int time = 0;
         @Setter
         @Getter
-        @Configurable(tips = "The number of particles to emit.")
+        @Configurable(tips = "photon.emitter.config.emission.bursts.count")
         @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 50, curveConfig = @CurveConfig(bound = {0, 50}, xAxis = "duration", yAxis = "emit count"))
         protected NumberFunction count = NumberFunction.constant(50);
-        @Configurable(tips = "How many times to emit the burst. (0 - repeat infinitely)")
+        @Configurable(tips = "photon.emitter.config.emission.bursts.cycles")
         @NumberRange(range = {0, Integer.MAX_VALUE})
         public int cycles = 1;
-        @Configurable(tips = "Repeat the burst every N ticks.")
+        @Configurable(tips = "photon.emitter.config.emission.bursts.interval")
         @NumberRange(range = {1, Integer.MAX_VALUE}, wheel = 1)
         public int interval = 1;
-        @Configurable(tips = "0-1 Chance that the burst will trigger.")
+        @Configurable(tips = "photon.emitter.config.emission.bursts.probability")
         @NumberRange(range = {0, 1})
         public float probability = 1;
     }

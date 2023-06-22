@@ -22,114 +22,114 @@ import lombok.Setter;
 public class ParticleConfig {
     @Setter
     @Getter
-    @Configurable(tips = "The length of time (tick) the Particle Emitter is emitting particles. If the system is looping, this indicates the length of one cycle.")
+    @Configurable(tips = "photon.emitter.config.duration")
     @NumberRange(range = {1, Integer.MAX_VALUE})
     protected int duration = 100;
     @Setter
     @Getter
-    @Configurable(tips = "If true, the emission cycle will repeat after the duration.")
+    @Configurable(tips = "photon.emitter.config.looping")
     protected boolean looping = true;
     @Setter
     @Getter
-    @Configurable(tips = "Delay in seconds that this Particle System will wait before emitting particles.")
+    @Configurable(tips = "photon.emitter.config.startDelay")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, isDecimals = false, min = 0, curveConfig = @CurveConfig(bound = {0, 100}, xAxis = "duration", yAxis = "delay"))
     protected NumberFunction startDelay = NumberFunction.constant(0);
     @Setter
     @Getter
-    @Configurable(tips = "Start lifetime in ticks, particle will die when its lifetime reaches 0.")
+    @Configurable(tips = "photon.emitter.config.startLifetime")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, isDecimals = false, min = 0, defaultValue = 100, curveConfig = @CurveConfig(bound = {0, 200}, xAxis = "duration", yAxis = "life time"))
     protected NumberFunction startLifetime = NumberFunction.constant(100);
     @Setter
     @Getter
-    @Configurable(tips = "The start speed of particles, applied in the starting direction.")
+    @Configurable(tips = "photon.emitter.config.startSpeed")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1f, curveConfig = @CurveConfig(bound = {-2, 2}, xAxis = "duration", yAxis = "speed"))
     protected NumberFunction startSpeed = NumberFunction.constant(1);
     @Setter
     @Getter
-    @Configurable(tips = "The start size of particles.")
+    @Configurable(tips = "photon.emitter.config.startSize")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 0.1f, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "size"))
     protected NumberFunction startSize = NumberFunction.constant(0.1f);
     @Setter
     @Getter
-    @Configurable(tips = "The start rotation of particles in degrees. (x-roll, y-pitch, z-yaw)")
+    @Configurable(tips = "photon.emitter.config.startRotation")
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "duration", yAxis = "rotation")))
     protected NumberFunction3 startRotation = new NumberFunction3(0, 0, 0);
     @Setter
     @Getter
-    @Configurable(tips = "The start color of particles.")
+    @Configurable(tips = "photon.emitter.config.startColor")
     @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction startColor = NumberFunction.color(-1);
     @Setter
     @Getter
-    @Configurable(tips = "The number of particles in the system will be limited by this number. Emission will be temporarily halted if this is reached")
+    @Configurable(tips = "photon.emitter.config.maxParticles")
     @NumberRange(range = {0, 100000}, wheel = 100)
     protected int maxParticles = 2000;
     @Setter
     @Getter
-    @Configurable(tips = {"Should particles be updated in parallel threads. It will improve performance when you have massive particles. e.g., use it can improve noise calculation performance.",
-            "§cThis does not always improve performance and sometimes degrade performance§r"})
+    @Configurable(tips = {"photon.emitter.config.parallelUpdate.0",
+            "photon.emitter.config.parallelUpdate.1"})
     protected boolean parallelUpdate = false;
     @Setter
     @Getter
-    @Configurable(tips = {"Should particles be rendered in parallel threads. It will improve performance when you have massive particles. e.g., use it can improve trail particles",
-            "§cThis does not always improve performance and sometimes degrade performance§r"})
+    @Configurable(tips = {"photon.emitter.config.parallelRendering.0",
+            "photon.emitter.config.parallelRendering.1"})
     protected boolean parallelRendering = false;
     @Getter
-    @Configurable(name = "Emission", subConfigurable = true, tips = "Emission of the emitter. This controls the rate at which particles are emitted as well as burst emissions.")
+    @Configurable(name = "Emission", subConfigurable = true, tips = "photon.emitter.config.emission")
     protected EmissionSetting emission = new EmissionSetting();
     @Getter
-    @Configurable(name = "Shape", subConfigurable = true, tips = "Shape of the emitter volume, which controls where particles are emitted and their initial direction.")
+    @Configurable(name = "Shape", subConfigurable = true, tips = "photon.emitter.config.shape")
     protected ShapeSetting shape = new ShapeSetting();
     @Getter
-    @Configurable(name = "Material", subConfigurable = true, tips = "Open Reference for Particle Material.")
+    @Configurable(name = "Material", subConfigurable = true, tips = "photon.emitter.config.material")
     protected MaterialSetting material = new MaterialSetting();
     @Getter
-    @Configurable(name = "Renderer", subConfigurable = true, tips = "Specifies how the particles are rendered.")
+    @Configurable(name = "Renderer", subConfigurable = true, tips = "photon.emitter.config.renderer")
     protected RendererSetting renderer = new RendererSetting();
     @Getter
-    @Configurable(name = "Physics", subConfigurable = true, tips = "The physics of particles.")
+    @Configurable(name = "Physics", subConfigurable = true, tips = "photon.emitter.config.physics")
     protected PhysicsSetting physics = new PhysicsSetting();
     @Getter
-    @Configurable(name = "Fixed Light", subConfigurable = true, tips = "Controls the light map of each particle during its lifetime.")
+    @Configurable(name = "Fixed Light", subConfigurable = true, tips = "photon.emitter.config.lights")
     protected LightOverLifetimeSetting lights = new LightOverLifetimeSetting();
     @Getter
-    @Configurable(name = "Velocity over Lifetime", subConfigurable = true, tips = "Controls the velocity of each particle during its lifetime.")
+    @Configurable(name = "Velocity over Lifetime", subConfigurable = true, tips = "photon.emitter.config.velocityOverLifetime")
     protected final VelocityOverLifetimeSetting velocityOverLifetime = new VelocityOverLifetimeSetting();
     @Getter
-    @Configurable(name = "Inherit Velocity", subConfigurable = true, tips = "Controls the velocity inherited from the emitter, foreach particle.")
+    @Configurable(name = "Inherit Velocity", subConfigurable = true, tips = "photon.emitter.config.inheritVelocity")
     protected final InheritVelocitySetting inheritVelocity = new InheritVelocitySetting();
     @Getter
-    @Configurable(name = "Lifetime by Emitter Speed", subConfigurable = true, tips = "Controls the initial lifetime of each particle based on the speed of the emitter when the particle was spawned.")
+    @Configurable(name = "Lifetime by Emitter Speed", subConfigurable = true, tips = "photon.emitter.config.lifetimeByEmitterSpeed")
     protected final LifetimeByEmitterSpeedSetting lifetimeByEmitterSpeed = new LifetimeByEmitterSpeedSetting();
     @Getter
-    @Configurable(name = "Force over Lifetime", subConfigurable = true, tips = "Controls the force of each particle during its lifetime.")
+    @Configurable(name = "Force over Lifetime", subConfigurable = true, tips = "photon.emitter.config.forceOverLifetime")
     protected final ForceOverLifetimeSetting forceOverLifetime = new ForceOverLifetimeSetting();
     @Getter
-    @Configurable(name = "Color over Lifetime", subConfigurable = true, tips = "Controls the color of each particle during its lifetime.")
+    @Configurable(name = "Color over Lifetime", subConfigurable = true, tips = "photon.emitter.config.colorOverLifetime")
     protected final ColorOverLifetimeSetting colorOverLifetime = new ColorOverLifetimeSetting();
     @Getter
-    @Configurable(name = "Color by Speed", subConfigurable = true, tips = "Controls the color of each particle based on its speed.")
+    @Configurable(name = "Color by Speed", subConfigurable = true, tips = "photon.emitter.config.colorBySpeed")
     protected final ColorBySpeedSetting colorBySpeed = new ColorBySpeedSetting();
     @Getter
-    @Configurable(name = "Size over Lifetime", subConfigurable = true, tips = "Controls the size of each particle during its lifetime.")
+    @Configurable(name = "Size over Lifetime", subConfigurable = true, tips = "photon.emitter.config.sizeOverLifetime")
     protected final SizeOverLifetimeSetting sizeOverLifetime = new SizeOverLifetimeSetting();
     @Getter
-    @Configurable(name = "Size by Speed", subConfigurable = true, tips = "Controls the size of each particle based on its speed.")
+    @Configurable(name = "Size by Speed", subConfigurable = true, tips = "photon.emitter.config.sizeBySpeed")
     protected final SizeBySpeedSetting sizeBySpeed = new SizeBySpeedSetting();
     @Getter
-    @Configurable(name = "Rotation over Lifetime", subConfigurable = true, tips = "Controls the rotation of each particle during its lifetime.")
+    @Configurable(name = "Rotation over Lifetime", subConfigurable = true, tips = "photon.emitter.config.rotationOverLifetime")
     protected final RotationOverLifetimeSetting rotationOverLifetime = new RotationOverLifetimeSetting();
     @Getter
-    @Configurable(name = "Rotation by Speed", subConfigurable = true, tips = "Controls the angular velocity of each particle based on its speed.")
+    @Configurable(name = "Rotation by Speed", subConfigurable = true, tips = "photon.emitter.config.rotationBySpeed")
     protected final RotationBySpeedSetting rotationBySpeed = new RotationBySpeedSetting();
     @Getter
-    @Configurable(name = "Noise", subConfigurable = true, tips = "Add noise/turbulence to particle movement. If you have many particles, you should also check parallelUpdate for better performance.")
+    @Configurable(name = "Noise", subConfigurable = true, tips = "photon.emitter.config.noise")
     protected final NoiseSetting noise = new NoiseSetting();
     @Getter
-    @Configurable(name = "UV Animation", subConfigurable = true, tips = "Particle UV animation. This allows you to specify a texture sheet (a texture with multiple tiles/subframes) and animate or randomize over it per particle.")
+    @Configurable(name = "UV Animation", subConfigurable = true, tips = "photon.emitter.config.uvAnimation")
     protected final UVAnimationSetting uvAnimation = new UVAnimationSetting();
     @Getter
-    @Configurable(name = "Trails", subConfigurable = true, tips = "Attach trails to the particles.")
+    @Configurable(name = "Trails", subConfigurable = true, tips = "photon.emitter.config.trails")
     protected final TrailsSetting trails = new TrailsSetting(this);
 
     public ParticleConfig() {
