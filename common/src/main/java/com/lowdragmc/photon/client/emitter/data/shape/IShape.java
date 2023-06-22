@@ -3,8 +3,8 @@ package com.lowdragmc.photon.client.emitter.data.shape;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.syncdata.IAutoPersistedSerializable;
 import com.lowdragmc.lowdraglib.utils.Vector3;
+import com.lowdragmc.photon.integration.PhotonLDLibPlugin;
 import com.lowdragmc.photon.client.particle.LParticle;
-import com.lowdragmc.photon.integration.LDLibPlugin;
 import net.minecraft.nbt.CompoundTag;
 
 /**
@@ -20,7 +20,7 @@ public interface IShape extends IConfigurable, IAutoPersistedSerializable {
 
     static IShape deserializeWrapper(CompoundTag tag) {
         var type = tag.getString("_type");
-        var wrapper = LDLibPlugin.REGISTER_SHAPES.get(type);
+        var wrapper = PhotonLDLibPlugin.REGISTER_SHAPES.get(type);
         if (wrapper != null) {
             var shape = wrapper.creator().get();
             shape.deserializeNBT(tag);

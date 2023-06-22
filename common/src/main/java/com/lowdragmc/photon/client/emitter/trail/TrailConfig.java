@@ -24,39 +24,39 @@ import lombok.Setter;
 public class TrailConfig {
     @Setter
     @Getter
-    @Configurable(tips = "How long the tail should be (ticks)[O, infinity].")
+    @Configurable(tips = "photon.emitter.trail.config.time")
     @NumberRange(range = {0f, Integer.MAX_VALUE})
     protected int time = 20;
     @Getter
-    @Configurable(tips = "The minimum distance each trail can travel before adding a new vertex.")
+    @Configurable(tips = "photon.emitter.trail.config.minVertexDistance")
     @NumberRange(range = {0f, Float.MAX_VALUE})
     protected float minVertexDistance = 0.05f;
     @Setter
     @Getter
-    @Configurable(tips = {"Should particles be rendered in parallel threads. It will improve performance when you have massive particles. e.g., use it can improve trail particles",
-            "§cThis does not always improve performance and sometimes degrade performance§r"})
+    @Configurable(tips = {"photon.emitter.config.parallelRendering.0",
+            "photon.emitter.config.parallelRendering.1"})
     protected boolean parallelRendering = false;
     @Setter
     @Getter
-    @Configurable(tips = "Should the U coordinate be stretched or tiled?")
+    @Configurable(tips = "photon.emitter.trail.config.uvMode")
     protected TrailParticle.UVMode uvMode = TrailParticle.UVMode.Stretch;
     @Setter
     @Getter
-    @Configurable(tips = "Select a width for the trail from its start to end vertex.")
+    @Configurable(tips = "photon.emitter.trail.config.widthOverTrail")
     @NumberFunctionConfig(types = {Constant.class, Curve.class}, min = 0, defaultValue = 1f, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "trail position", yAxis = "width"))
     protected NumberFunction widthOverTrail = NumberFunction.constant(2f);
     @Setter
     @Getter
-    @Configurable(tips = "Select a color for the trail from its start to end vertex.")
+    @Configurable(tips = "photon.emitter.trail.config.colorOverTrail")
     @NumberFunctionConfig(types = {Color.class, Gradient.class}, defaultValue = -1)
     protected NumberFunction colorOverTrail = new Gradient();
     @Getter
-    @Configurable(name = "Material", subConfigurable = true, tips = "Open Reference for Tail Material.")
+    @Configurable(name = "Material", subConfigurable = true, tips = "photon.emitter.config.material")
     protected final MaterialSetting material = new MaterialSetting();
     @Getter
-    @Configurable(name = "Renderer", subConfigurable = true, tips = "Specifies how the particles are rendered.")
+    @Configurable(name = "Renderer", subConfigurable = true, tips = "photon.emitter.config.renderer")
     protected final RendererSetting renderer = new RendererSetting();
     @Getter
-    @Configurable(name = "Fixed Light", subConfigurable = true, tips = "Controls the light map of each particle during its lifetime.")
+    @Configurable(name = "Fixed Light", subConfigurable = true, tips = "photon.emitter.config.lights")
     protected final LightOverLifetimeSetting lights = new LightOverLifetimeSetting();
 }

@@ -41,34 +41,34 @@ public class NoiseSetting extends ToggleGroup {
 
     @Setter
     @Getter
-    @Configurable(tips = "Low values create soft, smooth noise, and high values create rapidly changing noise.")
+    @Configurable(tips = "photon.emitter.config.noise.frequency")
     @NumberRange(range = {Float.MIN_VALUE, Float.MAX_VALUE})
     protected float frequency = 1;
 
     @Setter
     @Getter
-    @Configurable(tips = "Generate 1D,2D or 3D noise.")
+    @Configurable(tips = "photon.emitter.config.noise.quality")
     protected Quality quality = Quality.Noise2D;
 
     @Getter
-    @Configurable(subConfigurable = true, tips = "Remap the final noise values into a new range.")
+    @Configurable(subConfigurable = true, tips = "photon.emitter.config.noise.remap")
     protected final Remap remap = new Remap();
 
     @Setter
     @Getter
-    @Configurable(tips = "How strong the overall noise effect is. If you use a curve to set this value, the Particle System applies the curve over the lifetime of each particle.")
+    @Configurable(tips = "photon.emitter.config.noise.position")
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "lifetime", yAxis = "strength")))
     protected NumberFunction3 position = new NumberFunction3(0.1, 0.1, 0.1);
 
     @Setter
     @Getter
-    @Configurable(tips = "What proportion of the noise is applied to the particle rotations,in degrees per second. If you use a curve to set this value, the Particle System applies the curve over the lifetime of each particle.")
+    @Configurable(tips = "photon.emitter.config.noise.rotation")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 180}, xAxis = "rotation amount", yAxis = "lifetime"))
     protected NumberFunction rotation = NumberFunction.constant(0);
 
     @Setter
     @Getter
-    @Configurable(tips = "Multiply the size of the particle by a proportion of the noise.If you use a curve to set this value, theParticle System applies the curve over the life time of each particle.")
+    @Configurable(tips = "photon.emitter.config.noise.size")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "size amount", yAxis = "lifetime"))
     protected NumberFunction size = NumberFunction.constant(0);
 

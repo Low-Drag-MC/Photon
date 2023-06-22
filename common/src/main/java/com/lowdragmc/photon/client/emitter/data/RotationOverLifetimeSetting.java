@@ -26,17 +26,17 @@ public class RotationOverLifetimeSetting extends ToggleGroup {
 
     @Setter
     @Getter
-    @Configurable(tips = "The roll of particles. (degree)")
+    @Configurable(tips = "photon.emitter.config.rotation.roll")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "lifetime", yAxis = "roll"))
     protected NumberFunction roll = NumberFunction.constant(0);
     @Setter
     @Getter
-    @Configurable(tips = "The pitch of particles. (degree)")
+    @Configurable(tips = "photon.emitter.config.rotation.pitch")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "lifetime", yAxis = "pitch"))
     protected NumberFunction pitch = NumberFunction.constant(0);
     @Setter
     @Getter
-    @Configurable(tips = "The yaw of particles. (degree)")
+    @Configurable(tips = "photon.emitter.config.rotation.yaw")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "lifetime", yAxis = "yaw"))
     protected NumberFunction yaw = NumberFunction.constant(0);
 

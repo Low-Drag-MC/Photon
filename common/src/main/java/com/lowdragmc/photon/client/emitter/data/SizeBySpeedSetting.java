@@ -24,19 +24,19 @@ public class SizeBySpeedSetting extends ToggleGroup {
 
     @Setter
     @Getter
-    @Configurable(tips = "Controls the scale of size during its lifetime.")
+    @Configurable(tips = "photon.emitter.config.sizeBySpeed.scale")
     @NumberFunctionConfig(types = {RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "speed", yAxis = "size scale"))
     protected NumberFunction scale = new RandomConstant(0f, 1f, true);
 
     @Setter
     @Getter
-    @Configurable(tips = "Controls the size of separated axis during its lifetime.")
+    @Configurable(tips = "photon.emitter.config.sizeBySpeed.size")
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "speed", yAxis = "size")))
     protected NumberFunction3 size = new NumberFunction3(0, 0, 0);
 
     @Setter
     @Getter
-    @Configurable(tips = "Remaps speed in the defined range to a size.")
+    @Configurable(tips = "photon.emitter.config.sizeBySpeed.speedRange")
     @NumberRange(range = {0, 1000})
     protected Range speedRange = new Range(0f, 1f);
     public Vector3 getSize(Vector3 startedSize, LParticle particle) {

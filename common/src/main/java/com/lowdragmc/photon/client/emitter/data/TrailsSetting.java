@@ -46,56 +46,56 @@ import javax.annotation.Nonnull;
 public class TrailsSetting extends ToggleGroup {
     @Setter
     @Getter
-    @Configurable(tips = "Choose what proportion of particles will receive a trail.")
+    @Configurable(tips = "photon.emitter.config.trails.ratio")
     @NumberRange(range = {0f, 1f})
     protected float ratio = 1f;
     @Setter
     @Getter
-    @Configurable(tips = "How long each trail will last, relative to the life of the particle.")
+    @Configurable(tips = "photon.emitter.config.trails.lifetime")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "trail length"))
     protected NumberFunction lifetime = NumberFunction.constant(1);
     @Setter
     @Getter
-    @Configurable(tips = "The minimum distance each trail can travel before adding a new vertex.")
+    @Configurable(tips = "photon.emitter.config.trails.minimumVertexDistance")
     @NumberRange(range = {0f, Float.MAX_VALUE})
     protected float minimumVertexDistance = 0.02f;
     @Setter
     @Getter
-    @Configurable(tips = "The trails will disappear when their owning particles die.")
+    @Configurable(tips = "photon.emitter.config.trails.dieWithParticles")
     protected boolean dieWithParticles = false;
     @Setter
     @Getter
-    @Configurable(tips = "Should the U coordinate be stretched or tiled?")
+    @Configurable(tips = "photon.emitter.config.trails.uvMode")
     protected TrailParticle.UVMode uvMode = TrailParticle.UVMode.Stretch;
     @Setter
     @Getter
-    @Configurable(tips = "The trails will use the particle size to control their width.")
+    @Configurable(tips = "photon.emitter.config.trails.sizeAffectsWidth")
     protected boolean sizeAffectsWidth = true;
     @Setter
     @Getter
-    @Configurable(tips = "The trails will use the particle size to control their lifetime.")
+    @Configurable(tips = "photon.emitter.config.trails.sizeAffectsLifetime")
     protected boolean sizeAffectsLifetime = false;
     @Setter
     @Getter
-    @Configurable(tips = "The trails will use the particle color as their base color.")
+    @Configurable(tips = "photon.emitter.config.trails.inheritParticleColor")
     protected boolean inheritParticleColor = true;
     @Setter
     @Getter
-    @Configurable(tips = "The color of the trails during the lifetime of the particle they are attached to.")
+    @Configurable(tips = "photon.emitter.config.trails.colorOverLifetime")
     @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction colorOverLifetime = new Gradient();
     @Setter
     @Getter
-    @Configurable(tips = "Select a width for the trail from its start to end vertex.")
+    @Configurable(tips = "photon.emitter.config.trails.widthOverTrail")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 1f, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "trail position", yAxis = "width"))
     protected NumberFunction widthOverTrail = NumberFunction.constant(1f);
     @Setter
     @Getter
-    @Configurable(tips = "Select a color for the trail from its start to end vertex.")
+    @Configurable(tips = "photon.emitter.config.trails.colorOverTrail")
     @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction colorOverTrail = new Gradient();
     @Getter
-    @Configurable(name = "Material", subConfigurable = true, tips = "Open Reference for Tail Material.")
+    @Configurable(name = "Material", subConfigurable = true, tips = "photon.emitter.config.material")
     protected final MaterialSetting material = new MaterialSetting();
 
     //runtime

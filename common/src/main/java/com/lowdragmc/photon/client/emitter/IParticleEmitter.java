@@ -7,7 +7,7 @@ import com.lowdragmc.lowdraglib.syncdata.IAutoPersistedSerializable;
 import com.lowdragmc.lowdraglib.utils.DummyWorld;
 import com.lowdragmc.photon.client.fx.IFXEffect;
 import com.lowdragmc.photon.client.particle.LParticle;
-import com.lowdragmc.photon.integration.LDLibPlugin;
+import com.lowdragmc.photon.integration.PhotonLDLibPlugin;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
@@ -73,7 +73,7 @@ public interface IParticleEmitter extends IConfigurable, ILDLRegisterClient, IAu
 
     @Nullable
     static IParticleEmitter deserializeWrapper(CompoundTag tag) {
-        var wrapper = LDLibPlugin.REGISTER_EMITTERS.get(tag.getString("_type"));
+        var wrapper = PhotonLDLibPlugin.REGISTER_EMITTERS.get(tag.getString("_type"));
         if (wrapper != null) {
             var emitter = wrapper.creator().get();
             emitter.deserializeNBT(tag);

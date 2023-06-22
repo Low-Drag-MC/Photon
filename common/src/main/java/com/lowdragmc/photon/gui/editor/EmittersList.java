@@ -9,7 +9,7 @@ import com.lowdragmc.lowdraglib.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib.gui.widget.*;
 import com.lowdragmc.lowdraglib.utils.LocalizationUtils;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
-import com.lowdragmc.photon.integration.LDLibPlugin;
+import com.lowdragmc.photon.integration.PhotonLDLibPlugin;
 import lombok.Getter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -80,7 +80,7 @@ public class EmittersList extends DraggableScrollableWidgetGroup {
         if (isMouseOverElement(mouseX, mouseY) && button == 1) {
             var menu = TreeBuilder.Menu.start()
                     .branch(Icons.ADD_FILE, "add emitter", m -> {
-                        for (var wrapper : LDLibPlugin.REGISTER_EMITTERS.values()) {
+                        for (var wrapper : PhotonLDLibPlugin.REGISTER_EMITTERS.values()) {
                             m.leaf(wrapper.annotation().name(), () -> {
                                 var emitter = wrapper.creator().get();
                                 var name = emitter.getName();
