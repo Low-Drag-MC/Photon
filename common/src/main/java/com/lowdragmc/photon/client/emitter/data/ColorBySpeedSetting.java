@@ -23,7 +23,7 @@ public class ColorBySpeedSetting extends ToggleGroup {
 
     @Setter
     @Getter
-    @Configurable(tips = "Apply force. (e.g. gravity)")
+    @Configurable(tips = "Controls the color during its lifetime.")
     @NumberFunctionConfig(types = {Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction color = new Gradient();
     @Setter
