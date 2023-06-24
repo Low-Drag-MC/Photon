@@ -1,0 +1,152 @@
+{
+    "ldlib.gui.editor.register.editor.particle.fxproj": "特效项目",
+    "ldlib.gui.editor.register.editor.particle.particle_info": "粒子信息",
+    "photon.emitter.config.duration": "发射器的持续时间（单位：刻/Tick）。\n如果looping（循环）被启用，则表示一个发射周期的长度。",
+    "photon.emitter.config.looping": "如果启用该属性，粒子将按照发射周期循环发射。\n[单个发射周期长度即duration（持续时间）]",
+    "photon.emitter.config.startDelay": "粒子系统发射粒子前延迟的时间（单位：秒）。",
+    "photon.emitter.config.startLifetime": "初始生命周期的刻（Tick），当粒子的生命周期达到0时，粒子将死亡。",
+    "photon.emitter.config.startSpeed": "粒子的初始速度，应用于初始方向。",
+    "photon.emitter.config.startSize": "粒子的初始大小。",
+    "photon.emitter.config.startRotation": "粒子的初始旋转角度（角度制）。\n[x-翻滚（roll），y-俯仰（pitch），z-偏航（yaw）]",
+    "photon.emitter.config.startColor": "粒子的初始颜色。",
+    "photon.emitter.config.maxParticles": "系统中粒子数量的限制。如果达到该限制，发射将暂时停止。",
+    "photon.emitter.config.parallelUpdate.0": "是否在并行线程中更新粒子。\n当您有大量粒子时，它将提高性能。例如，使用它可以提高噪声计算性能。",
+    "photon.emitter.config.parallelUpdate.1": "§c不一定能提高性能，有时反而会降低性能。§r",
+    "photon.emitter.config.parallelRendering.0": "是否在并行线程中渲染粒子。\n当您有大量粒子时，它将提高性能。例如，使用它可以提高拖尾粒子性能。",
+    "photon.emitter.config.parallelRendering.1": "§c不一定能提高性能，有时反而会降低性能。§r",
+  
+    "photon.emitter.config.emission": "控制粒子发射的速度和粒子爆发。",
+    "photon.emitter.config.shape": "控制粒子的发射体积的形状，发射位置和初始方向。",
+    "photon.emitter.config.material": "若在拖尾模块（Trails）中则作为拖尾材质使用。",
+    "photon.emitter.config.renderer": "控制粒子的渲染。",
+    "photon.emitter.config.physics": "控制粒子的物理。",
+    "photon.emitter.config.lights": "控制每个粒子在其生命周期内的光照贴图。",
+    "photon.emitter.config.velocityOverLifetime": "控制每个粒子在其生命周期内的速度。",
+    "photon.emitter.config.inheritVelocity": "控制每个粒子从发射器继承的速度。",
+    "photon.emitter.config.lifetimeByEmitterSpeed": "根据粒子生成时发射器的速度控制每个粒子的初始生命周期。",
+    "photon.emitter.config.forceOverLifetime": "控制每个粒子在其生命周期内受到的力。",
+    "photon.emitter.config.colorOverLifetime": "控制每个粒子在其生命周期内的颜色。",
+    "photon.emitter.config.colorBySpeed": "根据粒子的速度控制每个粒子的颜色。",
+    "photon.emitter.config.sizeOverLifetime": "控制每个粒子在其生命周期内的大小。",
+    "photon.emitter.config.sizeBySpeed": "根据粒子的速度控制每个粒子的大小。",
+    "photon.emitter.config.rotationOverLifetime": "控制粒子在其生命周期内的旋转。",
+    "photon.emitter.config.rotationBySpeed": "根据粒子的速度控制每个粒子的角速度。",
+    "photon.emitter.config.noise": "给粒子运动添加噪声（噪波/湍流）。\n如果您有很多粒子，还应检查parallelUpdate（并行更新）以获得更好的性能。",
+    "photon.emitter.config.uvAnimation": "粒子UV动画。\n这允许您指定一个纹理图集/精灵图集（由多个较小纹理组成的纹理）并对每个粒子进行动画化或随机化处理。",
+    "photon.emitter.config.trails": "将拖尾附加到粒子上。",
+  
+  
+    "photon.emitter.config.emission.emissionRate": "每刻（Tick）发射的粒子数量。\n若emissionMode（发射模式）设置为Random，该值若是小数则被作为每tick发射粒子的概率使用。",
+    "photon.emitter.config.emission.emissionMode": "emissionRate（发射速率）设置为小数时的发射模式。\nExacting：固定间隔发射，Random：随机发射。",
+    "photon.emitter.config.emission.bursts": "爆发是指生成粒子的事件。\n通过这些设置可允许在系统持续时间内的特定时间发射额外的粒子。",
+    "photon.emitter.config.emission.bursts.time": "开始粒子爆发的时间（单位：刻/Tick）。",
+    "photon.emitter.config.emission.bursts.count": "单次粒子爆发要发射的粒子数量。",
+    "photon.emitter.config.emission.bursts.cycles": "粒子爆发的次数。（若设置为0，则无限循环）",
+    "photon.emitter.config.emission.bursts.interval": "粒子爆发间刻（单位：刻/Tick）。",
+    "photon.emitter.config.emission.bursts.probability": "每次间隔结束后触发粒子爆发的概率。（0-1之间）",
+  
+    "photon.emitter.config.shape.position": "应用于发射器形状的偏移。",
+    "photon.emitter.config.shape.rotation": "应用于发射器形状的旋转。",
+    "photon.emitter.config.shape.scale": "应用于发射器形状的缩放。",
+    "photon.emitter.config.shape.mesh.type": "指定从何处发射粒子。\nvertices：顶点处，edges：边缘处，\ntriangles：三角面。",
+    "photon.emitter.config.shape.mesh.mesh": "拖动/选择网格。",
+  
+    "photon.emitter.config.material.preview": "通过拖动材质到预览区来替换它",
+  
+    "photon.emitter.config.renderer.renderMode": "定义粒子渲染器的渲染模式。\nBilboard：始终面向玩家，Horizontal：水平，\nVertical：垂直。",
+    "photon.emitter.config.renderer.layer": "定义粒子渲染器的渲染层。\nOpaque：不透明，Translucent：半透明。",
+    "photon.emitter.config.renderer.bloomEffect": "使用泛光效果（Bloom）渲染粒子。",
+    "photon.emitter.config.renderer.cull": "设置Cull-box的大小，若玩家看不见Cull-box，则剔除粒子。",
+  
+    "photon.emitter.config.physics.hasCollision": "检查粒子的碰撞。",
+    "photon.emitter.config.physics.friction": "粒子在其生命周期内的摩擦力。（0-无限摩擦力，1-无摩擦力）",
+    "photon.emitter.config.physics.gravity": "粒子在其生命周期内的重力。",
+    "photon.emitter.config.physics.bounceChance": "碰撞时发生反弹的可能性。",
+    "photon.emitter.config.physics.bounceRate": "碰撞发生时的反弹速率。",
+    "photon.emitter.config.physics.bounceSpreadRate": "碰撞发生时，对其他两个轴的高斯噪声添加的额外速度。",
+  
+    "photon.emitter.config.lights.skyLight": "光照贴图的天空光照等级。（0-15）",
+    "photon.emitter.config.lights.blockLight": "光照贴图的方块光照等级。（0-15）",
+  
+    "photon.emitter.config.velocityOverLifetime.linear": "对粒子应用线性速度。",
+    "photon.emitter.config.velocityOverLifetime.orbitalMode": "轨道旋转模式。",
+    "photon.emitter.config.velocityOverLifetime.orbital": "对粒子应用轨道速度，使其围绕系统中心旋转。",
+    "photon.emitter.config.velocityOverLifetime.offset": "应用于旋转中心的偏移。",
+    "photon.emitter.config.velocityOverLifetime.speedModifier": "将粒子速度乘以此值。",
+  
+    "photon.emitter.config.inheritVelocity.mode": "指定如何将发射器速度应用于粒子。\nCurrent：发射器的当前速度将应用于每一帧上的所有粒子。例如，如果发射器减速，所有粒子也将减速。\nInitial：每个粒子出生时将施加一次发射器的速度。粒子出生后对发射器速度的任何改变都不会影响该粒子。",
+    "photon.emitter.config.inheritVelocity.multiply": "每个粒子生命周期中继承发射器速度的粒子数量。",
+  
+    "photon.emitter.config.lifetimeByEmitterSpeed.multiplier": "根据发射器的速度控制粒子的初始寿命。",
+    "photon.emitter.config.lifetimeByEmitterSpeed.speedRange": "当multiplier使用曲线模式之一时，将速度映射到曲线上的一个值。",
+  
+    "photon.emitter.config.forceOverLifetime.force": "施加力。（例如：重力）",
+  
+    "photon.emitter.config.colorOverLifetime.color": "控制粒子在生命周期内的颜色。",
+  
+    "photon.emitter.config.colorBySpeed.color": "根据粒子速度控制颜色。",
+    "photon.emitter.config.colorBySpeed.speedRange": "将定义范围内的速度重新映射为颜色渐变。\n（超出范围的速度将映射到渐变的端点）",
+  
+    "photon.emitter.config.sizeOverLifetime.scale": "控制粒子在生命周期内的大小尺寸。",
+    "photon.emitter.config.sizeOverLifetime.size": "在每个轴上独立控制粒子在生命周期的大小。",
+  
+    "photon.emitter.config.sizeBySpeed.scale": "根据速度控制粒子大小。",
+    "photon.emitter.config.sizeBySpeed.size": "在每个轴上根据速度独立控制粒子大小。",
+    "photon.emitter.config.sizeBySpeed.speedRange": "将定义范围内的速度重新映射为大小。\n（超出范围的速度将映射到大小的端点）",
+  
+    "photon.emitter.config.rotationBySpeed.speedRange": "将定义范围内的速度重新映射为旋转。\n（超出范围的速度将映射到旋转的端点）",
+  
+    "photon.emitter.config.noise.frequency": "低值会产生柔和、平滑的噪声，而高值会产生快速变化的噪声。\n此属性可控制粒子改变行进方向的频率以及方向变化的突然程度。",
+    "photon.emitter.config.noise.quality": "生成一维（1D）、二维（2D）或三维（3D）噪声。",
+    "photon.emitter.config.noise.remap": "将最终噪声值重新映射到一个新的范围。",
+    "photon.emitter.config.noise.position": "整体噪声效果的强度。\n如果使用曲线来设置此值，粒子系统将在每个粒子的生命周期内应用曲线。",
+    "photon.emitter.config.noise.rotation": "噪声应用于粒子旋转的比例，以度数/秒表示。\n如果使用曲线来设置此值，粒子系统将在每个粒子的生命周期内应用曲线。",
+    "photon.emitter.config.noise.size": "粒子的大小乘以噪声的比例。\n如果使用曲线来设置此值，则粒子系统会在每个粒子的生命周期内应用曲线。",
+  
+    "photon.emitter.config.uvAnimation.tiles": "纹理在 X（水平）和 Y（垂直）方向上划分的区块数量。",
+    "photon.emitter.config.uvAnimation.animation": "指定动画帧如何被播放。\nWhole-Sheet：整个纹理图集是一个动画序列，从左到右，从上到下对整张图片进行动画处理。\nSingleRow：纹理图集的每一行代表一个单独的动画序列，从左到右对单行进行动画处理。",
+    "photon.emitter.config.uvAnimation.frameOverTime": "控制每个粒子在其生命周期内的uv动画帧。\n横轴是生命周期。纵轴是纹理图集索引。",
+    "photon.emitter.config.uvAnimation.startFrame": "指定粒子动画从哪个帧开始。",
+    "photon.emitter.config.uvAnimation.cycle": "动画序列在粒子生命周期内重复的次数。",
+  
+    "photon.emitter.config.trails.ratio": "设置产生拖尾效果的粒子的比例。",
+    "photon.emitter.config.trails.lifetime": "每个拖尾相对于所属粒子的生命周期将存在多长时间。\n拖尾中每个顶点的生命周期 = 粒子的生命周期 x 该值。",
+    "photon.emitter.config.trails.minimumVertexDistance": "拖尾生成新顶点前必须经过的距离。",
+    "photon.emitter.config.trails.dieWithParticles": "拖尾是否在其所属粒子死亡后消失。",
+    "photon.emitter.config.trails.uvMode": "uv贴图模式。\nStretch：沿着拖尾的整个长度拉伸纹理。\nTile：重复纹理。重复的距离间隔与minimumVertexDistance有关。",
+    "photon.emitter.config.trails.sizeAffectsWidth": "拖尾宽度是否受所属粒子大小影响。",
+    "photon.emitter.config.trails.sizeAffectsLifetime": "拖尾生命周期是否受所属粒子大小影响。",
+    "photon.emitter.config.trails.inheritParticleColor": "拖尾颜色是否使用所属粒子的颜色。",
+    "photon.emitter.config.trails.colorOverLifetime": "拖尾在所属粒子生命周期内的颜色。",
+    "photon.emitter.config.trails.widthOverTrail": "设置拖尾存在期间的宽度。",
+    "photon.emitter.config.trails.colorOverTrail": "设置拖尾存在期间的颜色。",
+  
+    "photon.emitter.config.rotation.roll": "粒子的翻滚（roll）。[角度制]",
+    "photon.emitter.config.rotation.pitch": "粒子的俯仰（pitch）。[角度制]",
+    "photon.emitter.config.rotation.yaw": "粒子的偏航（yaw）。[角度制]",
+  
+    "photon.emitter.trail.config.time": "拖尾的持续时间（单位：刻/tick）。[0，∞]",
+    "photon.emitter.trail.config.minVertexDistance": "拖尾生成新顶点前必须经过的距离。",
+    "photon.emitter.trail.config.uvMode": "uv贴图模式。\nStretch：沿着拖尾的整个长度拉伸纹理。\nTile：重复纹理。重复的距离间隔与minVertexDistance有关。",
+    "photon.emitter.trail.config.widthOverTrail": "设置拖尾存在期间的宽度。",
+    "photon.emitter.trail.config.colorOverTrail": "设置拖尾存在期间的颜色。",
+  
+  
+    "photon.emitter.beam.config.end": "光束的结束点。（相较于光束起始点偏移）",
+    "photon.emitter.beam.config.width": "设置光束在其生命周期内的宽度。",
+    "photon.emitter.beam.config.emitRate": "设置光束在其生命周期内的发射速率。",
+    "photon.emitter.beam.config.color": "设置光束在其生命周期内的颜色。",
+  
+    "photon.gui.editor.particle_info.restart": "重启",
+    "photon.gui.editor.particle_info.particles": "粒子数",
+    "photon.gui.editor.particle_info.time": "时间",
+    "photon.gui.editor.particle_info.cpu_time": "CPU时间",
+    "photon.gui.editor.particle_info.draggable": "可拖动",
+    "photon.gui.editor.particle_info.drag_all": "拖动全部图层",
+    "photon.gui.editor.particle_info.reset_pos": "重置位置",
+    "photon.gui.editor.particle_info.cull_box": "显示Cull-box边界",
+  
+    "ldlib.gui.editor.group.particles": "粒子组",
+    "ldlib.gui.editor.tips.other": "其他"
+  
+  }
