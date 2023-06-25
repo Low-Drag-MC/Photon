@@ -1,6 +1,8 @@
 {
     "ldlib.gui.editor.register.editor.particle.fxproj": "特效项目",
     "ldlib.gui.editor.register.editor.particle.particle_info": "粒子信息",
+    "ldlib.gui.editor.group.particles": "粒子组",
+    "ldlib.gui.editor.tips.other": "其他",
     "photon.emitter.config.duration": "发射器的持续时间（单位：刻/Tick）。\n如果looping（循环）被启用，则表示一个发射周期的长度。",
     "photon.emitter.config.looping": "如果启用该属性，粒子将按照发射周期循环发射。\n[单个发射周期长度即duration（持续时间）]",
     "photon.emitter.config.startDelay": "粒子系统发射粒子前延迟的时间（单位：秒）。",
@@ -144,9 +146,6 @@
     "photon.gui.editor.particle_info.draggable": "可拖动",
     "photon.gui.editor.particle_info.drag_all": "拖动全部图层",
     "photon.gui.editor.particle_info.reset_pos": "重置位置",
-    "photon.gui.editor.particle_info.cull_box": "显示Cull-box边界",
-  
-    "ldlib.gui.editor.group.particles": "粒子组",
-    "ldlib.gui.editor.tips.other": "其他"
+    "photon.gui.editor.particle_info.cull_box": "显示Cull-box边界"
   
   }
