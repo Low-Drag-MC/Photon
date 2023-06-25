@@ -27,8 +27,7 @@ public abstract class ArgumentTypeInfosMixin {
 
     @Inject(
             method = "bootstrap",
-            at = {@At(value = "RETURN")}
-    )
+            at = {@At(value = "HEAD")})
     private static void injectRegisterArgumentTypes(Registry<ArgumentTypeInfo<?, ?>> registry, CallbackInfoReturnable<ArgumentTypeInfo<?, ?>> cir) {
         register(registry, "fx_location", FxLocationArgument.class, SingletonArgumentInfo.contextFree(FxLocationArgument::new));
     }
