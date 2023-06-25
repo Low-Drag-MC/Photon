@@ -80,7 +80,7 @@ public class MaterialSetting implements IConfigurable, ITagSerializable<Compound
                         preview.setBorder(2, ColorPattern.T_WHITE.color);
                     }
                 });
-        wrapper.setTips("Replace the material by dragging it to preview.");
+        wrapper.setTips("photon.emitter.config.material.preview");
         father.addConfigurator(0, wrapper);
         father.addConfigurators(setting);
     }

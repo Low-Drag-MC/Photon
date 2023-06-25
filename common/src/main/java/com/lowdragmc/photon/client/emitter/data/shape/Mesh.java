@@ -97,7 +97,7 @@ public class Mesh implements IShape {
                         }
                         selector.getSelector().setButtonBackground(ColorPattern.T_GRAY.rectTexture().setRadius(5));
                     });
-            selector.setTips("drag / select a mesh.");
+            selector.setTips("photon.emitter.config.shape.mesh.mesh");
             father.addConfigurators(selector);
         } else {
             ImageWidget imageWidget;
