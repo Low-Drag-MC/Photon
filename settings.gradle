@@ -14,7 +14,7 @@ dependencyResolutionManagement {
     }
     versionCatalogs {
         // Minecraft Version
-        def minecraftVersion = "1.20"
+        def minecraftVersion = "1.20.1"
 
         // Mod Dependencies Versions
 
@@ -24,19 +24,19 @@ dependencyResolutionManagement {
         def sodiumVersion = "mc1.20-0.4.10"
         def irisVersion = "1.6.4+1.20"
         // Forge
-        def forgeVersion = "46.0.1"
+        def forgeVersion = "47.0.19"
         def rubidiumVersion = "0.6.5"
         def oculusVersion = "1.20-1.6.4"
 
         // Libs
-        def quiltMappingsVersion = "1"  // https://lambdaurora.dev/tools/import_quilt.html
+        def quiltMappingsVersion = "5"  // https://lambdaurora.dev/tools/import_quilt.html
         def parchmentVersion = "1.19.3:2023.03.12" // https://parchmentmc.org/docs/getting-started
         def shadowVersion = "7.1.2"
         def architecturyPluginVersion = "3.4-SNAPSHOT"
         def architecturyLoomVersion = "1.0-SNAPSHOT"
         def quiltFlowerVersion = "1.+"
         def macheteVersion = "1.+"
-        def ldLibVersion = "1.0.9.c"
+        def ldLibVersion = "1.0.10"
 
         fabric {
             def parchment = version("parchment", parchmentVersion)
