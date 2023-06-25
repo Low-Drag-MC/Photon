@@ -1,6 +1,8 @@
 {
   "ldlib.gui.editor.register.editor.particle.fxproj": "FX Project",
   "ldlib.gui.editor.register.editor.particle.particle_info": "Particle Information",
+  "ldlib.gui.editor.group.particles": "particles",
+  "ldlib.gui.editor.tips.other": "other",
   "photon.emitter.config.duration": "The duration of time (tick) the Emitter. If the system is looping, this indicates the length of one cycle.",
   "photon.emitter.config.looping": "If true, the emission cycle will repeat after the duration.",
   "photon.emitter.config.startDelay": "Delay in seconds that this Particle System will wait before emitting particles.",
@@ -102,7 +104,9 @@
   "photon.emitter.config.shape.rotation": "Rotate the emission shape.",
   "photon.emitter.config.shape.scale": "Scale the emission shape.",
   "photon.emitter.config.shape.mesh.type": "Generate particles from vertices, edges or triangles.",
+  "photon.emitter.config.shape.mesh.mesh": "drag to / select a mesh.",
 
+  "photon.emitter.config.material.preview": "Replace the material by dragging it into the preview.",
   "photon.emitter.trail.config.time": "How long the tail should be (ticks)[O, infinity].",
   "photon.emitter.trail.config.minVertexDistance": "The minimum distance each trail can travel before adding a new vertex.",
   "photon.emitter.trail.config.uvMode": "Should the U coordinate be stretched or tiled?",

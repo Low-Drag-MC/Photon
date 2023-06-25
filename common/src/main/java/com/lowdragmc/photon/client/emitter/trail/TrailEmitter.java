@@ -117,7 +117,8 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
         particles.get(renderType).clear();
         particles.get(renderType).add(this);
         super.setLifetime(-1);
-        super.setUvMode(uvMode);
+        config.renderer.setupQuaternion(this);
+        super.setUvMode(config.uvMode);
         super.setMinimumVertexDistance(config.minVertexDistance);
         super.setOnRemoveTails(t -> {
             var iterT = tailsTime.iterator();
@@ -155,7 +156,10 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
         if (fXEffect != null && fXEffect.updateEmitter(this)) {
             return;
         }
-        config.renderer.setupQuaternion(this);
+        if (fXEffect == null) {
+            config.renderer.setupQuaternion(this);
+            setUvMode(config.uvMode);
+        }
         super.update();
     }
 
