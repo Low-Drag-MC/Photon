@@ -1,7 +1,7 @@
 {
     "ldlib.gui.editor.register.editor.particle.fxproj": "特效项目",
     "ldlib.gui.editor.register.editor.particle.particle_info": "粒子信息",
-    "ldlib.gui.editor.group.particles": "粒子组",
+    "ldlib.gui.editor.group.particles": "粒子图层组",
     "ldlib.gui.editor.tips.other": "其他",
     "photon.emitter.config.duration": "发射器的持续时间（单位：刻/Tick）。\n如果looping（循环）被启用，则表示一个发射周期的长度。",
     "photon.emitter.config.looping": "如果启用该属性，粒子将按照发射周期循环发射。\n[单个发射周期长度即duration（持续时间）]",
@@ -53,7 +53,8 @@
     "photon.emitter.config.shape.mesh.type": "指定从何处发射粒子。\nvertices：顶点处，edges：边缘处，\ntriangles：三角面。",
     "photon.emitter.config.shape.mesh.mesh": "拖动/选择网格。",
   
-    "photon.emitter.config.material.preview": "通过拖动材质到预览区来替换它",
+    "photon.emitter.config.material.preview": "通过拖动材质到预览区来替换它。",
+    "photon.emitter.config.material.preview.baseImage": "单击以选择图像。",
   
     "photon.emitter.config.renderer.renderMode": "定义粒子渲染器的渲染模式。\nBilboard：始终面向玩家，Horizontal：水平，\nVertical：垂直。",
     "photon.emitter.config.renderer.layer": "定义粒子渲染器的渲染层。\nOpaque：不透明，Translucent：半透明。",
