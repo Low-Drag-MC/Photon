@@ -5,7 +5,6 @@ import com.lowdragmc.lowdraglib.gui.editor.ILDLRegisterClient;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.syncdata.IAutoPersistedSerializable;
 import com.lowdragmc.lowdraglib.utils.DummyWorld;
-import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.fx.IEffect;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.integration.PhotonLDLibPlugin;
@@ -68,7 +67,7 @@ public interface IParticleEmitter extends IConfigurable, ILDLRegisterClient, IAu
     default void emmitToLevel(@Nullable IEffect effect, Level level, double x, double y, double z, double xR, double yR, double zR) {
         setEffect(effect);
         self().setPos(x, y, z, true);
-        self().setRotation(new Vector3(xR, yR, zR));
+        self().setRotation(new Vector3f((float) xR, (float) yR, (float) zR));
         self().setLevel(level);
         self().prepareForEmitting(null);
         if (level instanceof DummyWorld dummyWorld) {
