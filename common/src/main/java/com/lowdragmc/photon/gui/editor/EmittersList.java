@@ -26,6 +26,7 @@ public class EmittersList extends DraggableScrollableWidgetGroup {
     private final ParticleProject particleProject;
     @Getter
     @Nullable
+    @Environment(EnvType.CLIENT)
     private IParticleEmitter selected;
 
     public EmittersList(ParticleEditor editor, ParticleProject particleProject) {
@@ -49,10 +50,11 @@ public class EmittersList extends DraggableScrollableWidgetGroup {
             editor.openEmitterConfigurator(emitter);
             selected = emitter;
         });
+        selectableWidgetGroup.setDraggingProvider(() -> emitter, (e, p) -> new TextTexture(e.getName()).setWidth(1000));
         addWidget(selectableWidgetGroup);
 
         emitter.reset();
-        emitter.emmitToLevel(editor.particleScene.level, 0.5, 3, 0.5);
+        emitter.emmitToLevel(editor.getEditorFX(), editor.particleScene.level, 0.5, 3, 0.5, 0, 0, 0);
         editor.restartScene();
     }
 
@@ -120,6 +122,25 @@ public class EmittersList extends DraggableScrollableWidgetGroup {
             return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if(isMouseOverElement(mouseX, mouseY)){
+            if (super.checkClickedDragged(mouseX, mouseY, button)) {
+                setFocus(true);
+                return true;
+            }
+            draggedWidget = null;
+            setFocus(true);
+            return false;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    @Environment(EnvType.CLIENT)
+    protected boolean checkClickedDragged(double mouseX, double mouseY, int button) {
+        return true;
     }
 
 }

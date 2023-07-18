@@ -17,6 +17,8 @@ public abstract class EffectCommand implements IPacket {
     @Setter
     protected Vec3 offset = Vec3.ZERO;
     @Setter
+    protected Vec3 rotation = Vec3.ZERO;
+    @Setter
     protected int delay;
     @Setter
     protected boolean forcedDeath;
@@ -29,6 +31,9 @@ public abstract class EffectCommand implements IPacket {
         buf.writeDouble(offset.x);
         buf.writeDouble(offset.y);
         buf.writeDouble(offset.z);
+        buf.writeDouble(rotation.x);
+        buf.writeDouble(rotation.y);
+        buf.writeDouble(rotation.z);
         buf.writeVarInt(delay);
         buf.writeBoolean(forcedDeath);
         buf.writeBoolean(allowMulti);
@@ -38,6 +43,7 @@ public abstract class EffectCommand implements IPacket {
     public void decode(FriendlyByteBuf buf) {
         location = buf.readResourceLocation();
         offset = new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble());
+        rotation = new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble());
         delay = buf.readVarInt();
         forcedDeath = buf.readBoolean();
         allowMulti = buf.readBoolean();

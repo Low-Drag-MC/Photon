@@ -131,6 +131,9 @@ public class ParticleConfig {
     @Getter
     @Configurable(name = "Trails", subConfigurable = true, tips = "photon.emitter.config.trails")
     protected final TrailsSetting trails = new TrailsSetting(this);
+    @Getter
+    @Configurable(name = "Sub Emitters", subConfigurable = true, tips = "photon.emitter.config.sub_emitters")
+    protected final SubEmittersSetting subEmitters = new SubEmittersSetting();
 
     public ParticleConfig() {
     }

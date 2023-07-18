@@ -13,6 +13,9 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.phys.AABB;
 import org.joml.Vector3f;
 import com.lowdragmc.photon.client.fx.IFXEffect;
+import com.lowdragmc.photon.client.emitter.data.SubEmittersSetting;
+import com.lowdragmc.photon.client.fx.IEffect;
+import net.minecraft.nbt.CompoundTag;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
 import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
@@ -60,7 +63,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     protected boolean visible = true;
     @Nullable
     @Getter @Setter
-    protected IFXEffect fXEffect;
+    protected IEffect effect;
 
     public ParticleEmitter() {
         this(new ParticleConfig());
@@ -69,6 +72,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     public ParticleEmitter(ParticleConfig config) {
         super(null, 0, 0, 0);
         setCull(false);
+        setMoveless(true);
         this.config = config;
         this.renderType = new RenderType(config);
     }
@@ -109,7 +113,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     //////////////////////////////////////
     protected LParticle createNewParticle() {
         var randomSource= getRandomSource();
-        var particle = new Basic(level, this.x, this.y, this.z, renderType);
+        var particle = new Basic(level, 0, 0, 0, renderType);
         particle.setLevel(getLevel());
         // start value
         particle.setDelay(config.startDelay.get(randomSource, t).intValue());
@@ -118,24 +122,49 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
         } else {
             particle.setLifetime(config.startLifetime.get(randomSource, t).intValue());
         }
-        config.shape.setupParticle(particle);
+        config.shape.setupParticle(particle, this);
         particle.setSpeed(config.startSpeed.get(randomSource, t).floatValue());
         var sizeScale = config.startSize.get(randomSource, t).floatValue();
-        var startedSize = new Vector3f(sizeScale, sizeScale, sizeScale);
+
+        var startedSize = new Vector3f(sizeScale * quadSize.x, sizeScale * quadSize.y, sizeScale * quadSize.z);
         particle.setSize(sizeScale);
         var rotation = config.startRotation.get(randomSource, t).mul(Mth.TWO_PI / 360);
         particle.setRoll(rotation.x);
-        particle.setPitch(rotation.y);
-        particle.setYaw(rotation.z);
-        particle.setARGBColor(config.startColor.get(randomSource, t).intValue());
-        config.renderer.setupQuaternion(particle);
+        particle.setPitch((float) rotation.y);
+        particle.setYaw((float) rotation.z);
+        var startColor = config.startColor.get(randomSource, t).intValue();
+        particle.setARGBColor(ColorUtils.color(
+                getAlpha(0) * ColorUtils.alpha(startColor),
+                getRed(0) * ColorUtils.red(startColor),
+                getGreen(0) * ColorUtils.green(startColor),
+                getBlue(0) * ColorUtils.blue(startColor)));
+        config.renderer.setupQuaternion(this, particle);
         if (config.physics.isEnable()) {
             particle.setPhysics(config.physics.isHasCollision());
             particle.setGravity(config.physics.getGravity().get(randomSource, 0).floatValue());
             particle.setFriction(config.physics.getFriction().get(randomSource, 0).floatValue());
         }
+
+        // event
+        if (config.subEmitters.isEnable()) {
+            particle.setOnBirth(p -> {
+                if (config.subEmitters.isEnable()) {
+                    config.subEmitters.triggerEvent(this, p, SubEmittersSetting.Event.Birth);
+                }
+            });
+            particle.setOnDeath(p -> {
+                if (config.subEmitters.isEnable()) {
+                    config.subEmitters.triggerEvent(this, p, SubEmittersSetting.Event.Death);
+                }
+            });
+            particle.setOnCollision(p -> {
+                if (config.subEmitters.isEnable()) {
+                    config.subEmitters.triggerEvent(this, p, SubEmittersSetting.Event.Collision);
+                }
+            });
+        }
+
         // particle logic
-        final var emitterVelocity = getVelocity();
 
         if (config.velocityOverLifetime.isEnable() || config.inheritVelocity.isEnable()) {
             particle.setVelocityAddition(p -> {
@@ -144,7 +173,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                     addition.add(config.velocityOverLifetime.getVelocityAddition(p, this));
                 }
                 if (config.inheritVelocity.isEnable()) {
-                    addition.add(config.inheritVelocity.getVelocityAddition(p, this, emitterVelocity));
+                    addition.add(config.inheritVelocity.getVelocityAddition(p, this));
                 }
                 return addition;
             });
@@ -160,7 +189,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
             });
         }
 
-        if (config.forceOverLifetime.isEnable() || config.sizeOverLifetime.isEnable() || config.sizeBySpeed.isEnable() || config.physics.isEnable() || config.noise.isEnable()) {
+        if (config.forceOverLifetime.isEnable() || config.sizeOverLifetime.isEnable() || config.sizeBySpeed.isEnable() || config.physics.isEnable()) {
             particle.setOnUpdate(p -> {
                 if (config.forceOverLifetime.isEnable()) {
                     p.setSpeed(p.getVelocity().add(config.forceOverLifetime.getForce(p)));
@@ -173,9 +202,6 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                 }
                 if (config.physics.isEnable()) {
                     config.physics.setupParticlePhysics(p);
-                }
-                if (config.noise.isEnable()) {
-                    p.setPos(p.getPos(1).add(config.noise.getPosition(p, 0)), false);
                 }
             });
         }
@@ -234,12 +260,17 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
             });
         }
 
-        if (config.noise.isEnable()) {
+        if (config.noise.isEnable() || config.inheritVelocity.isEnable()) {
+            var initialPos = this.getPos();
             particle.setPositionAddition((p, partialTicks) -> {
+                var addition = new Vector3f(0, 0, 0);
                 if (config.noise.isEnable()) {
-                    return config.noise.getPosition(p, partialTicks);
+                    addition.add(config.noise.getPosition(p, partialTicks));
                 }
-                return new Vector3f(0 ,0, 0);
+                if (config.inheritVelocity.isEnable()) {
+                    addition.add(config.inheritVelocity.getPosition(this, initialPos, partialTicks));
+                }
+                return addition;
             });
         }
 
@@ -272,7 +303,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     @Override
     public void tick() {
         // effect first
-        if (fXEffect != null && fXEffect.updateEmitter(this)) {
+        if (effect != null && effect.updateEmitter(this)) {
             return;
         }
 
@@ -310,13 +341,32 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
             }
         }
 
-        if (this.age >= config.duration && !config.isLooping()) {
-            this.remove();
+        // is sub emitter
+        if (getEmitter() != null) {
+            if (this.age >= lifetime) {
+                this.remove();
+            }
+            this.age++;
+            t = this.age * 1f / lifetime;
+        } else {
+            if (this.age >= config.duration && !config.isLooping()) {
+                this.remove();
+            }
+            this.age++;
+            t = (this.age % config.duration) * 1f / config.duration;
         }
 
-        this.age++;
-        t = (this.age % config.duration) * 1f / config.duration;
+        update();
 
+        if (isMoveless()) {
+            setSpeed(0);
+        }
+    }
+
+    public void updatePos(Vector3f newPos) {
+        var lastPos = getPos(1);
+        self().setPos(newPos, true);
+        self().setSpeed(new Vector3f(newPos).sub(lastPos));
     }
 
     @Override
@@ -351,7 +401,11 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                 var type = entry.getKey();
                 if (type == ParticleRenderType.NO_RENDER) continue;
                 var queue = entry.getValue();
-                if (!queue.isEmpty()) {
+                if (type == ParticleQueueRenderType.INSTANCE) {
+                    for (var emitter : queue) {
+                        emitter.render(buffer, camera, pPartialTicks);
+                    }
+                } else if (!queue.isEmpty()) {
                     ParticleQueueRenderType.INSTANCE.pipeQueue(type, queue, camera, pPartialTicks);
                 }
             }
@@ -429,9 +483,13 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     //////////////////////////////////////
 
     public boolean emitParticle(LParticle particle) {
-        particle.prepareForEmitting(this);
-        particles.computeIfAbsent(particle.getRenderType(), type -> new ArrayDeque<>(config.maxParticles)).add(particle);
-        return getParticleAmount() <= config.maxParticles;
+        if (emitter != null) { // find root
+            return emitter.emitParticle(particle);
+        } else {
+            particle.prepareForEmitting(this);
+            particles.computeIfAbsent(particle.getRenderType(), type -> new ArrayDeque<>(config.maxParticles)).add(particle);
+            return getParticleAmount() <= config.maxParticles;
+        }
     }
 
     @Override
