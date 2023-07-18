@@ -42,8 +42,9 @@ public class ShapeSetting implements IConfigurable {
     @NumberRange(range = {0, 1000})
     private Vector3f scale = new Vector3f(1, 1, 1);
 
-    public void setupParticle(LParticle particle) {
-        shape.nextPosVel(particle, new Vector3f(position), new Vector3f(rotation).mul(Mth.TWO_PI / 360), new Vector3f(scale));
+
+    public void setupParticle(LParticle particle, LParticle emitter) {
+        shape.nextPosVel(particle, emitter.getPos().add(position), emitter.getRotation(0).add(new Vector3f(rotation).mul(Mth.TWO_PI / 360)), new Vector3f(scale));
     }
 
     @Override

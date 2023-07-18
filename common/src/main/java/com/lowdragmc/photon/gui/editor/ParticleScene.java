@@ -114,10 +114,12 @@ public class ParticleScene extends SceneWidget {
         createScene(level);
         renderer.setOnLookingAt(null);
         Set<BlockPos> plane = new HashSet<>();
+        int i = 0;
         for (int x = -5; x < 6; x++) {
             for (int z = -5; z < 6; z++) {
                 plane.add(new BlockPos(x, 0, z));
-                level.addBlock(new BlockPos(x, 0, z), BlockInfo.fromBlock(Blocks.GRASS_BLOCK));
+                level.addBlock(new BlockPos(x, 0, z), BlockInfo.fromBlock(i % 2 == 0 ? Blocks.SAND : Blocks.STONE));
+                i++;
             }
         }
         plane.add(new BlockPos(0, 6, 0));
@@ -145,10 +147,12 @@ public class ParticleScene extends SceneWidget {
                     var lookVec = pos.sub(new Vector3f(renderer.getEyePos()));
                     var mag = lookVec.length();
                     var draggedPos = new Vector3f(renderer.getEyePos()).add(Vector3fHelper.project(lookVec, vec).normalize().mul(mag));
-                    selected.self().setPos(draggedPos, true);
+                    selected.updatePos(draggedPos);
                     if (editor.isDragAll() && editor.getCurrentProject() instanceof ParticleProject project) {
                         for (IParticleEmitter emitter : project.getEmitters()) {
-                            emitter.self().setPos(draggedPos, true);
+                            if (emitter != selected) {
+                                emitter.updatePos(draggedPos);
+                            }
                         }
                     }
                 } else {

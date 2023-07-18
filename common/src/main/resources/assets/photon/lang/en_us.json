@@ -113,10 +113,21 @@
   "photon.emitter.trail.config.widthOverTrail": "Select a width for the trail from its start to end vertex.",
   "photon.emitter.trail.config.colorOverTrail": "Select a color for the trail from its start to end vertex.",
 
+  "photon.emitter.config.sub_emitters": "Sub emission of particles. This allows each particle to emit particles in another system.",
+  "photon.emitter.config.sub_emitters.emitter.name": "Drag/Select an emitter here (using emitter name).",
+  "photon.emitter.config.sub_emitters.emitter.event": "Event to trigger the emission.",
+  "photon.emitter.config.sub_emitters.emitter.inherit_color": "Inherit color from the parent particle.",
+  "photon.emitter.config.sub_emitters.emitter.inherit_size": "Inherit size from the parent particle.",
+  "photon.emitter.config.sub_emitters.emitter.inherit_rotation": "Inherit rotation from the parent particle.",
+  "photon.emitter.config.sub_emitters.emitter.inherit_lifetime": "Inherit age from the parent particle.",
+  "photon.emitter.config.sub_emitters.emitter.inherit_duration": "Inherit duration from the parent particle.",
+  "photon.emitter.config.sub_emitters.emitter.emit_probability": "Determines the proportion of sub-emitter spawn events that successfully triggers the associated sub-emitter.",
+
   "photon.emitter.beam.config.end": "Beam end offset.",
   "photon.emitter.beam.config.width": "Controls the width during its lifetime.",
   "photon.emitter.beam.config.emitRate": "Controls the emit rate during its lifetime.",
   "photon.emitter.beam.config.color": "Controls the color during its lifetime.",
+
   "photon.gui.editor.particle_info.restart": "Restart",
   "photon.gui.editor.particle_info.particles": "Particles",
   "photon.gui.editor.particle_info.time": "Time",

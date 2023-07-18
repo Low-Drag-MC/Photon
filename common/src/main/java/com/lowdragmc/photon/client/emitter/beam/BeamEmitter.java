@@ -9,7 +9,7 @@ import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.emitter.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
 import com.lowdragmc.photon.client.emitter.data.material.TextureMaterial;
-import com.lowdragmc.photon.client.fx.IFXEffect;
+import com.lowdragmc.photon.client.fx.IEffect;
 import com.lowdragmc.photon.client.particle.BeamParticle;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
@@ -67,7 +67,7 @@ public class BeamEmitter extends BeamParticle implements IParticleEmitter {
     protected boolean visible = true;
     @Nullable
     @Getter @Setter
-    protected IFXEffect fXEffect;
+    protected IEffect effect;
 
     public BeamEmitter() {
         this(new BeamConfig());
@@ -152,11 +152,11 @@ public class BeamEmitter extends BeamParticle implements IParticleEmitter {
     @Override
     public void tick() {
         // effect first
-        if (fXEffect != null && fXEffect.updateEmitter(this)) {
+        if (effect != null && effect.updateEmitter(this)) {
             return;
         }
 
-        config.renderer.setupQuaternion(this);
+        config.renderer.setupQuaternion(this, this);
 
         if (!config.end.equals(this.end)) {
             this.end = config.end;

@@ -1,3 +1,7 @@
 ## ChangeLog
 
-* fix recipe viewers loading crash
+* sub emitter system
+* add rotation support
+* fix noise position bugs
+* add a new renderer mode
+* refine particle scene

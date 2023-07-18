@@ -27,6 +27,8 @@ public class BlockEffect implements IFXEffect {
     @Setter
     private double xOffset, yOffset, zOffset;
     @Setter
+    private double xRotation, yRotation, zRotation;
+    @Setter
     private int delay;
     @Setter
     private boolean forcedDeath;
@@ -50,6 +52,13 @@ public class BlockEffect implements IFXEffect {
         this.xOffset = x;
         this.yOffset = y;
         this.zOffset = z;
+    }
+
+    @Override
+    public void setRotation(double x, double y, double z) {
+        this.xRotation = x;
+        this.yRotation = y;
+        this.zRotation = z;
     }
 
     @Override
@@ -86,8 +95,7 @@ public class BlockEffect implements IFXEffect {
         for (var emitter : emitters) {
             emitter.reset();
             emitter.self().setDelay(delay);
-            emitter.setFXEffect(this);
-            emitter.emmitToLevel(level, realPos.x, realPos.y, realPos.z);
+            emitter.emmitToLevel(this, level, realPos.x, realPos.y, realPos.z, xRotation, yRotation, zRotation);
         }
         lastState = level.getBlockState(pos);
     }

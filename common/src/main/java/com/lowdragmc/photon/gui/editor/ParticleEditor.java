@@ -7,6 +7,8 @@ import com.lowdragmc.lowdraglib.gui.editor.ui.*;
 import com.lowdragmc.lowdraglib.gui.editor.ui.menu.ViewMenu;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.fx.EditorEffect;
+import com.lowdragmc.photon.client.fx.IEffect;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -25,6 +27,8 @@ public class ParticleEditor extends Editor {
 
     @Environment(EnvType.CLIENT)
     protected ParticleScene particleScene;
+    @Environment(EnvType.CLIENT)
+    protected IEffect effect;
     @Getter
     @Nullable
     protected EmittersList emittersList;
@@ -44,7 +48,13 @@ public class ParticleEditor extends Editor {
         return particleScene;
     }
 
+    @Environment(EnvType.CLIENT)
+    public IEffect getEditorFX() {
+        return effect;
+    }
+
     @Override
+    @Environment(EnvType.CLIENT)
     public void initEditorViews() {
         addWidget(particleScene = new ParticleScene(this));
         addWidget(toolPanel = new ToolPanel(this));
@@ -55,6 +65,7 @@ public class ParticleEditor extends Editor {
         if (menuPanel.getTabs().get("view") instanceof ViewMenu viewMenu) {
             viewMenu.openView(new ParticleInfoView());
         }
+        this.effect = new EditorEffect(this);
     }
 
     public void restartScene() {
@@ -62,8 +73,9 @@ public class ParticleEditor extends Editor {
             particleScene.getParticleManager().clearAllParticles();
             for (IParticleEmitter emitter : particleProject.getEmitters()) {
                 var pos = emitter.self().getPos();
+                var rotation = emitter.self().getRotation(0);
                 emitter.reset();
-                emitter.emmitToLevel(particleScene.level, pos.x, pos.y, pos.z);
+                emitter.emmitToLevel(getEditorFX(), particleScene.level, pos.x, pos.y, pos.z, rotation.x, rotation.y, rotation.z);
             }
         }
     }

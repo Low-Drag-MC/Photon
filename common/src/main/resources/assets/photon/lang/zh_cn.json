@@ -132,8 +132,17 @@
     "photon.emitter.trail.config.uvMode": "uv贴图模式。\nStretch：沿着拖尾的整个长度拉伸纹理。\nTile：重复纹理。重复的距离间隔与minVertexDistance有关。",
     "photon.emitter.trail.config.widthOverTrail": "设置拖尾存在期间的宽度。",
     "photon.emitter.trail.config.colorOverTrail": "设置拖尾存在期间的颜色。",
-  
-  
+
+    "photon.emitter.config.sub_emitters": "子粒子发射。这允许每个粒子在另一个系统中发射粒子。",
+    "photon.emitter.config.sub_emitters.emitter.name": "拖拽发射器到此处（使用发射器名字）。",
+    "photon.emitter.config.sub_emitters.emitter.event": "触发发射的事件",
+    "photon.emitter.config.sub_emitters.emitter.inherit_color": "继承粒子颜色。",
+    "photon.emitter.config.sub_emitters.emitter.inherit_size": "继承粒子大小。",
+    "photon.emitter.config.sub_emitters.emitter.inherit_rotation": "继承粒子旋转。",
+    "photon.emitter.config.sub_emitters.emitter.inherit_lifetime": "继承粒子年龄。",
+    "photon.emitter.config.sub_emitters.emitter.inherit_duration": "继承粒子持续时间。",
+    "photon.emitter.config.sub_emitters.emitter.emit_probability": "成功触发相关子发射器的子发射器生成事件的概率。",
+
     "photon.emitter.beam.config.end": "光束的结束点。（相较于光束起始点偏移）",
     "photon.emitter.beam.config.width": "设置光束在其生命周期内的宽度。",
     "photon.emitter.beam.config.emitRate": "设置光束在其生命周期内的发射速率。",
