@@ -11,6 +11,7 @@ import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.emitter.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.fx.IEffect;
 import com.mojang.math.Vector4f;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.phys.AABB;
@@ -62,7 +63,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     protected boolean visible = true;
     @Nullable
     @Getter @Setter
-    protected IFXEffect fXEffect;
+    protected IEffect effect;
     protected LinkedList<AtomicInteger> tailsTime = new LinkedList<>();
 
     public TrailEmitter() {
@@ -117,7 +118,7 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
         particles.get(renderType).clear();
         particles.get(renderType).add(this);
         super.setLifetime(-1);
-        config.renderer.setupQuaternion(this);
+        config.renderer.setupQuaternion(this, this);
         super.setUvMode(config.uvMode);
         super.setMinimumVertexDistance(config.minVertexDistance);
         super.setOnRemoveTails(t -> {
@@ -153,11 +154,11 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     @Override
     protected void update() {
         // effect first
-        if (fXEffect != null && fXEffect.updateEmitter(this)) {
+        if (effect != null && effect.updateEmitter(this)) {
             return;
         }
-        if (fXEffect == null) {
-            config.renderer.setupQuaternion(this);
+        if (effect == null) {
+            config.renderer.setupQuaternion(this, this);
             setUvMode(config.uvMode);
         }
         super.update();

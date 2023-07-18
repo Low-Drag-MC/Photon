@@ -33,6 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * @author KilaBash
@@ -44,8 +45,6 @@ import java.util.function.Function;
 public abstract class
 LParticle extends Particle {
     private static final double MAXIMUM_COLLISION_VELOCITY_SQUARED = Mth.square(100.0);
-    private static final Function<LParticle, Vector3> ADDITION = p -> Vector3.ZERO;
-    private static final Function<LParticle, Float> MULTIPLIER = p -> 1f;
     /**
      * Quad Size of Particles.
      */
@@ -90,18 +89,19 @@ LParticle extends Particle {
      */
     @Setter @Getter
     protected float bounceSpreadRate = 0;
-    @Nullable
     @Setter @Getter
-    protected Quaternion quaternion;
+    protected Supplier<Quaternion> quaternionSupplier;
     @Nullable
     private Level realLevel;
     @Setter
     @Nullable
     protected Consumer<LParticle> onUpdate;
     @Setter
-    protected Function<LParticle, Vector3> velocityAddition = ADDITION;
+    @Nullable
+    protected Function<LParticle, Vector3> velocityAddition = null;
     @Setter
-    protected Function<LParticle, Float> velocityMultiplier = MULTIPLIER;
+    @Nullable
+    protected Function<LParticle, Float> velocityMultiplier = null;
     @Setter
     @Nullable
     protected BiFunction<LParticle, Float, Vector4f> dynamicColor = null;
@@ -120,6 +120,15 @@ LParticle extends Particle {
     @Setter
     @Nullable
     protected BiFunction<LParticle, Float, Integer> dynamicLight = null;
+    @Setter
+    @Nullable
+    protected Consumer<LParticle> onBirth = null;
+    @Setter
+    @Nullable
+    protected Consumer<LParticle> onCollision = null;
+    @Setter
+    @Nullable
+    protected Consumer<LParticle> onDeath = null;
     // runtime
     @Getter
     protected float t;
@@ -231,10 +240,17 @@ LParticle extends Particle {
             return;
         }
 
+        if (onBirth != null && this.age == 0) {
+            onBirth.accept(this);
+        }
+
         updateOrigin();
 
         if (this.age++ >= getLifetime() && getLifetime() > 0) {
             this.remove();
+            if (onDeath != null) {
+                onDeath.accept(this);
+            }
         }
         update();
 
@@ -259,9 +275,8 @@ LParticle extends Particle {
 
     protected void updateChanges() {
         if (!moveless) {
-            var addition = velocityAddition.apply(this);
-            var multiplier = velocityMultiplier.apply(this);
-            this.move((this.xd + addition.x) * multiplier, (this.yd + addition.y) * multiplier, (this.zd + addition.z) * multiplier);
+            var velocity = getVelocity();
+            this.move(velocity.x, velocity.y, velocity.z);
 
             this.yd -= 0.04D * this.gravity;
             if (this.speedUpWhenYMotionIsBlocked && this.y == this.yo) {
@@ -305,6 +320,9 @@ LParticle extends Particle {
                         this.zd += bounceSpreadRate * random.nextGaussian();
                     }
                 }
+                if (onCollision != null) {
+                    onCollision.accept(this);
+                }
             } else if (Math.abs(moveX) >= 1.0E-5 && Math.abs(x) < 1.0E-5) {
                 if (bounceChance < 1 && bounceChance < random.nextFloat()) {
                     this.onGround = true;
@@ -315,6 +333,9 @@ LParticle extends Particle {
                         this.zd += bounceSpreadRate * random.nextGaussian();
                     }
                 }
+                if (onCollision != null) {
+                    onCollision.accept(this);
+                }
             } else if (Math.abs(moveZ) >= 1.0E-5 && Math.abs(z) < 1.0E-5) {
                 if (bounceChance < 1 && bounceChance < random.nextFloat()) {
                     this.onGround = true;
@@ -324,6 +345,9 @@ LParticle extends Particle {
                         this.xd += bounceSpreadRate * random.nextGaussian();
                         this.yd += bounceSpreadRate * random.nextGaussian();
                     }
+                }
+                if (onCollision != null) {
+                    onCollision.accept(this);
                 }
             }
         }
@@ -347,15 +371,10 @@ LParticle extends Particle {
     public void renderInternal(@Nonnull VertexConsumer buffer, Camera camera, float partialTicks) {
         Vec3 vec3 = camera.getPosition();
 
-        float x = (float)(Mth.lerp(partialTicks, this.xo, this.x) - vec3.x());
-        float y = (float)(Mth.lerp(partialTicks, this.yo, this.y) - vec3.y());
-        float z = (float)(Mth.lerp(partialTicks, this.zo, this.z) - vec3.z());
-        if (positionAddition != null) {
-            var addition = positionAddition.apply(this, partialTicks);
-            x += addition.x;
-            y += addition.y;
-            z += addition.z;
-        }
+        var pos = getPos(partialTicks);
+        float x = (float)(pos.x - vec3.x());
+        float y = (float)(pos.y - vec3.y());
+        float z = (float)(pos.z - vec3.z());
 
         float a = getAlpha(partialTicks);
         float r = getRed(partialTicks);
@@ -369,7 +388,7 @@ LParticle extends Particle {
             b *= color.z();
         }
 
-        Vector3 size, rotation = new Vector3(getRoll(partialTicks), this.pitch, this.yaw);
+        Vector3 size, rotation = getRotation(partialTicks);
         if (dynamicSize != null) {
             size = dynamicSize.apply(this, partialTicks);
         } else {
@@ -379,7 +398,7 @@ LParticle extends Particle {
             rotation = rotation.add(this.rotationAddition.apply(this, partialTicks));
         }
 
-        Quaternion quaternion = this.quaternion;
+        Quaternion quaternion = this.getQuaternionSupplier().get();
         if (quaternion == null) {
             quaternion = camera.rotation();
         }
@@ -488,7 +507,14 @@ LParticle extends Particle {
     }
 
     public Vector3 getVelocity() {
-        return new Vector3(this.xd, this.yd, this.zd);
+        var speed = new Vector3(this.xd, this.yd, this.zd);
+        if (velocityAddition != null) {
+            speed.add(velocityAddition.apply(this));
+        }
+        if (velocityMultiplier != null) {
+            speed.multiply(velocityMultiplier.apply(this));
+        }
+        return speed;
     }
 
     public boolean isRemoved() {
@@ -523,9 +549,23 @@ LParticle extends Particle {
     }
 
     public Vector3 getPos(float partialTicks) {
-        return new Vector3((float)Mth.lerp(partialTicks, this.xo, this.x),
+        var pos = new Vector3((float)Mth.lerp(partialTicks, this.xo, this.x),
                 (float)Mth.lerp(partialTicks, this.yo, this.y),
                 (float)Mth.lerp(partialTicks, this.zo, this.z));
+        if (positionAddition != null) {
+            var addition = positionAddition.apply(this, partialTicks);
+            pos.add(addition);
+        }
+        return pos;
+    }
+
+    public Vector3 getRotation(float partialTicks) {
+        var rotation = new Vector3(getRoll(partialTicks), getPitch(), getYaw());
+        if (rotationAddition != null) {
+            var addition = rotationAddition.apply(this, partialTicks);
+            rotation.add(addition);
+        }
+        return rotation;
     }
 
     public float getT(float partialTicks) {

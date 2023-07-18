@@ -5,7 +5,8 @@ import com.lowdragmc.lowdraglib.gui.editor.ILDLRegisterClient;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.syncdata.IAutoPersistedSerializable;
 import com.lowdragmc.lowdraglib.utils.DummyWorld;
-import com.lowdragmc.photon.client.fx.IFXEffect;
+import com.lowdragmc.lowdraglib.utils.Vector3;
+import com.lowdragmc.photon.client.fx.IEffect;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.integration.PhotonLDLibPlugin;
 import net.fabricmc.api.EnvType;
@@ -16,7 +17,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 
 import javax.annotation.Nullable;
-import java.util.Collection;
 import java.util.Map;
 import java.util.Queue;
 
@@ -44,14 +44,30 @@ public interface IParticleEmitter extends IConfigurable, ILDLRegisterClient, IAu
      * get amount of existing particle which emitted from it.
      */
     default int getParticleAmount() {
-        return getParticles().values().stream().mapToInt(Collection::size).sum();
+        var sum = 0;
+        for (var entry : getParticles().entrySet()) {
+            if (entry.getKey() == ParticleQueueRenderType.INSTANCE) {
+                for (var particle : entry.getValue()) {
+                    sum += ((IParticleEmitter) particle).getParticleAmount();
+                }
+            }
+            sum += entry.getValue().size();
+        }
+        return sum;
     }
 
     /**
      * emit to a given level.
      */
+    @Deprecated
     default void emmitToLevel(Level level, double x, double y, double z) {
+        emmitToLevel(null, level, x, y, z, 0, 0, 0);
+    }
+
+    default void emmitToLevel(@Nullable IEffect effect, Level level, double x, double y, double z, double xR, double yR, double zR) {
+        setEffect(effect);
         self().setPos(x, y, z, true);
+        self().setRotation(new Vector3(xR, yR, zR));
         self().setLevel(level);
         self().prepareForEmitting(null);
         if (level instanceof DummyWorld dummyWorld) {
@@ -62,6 +78,10 @@ public interface IParticleEmitter extends IConfigurable, ILDLRegisterClient, IAu
         } else {
             Minecraft.getInstance().particleEngine.add(self());
         }
+    }
+
+    default void updatePos(Vector3 newPos) {
+        self().setPos(newPos, true);
     }
 
     /**
@@ -139,5 +159,7 @@ public interface IParticleEmitter extends IConfigurable, ILDLRegisterClient, IAu
      */
     boolean usingBloom();
 
-    void setFXEffect(IFXEffect effect);
+    void setEffect(IEffect effect);
+
+    IEffect getEffect();
 }

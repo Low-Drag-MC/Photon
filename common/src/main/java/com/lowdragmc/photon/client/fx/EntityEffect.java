@@ -28,6 +28,8 @@ public class EntityEffect implements IFXEffect {
     @Setter
     private double xOffset, yOffset, zOffset;
     @Setter
+    private double xRotation, yRotation, zRotation;
+    @Setter
     private int delay;
     @Setter
     private boolean forcedDeath;
@@ -51,12 +53,19 @@ public class EntityEffect implements IFXEffect {
     }
 
     @Override
+    public void setRotation(double x, double y, double z) {
+        this.xRotation = x;
+        this.yRotation = y;
+        this.zRotation = z;
+    }
+
+    @Override
     public boolean updateEmitter(IParticleEmitter emitter) {
         if (!entity.isAlive()) {
             emitter.remove(forcedDeath);
             return forcedDeath;
         } else {
-            emitter.self().setPos(entity.getX() + xOffset, entity.getY() + yOffset, entity.getZ() + zOffset);
+            emitter.updatePos(new Vector3(entity.getX() + xOffset, entity.getY() + yOffset, entity.getZ() + zOffset));
         }
         return false;
     }
@@ -87,8 +96,7 @@ public class EntityEffect implements IFXEffect {
         for (var emitter : emitters) {
             emitter.reset();
             emitter.self().setDelay(delay);
-            emitter.setFXEffect(this);
-            emitter.emmitToLevel(level, realPos.x, realPos.y, realPos.z);
+            emitter.emmitToLevel(this, level, realPos.x, realPos.y, realPos.z, xRotation, yRotation, zRotation);
         }
     }
 
