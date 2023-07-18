@@ -23,14 +23,14 @@ import net.fabricmc.api.Environment;
 @Environment(EnvType.CLIENT)
 public class InheritVelocitySetting extends ToggleGroup {
     public enum Mode {
-        Initial,
-        Current
+        Position,
+        Velocity
     }
 
     @Setter
     @Getter
     @Configurable(tips = "photon.emitter.config.inheritVelocity.mode")
-    protected Mode mode = Mode.Initial;
+    protected Mode mode = Mode.Position;
 
     @Setter
     @Getter
@@ -38,12 +38,18 @@ public class InheritVelocitySetting extends ToggleGroup {
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1f, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction multiply = NumberFunction.constant(1);
 
-    public Vector3f getVelocityAddition(LParticle particle, LParticle emitter, Vector3f emitterVelocityWhenBorn) {
+
+    public Vector3f getVelocityAddition(LParticle particle, LParticle emitter) {
         var mul = multiply.get(particle.getT(), () -> particle.getMemRandom(this)).floatValue();
-        if (mode == Mode.Initial) {
-            return new Vector3f(emitterVelocityWhenBorn).mul(mul);
-        } else if (mode == Mode.Current) {
+        if (mode == Mode.Velocity) {
             return emitter.getVelocity().mul(mul);
+        }
+        return new Vector3f(0 ,0, 0);
+    }
+
+    public Vector3f getPosition(LParticle emitter, Vector3f initialPos, float partialTicks) {
+        if (mode == Mode.Position) {
+            return emitter.getPos(partialTicks).sub(initialPos);
         }
         return new Vector3f(0 ,0, 0);
     }

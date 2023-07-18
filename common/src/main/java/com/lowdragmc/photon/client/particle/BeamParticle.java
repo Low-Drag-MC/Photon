@@ -73,6 +73,7 @@ public abstract class BeamParticle extends LParticle {
         Vector3f direction = new Vector3f(end).sub(from);
 
         Vector3f toO;
+        var quaternion = getQuaternionSupplier().get();
         if (quaternion == null) {
             toO = new Vector3f(from).sub(cameraPos);
         } else {

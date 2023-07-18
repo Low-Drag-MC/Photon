@@ -8,8 +8,6 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Camera;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.particle.ParticleRenderType;
-import net.minecraft.util.Mth;
 import org.apache.commons.lang3.function.TriFunction;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -160,16 +158,10 @@ public abstract class TrailParticle extends LParticle {
     }
 
     public void renderInternal(@Nonnull VertexConsumer buffer, @Nonnull Camera camera, float partialTicks) {
-        double x = (Mth.lerp(partialTicks, this.xo, this.x));
-        double y = (Mth.lerp(partialTicks, this.yo, this.y));
-        double z = (Mth.lerp(partialTicks, this.zo, this.z));
-
-        if (positionAddition != null) {
-            var addition = positionAddition.apply(this, partialTicks);
-            x += addition.x;
-            y += addition.y;
-            z += addition.z;
-        }
+        var pos = getPos(partialTicks);
+        double x = pos.x;
+        double y = pos.y;
+        double z = pos.z;
 
         Vector3f cameraPos = camera.getPosition().toVector3f();
         float a = getAlpha(partialTicks);
@@ -187,6 +179,7 @@ public abstract class TrailParticle extends LParticle {
 
         // fixed rotation
         Vector3f fixedVec = null;
+        var quaternion = this.getQuaternionSupplier().get();
         if (quaternion != null) {
             fixedVec = quaternion.transform(new Vector3f(0, 0, 1));
         }
