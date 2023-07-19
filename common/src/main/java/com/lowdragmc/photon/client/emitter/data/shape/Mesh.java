@@ -42,7 +42,7 @@ public class Mesh implements IShape {
     private final MeshData meshData = new MeshData();
 
     @Override
-    public void nextPosVel(LParticle particle, Vector3f position, Vector3f rotation, Vector3f scale) {
+    public void nextPosVel(LParticle particle, LParticle emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         Vector3f pos = null;
         var random = particle.getRandomSource();
         var t = random.nextFloat();

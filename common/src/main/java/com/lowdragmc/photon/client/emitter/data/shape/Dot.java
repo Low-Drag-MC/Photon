@@ -13,7 +13,7 @@ import com.lowdragmc.photon.client.particle.LParticle;
 public class Dot implements IShape {
 
     @Override
-    public void nextPosVel(LParticle particle, Vector3f position, Vector3f rotation, Vector3f scale) {
+    public void nextPosVel(LParticle particle, LParticle emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         particle.setPos(position.add(particle.getPos()), true);
         particle.setSpeed(new Vector3f(0, 0, 0));
     }

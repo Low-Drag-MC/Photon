@@ -135,6 +135,15 @@
   "photon.gui.editor.particle_info.draggable": "Draggable",
   "photon.gui.editor.particle_info.drag_all": "Drag All",
   "photon.gui.editor.particle_info.reset_pos": "reset pos",
-  "photon.gui.editor.particle_info.cull_box": "Cull-box"
+  "photon.gui.editor.particle_info.cull_box": "Cull-box",
+
+  "ldlib.gui.editor.register.editor.particle.scene": "scene",
+  "photon.gui.editor.menu.scene.real_world": "Real World",
+
+  "photon.gui.editor.shape.function.tooltips.0": "§et§r denotes the lifetime of the emitter, [0, 1)",
+  "photon.gui.editor.shape.function.tooltips.1": "§ePI§r denotes the π constant",
+  "photon.gui.editor.shape.function.tooltips.2": "§erandomA..E§r denotes a random value [0, 1), which has the same value in the same expression",
+  "photon.gui.editor.shape.function.tooltips.3": "example: PI * (2 + t) + randomA / min(randomA, 0.5)",
+  "photon.gui.editor.particle.is_sub_emitter": "sub emitter"
 
 }
