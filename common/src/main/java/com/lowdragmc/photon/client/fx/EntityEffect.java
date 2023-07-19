@@ -1,8 +1,6 @@
 package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
-import lombok.Getter;
-import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.world.entity.Entity;
@@ -19,44 +17,13 @@ import java.util.Map;
  * @implNote EntityEffect
  */
 @Environment(EnvType.CLIENT)
-public class EntityEffect implements IFXEffect {
+public class EntityEffect extends FXEffect {
     public static Map<Entity, List<EntityEffect>> CACHE = new HashMap<>();
-    @Getter
-    public final FX fx;
-    public final Level level;
     public final Entity entity;
-    @Setter
-    private double xOffset, yOffset, zOffset;
-    @Setter
-    private double xRotation, yRotation, zRotation;
-    @Setter
-    private int delay;
-    @Setter
-    private boolean forcedDeath;
-    @Setter
-    private boolean allowMulti;
-    //runtime
-    @Getter
-    private final List<IParticleEmitter> emitters = new ArrayList<>();
 
     public EntityEffect(FX fx, Level level, Entity entity) {
-        this.fx = fx;
-        this.level = level;
+        super(fx, level);
         this.entity = entity;
-    }
-
-    @Override
-    public void setOffset(double x, double y, double z) {
-        this.xOffset = x;
-        this.yOffset = y;
-        this.zOffset = z;
-    }
-
-    @Override
-    public void setRotation(double x, double y, double z) {
-        this.xRotation = x;
-        this.yRotation = y;
-        this.zRotation = z;
     }
 
     @Override
@@ -94,10 +61,11 @@ public class EntityEffect implements IFXEffect {
         }
         var realPos = entity.getPosition(0).toVector3f().add((float) xOffset, (float) yOffset, (float) zOffset);
         for (var emitter : emitters) {
-            emitter.reset();
-            emitter.self().setDelay(delay);
-            emitter.emmitToLevel(this, level, realPos.x, realPos.y, realPos.z, xRotation, yRotation, zRotation);
+            if (!emitter.isSubEmitter()) {
+                emitter.reset();
+                emitter.self().setDelay(delay);
+                emitter.emmitToLevel(this, level, realPos.x, realPos.y, realPos.z, xRotation, yRotation, zRotation);
+            }
         }
     }
-
 }

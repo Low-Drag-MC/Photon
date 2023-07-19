@@ -12,10 +12,8 @@ import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.phys.AABB;
 import org.joml.Vector3f;
-import com.lowdragmc.photon.client.fx.IFXEffect;
 import com.lowdragmc.photon.client.emitter.data.SubEmittersSetting;
 import com.lowdragmc.photon.client.fx.IEffect;
-import net.minecraft.nbt.CompoundTag;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
 import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
@@ -36,6 +34,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author KilaBash
@@ -51,6 +50,10 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     @Getter
     @Persisted
     protected String name = "particle emitter";
+    @Setter
+    @Getter
+    @Persisted
+    protected boolean isSubEmitter = false;
     @Getter
     @Persisted(subPersisted = true)
     protected final ParticleConfig config;
@@ -79,10 +82,10 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
     @Override
     public IParticleEmitter copy(boolean deep) {
-        if (deep) {
-            return IParticleEmitter.super.copy();
-        }
-        return new ParticleEmitter(config);
+        IParticleEmitter copied = deep ? IParticleEmitter.super.copy() : new ParticleEmitter(config);
+        copied.setName(name);
+        copied.setSubEmitter(isSubEmitter);
+        return copied;
     }
 
     @Override
@@ -157,9 +160,14 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                     config.subEmitters.triggerEvent(this, p, SubEmittersSetting.Event.Death);
                 }
             });
+            AtomicBoolean isFirstCollision = new AtomicBoolean(false);
             particle.setOnCollision(p -> {
                 if (config.subEmitters.isEnable()) {
                     config.subEmitters.triggerEvent(this, p, SubEmittersSetting.Event.Collision);
+                    if (!isFirstCollision.get()) {
+                        isFirstCollision.set(true);
+                        config.subEmitters.triggerEvent(this, p, SubEmittersSetting.Event.FirstCollision);
+                    }
                 }
             });
         }
@@ -189,7 +197,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
             });
         }
 
-        if (config.forceOverLifetime.isEnable() || config.sizeOverLifetime.isEnable() || config.sizeBySpeed.isEnable() || config.physics.isEnable()) {
+        if (config.forceOverLifetime.isEnable() || config.sizeOverLifetime.isEnable() || config.sizeBySpeed.isEnable() || config.physics.isEnable() || config.subEmitters.isEnable()) {
             particle.setOnUpdate(p -> {
                 if (config.forceOverLifetime.isEnable()) {
                     p.setSpeed(p.getVelocity().add(config.forceOverLifetime.getForce(p)));
@@ -202,6 +210,9 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                 }
                 if (config.physics.isEnable()) {
                     config.physics.setupParticlePhysics(p);
+                }
+                if (config.subEmitters.isEnable()) {
+                    config.subEmitters.triggerEvent(this, p, SubEmittersSetting.Event.Tick);
                 }
             });
         }
@@ -358,9 +369,6 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
 
         update();
 
-        if (isMoveless()) {
-            setSpeed(0);
-        }
     }
 
     public void updatePos(Vector3f newPos) {

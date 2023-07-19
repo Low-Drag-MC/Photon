@@ -50,6 +50,10 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     @Getter
     @Persisted
     protected String name = "trail emitter";
+    @Setter
+    @Getter
+    @Persisted
+    protected boolean isSubEmitter = false;
     @Getter
     @Persisted(subPersisted = true)
     protected final TrailConfig config;
@@ -80,10 +84,10 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
 
     @Override
     public IParticleEmitter copy(boolean deep) {
-        if (deep) {
-            return IParticleEmitter.super.copy();
-        }
-        return new TrailEmitter(config);
+        IParticleEmitter copied = deep ? IParticleEmitter.super.copy() : new TrailEmitter(config);
+        copied.setName(name);
+        copied.setSubEmitter(isSubEmitter);
+        return copied;
     }
 
     @Override

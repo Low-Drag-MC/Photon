@@ -29,5 +29,5 @@ public interface IShape extends IConfigurable, IAutoPersistedSerializable {
         return null;
     }
 
-    void nextPosVel(LParticle particle, Vector3f position, Vector3f rotation, Vector3f scale);
+    void nextPosVel(LParticle particle, LParticle emitter, Vector3f position, Vector3f rotation, Vector3f scale);
 }

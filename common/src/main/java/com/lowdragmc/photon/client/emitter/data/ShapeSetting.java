@@ -44,7 +44,7 @@ public class ShapeSetting implements IConfigurable {
 
 
     public void setupParticle(LParticle particle, LParticle emitter) {
-        shape.nextPosVel(particle, emitter.getPos().add(position), emitter.getRotation(0).add(new Vector3f(rotation).mul(Mth.TWO_PI / 360)), new Vector3f(scale));
+        shape.nextPosVel(particle, emitter, emitter.getPos().add(position), emitter.getRotation(0).add(new Vector3f(rotation).mul(Mth.TWO_PI / 360)), new Vector3f(scale));
     }
 
     @Override
