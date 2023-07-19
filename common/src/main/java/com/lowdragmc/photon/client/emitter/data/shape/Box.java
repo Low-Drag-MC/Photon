@@ -26,7 +26,7 @@ public class Box implements IShape {
     private Type emitFrom = Type.Volume;
 
     @Override
-    public void nextPosVel(LParticle particle, Vector3f position, Vector3f rotation, Vector3f scale) {
+    public void nextPosVel(LParticle particle, LParticle emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         var random = particle.getRandomSource();
         scale = new Vector3f(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z)).mul(0.5f);
         Vector3f pos = new Vector3f(random.nextFloat() * 2 * scale.x - scale.x,

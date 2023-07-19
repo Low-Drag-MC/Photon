@@ -66,6 +66,7 @@ public class ParticleEditor extends Editor {
             viewMenu.openView(new ParticleInfoView());
         }
         this.effect = new EditorEffect(this);
+        particleScene.resetScene();
     }
 
     public void restartScene() {

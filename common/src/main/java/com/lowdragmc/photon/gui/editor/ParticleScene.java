@@ -59,7 +59,6 @@ public class ParticleScene extends SceneWidget {
         if (!Photon.isShaderModInstalled() || Platform.isForge()) {
             useCacheBuffer();
         }
-        resetScene();
         var buttonGroup = initButtons();
         buttonGroup.addSelfPosition((getSize().width - buttonGroup.getSize().width) / 2, 10);
         addWidget(buttonGroup);
@@ -113,17 +112,33 @@ public class ParticleScene extends SceneWidget {
         this.level.clear();
         createScene(level);
         renderer.setOnLookingAt(null);
-        Set<BlockPos> plane = new HashSet<>();
-        int i = 0;
-        for (int x = -5; x < 6; x++) {
-            for (int z = -5; z < 6; z++) {
-                plane.add(new BlockPos(x, 0, z));
-                level.addBlock(new BlockPos(x, 0, z), BlockInfo.fromBlock(i % 2 == 0 ? Blocks.SAND : Blocks.STONE));
-                i++;
+
+        if (editor.getMenuPanel().getTabs().get("scene") instanceof SceneMenu sceneMenu) {
+            setRenderedCore(sceneMenu.createScene(level), null);
+        } else {
+            Set<BlockPos> plane = new HashSet<>();
+            int i = 0;
+            for (int x = -5; x < 6; x++) {
+                for (int z = -5; z < 6; z++) {
+                    plane.add(new BlockPos(x, 0, z));
+                    level.addBlock(new BlockPos(x, 0, z), BlockInfo.fromBlock(i % 2 == 0 ? Blocks.SAND : Blocks.STONE));
+                    i++;
+                }
             }
+            setRenderedCore(plane, null);
         }
-        plane.add(new BlockPos(0, 6, 0));
-        setRenderedCore(plane, null);
+
+        center = new Vector3f(0.5F, 2, 0.5F);
+        renderer.setCameraOrtho(range * zoom, range * zoom, range * zoom);
+        renderer.setCameraLookAt(center, camZoom(), Math.toRadians(rotationPitch), Math.toRadians(rotationYaw));
+    }
+
+    private float camZoom() {
+        if (useOrtho) {
+            return 0.1f;
+        } else {
+            return zoom;
+        }
     }
 
     @Override

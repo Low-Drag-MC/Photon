@@ -33,7 +33,7 @@ public class Circle implements IShape {
     private float arc = 360;
 
     @Override
-    public void nextPosVel(LParticle particle, Vector3f position, Vector3f rotation, Vector3f scale) {
+    public void nextPosVel(LParticle particle, LParticle emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         var random = particle.getRandomSource();
         var outer = radius;
         var inner = (1 - radiusThickness) * radius;
