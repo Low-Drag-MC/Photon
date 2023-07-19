@@ -125,6 +125,13 @@ public interface IParticleEmitter extends IConfigurable, ILDLRegisterClient, IAu
     void setName(String name);
 
     /**
+     * is it a sub emitter which not be emitted by default.
+     */
+    boolean isSubEmitter();
+
+    void setSubEmitter(boolean isSubEmitter);
+
+    /**
      * particles emitted from this emitter.
      * <br>
      * you should not modify it, just read data.

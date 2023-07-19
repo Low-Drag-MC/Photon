@@ -90,7 +90,7 @@ LParticle extends Particle {
     @Setter @Getter
     protected float bounceSpreadRate = 0;
     @Setter @Getter
-    protected Supplier<Quaternion> quaternionSupplier;
+    protected Supplier<Quaternion> quaternionSupplier = () -> null;
     @Nullable
     private Level realLevel;
     @Setter

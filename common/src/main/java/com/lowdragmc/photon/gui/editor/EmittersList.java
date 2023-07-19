@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib.gui.editor.ColorPattern;
 import com.lowdragmc.lowdraglib.gui.editor.Icons;
 import com.lowdragmc.lowdraglib.gui.editor.ui.Editor;
 import com.lowdragmc.lowdraglib.gui.editor.ui.ToolPanel;
+import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib.gui.widget.*;
@@ -54,7 +55,7 @@ public class EmittersList extends DraggableScrollableWidgetGroup {
         addWidget(selectableWidgetGroup);
 
         emitter.reset();
-        emitter.emmitToLevel(editor.getEditorFX(), editor.particleScene.level, 0.5, 3, 0.5, 0, 0, 0);
+        emitter.emmitToLevel(editor.getEditorFX(), editor.particleScene.level, 0.5, 2, 0.5, 0, 0, 0);
         editor.restartScene();
     }
 
@@ -98,6 +99,8 @@ public class EmittersList extends DraggableScrollableWidgetGroup {
                     });
             if (selected != null) {
                 menu.crossLine();
+                menu.leaf(selected.isSubEmitter() ? Icons.CHECK : IGuiTexture.EMPTY, "photon.gui.editor.particle.is_sub_emitter", () -> selected.setSubEmitter(!selected.isSubEmitter()));
+                menu.crossLine();
                 menu.leaf("ldlib.gui.editor.menu.rename", () -> {
                     DialogWidget.showStringEditorDialog(Editor.INSTANCE, LocalizationUtils.format("ldlib.gui.editor.tips.rename") + " " + LocalizationUtils.format(selected.getEmitterType()), selected.getName(),
                             s -> particleProject.getEmitters().stream().noneMatch(e -> e.getName().equals(s)),
@@ -123,13 +126,24 @@ public class EmittersList extends DraggableScrollableWidgetGroup {
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
-
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if(isMouseOverElement(mouseX, mouseY)){
-            if (super.checkClickedDragged(mouseX, mouseY, button)) {
-                setFocus(true);
-                return true;
+            for (int i = widgets.size() - 1; i >= 0; i--) {
+                Widget widget = widgets.get(i);
+                if(widget.isVisible()) {
+                    if (waitToRemoved == null || !waitToRemoved.contains(widget))  {
+                        if (widget instanceof ISelected && ((ISelected) widget).allowSelected(mouseX, mouseY, button)) {
+                            if (selectedWidget != null && selectedWidget != widget) {
+                                ((ISelected) selectedWidget).onUnSelected();
+                            }
+                            selectedWidget = widget;
+                            ((ISelected) selectedWidget).onSelected();
+                            setFocus(true);
+                            return true;
+                        }
+                    }
+                }
             }
             draggedWidget = null;
             setFocus(true);
@@ -140,7 +154,15 @@ public class EmittersList extends DraggableScrollableWidgetGroup {
 
     @Environment(EnvType.CLIENT)
     protected boolean checkClickedDragged(double mouseX, double mouseY, int button) {
-        return true;
+        for (int i = widgets.size() - 1; i >= 0; i--) {
+            Widget widget = widgets.get(i);
+            if(widget.isVisible()) {
+                boolean result = widget.mouseClicked(mouseX, mouseY, button);
+                if (result) return true;
+            }
+        }
+        draggedWidget = null;
+        return false;
     }
 
 }

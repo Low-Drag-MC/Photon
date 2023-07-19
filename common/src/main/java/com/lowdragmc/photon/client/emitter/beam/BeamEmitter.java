@@ -54,6 +54,10 @@ public class BeamEmitter extends BeamParticle implements IParticleEmitter {
     @Getter
     @Persisted
     protected String name = "beam emitter";
+    @Setter
+    @Getter
+    @Persisted
+    protected boolean isSubEmitter = false;
     @Getter
     @Persisted(subPersisted = true)
     protected final BeamConfig config;
@@ -83,10 +87,10 @@ public class BeamEmitter extends BeamParticle implements IParticleEmitter {
 
     @Override
     public IParticleEmitter copy(boolean deep) {
-        if (deep) {
-            return IParticleEmitter.super.copy();
-        }
-        return new BeamEmitter(config);
+        IParticleEmitter copied = deep ? IParticleEmitter.super.copy() : new BeamEmitter(config);
+        copied.setName(name);
+        copied.setSubEmitter(isSubEmitter);
+        return copied;
     }
 
     @Override

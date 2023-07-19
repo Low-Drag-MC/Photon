@@ -37,7 +37,7 @@ public class Cone implements IShape {
     private float arc = 360;
 
     @Override
-    public void nextPosVel(LParticle particle, Vector3 position, Vector3 rotation, Vector3 scale) {
+    public void nextPosVel(LParticle particle, LParticle emitter, Vector3 position, Vector3 rotation, Vector3 scale) {
         var random = particle.getRandomSource();
         var outer = radius;
         var inner = (1 - radiusThickness) * radius;

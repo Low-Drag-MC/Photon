@@ -2,7 +2,6 @@ package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.lowdraglib.utils.Vector3;
 import com.lowdragmc.photon.client.emitter.IParticleEmitter;
-import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -18,47 +17,17 @@ import java.util.*;
  * @implNote BlockEffect
  */
 @Environment(EnvType.CLIENT)
-public class BlockEffect implements IFXEffect {
+public class BlockEffect extends FXEffect {
     public static Map<BlockPos, List<BlockEffect>> CACHE = new HashMap<>();
-    @Getter
-    public final FX fx;
-    public final Level level;
     public final BlockPos pos;
-    @Setter
-    private double xOffset, yOffset, zOffset;
-    @Setter
-    private double xRotation, yRotation, zRotation;
-    @Setter
-    private int delay;
-    @Setter
-    private boolean forcedDeath;
-    @Setter
-    private boolean allowMulti;
     @Setter
     private boolean checkState;
     // runtime
-    @Getter
-    private final List<IParticleEmitter> emitters = new ArrayList<>();
     private BlockState lastState;
 
     public BlockEffect(FX fx, Level level, BlockPos pos) {
-        this.fx = fx;
-        this.level = level;
+        super(fx, level);
         this.pos = pos;
-    }
-
-    @Override
-    public void setOffset(double x, double y, double z) {
-        this.xOffset = x;
-        this.yOffset = y;
-        this.zOffset = z;
-    }
-
-    @Override
-    public void setRotation(double x, double y, double z) {
-        this.xRotation = x;
-        this.yRotation = y;
-        this.zRotation = z;
     }
 
     @Override
@@ -93,9 +62,11 @@ public class BlockEffect implements IFXEffect {
         }
         var realPos= new Vector3(pos).add(xOffset + 0.5, yOffset + 0.5, zOffset + 0.5);
         for (var emitter : emitters) {
-            emitter.reset();
-            emitter.self().setDelay(delay);
-            emitter.emmitToLevel(this, level, realPos.x, realPos.y, realPos.z, xRotation, yRotation, zRotation);
+            if (!emitter.isSubEmitter()) {
+                emitter.reset();
+                emitter.self().setDelay(delay);
+                emitter.emmitToLevel(this, level, realPos.x, realPos.y, realPos.z, xRotation, yRotation, zRotation);
+            }
         }
         lastState = level.getBlockState(pos);
     }
