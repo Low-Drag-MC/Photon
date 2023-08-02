@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.core.mixins;
 
 import com.lowdragmc.lowdraglib.client.scene.CameraEntity;
+import com.lowdragmc.lowdraglib.client.scene.ISceneRenderHook;
 import com.lowdragmc.lowdraglib.client.scene.ParticleManager;
 import com.lowdragmc.lowdraglib.client.scene.WorldSceneRenderer;
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
@@ -8,6 +9,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.core.BlockPos;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -33,7 +35,7 @@ public class WorldSceneRendererMixin {
             at = {@At(value = "RETURN")},
             remap = false
     )
-    private void injectRenderTESR(Collection<BlockPos> poses, PoseStack matrixStack, MultiBufferSource.BufferSource buffers, float partialTicks, CallbackInfo ci) {
+    private void injectRenderTESR(Collection<BlockPos> poses, PoseStack pose, MultiBufferSource.BufferSource buffers, @Nullable ISceneRenderHook hook, float partialTicks, CallbackInfo ci) {
         if (this.particleManager != null) {
             PhotonParticleRenderType.prepareForParticleRendering(null);
             PoseStack poseStack = new PoseStack();
