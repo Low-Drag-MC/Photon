@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib.gui.editor.ILDLRegisterClient;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.syncdata.IAutoPersistedSerializable;
 import com.lowdragmc.lowdraglib.utils.DummyWorld;
+import com.lowdragmc.photon.client.fx.EditorEffect;
 import com.lowdragmc.photon.client.fx.IEffect;
 import com.lowdragmc.photon.client.particle.LParticle;
 import com.lowdragmc.photon.integration.PhotonLDLibPlugin;
@@ -169,4 +170,8 @@ public interface IParticleEmitter extends IConfigurable, ILDLRegisterClient, IAu
     void setEffect(IEffect effect);
 
     IEffect getEffect();
+
+    default boolean isDev() {
+        return getEffect() instanceof EditorEffect;
+    }
 }

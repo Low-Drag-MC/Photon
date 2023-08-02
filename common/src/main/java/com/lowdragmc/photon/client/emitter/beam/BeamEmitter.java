@@ -103,7 +103,6 @@ public class BeamEmitter extends BeamParticle implements IParticleEmitter {
 
     @Override
     public void deserializeNBT(CompoundTag tag) {
-        var version = tag.contains("_version") ? tag.getInt("_version") : 0;
         IParticleEmitter.super.deserializeNBT(tag);
     }
 
@@ -118,6 +117,8 @@ public class BeamEmitter extends BeamParticle implements IParticleEmitter {
     public void init() {
         particles.get(renderType).clear();
         particles.get(renderType).add(this);
+        this.end = config.end;
+        config.renderer.setupQuaternion(this, this);
         super.setDelay(config.startDelay);
         super.setDynamicLight((p, partialTicks) -> {
             if (usingBloom()) {
@@ -160,10 +161,10 @@ public class BeamEmitter extends BeamParticle implements IParticleEmitter {
             return;
         }
 
-        config.renderer.setupQuaternion(this, this);
-
-        if (!config.end.equals(this.end)) {
-            this.end = config.end;
+        if (isDev()) {
+            if(!config.end.equals(this.end)) {
+                this.end = config.end;
+            }
         }
 
         if (delay > 0) {
