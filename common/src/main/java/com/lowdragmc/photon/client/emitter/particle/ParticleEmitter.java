@@ -489,7 +489,6 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     //////////////////////////////////////
     //********      Emitter    *********//
     //////////////////////////////////////
-
     public boolean emitParticle(LParticle particle) {
         if (emitter != null) { // find root
             return emitter.emitParticle(particle);

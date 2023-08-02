@@ -181,16 +181,6 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     }
 
     @Override
-    public float getT(float partialTicks) {
-        return 1;
-    }
-
-    @Override
-    public int getAge() {
-        return 0;
-    }
-
-    @Override
     public void resetParticle() {
         super.resetParticle();
         this.tailsTime.clear();
