@@ -1,4 +1,4 @@
-package com.lowdragmc.photon.core.mixins;
+package com.lowdragmc.photon.fabric.core.mixins;
 
 import com.lowdragmc.photon.command.FxLocationArgument;
 import com.mojang.brigadier.arguments.ArgumentType;
