@@ -11,6 +11,7 @@
     "no_iris.ParticleEngineMixin"
   ],
   "mixins": [
+    "ArgumentTypeInfosMixin"
   ],
   "injectors": {
     "defaultRequire": 1

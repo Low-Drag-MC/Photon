@@ -5,10 +5,13 @@ import com.lowdragmc.photon.PhotonCommonProxy;
 import com.lowdragmc.photon.ServerCommands;
 import com.lowdragmc.photon.command.FxLocationArgument;
 import net.minecraft.commands.synchronization.ArgumentTypeInfo;
+import net.minecraft.commands.synchronization.ArgumentTypeInfos;
 import net.minecraft.commands.synchronization.SingletonArgumentInfo;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -27,6 +30,11 @@ public class CommonProxyImpl {
         MinecraftForge.EVENT_BUS.addListener(this::registerCommand);
         // init common features
         PhotonCommonProxy.init();
+    }
+
+    @SubscribeEvent
+    public void setup(FMLCommonSetupEvent event) {
+        ArgumentTypeInfos.registerByClass(FxLocationArgument.class, FX_LOCATION_ARG_TYPE.get());
     }
 
     public void registerCommand(RegisterCommandsEvent event) {

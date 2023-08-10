@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.emitter.particle;
 
+import com.google.common.collect.Queues;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
@@ -60,6 +61,7 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
     protected final PhotonParticleRenderType renderType;
 
     // runtime
+    private final Queue<LParticle> waitToAdded = Queues.newArrayDeque();
     @Getter
     protected final Map<PhotonParticleRenderType, Queue<LParticle>> particles = new LinkedHashMap<>();
     @Getter @Setter
@@ -335,6 +337,13 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
         }
 
         // particles life cycle
+        if (!waitToAdded.isEmpty()) {
+            for (var p : waitToAdded) {
+                particles.computeIfAbsent(p.getRenderType(), type -> new ArrayDeque<>(config.maxParticles)).add(p);
+            }
+            waitToAdded.clear();
+        }
+
         for (var queue : particles.values()) {
             if (config.parallelUpdate) { // parallel stream for particles tick.
                 queue.removeIf(p -> !p.isAlive());
@@ -494,9 +503,14 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
             return emitter.emitParticle(particle);
         } else {
             particle.prepareForEmitting(this);
-            particles.computeIfAbsent(particle.getRenderType(), type -> new ArrayDeque<>(config.maxParticles)).add(particle);
+            waitToAdded.add(particle);
             return getParticleAmount() <= config.maxParticles;
         }
+    }
+
+    @Override
+    public int getParticleAmount() {
+        return IParticleEmitter.super.getParticleAmount() + waitToAdded.size();
     }
 
     @Override

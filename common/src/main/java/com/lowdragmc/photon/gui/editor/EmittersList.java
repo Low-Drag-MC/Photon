@@ -131,7 +131,13 @@ public class EmittersList extends DraggableScrollableWidgetGroup {
         if(isMouseOverElement(mouseX, mouseY)){
             for (int i = widgets.size() - 1; i >= 0; i--) {
                 Widget widget = widgets.get(i);
-                if(widget.isVisible()) {
+                if (widget.isVisible() && widget.isActive() && widget.mouseReleased(mouseX, mouseY, button)) {
+                    break;
+                }
+            }
+            for (int i = widgets.size() - 1; i >= 0; i--) {
+                Widget widget = widgets.get(i);
+                if (widget.isVisible()) {
                     if (waitToRemoved == null || !waitToRemoved.contains(widget))  {
                         if (widget instanceof ISelected && ((ISelected) widget).allowSelected(mouseX, mouseY, button)) {
                             if (selectedWidget != null && selectedWidget != widget) {

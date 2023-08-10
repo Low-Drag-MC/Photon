@@ -1,11 +1,14 @@
 package com.lowdragmc.photon.client.emitter.data;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
-import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.SelectorConfigurator;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.client.emitter.data.number.*;
+import com.lowdragmc.photon.client.emitter.data.number.curve.Curve;
+import com.lowdragmc.photon.client.emitter.data.number.curve.CurveConfig;
+import com.lowdragmc.photon.client.emitter.data.number.curve.RandomCurve;
 import org.joml.Vector3f;
 import com.lowdragmc.photon.client.emitter.data.shape.Cone;
 import com.lowdragmc.photon.client.emitter.data.shape.IShape;
@@ -31,20 +34,23 @@ public class ShapeSetting implements IConfigurable {
     private IShape shape = new Cone();
     @Getter @Setter
     @Configurable(tips = "photon.emitter.config.shape.position")
-    @NumberRange(range = {-1000, 1000})
-    private Vector3f position = new Vector3f(0 ,0, 0);
+    @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = -1000, max = 1000, curveConfig = @CurveConfig(bound = {-3, 3}, xAxis = "duration", yAxis = "position")))
+    private NumberFunction3 position = new NumberFunction3(0 ,0, 0);
     @Getter @Setter
     @Configurable(tips = "photon.emitter.config.shape.rotation")
-    @NumberRange(range = {-Float.MAX_VALUE, Float.MAX_VALUE}, wheel = 10)
-    private Vector3f rotation = new Vector3f(0 ,0, 0);
+    @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, min = -Float.MAX_VALUE, max = Float.MAX_VALUE, curveConfig = @CurveConfig(bound = {-180, 180}, xAxis = "duration", yAxis = "rotation")))
+    private NumberFunction3 rotation = new NumberFunction3(0 ,0, 0);
     @Getter @Setter
     @Configurable(tips = "photon.emitter.config.shape.scale")
-    @NumberRange(range = {0, 1000})
-    private Vector3f scale = new Vector3f(1, 1, 1);
+    @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1000, curveConfig = @CurveConfig(bound = {0, 3}, xAxis = "duration", yAxis = "scale")))
+    private NumberFunction3 scale = new NumberFunction3(1, 1, 1);
 
 
     public void setupParticle(LParticle particle, LParticle emitter) {
-        shape.nextPosVel(particle, emitter, emitter.getPos().add(position), emitter.getRotation(0).add(new Vector3f(rotation).mul(Mth.TWO_PI / 360)), new Vector3f(scale));
+        var t = emitter.getT();
+        shape.nextPosVel(particle, emitter, emitter.getPos().add(position.get(t, () -> emitter.getMemRandom("shape_position"))),
+                emitter.getRotation(0).add(new Vector3f(rotation.get(t, () -> emitter.getMemRandom("shape_rotation"))).mul(Mth.TWO_PI / 360)),
+                new Vector3f(scale.get(t, () -> emitter.getMemRandom("shape_scale"))));
     }
 
     @Override

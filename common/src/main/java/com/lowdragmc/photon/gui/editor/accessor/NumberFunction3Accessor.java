@@ -7,6 +7,7 @@ import com.lowdragmc.lowdraglib.syncdata.payload.NbtTagPayload;
 import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.emitter.data.number.NumberFunction3;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 
 /**
  * @author KilaBash
@@ -31,9 +32,13 @@ public class NumberFunction3Accessor extends CustomObjectAccessor<NumberFunction
     @Override
     public NumberFunction3 deserialize(AccessorOp op, ITypedPayload<?> payload) {
         if (payload instanceof NbtTagPayload nbtTagPayload && nbtTagPayload.getPayload() instanceof CompoundTag tag) {
-            return new NumberFunction3(NumberFunction.deserializeWrapper(tag.getCompound("x")),
-                    NumberFunction.deserializeWrapper(tag.getCompound("y")),
-                    NumberFunction.deserializeWrapper(tag.getCompound("z")));
+            if (tag.getTagType("x") == Tag.TAG_FLOAT) {
+                return new NumberFunction3(tag.getFloat("x"), tag.getFloat("y"), tag.getFloat("z"));
+            } else {
+                return new NumberFunction3(NumberFunction.deserializeWrapper(tag.getCompound("x")),
+                        NumberFunction.deserializeWrapper(tag.getCompound("y")),
+                        NumberFunction.deserializeWrapper(tag.getCompound("z")));
+            }
         }
         return null;
     }
