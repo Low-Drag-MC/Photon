@@ -247,15 +247,19 @@ LParticle extends Particle {
         updateOrigin();
 
         if (this.age++ >= getLifetime() && getLifetime() > 0) {
-            this.remove();
-            if (onDeath != null) {
-                onDeath.accept(this);
-            }
+            removeWithEvent();
         }
         update();
 
         if (getLifetime() > 0) {
             t = 1.0f * age / getLifetime();
+        }
+    }
+
+    public void removeWithEvent() {
+        this.remove();
+        if (onDeath != null) {
+            onDeath.accept(this);
         }
     }
 

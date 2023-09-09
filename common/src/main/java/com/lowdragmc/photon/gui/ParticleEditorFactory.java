@@ -35,7 +35,7 @@ public class ParticleEditorFactory extends UIFactory<ParticleEditorFactory> impl
 	@Override
 	public ModularUI createUI(Player entityPlayer) {
 		return new ModularUI(this, entityPlayer)
-				.widget(new ParticleEditor(LDLib.location));
+				.widget(new ParticleEditor(LDLib.getLDLibDir()));
 	}
 
 	@Override

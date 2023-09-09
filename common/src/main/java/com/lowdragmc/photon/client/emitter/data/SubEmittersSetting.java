@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib.gui.editor.ColorPattern;
 import com.lowdragmc.lowdraglib.gui.editor.accessors.TypesAccessor;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.ConfigAccessor;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
+import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.Configurator;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
@@ -149,6 +150,9 @@ public class SubEmittersSetting extends ToggleGroup implements IConfigurable, IT
         @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.emit_probability")
         @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "probability", yAxis = "lifetime"))
         protected NumberFunction emitProbability = NumberFunction.constant(0);
+        @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.tick_interval")
+        @NumberRange(range = {1, Integer.MAX_VALUE})
+        protected int tickInterval = 1;
         @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.inherit_color")
         protected boolean inheritColor = false;
         @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.inherit_size")
@@ -163,7 +167,7 @@ public class SubEmittersSetting extends ToggleGroup implements IConfigurable, IT
         @Nullable
         public IParticleEmitter spawnEmitter(LParticle father, @Nonnull IEffect effect) {
             if (cache == null) cache = effect.getEmitterByName(emitter);
-            if (cache != null && father.getRandomSource().nextFloat() < emitProbability.get(father.getT(0), () -> father.getMemRandom("sub_emitter_probability")).floatValue()) {
+            if (cache != null && father.getAge() % tickInterval == 0 && father.getRandomSource().nextFloat() < emitProbability.get(father.getT(0), () -> father.getMemRandom("sub_emitter_probability")).floatValue()) {
                 var copied = cache.copy();
                 copied.reset();
                 copied.updatePos(father.getPos());

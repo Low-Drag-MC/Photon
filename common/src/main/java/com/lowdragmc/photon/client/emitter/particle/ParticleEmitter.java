@@ -162,6 +162,9 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                     config.subEmitters.triggerEvent(this, p, SubEmittersSetting.Event.Death);
                 }
             });
+        }
+
+        if (config.physics.isEnable() || config.subEmitters.isEnable()) {
             AtomicBoolean isFirstCollision = new AtomicBoolean(false);
             particle.setOnCollision(p -> {
                 if (config.subEmitters.isEnable()) {
@@ -170,6 +173,9 @@ public class ParticleEmitter extends LParticle implements IParticleEmitter {
                         isFirstCollision.set(true);
                         config.subEmitters.triggerEvent(this, p, SubEmittersSetting.Event.FirstCollision);
                     }
+                }
+                if (config.physics.isEnable() && config.physics.isRemovedWhenCollided()) {
+                    p.removeWithEvent();
                 }
             });
         }
