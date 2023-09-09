@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.photon.client.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.emitter.data.RendererSetting;
+import com.lowdragmc.photon.client.emitter.data.UVAnimationSetting;
 import com.lowdragmc.photon.client.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.emitter.data.number.NumberFunctionConfig;
@@ -59,4 +60,7 @@ public class TrailConfig {
     @Getter
     @Configurable(name = "Fixed Light", subConfigurable = true, tips = "photon.emitter.config.lights")
     protected final LightOverLifetimeSetting lights = new LightOverLifetimeSetting();
+    @Getter
+    @Configurable(name = "UV Animation", subConfigurable = true, tips = "photon.emitter.config.uvAnimation")
+    protected final UVAnimationSetting uvAnimation = new UVAnimationSetting();
 }

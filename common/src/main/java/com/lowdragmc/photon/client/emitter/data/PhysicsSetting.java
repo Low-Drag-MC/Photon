@@ -28,6 +28,10 @@ public class PhysicsSetting extends ToggleGroup {
     protected boolean hasCollision = true;
     @Setter
     @Getter
+    @Configurable(tips = "photon.emitter.config.physics.removedWhenCollided")
+    protected boolean removedWhenCollided = false;
+    @Setter
+    @Getter
     @Configurable(tips = "photon.emitter.config.physics.friction")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 0.98f, curveConfig = @CurveConfig(xAxis = "duration", yAxis = "friction"))
     protected NumberFunction friction = NumberFunction.constant(0.98);

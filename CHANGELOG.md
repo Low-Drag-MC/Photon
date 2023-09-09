@@ -1,6 +1,6 @@
 ## ChangeLog
 
-* fix forge registry issue
-* fix sub emitter crash
-* fix dragging emitter rendering
-* support curve value for shape settings
+* support be removed when collided
+* support tick interval between sub emitters
+* support uv animation for trail particles
+* bump up the ldlib

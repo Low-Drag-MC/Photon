@@ -152,6 +152,20 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
             }
             return t.getLight(partialTicks);
         });
+        super.setDynamicUVs((p, partialTicks) -> {
+            if (config.uvAnimation.isEnable()) {
+                var uvs = config.uvAnimation.getUVs(p, partialTicks);
+                var x = uvs.x;
+                var y = uvs.y;
+                var w = uvs.z - uvs.x;
+                var h = uvs.w - uvs.y;
+                return new Vector4f(x + w * p.getU0(partialTicks),
+                        y + h * p.getV0(partialTicks),
+                        x + w * p.getU1(partialTicks),
+                        y + h * p.getV1(partialTicks));
+            }
+            return new Vector4f(p.getU0(partialTicks), p.getV0(partialTicks), p.getU1(partialTicks), p.getV1(partialTicks));
+        });
     }
 
     @Override
