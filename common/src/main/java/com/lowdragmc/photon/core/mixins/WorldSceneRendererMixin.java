@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.core.mixins;
 
 import com.lowdragmc.lowdraglib.client.scene.CameraEntity;
-import com.lowdragmc.lowdraglib.client.scene.ISceneRenderHook;
+import com.lowdragmc.lowdraglib.client.scene.ISceneBlockRenderHook;
 import com.lowdragmc.lowdraglib.client.scene.ParticleManager;
 import com.lowdragmc.lowdraglib.client.scene.WorldSceneRenderer;
 import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
@@ -35,7 +35,7 @@ public class WorldSceneRendererMixin {
             at = {@At(value = "RETURN")},
             remap = false
     )
-    private void injectRenderTESR(Collection<BlockPos> poses, PoseStack pose, MultiBufferSource.BufferSource buffers, @Nullable ISceneRenderHook hook, float partialTicks, CallbackInfo ci) {
+    private void injectRenderTESR(Collection<BlockPos> poses, PoseStack pose, MultiBufferSource.BufferSource buffers, @Nullable ISceneBlockRenderHook hook, float partialTicks, CallbackInfo ci) {
         if (this.particleManager != null) {
             PhotonParticleRenderType.prepareForParticleRendering(null);
             PoseStack poseStack = new PoseStack();
