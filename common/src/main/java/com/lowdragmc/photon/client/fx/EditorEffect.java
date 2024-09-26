@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.fx;
 
-import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.gui.editor.ParticleEditor;
 import com.lowdragmc.photon.gui.editor.ParticleProject;
 import org.jetbrains.annotations.Nullable;

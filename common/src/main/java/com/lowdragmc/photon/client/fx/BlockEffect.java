@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client.fx;
 
 import org.joml.Vector3f;
-import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;

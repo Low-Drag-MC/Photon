@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.forge.core.mixins;
 
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;

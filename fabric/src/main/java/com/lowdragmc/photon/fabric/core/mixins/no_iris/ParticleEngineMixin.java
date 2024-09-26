@@ -1,8 +1,8 @@
 package com.lowdragmc.photon.fabric.core.mixins.no_iris;
 
 import com.google.common.collect.ImmutableList;
-import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
-import com.lowdragmc.photon.client.emitter.data.RendererSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import net.minecraft.client.particle.ParticleEngine;
 import net.minecraft.client.particle.ParticleRenderType;
 import org.spongepowered.asm.mixin.Final;

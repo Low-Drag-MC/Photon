@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client;
 
-import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
 import com.lowdragmc.photon.client.fx.BlockEffect;
 import com.lowdragmc.photon.client.fx.EntityEffect;
 import com.lowdragmc.photon.client.fx.FXHelper;

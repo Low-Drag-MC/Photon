@@ -89,7 +89,7 @@ dependencies {
     include(forge.ldlib.forge)
 
     // Oculus
-    modImplementation(forge.rubidium) { transitive = false }
+    modImplementation(forge.embeddium) { transitive = false }
     modImplementation(forge.oculus) { transitive = false }
 }
 
@@ -118,17 +118,17 @@ shadowJar {
     exclude "architectury.common.json"
 
     configurations = [project.configurations.shadowCommon]
-    classifier "dev-shadow"
+    archiveClassifier = "dev-shadow"
 }
 
 remapJar {
     input.set shadowJar.archiveFile
     dependsOn shadowJar
-    classifier null
+    archiveClassifier = null
 }
 
 jar {
-    classifier "dev"
+    archiveClassifier = "dev"
 }
 
 sourcesJar {

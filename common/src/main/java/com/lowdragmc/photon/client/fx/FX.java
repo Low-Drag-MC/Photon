@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.fx;
 
-import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 

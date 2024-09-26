@@ -2,13 +2,14 @@ package com.lowdragmc.photon.gui.editor.configurator;
 
 import com.lowdragmc.lowdraglib.gui.editor.Icons;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ValueConfigurator;
+import com.lowdragmc.lowdraglib.gui.editor.ui.Editor;
 import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.lowdraglib.utils.Size;
-import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
-import com.lowdragmc.photon.client.emitter.data.number.NumberFunctionConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
 import lombok.Getter;
 
 import java.util.function.Consumer;
@@ -49,23 +50,25 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
         this.addWidget(new ButtonWidget(width - (tips.length > 0 ? 24 : 12), 2, 9, 9,
                 Icons.DOWN,
                 cd -> {
-                    var menu = TreeBuilder.Menu.start();
-                    for (Class<? extends NumberFunction> type : config.types()) {
-                        menu.leaf(type == value.getClass() ?Icons.CHECK : IGuiTexture.EMPTY, type.getSimpleName(), () -> {
-                            if (type == value.getClass()) return;
-                            try {
-                                var newValue = type.getConstructor(NumberFunctionConfig.class).newInstance(config);
-                                onValueUpdate(newValue);
-                                updateValue();
-                                group.clearAllWidgets();
-                                group.setSize(new Size(w, 15));
-                                value.createConfigurator(group, this);
-                                computeLayout();
-                            } catch (Throwable ignored) {
-                            }
-                        });
+                    if (Editor.INSTANCE != null) {
+                        var menu = TreeBuilder.Menu.start();
+                        for (Class<? extends NumberFunction> type : config.types()) {
+                            menu.leaf(type == value.getClass() ?Icons.CHECK : IGuiTexture.EMPTY, type.getSimpleName(), () -> {
+                                if (type == value.getClass()) return;
+                                try {
+                                    var newValue = type.getConstructor(NumberFunctionConfig.class).newInstance(config);
+                                    onValueUpdate(newValue);
+                                    updateValue();
+                                    group.clearAllWidgets();
+                                    group.setSize(new Size(w, 15));
+                                    value.createConfigurator(group, this);
+                                    computeLayout();
+                                } catch (Throwable ignored) {
+                                }
+                            });
+                        }
+                        Editor.INSTANCE.openMenu(group.getPosition().x + width, group.getPosition().y, menu);
                     }
-                    configPanel.getEditor().openMenu(group.getPosition().x + width, group.getPosition().y, menu);
                 }).setHoverTooltips("ldlib.gui.editor.tips.other"));
         assert value != null;
         value.createConfigurator(group, this);

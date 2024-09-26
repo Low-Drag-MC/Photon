@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.forge.core.mixins;
 
-import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
 import com.lowdragmc.photon.client.fx.BlockEffect;
 import com.lowdragmc.photon.client.fx.EntityEffect;
 import com.mojang.blaze3d.vertex.PoseStack;

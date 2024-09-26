@@ -6,7 +6,7 @@ import com.lowdragmc.lowdraglib.gui.editor.data.IProject;
 import com.lowdragmc.lowdraglib.gui.editor.ui.*;
 import com.lowdragmc.lowdraglib.gui.editor.ui.menu.ViewMenu;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
-import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.fx.EditorEffect;
 import com.lowdragmc.photon.client.fx.IEffect;
 import lombok.Getter;

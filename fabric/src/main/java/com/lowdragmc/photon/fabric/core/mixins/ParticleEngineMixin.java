@@ -1,8 +1,8 @@
 package com.lowdragmc.photon.fabric.core.mixins;
 
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
-import com.lowdragmc.photon.client.emitter.data.RendererSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.fx.BlockEffect;
 import com.lowdragmc.photon.client.fx.EntityEffect;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -34,7 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
-import static com.lowdragmc.photon.client.emitter.PhotonParticleRenderType.makeParticleRenderTypeComparator;
+import static com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType.makeParticleRenderTypeComparator;
 
 /**
  * @author KilaBash

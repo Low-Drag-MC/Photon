@@ -2,9 +2,9 @@ package com.lowdragmc.photon.gui.editor.configurator;
 
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ValueConfigurator;
 import com.lowdragmc.lowdraglib.utils.Size;
-import com.lowdragmc.photon.client.emitter.data.number.NumberFunction;
-import com.lowdragmc.photon.client.emitter.data.number.NumberFunction3;
-import com.lowdragmc.photon.client.emitter.data.number.NumberFunction3Config;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3Config;
 import lombok.Getter;
 
 import java.util.function.Consumer;
@@ -49,7 +49,7 @@ public class NumberFunction3Configurator extends ValueConfigurator<NumberFunctio
             this.value.x = number;
             updateValue();
         }, forceUpdate, config.xyz().length > 0 ? config.xyz()[0] : config.common());
-        x.setConfigPanel(configPanel, tab);
+        x.setConfiguratorContainer(configuratorContainer);
         x.init(w);
         x.addSelfPosition(leftWidth, 0);
         addWidget(x);
@@ -58,7 +58,7 @@ public class NumberFunction3Configurator extends ValueConfigurator<NumberFunctio
             this.value.y = number;
             updateValue();
         }, forceUpdate, config.xyz().length > 1 ? config.xyz()[1] : config.common());
-        y.setConfigPanel(configPanel, tab);
+        y.setConfiguratorContainer(configuratorContainer);
         y.init(w);
         y.addSelfPosition(leftWidth + w, 0);
         addWidget(y);
@@ -67,7 +67,7 @@ public class NumberFunction3Configurator extends ValueConfigurator<NumberFunctio
             this.value.z = number;
             updateValue();
         }, forceUpdate, config.xyz().length > 2 ? config.xyz()[2] : config.common());
-        z.setConfigPanel(configPanel, tab);
+        z.setConfiguratorContainer(configuratorContainer);
         z.init(w);
         z.addSelfPosition(leftWidth + w * 2, 0);
         addWidget(z);

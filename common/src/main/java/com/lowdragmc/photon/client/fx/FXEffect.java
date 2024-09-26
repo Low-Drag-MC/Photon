@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.fx;
 
-import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.world.level.Level;

@@ -19,24 +19,24 @@ dependencyResolutionManagement {
         // Mod Dependencies Versions
 
         // Fabric
-        def fabricLoaderVersion = "0.14.21" // https://fabricmc.net/develop/
-        def fabricApiVersion = "0.83.0" // https://fabricmc.net/develop/
-        def sodiumVersion = "mc1.20-0.4.10"
-        def irisVersion = "1.6.4+1.20"
+        def fabricLoaderVersion = "0.15.11" // https://fabricmc.net/develop/
+        def fabricApiVersion = "0.92.2" // https://fabricmc.net/develop/
+        def sodiumVersion = "mc1.20.1-0.5.11"
+        def irisVersion = "1.7.0+1.20.1"
         // Forge
-        def forgeVersion = "47.0.19"
-        def rubidiumVersion = "0.6.5"
-        def oculusVersion = "1.20-1.6.4"
+        def forgeVersion = "47.1.3"
+        def embeddiumVersion = "0.3.31-beta.52+mc1.20.1"
+        def oculusVersion = "1.20.1-1.7.0"
 
         // Libs
         def quiltMappingsVersion = "5"  // https://lambdaurora.dev/tools/import_quilt.html
-        def parchmentVersion = "1.19.3:2023.03.12" // https://parchmentmc.org/docs/getting-started
+        def parchmentVersion = "1.20.1:2023.09.03" // https://parchmentmc.org/docs/getting-started
         def shadowVersion = "7.1.2"
         def architecturyPluginVersion = "3.4-SNAPSHOT"
-        def architecturyLoomVersion = "1.0-SNAPSHOT"
+        def architecturyLoomVersion = "1.6-SNAPSHOT"
         def quiltFlowerVersion = "1.+"
         def macheteVersion = "1.+"
-        def ldLibVersion = "1.0.21.a"
+        def ldLibVersion = "1.0.28.d"
 
         fabric {
             def parchment = version("parchment", parchmentVersion)
@@ -67,8 +67,8 @@ dependencyResolutionManagement {
             def ldLib = version("ldlib", ldLibVersion)
             library("ldlib-forge", "com.lowdragmc.ldlib", "ldlib-forge-${minecraftVersion}").versionRef(ldLib)
 
-            def rubidium = version("rubidium", rubidiumVersion)
-            library("rubidium", "maven.modrinth", "rubidium").versionRef(rubidium)
+            def embeddium = version("embeddium", embeddiumVersion)
+            library("embeddium", "org.embeddedt", "embeddium-${minecraftVersion}").versionRef(embeddium)
 
             def oculus = version("oculus", oculusVersion)
             library("oculus", "maven.modrinth", "oculus").versionRef(oculus)

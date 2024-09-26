@@ -18,7 +18,7 @@ import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
 import org.joml.Vector3f;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonParticleManager;
-import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
@@ -56,9 +56,7 @@ public class ParticleScene extends SceneWidget {
         this.editor = editor;
         setRenderFacing(false);
         setRenderSelect(false);
-        if (!Photon.isShaderModInstalled() || Platform.isForge()) {
-            useCacheBuffer();
-        }
+        useCacheBuffer();
         var buttonGroup = initButtons();
         buttonGroup.addSelfPosition((getSize().width - buttonGroup.getSize().width) / 2, 10);
         addWidget(buttonGroup);

@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib.client.scene.ParticleManager;
-import com.lowdragmc.photon.client.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
 import com.mojang.blaze3d.vertex.PoseStack;
 import lombok.val;
 import net.fabricmc.api.EnvType;

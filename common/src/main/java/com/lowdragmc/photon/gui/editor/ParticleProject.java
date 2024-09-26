@@ -9,7 +9,7 @@ import com.lowdragmc.lowdraglib.gui.editor.data.resource.Resource;
 import com.lowdragmc.lowdraglib.gui.editor.ui.Editor;
 import com.lowdragmc.lowdraglib.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib.gui.widget.DialogWidget;
-import com.lowdragmc.photon.client.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -72,6 +72,7 @@ public class ParticleProject implements IProject {
         return new ParticleProject(createResources());
     }
 
+    @Override
     public CompoundTag serializeNBT() {
         var tag = new CompoundTag();
         tag.put("resources", resources.serializeNBT());
@@ -83,6 +84,7 @@ public class ParticleProject implements IProject {
         return tag;
     }
 
+    @Override
     public void deserializeNBT(CompoundTag tag) {
         this.resources = loadResources(tag.getCompound("resources"));
         this.emitters.clear();
