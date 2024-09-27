@@ -76,6 +76,8 @@ repositories {
     maven { url = "https://maven.theillusivec4.top/" } // Curios
     maven { url = "https://maven.parchmentmc.org" } // Parchment mappings
     maven { url = "https://maven.quiltmc.org/repository/release" } // Quilt Mappings
+    maven { url = "https://maven.saps.dev/minecraft" }
+    maven { url = "https://jitpack.io/" } // Mixin Extras, Fabric ASM
 }
 
 dependencies {
