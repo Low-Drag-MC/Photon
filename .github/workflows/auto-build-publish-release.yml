@@ -1,6 +1,18 @@
 name: Auto Build, Publish, Releasing
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      publishMaven:
+        description: 'whether publish to the maven'
+        required: true
+        type: boolean
+        default: true
+      publishCurseForgeAndModrinth:
+        description: 'whether publish to the curseforge and modrinth'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -24,12 +36,19 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build and Publish
+      - name: Build
         uses: gradle/gradle-build-action@v2.4.2
         with:
-          arguments: build publish
+          arguments: build
 
-      - name: Get Version
+      - if: ${{ inputs.publishMaven }}
+        name: Publish to Maven
+        uses: gradle/gradle-build-action@v2.4.2
+        with:
+          arguments: publish
+
+      - if: ${{ inputs.publishCurseForgeAndModrinth }}
+        name: Get Version
         id: var
         run: |
           MESSAGE=$(ls fabric/build/libs/* | grep sources.jar -v | grep shadow.jar -v | awk -F 'photon-fabric-|.jar' '{print $2}')
@@ -37,7 +56,8 @@ jobs:
           MESSAGE=$(ls forge/build/libs/* | grep sources.jar -v | grep shadow.jar -v | awk -F 'photon-forge-|.jar' '{print $2}')
           echo forge_version=$MESSAGE >> $GITHUB_OUTPUT
 
-      - name: mc-publish-fabric
+      - if: ${{ inputs.publishCurseForgeAndModrinth }}
+        name: mc-publish-fabric
         uses: Kir-Antipov/mc-publish@v3.3
         with:
           # Only include this section if you wish to publish
@@ -70,7 +90,8 @@ jobs:
           retry-delay: 10000
           fail-mode: fail
 
-      - name: mc-publish-forge
+      - if: ${{ inputs.publishCurseForgeAndModrinth }}
+        name: mc-publish-forge
         uses: Kir-Antipov/mc-publish@v3.3
         with:
           # Only include this section if you wish to publish
