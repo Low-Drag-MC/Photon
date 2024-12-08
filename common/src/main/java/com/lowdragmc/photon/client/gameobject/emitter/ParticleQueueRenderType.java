@@ -1,18 +1,14 @@
 package com.lowdragmc.photon.client.gameobject.emitter;
 
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
+import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.PoseStack;
-import it.unimi.dsi.fastutil.Pair;
 import lombok.Getter;
 import lombok.val;
 import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.world.phys.Vec3;
 import org.apache.commons.lang3.ArrayUtils;
-import org.joml.Matrix4f;
 
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -38,7 +34,7 @@ public class ParticleQueueRenderType extends PhotonParticleRenderType {
     }
 
     // runtime
-    protected final Map<PhotonParticleRenderType, Pair<Matrix4f, Queue<LParticle>>> particles = new HashMap<>();
+    protected final Map<PhotonParticleRenderType, Queue<IParticle>> particles = new HashMap<>();
     private Camera camera;
     private float pPartialTicks;
     @Getter
@@ -56,8 +52,7 @@ public class ParticleQueueRenderType extends PhotonParticleRenderType {
         isRenderingQueue = true;
         for (var entry : particles.entrySet()) {
             var type = entry.getKey();
-            var matrix = entry.getValue().left();
-            var list = entry.getValue().right();
+            var list = entry.getValue();
             if (!list.isEmpty()) {
                 RenderSystem.setShader(GameRenderer::getParticleShader);
                 RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
@@ -77,12 +72,8 @@ public class ParticleQueueRenderType extends PhotonParticleRenderType {
                     }
                 } else {
                     type.begin(builder);
-                    var poseStack = new PoseStack();
-                    Vec3 vec3 = camera.getPosition();
-                    poseStack.translate(-vec3.x, -vec3.y, -vec3.z);
-                    poseStack.mulPoseMatrix(matrix);
                     for (var particle : list) {
-                        particle.render(poseStack, builder, camera, pPartialTicks);
+                        particle.render(builder, camera, pPartialTicks);
                     }
                     type.end(builder);
                 }
@@ -93,8 +84,8 @@ public class ParticleQueueRenderType extends PhotonParticleRenderType {
         isRenderingQueue = false;
     }
 
-    public void pipeQueue(@Nonnull PhotonParticleRenderType type, @Nonnull Queue<LParticle> queue, Matrix4f matrix, Camera camera, float pPartialTicks) {
-        particles.computeIfAbsent(type, t -> Pair.of(matrix, queue));
+    public void pipeQueue(@Nonnull PhotonParticleRenderType type, @Nonnull Collection<IParticle> queue, Camera camera, float pPartialTicks) {
+        particles.computeIfAbsent(type, t -> new ArrayDeque<>()).addAll(queue);
         if (this.camera == null) {
             this.camera = camera;
             this.pPartialTicks = pPartialTicks;
@@ -104,9 +95,9 @@ public class ParticleQueueRenderType extends PhotonParticleRenderType {
     class ParallelRenderingTask extends RecursiveTask<List<BufferBuilder>> {
         private final BufferBuilder[] buffers;
         private final PhotonParticleRenderType type;
-        private final Spliterator<LParticle> particles;
+        private final Spliterator<IParticle> particles;
 
-        public ParallelRenderingTask(BufferBuilder[] buffers, PhotonParticleRenderType type, Spliterator<LParticle> particles) {
+        public ParallelRenderingTask(BufferBuilder[] buffers, PhotonParticleRenderType type, Spliterator<IParticle> particles) {
             this.buffers = buffers;
             this.type = type;
             this.particles = particles;

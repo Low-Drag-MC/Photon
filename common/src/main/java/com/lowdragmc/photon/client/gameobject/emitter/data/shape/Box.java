@@ -3,8 +3,9 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.shape;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import org.joml.Vector3f;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -26,7 +27,7 @@ public class Box implements IShape {
     private Type emitFrom = Type.Volume;
 
     @Override
-    public void nextPosVel(LParticle particle, LParticle emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
+    public void nextPosVel(TileParticle particle, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         var random = particle.getRandomSource();
         scale = new Vector3f(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z)).mul(0.5f);
         Vector3f pos = new Vector3f(random.nextFloat() * 2 * scale.x - scale.x,
@@ -57,7 +58,7 @@ public class Box implements IShape {
                 pos.y = random.nextFloat() > 0.5 ? scale.y : -scale.y;
             }
         }
-        particle.setPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getPos()), true);
-        particle.setSpeed(Vector3fHelper.rotateYXY(new Vector3f(0, 0.05f, 0), rotation));
+        particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPos()), true);
+        particle.setInternalVelocity(Vector3fHelper.rotateYXY(new Vector3f(0, 0.05f, 0), rotation));
     }
 }

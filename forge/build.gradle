@@ -91,8 +91,8 @@ dependencies {
     include(forge.ldlib.forge)
 
     // Oculus
-    modImplementation(forge.embeddium) { transitive = false }
-    modImplementation(forge.oculus) { transitive = false }
+    modCompileOnly(forge.embeddium) { transitive = false }
+    modCompileOnly(forge.oculus) { transitive = false }
 }
 
 processResources {

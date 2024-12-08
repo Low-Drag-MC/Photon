@@ -12,10 +12,11 @@ import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
 import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import org.joml.Vector3f;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
 import com.lowdragmc.photon.gui.editor.MeshesResource;
-import com.lowdragmc.photon.gui.editor.ParticleProject;
+import com.lowdragmc.photon.gui.editor.FXProject;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.nbt.CompoundTag;
@@ -42,7 +43,7 @@ public class Mesh implements IShape {
     private final MeshData meshData = new MeshData();
 
     @Override
-    public void nextPosVel(LParticle particle, LParticle emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
+    public void nextPosVel(TileParticle particle, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         Vector3f pos = null;
         var random = particle.getRandomSource();
         var t = random.nextFloat();
@@ -72,15 +73,15 @@ public class Mesh implements IShape {
         }
         if (pos != null) {
             pos.mul(scale);
-            particle.setPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getPos()), true);
-            particle.setSpeed(new Vector3f(0, 0, 0));
+            particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPos()), true);
+            particle.setInternalVelocity(new Vector3f(0, 0, 0));
         }
     }
 
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         IShape.super.buildConfigurator(father);
-        if (Editor.INSTANCE != null && Editor.INSTANCE.getCurrentProject() instanceof ParticleProject project &&
+        if (Editor.INSTANCE != null && Editor.INSTANCE.getCurrentProject() instanceof FXProject project &&
                 project.getResources().resources.get("mesh") instanceof MeshesResource meshesResource) {
             var selector = new SelectorConfigurator<>("mesh", () -> meshData.meshName, name -> {
                 var mesh = meshesResource.getData().get(name);

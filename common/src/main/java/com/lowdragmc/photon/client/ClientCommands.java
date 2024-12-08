@@ -1,10 +1,16 @@
 package com.lowdragmc.photon.client;
 
+import com.lowdragmc.lowdraglib.LDLib;
+import com.lowdragmc.lowdraglib.gui.modular.IUIHolder;
+import com.lowdragmc.lowdraglib.gui.modular.ModularUI;
+import com.lowdragmc.lowdraglib.gui.modular.ModularUIGuiContainer;
+import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
 import com.lowdragmc.photon.client.fx.BlockEffect;
 import com.lowdragmc.photon.client.fx.EntityEffect;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.core.mixins.accessor.ParticleEngineAccessor;
+import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -26,11 +32,23 @@ public class ClientCommands {
     @SuppressWarnings("unchecked")
     public static <S> List<LiteralArgumentBuilder<S>> createClientCommands() {
         return List.of(
+                (LiteralArgumentBuilder<S>) createLiteral("photon_editor").executes(context -> {
+                    var minecraft = Minecraft.getInstance();
+                    var entityPlayer = minecraft.player;
+                    var modular = new ModularUI(IUIHolder.EMPTY, entityPlayer).widget(new FXEditor(LDLib.getLDLibDir()));
+                    modular.initWidgets();
+                    ModularUIGuiContainer ModularUIGuiContainer = new ModularUIGuiContainer(modular, entityPlayer.containerMenu.containerId);
+                    minecraft.setScreen(ModularUIGuiContainer);
+                    entityPlayer.containerMenu = ModularUIGuiContainer.getMenu();
+                    return 1;
+                }),
                 (LiteralArgumentBuilder<S>) createLiteral("photon_client")
                         .then(createLiteral("clear_particles")
                                 .executes(context -> {
                                     if (Minecraft.getInstance().particleEngine instanceof ParticleEngineAccessor accessor) {
-                                        accessor.getParticles().entrySet().removeIf(entry -> entry.getKey() instanceof PhotonParticleRenderType);
+                                        accessor.getParticles().entrySet().removeIf(entry ->
+                                                entry.getKey() instanceof PhotonParticleRenderType ||
+                                                entry.getKey() == FXObject.NO_RENDER_RENDER_TYPE);
                                     }
                                     EntityEffect.CACHE.clear();
                                     BlockEffect.CACHE.clear();

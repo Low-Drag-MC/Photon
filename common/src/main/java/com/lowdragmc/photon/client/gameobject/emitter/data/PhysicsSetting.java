@@ -8,7 +8,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
+import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -20,51 +20,47 @@ import net.fabricmc.api.Environment;
  * @implNote PhysicsSetting
  */
 @Environment(EnvType.CLIENT)
+@Setter
+@Getter
 public class PhysicsSetting extends ToggleGroup {
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.physics.hasCollision")
     protected boolean hasCollision = true;
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.physics.removedWhenCollided")
     protected boolean removedWhenCollided = false;
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.physics.friction")
-    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 0.98f, curveConfig = @CurveConfig(xAxis = "duration", yAxis = "friction"))
-    protected NumberFunction friction = NumberFunction.constant(0.98);
-    @Setter
-    @Getter
+    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 1, curveConfig = @CurveConfig(xAxis = "duration", yAxis = "friction"))
+    protected NumberFunction friction = NumberFunction.constant(1);
     @Configurable(tips = "photon.emitter.config.physics.gravity")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "gravity"))
     protected NumberFunction gravity = NumberFunction.constant(0);
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.physics.bounceChance")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 1, curveConfig = @CurveConfig(xAxis = "duration", yAxis = "bounce chance"))
     protected NumberFunction bounceChance = NumberFunction.constant(1);
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.physics.bounceRate")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 1, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "bounce rate"))
     protected NumberFunction bounceRate =NumberFunction.constant(1);
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.physics.bounceSpreadRate")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "spread"))
     protected NumberFunction bounceSpreadRate = NumberFunction.constant(0);
 
-    public PhysicsSetting() {
+    public float getFriction(IParticle particle) {
+        return friction.get(particle.getT(), () -> particle.getMemRandom("friction")).floatValue();
     }
 
-    public void setupParticlePhysics(LParticle particle) {
-        particle.setFriction(friction.get(particle.getT(), () -> particle.getMemRandom("friction")).floatValue());
-        particle.setGravity(gravity.get(particle.getT(), () -> particle.getMemRandom("gravity")).floatValue());
-        particle.setBounceChance(bounceChance.get(particle.getT(), () -> particle.getMemRandom("bounce_chance")).floatValue());
-        particle.setBounceRate(bounceRate.get(particle.getT(), () -> particle.getMemRandom("bounce_rate")).floatValue());
-        particle.setBounceSpreadRate(bounceSpreadRate.get(particle.getT(), () -> particle.getMemRandom("bounce_spread_rate")).floatValue());
+    public float getGravity(IParticle particle) {
+        return gravity.get(particle.getT(), () -> particle.getMemRandom("gravity")).floatValue();
     }
 
+    public float getBounceChance(IParticle particle) {
+        return bounceChance.get(particle.getT(), () -> particle.getMemRandom("bounceChance")).floatValue();
+    }
+
+    public float getBounceRate(IParticle particle) {
+        return bounceRate.get(particle.getT(), () -> particle.getMemRandom("bounceRate")).floatValue();
+    }
+
+    public float getBounceSpreadRate(IParticle particle) {
+        return bounceSpreadRate.get(particle.getT(), () -> particle.getMemRandom("bounceSpreadRate")).floatValue();
+    }
 }

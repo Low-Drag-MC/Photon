@@ -8,8 +8,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import org.joml.Vector3f;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -22,30 +22,28 @@ import net.minecraft.util.Mth;
  * @implNote RotationOverLifetimeSetting
  */
 @Environment(EnvType.CLIENT)
+@Setter
+@Getter
 public class RotationOverLifetimeSetting extends ToggleGroup {
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.rotation.roll")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "lifetime", yAxis = "roll"))
     protected NumberFunction roll = NumberFunction.constant(0);
-    @Setter
-    @Getter
+
     @Configurable(tips = "photon.emitter.config.rotation.pitch")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "lifetime", yAxis = "pitch"))
     protected NumberFunction pitch = NumberFunction.constant(0);
-    @Setter
-    @Getter
+
     @Configurable(tips = "photon.emitter.config.rotation.yaw")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "lifetime", yAxis = "yaw"))
     protected NumberFunction yaw = NumberFunction.constant(0);
 
-    public Vector3f getRotation(LParticle particle, float partialTicks) {
+    public Vector3f getRotation(IParticle particle, float partialTicks) {
         var t = particle.getT(partialTicks);
         return new Vector3f(
-                roll.get(t, () -> particle.getMemRandom("rol0")).floatValue(),
+                yaw.get(t, () -> particle.getMemRandom("rol2")).floatValue(),
                 pitch.get(t, () -> particle.getMemRandom("rol1")).floatValue(),
-                yaw.get(t, () -> particle.getMemRandom("rol2")).floatValue()).mul(Mth.TWO_PI / 360);
+                roll.get(t, () -> particle.getMemRandom("rol0")).floatValue()).mul(Mth.TWO_PI / 360);
     }
 
 }

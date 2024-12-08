@@ -9,8 +9,8 @@ import com.lowdragmc.lowdraglib.plugin.LDLibPlugin;
 import com.lowdragmc.lowdraglib.syncdata.IAccessor;
 import com.lowdragmc.lowdraglib.syncdata.payload.NbtTagPayload;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.IShape;
-import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.gui.editor.accessor.IShapeAccessor;
 import com.lowdragmc.photon.gui.editor.accessor.NumberFunction3Accessor;
 import com.lowdragmc.photon.gui.editor.accessor.NumberFunctionAccessor;
@@ -36,7 +36,7 @@ public class PhotonLDLibPlugin implements ILDLibPlugin {
     public static final IAccessor SHAPE_ACCESSOR = new IShapeAccessor();
 
     @Environment(EnvType.CLIENT)
-    public static Map<String, AnnotationDetector.Wrapper<LDLRegisterClient, ? extends IParticleEmitter>> REGISTER_EMITTERS;
+    public static Map<String, AnnotationDetector.Wrapper<LDLRegisterClient, ? extends IFXObject>> REGISTER_FX_OBJECTS;
     public static Map<String, AnnotationDetector.Wrapper<LDLRegister, ? extends IShape>> REGISTER_SHAPES;
 
     @Override
@@ -51,8 +51,8 @@ public class PhotonLDLibPlugin implements ILDLibPlugin {
         register(NbtTagPayload.class, NbtTagPayload::new, SHAPE_ACCESSOR, 1000);
 
         if (LDLib.isClient()) {
-            REGISTER_EMITTERS = new HashMap<>();
-            AnnotationDetector.scanClasses(LDLRegisterClient.class, IParticleEmitter.class, AnnotationDetector::checkNoArgsConstructor, PhotonLDLibPlugin::toUINoArgsBuilder, PhotonLDLibPlugin::UIWrapperSorter, l -> REGISTER_EMITTERS.putAll(l.stream().collect(Collectors.toMap(w -> w.annotation().name(), w -> w))));
+            REGISTER_FX_OBJECTS = new HashMap<>();
+            AnnotationDetector.scanClasses(LDLRegisterClient.class, IFXObject.class, AnnotationDetector::checkNoArgsConstructor, PhotonLDLibPlugin::toUINoArgsBuilder, PhotonLDLibPlugin::UIWrapperSorter, l -> REGISTER_FX_OBJECTS.putAll(l.stream().collect(Collectors.toMap(w -> w.annotation().name(), w -> w))));
         }
         REGISTER_SHAPES = new HashMap<>();
         AnnotationDetector.scanClasses(LDLRegister.class, IShape.class, AnnotationDetector::checkNoArgsConstructor, AnnotationDetector::toUINoArgsBuilder, AnnotationDetector::UIWrapperSorter, l -> REGISTER_SHAPES.putAll(l.stream().collect(Collectors.toMap(w -> w.annotation().name(), w -> w))));

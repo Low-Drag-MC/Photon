@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.fx;
 
-import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.IFXObject;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.world.entity.Entity;
@@ -27,29 +27,34 @@ public class EntityEffect extends FXEffect {
     }
 
     @Override
-    public boolean updateEmitter(IParticleEmitter emitter) {
-        if (!entity.isAlive()) {
-            emitter.remove(forcedDeath);
-            return forcedDeath;
-        } else {
-            emitter.updatePos(new Vector3f((float) (entity.getX() + xOffset), (float) (entity.getY() + yOffset), (float) (entity.getZ() + zOffset)));
+    public void updateFXObjectTick(IFXObject fxObject) {
+        if (runtime != null && fxObject == runtime.root) {
+            if (!entity.isAlive()) {
+                runtime.destroy(forcedDeath);
+                CACHE.computeIfAbsent(entity, p -> new ArrayList<>()).remove(this);
+            }
         }
-        return false;
+    }
+
+    @Override
+    public void updateFXObjectFrame(IFXObject fxObject, float partialTicks) {
+        if (runtime != null && fxObject == runtime.root) {
+            var position = entity.getPosition(partialTicks);
+            runtime.root.updatePos(new Vector3f((float) (position.x + offset.x), (float) (position.y + offset.y), (float) (position.z + offset.z)));
+        }
     }
 
     @Override
     public void start() {
         if (!entity.isAlive()) return;
-        this.emitters.clear();
-        this.emitters.addAll(fx.generateEmitters());
-        if (this.emitters.isEmpty()) return;
+
+        var effects = CACHE.computeIfAbsent(entity, p -> new ArrayList<>());
         if (!allowMulti) {
-            var effects = CACHE.computeIfAbsent(entity, p -> new ArrayList<>());
             var iter = effects.iterator();
             while (iter.hasNext()) {
                 var effect = iter.next();
                 boolean removed = false;
-                if (effect.emitters.stream().noneMatch(e -> e.self().isAlive())) {
+                if (effect.runtime != null && !effect.runtime.isAlive()) {
                     iter.remove();
                     removed = true;
                 }
@@ -57,15 +62,13 @@ public class EntityEffect extends FXEffect {
                     return;
                 }
             }
-            effects.add(this);
         }
-        var realPos = entity.getPosition(0).toVector3f().add((float) xOffset, (float) yOffset, (float) zOffset);
-        for (var emitter : emitters) {
-            if (!emitter.isSubEmitter()) {
-                emitter.reset();
-                emitter.self().setDelay(delay);
-                emitter.emmitToLevel(this, level, realPos.x, realPos.y, realPos.z, xRotation, yRotation, zRotation);
-            }
-        }
+        this.runtime = fx.createRuntime();
+        var root = this.runtime.getRoot();
+        root.updatePos(entity.getPosition(0).toVector3f().add(offset.x, offset.y, offset.z));
+        root.updateRotation(rotation);
+        root.updateScale(scale);
+        this.runtime.emmit(this);
+        effects.add(this);
     }
 }

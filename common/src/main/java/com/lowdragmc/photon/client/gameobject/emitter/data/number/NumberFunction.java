@@ -42,7 +42,7 @@ public interface NumberFunction extends ITagSerializable<CompoundTag> {
         return new Color(color);
     }
 
-    static Tag serializeWrapper(NumberFunction value) {
+    static CompoundTag serializeWrapper(NumberFunction value) {
         var tag = value.serializeNBT();
         tag.putString("_type", value.getClass().getSimpleName());
         return tag;
@@ -59,6 +59,16 @@ public interface NumberFunction extends ITagSerializable<CompoundTag> {
         }
         return constant(0);
     }
+
+    static NumberFunction copy(NumberFunction function) {
+        return function.copy();
+    }
+
+    static boolean isEqual(NumberFunction a, NumberFunction b) {
+        return a.equals(b);
+    }
+
+    NumberFunction copy();
 
     void createConfigurator(WidgetGroup group, NumberFunctionConfigurator configurator);
 

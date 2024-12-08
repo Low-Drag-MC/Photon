@@ -7,7 +7,6 @@ import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib.utils.BlockInfo;
 import com.lowdragmc.lowdraglib.utils.TrackedDummyWorld;
-import com.lowdragmc.photon.Photon;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -22,12 +21,10 @@ import java.util.Set;
  * @date 2023/06/06
  * @implNote SceneMenu
  */
-@LDLRegister(name = "scene", group = "editor.particle", priority = 99)
+@LDLRegister(name = "scene", group = "editor.fx", priority = 99)
+@Getter
 public class SceneMenu extends MenuTab {
-
-    @Getter
     private int range = 3;
-    @Getter
     private boolean usingRealWorld = false;
 
     protected TreeBuilder.Menu createMenu() {
@@ -43,8 +40,8 @@ public class SceneMenu extends MenuTab {
     }
 
     protected void updateScene() {
-        if (editor instanceof ParticleEditor particleEditor) {
-            particleEditor.getParticleScene().resetScene();
+        if (editor instanceof FXEditor fxEditor && fxEditor.getTabPages().focus instanceof ParticleScenePanel panel) {
+            panel.resetScene();
         }
     }
 
@@ -79,7 +76,7 @@ public class SceneMenu extends MenuTab {
             for (int x = -range; x <= range; x++) {
                 for (int z = -range; z <= range; z++) {
                     plane.add(new BlockPos(x, 0, z));
-                    level.addBlock(new BlockPos(x, 0, z), BlockInfo.fromBlock(i % 2 == 0 ? Blocks.SAND : Blocks.STONE));
+                    level.addBlock(new BlockPos(x, 0, z), BlockInfo.fromBlock(i % 2 == 0 ? Blocks.GRAY_CONCRETE : Blocks.LIGHT_GRAY_CONCRETE));
                     i++;
                 }
             }

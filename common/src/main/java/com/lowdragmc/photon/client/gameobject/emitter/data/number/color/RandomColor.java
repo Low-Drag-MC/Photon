@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib.gui.editor.configurator.ColorConfigurator;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
 import com.lowdragmc.lowdraglib.utils.Size;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant;
 import com.lowdragmc.photon.gui.editor.configurator.NumberFunctionConfigurator;
@@ -29,6 +30,19 @@ public class RandomColor extends RandomConstant {
 
     public RandomColor(NumberFunctionConfig config) {
         super(config);
+    }
+
+    @Override
+    public NumberFunction copy() {
+        return new RandomColor(getA(), getB());
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof RandomColor randomColor) {
+            return getA().equals(randomColor.getA()) && getB().equals(randomColor.getB());
+        }
+        return super.equals(obj);
     }
 
     @Override
@@ -62,11 +76,11 @@ public class RandomColor extends RandomConstant {
 
         setupNumberConfigurator(size, aGroup, new ColorConfigurator("", () -> getA().intValue(), number -> {
             setA(number);
-            configurator.updateValue();
+            configurator.updateValue(this);
         }, getA().intValue(), true), configurator);
         setupNumberConfigurator(size, bGroup, new ColorConfigurator("", () -> getB().intValue(), number -> {
             setB(number);
-            configurator.updateValue();
+            configurator.updateValue(this);
         }, getB().intValue(), true), configurator);
     }
 

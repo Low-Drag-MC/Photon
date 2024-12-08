@@ -45,12 +45,14 @@ public class EntityEffectCommand extends EffectCommand {
                                 .executes(c -> execute(c, 1))
                                 .then(Commands.argument("rotation", Vec3Argument.vec3(false))
                                         .executes(c -> execute(c, 2))
-                                        .then(Commands.argument("delay", IntegerArgumentType.integer(0))
+                                        .then(Commands.argument("scale", Vec3Argument.vec3(false))
                                                 .executes(c -> execute(c, 3))
-                                                .then(Commands.argument("force death", BoolArgumentType.bool())
+                                                .then(Commands.argument("delay", IntegerArgumentType.integer(0))
                                                         .executes(c -> execute(c, 4))
-                                                        .then(Commands.argument("allow multi", BoolArgumentType.bool())
-                                                                .executes(c -> execute(c, 5))))))));
+                                                        .then(Commands.argument("force death", BoolArgumentType.bool())
+                                                                .executes(c -> execute(c, 5))
+                                                                .then(Commands.argument("allow multi", BoolArgumentType.bool())
+                                                                        .executes(c -> execute(c, 5)))))))));
     }
 
     private static int execute(CommandContext<CommandSourceStack> context, int feature) throws CommandSyntaxException {
@@ -64,12 +66,15 @@ public class EntityEffectCommand extends EffectCommand {
             command.setRotation(Vec3Argument.getVec3(context, "rotation"));
         }
         if (feature >= 3) {
-            command.setDelay(IntegerArgumentType.getInteger(context, "delay"));
+            command.setScale(Vec3Argument.getVec3(context, "scale"));
         }
         if (feature >= 4) {
-            command.setForcedDeath(BoolArgumentType.getBool(context, "force death"));
+            command.setDelay(IntegerArgumentType.getInteger(context, "delay"));
         }
         if (feature >= 5) {
+            command.setForcedDeath(BoolArgumentType.getBool(context, "force death"));
+        }
+        if (feature >= 6) {
             command.setAllowMulti(BoolArgumentType.getBool(context, "allow multi"));
         }
         PhotonNetworking.NETWORK.sendToAll(command);
@@ -106,6 +111,7 @@ public class EntityEffectCommand extends EffectCommand {
                     var effect = new EntityEffect(fx, level, entity);
                     effect.setOffset(offset.x, offset.y, offset.z);
                     effect.setRotation(rotation.x, offset.y, offset.z);
+                    effect.setScale(scale.x, scale.y, scale.z);
                     effect.setDelay(delay);
                     effect.setForcedDeath(forcedDeath);
                     effect.setAllowMulti(allowMulti);

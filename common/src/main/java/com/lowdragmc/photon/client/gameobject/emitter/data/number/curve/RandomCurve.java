@@ -80,6 +80,30 @@ public class RandomCurve implements NumberFunction {
     }
 
     @Override
+    public NumberFunction copy() {
+        var curve = new RandomCurve(min, max, lower, upper, defaultValue, xAxis, yAxis);
+        curve.curves0 = this.curves0.copy();
+        curve.curves1 = this.curves1.copy();
+        return curve;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof RandomCurve curve) {
+            return curves0.equals(curve.curves0) &&
+                    curves1.equals(curve.curves1) &&
+                    xAxis.equals(curve.xAxis) &&
+                    yAxis.equals(curve.yAxis) &&
+                    lower == curve.lower &&
+                    upper == curve.upper &&
+                    min == curve.min &&
+                    max == curve.max &&
+                    defaultValue == curve.defaultValue;
+        }
+        return super.equals(obj);
+    }
+
+    @Override
     public void createConfigurator(WidgetGroup group, NumberFunctionConfigurator configurator) {
         var background = ColorPattern.T_GRAY.rectTexture().setRadius(5);
         group.addWidget(new ButtonWidget(0, 2, group.getSize().width, 10, new GuiTextureGroup(background, new RandomCurveTexture(curves0, curves1)), cd -> {
@@ -89,7 +113,7 @@ public class RandomCurve implements NumberFunction {
                 var rightPlace = group.getGui().getScreenWidth() - size.width;
                 var dialog = Editor.INSTANCE.openDialog(new DialogWidget(Math.min(position.x, rightPlace), Math.max(0, position.y - size.height), size.width, size.height));
                 dialog.setClickClose(true);
-                dialog.addWidget(new ConfiguratorWidget(0, 0, size.width, size.height, curvesPair -> configurator.updateValue()));
+                dialog.addWidget(new ConfiguratorWidget(0, 0, size.width, size.height, curvesPair -> configurator.updateValue(this)));
             }
         }).setDraggingConsumer(
                 o -> o instanceof CurvesResource.Curves c && c.isRandomCurve(),
@@ -99,7 +123,7 @@ public class RandomCurve implements NumberFunction {
                     if (o instanceof CurvesResource.Curves c && c.curves1 != null) {
                         this.curves0.deserializeNBT(c.curves0.serializeNBT());
                         this.curves1.deserializeNBT(c.curves1.serializeNBT());
-                        configurator.updateValue();
+                        configurator.updateValue(this);
                         background.setColor(ColorPattern.T_GRAY.color);
                     }
                 }));

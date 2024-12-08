@@ -37,7 +37,7 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
     @Override
     protected void onValueUpdate(NumberFunction newValue) {
         if (newValue == null) newValue = defaultValue;
-        if (newValue.equals(value)) return;
+        if (newValue == value || newValue.equals(value)) return;
         super.onValueUpdate(newValue);
     }
 
@@ -57,8 +57,7 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
                                 if (type == value.getClass()) return;
                                 try {
                                     var newValue = type.getConstructor(NumberFunctionConfig.class).newInstance(config);
-                                    onValueUpdate(newValue);
-                                    updateValue();
+                                    updateValue(newValue);
                                     group.clearAllWidgets();
                                     group.setSize(new Size(w, 15));
                                     value.createConfigurator(group, this);
@@ -80,8 +79,8 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
         setSize(new Size(getSize().width, group.getSize().height));
     }
 
-    @Override
-    public void updateValue() {
+    public void updateValue(NumberFunction value) {
+        onValueUpdate(value);
         super.updateValue();
     }
 }

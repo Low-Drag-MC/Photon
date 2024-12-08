@@ -10,7 +10,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
+import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -58,22 +58,20 @@ public class UVAnimationSetting extends ToggleGroup {
     @NumberRange(range = {0, Integer.MAX_VALUE}, wheel = 1)
     protected float cycle = 1;
 
-    public Vector4f getUVs(LParticle particle, float partialTicks) {
+    public Vector4f getUVs(IParticle particle, float partialTicks) {
         var t = particle.getT(partialTicks);
         var cellU = 1f / tiles.getA().intValue();
         var cellV = 1f / tiles.getB().intValue();
         var currentFrame = this.startFrame.get(t, () -> particle.getMemRandom("startFrame")).floatValue();
         currentFrame += cycle * frameOverTime.get(t, () -> particle.getMemRandom("frameOverTime")).floatValue();
         float u0, v0, u1, v1;
-        int cellSize;
+        var cellSize = tiles.getA().intValue();
         if (animation == Animation.WholeSheet) {
-            cellSize = tiles.getA().intValue() * tiles.getB().intValue();
             int X = (int) (currentFrame % cellSize);
             int Y = (int) (currentFrame / cellSize);
             u0 = X * cellU;
             v0 = Y * cellV;
         } else {
-            cellSize = tiles.getA().intValue();
             int X = (int) (currentFrame % cellSize);
             int Y = (int) (particle.getMemRandom("randomRow") * tiles.getB().intValue());
             u0 = X * cellU;

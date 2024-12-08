@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client.fx;
 
+import com.lowdragmc.photon.client.gameobject.IFXObject;
 import org.joml.Vector3f;
-import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -31,26 +31,24 @@ public class BlockEffect extends FXEffect {
     }
 
     @Override
-    public boolean updateEmitter(IParticleEmitter emitter) {
-        if (!level.isLoaded(pos) || lastState.getBlock() != level.getBlockState(pos).getBlock() || (checkState && level.getBlockState(pos) != lastState)) {
-            emitter.remove(forcedDeath);
-            return forcedDeath;
+    public void updateFXObjectTick(IFXObject fxObject) {
+        if (runtime != null && fxObject == runtime.root) {
+            if (!level.isLoaded(pos) || lastState.getBlock() != level.getBlockState(pos).getBlock() || (checkState && level.getBlockState(pos) != lastState)) {
+                runtime.destroy(forcedDeath);
+                CACHE.computeIfAbsent(pos, p -> new ArrayList<>()).remove(this);
+            }
         }
-        return false;
     }
 
     @Override
     public void start() {
-        this.emitters.clear();
-        this.emitters.addAll(fx.generateEmitters());
-        if (this.emitters.isEmpty()) return;
+        var effects = CACHE.computeIfAbsent(pos, p -> new ArrayList<>());
         if (!allowMulti) {
-            var effects = CACHE.computeIfAbsent(pos, p -> new ArrayList<>());
             var iter = effects.iterator();
             while (iter.hasNext()) {
                 var effect = iter.next();
                 boolean removed = false;
-                if (effect.emitters.stream().noneMatch(e -> e.self().isAlive())) {
+                if (effect.runtime != null && !effect.runtime.isAlive()) {
                     iter.remove();
                     removed = true;
                 }
@@ -58,17 +56,16 @@ public class BlockEffect extends FXEffect {
                     return;
                 }
             }
-            effects.add(this);
         }
-        var realPos= new Vector3f(pos.getX(), pos.getY(), pos.getZ()).add((float) (xOffset + 0.5f), (float) (yOffset + 0.5f), (float) (zOffset + 0.5f));
-        for (var emitter : emitters) {
-            if (!emitter.isSubEmitter()) {
-                emitter.reset();
-                emitter.self().setDelay(delay);
-                emitter.emmitToLevel(this, level, realPos.x, realPos.y, realPos.z, xRotation, yRotation, zRotation);
-            }
-        }
+        this.runtime = fx.createRuntime();
+        var root = this.runtime.getRoot();
+        root.updatePos(new Vector3f(pos.getX(), pos.getY(), pos.getZ())
+                .add(offset.x + 0.5f, offset.y + 0.5f, offset.z + 0.5f));
+        root.updateRotation(rotation);
+        root.updateScale(scale);
+        this.runtime.emmit(this);
         lastState = level.getBlockState(pos);
+        effects.add(this);
     }
 
 }

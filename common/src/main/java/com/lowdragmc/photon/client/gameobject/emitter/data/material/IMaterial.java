@@ -21,7 +21,7 @@ import java.util.List;
 public interface IMaterial extends IConfigurable, ITagSerializable<CompoundTag> {
 
     List<Class<? extends IMaterial>> MATERIALS = new ArrayList<>(List.of(
-            TextureMaterial.class, CustomShaderMaterial.class
+            TextureMaterial.class, CustomShaderMaterial.class, BlockTextureSheetMaterial.class
     ));
 
     static IMaterial deserializeWrapper(CompoundTag tag) {

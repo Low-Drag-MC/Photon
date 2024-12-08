@@ -10,8 +10,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import org.joml.Vector3f;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -24,32 +24,28 @@ import net.minecraft.util.Mth;
  * @implNote RotationBySpeedSetting
  */
 @Environment(EnvType.CLIENT)
+@Setter
+@Getter
 public class RotationBySpeedSetting extends ToggleGroup {
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.rotation.roll")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "speed", yAxis = "roll"))
     protected NumberFunction roll = NumberFunction.constant(0);
-    @Setter
-    @Getter
+
     @Configurable(tips = "photon.emitter.config.rotation.pitch")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "speed", yAxis = "pitch"))
     protected NumberFunction pitch = NumberFunction.constant(0);
-    @Setter
-    @Getter
+
     @Configurable(tips = "photon.emitter.config.rotation.yaw")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "speed", yAxis = "yaw"))
     protected NumberFunction yaw = NumberFunction.constant(0);
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.rotationBySpeed.speedRange")
     @NumberRange(range = {0, 1000})
     protected Range speedRange = new Range(0f, 1f);
 
-    public Vector3f getRotation(LParticle particle) {
-        var value = particle.getVelocity().length() * 20;
+    public Vector3f getRotation(TileParticle particle) {
+        var value = particle.getRealVelocity().length() * 20;
         var t = ((value - speedRange.getA().floatValue()) / (speedRange.getB().floatValue() - speedRange.getA().floatValue()));
         return new Vector3f(
                 roll.get(t, () -> particle.getMemRandom("rbs0")).floatValue(),

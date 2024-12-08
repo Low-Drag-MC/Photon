@@ -51,6 +51,22 @@ public class RandomGradient implements NumberFunction {
     }
 
     @Override
+    public NumberFunction copy() {
+        var copied = new RandomGradient();
+        copied.deserializeNBT(serializeNBT());
+        return copied;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof RandomGradient gradient) {
+            return gradientColor0.serializeNBT().equals(gradient.gradientColor0.serializeNBT()) &&
+                    gradientColor1.serializeNBT().equals(gradient.gradientColor1.serializeNBT());
+        }
+        return super.equals(obj);
+    }
+
+    @Override
     public void createConfigurator(WidgetGroup group, NumberFunctionConfigurator configurator) {
         var background = ColorPattern.T_GRAY.borderTexture(1);
         group.addWidget(new ButtonWidget(0, 2, group.getSize().width, 10, new GuiTextureGroup(background, new RandomGradientColorTexture(gradientColor0, gradientColor1)), cd -> {
@@ -59,10 +75,10 @@ public class RandomGradient implements NumberFunction {
                 var position = group.getPosition();
                 var rightPlace = group.getGui().getScreenWidth() - size.width;
                 var gradientWidget0 = new GradientColorWidget(5, 0, 150, gradientColor0);
-                gradientWidget0.setOnUpdate(g -> configurator.updateValue());
+                gradientWidget0.setOnUpdate(g -> configurator.updateValue(this));
 
                 var gradientWidget1 = new GradientColorWidget(160, 0, 150, gradientColor1);
-                gradientWidget1.setOnUpdate(g -> configurator.updateValue());
+                gradientWidget1.setOnUpdate(g -> configurator.updateValue(this));
 
                 var dialog = Editor.INSTANCE.openDialog(new DialogWidget(Math.min(position.x, rightPlace), Math.max(0, position.y - size.height), size.width, size.height));
                 dialog.setBackground(new GuiTextureGroup(ColorPattern.BLACK.rectTexture(), ColorPattern.T_WHITE.borderTexture(-1)));
@@ -78,7 +94,7 @@ public class RandomGradient implements NumberFunction {
                     if (o instanceof GradientsResource.Gradients g && g.gradient1 != null) {
                         this.gradientColor0.deserializeNBT(g.gradient0.serializeNBT());
                         this.gradientColor1.deserializeNBT(g.gradient1.serializeNBT());
-                        configurator.updateValue();
+                        configurator.updateValue(this);
                         background.setColor(ColorPattern.T_GRAY.color);
                     }
                 }));

@@ -15,4 +15,9 @@ import java.lang.annotation.Target;
 public @interface NumberFunction3Config {
     NumberFunctionConfig common() default @NumberFunctionConfig;
     NumberFunctionConfig[] xyz() default {};
+    boolean isSeperatedDefault() default false;
+    boolean allowSeperated() default true;
+    boolean affectX() default true;
+    boolean affectY() default true;
+    boolean affectZ() default true;
 }

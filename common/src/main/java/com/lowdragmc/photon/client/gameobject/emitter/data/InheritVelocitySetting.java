@@ -9,7 +9,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import org.joml.Vector3f;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
+import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -21,37 +21,23 @@ import net.fabricmc.api.Environment;
  * @implNote InheritVelocitySetting
  */
 @Environment(EnvType.CLIENT)
+@Setter
+@Getter
 public class InheritVelocitySetting extends ToggleGroup {
     public enum Mode {
-        Position,
-        Velocity
+        CURRENT,
+        INITIAL,
     }
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.inheritVelocity.mode")
-    protected Mode mode = Mode.Position;
+    protected Mode mode = Mode.INITIAL;
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.inheritVelocity.multiply")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1f, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction multiply = NumberFunction.constant(1);
 
-
-    public Vector3f getVelocityAddition(LParticle particle, LParticle emitter) {
-        var mul = multiply.get(particle.getT(), () -> particle.getMemRandom(this)).floatValue();
-        if (mode == Mode.Velocity) {
-            return emitter.getVelocity().mul(mul);
-        }
-        return new Vector3f(0 ,0, 0);
-    }
-
-    public Vector3f getPosition(LParticle emitter, Vector3f initialPos, float partialTicks) {
-        if (mode == Mode.Position) {
-            return emitter.getPos(partialTicks).sub(initialPos);
-        }
-        return new Vector3f(0 ,0, 0);
+    public Vector3f getVelocity(Emitter emitter) {
+        return emitter.getVelocity().mul(multiply.get(emitter.getT(), () -> emitter.getMemRandom(this)).floatValue());
     }
 
 }

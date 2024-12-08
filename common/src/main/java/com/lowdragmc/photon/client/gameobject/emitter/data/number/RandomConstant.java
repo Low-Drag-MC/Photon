@@ -50,6 +50,19 @@ public class RandomConstant implements NumberFunction {
     }
 
     @Override
+    public NumberFunction copy() {
+        return new RandomConstant(a, b, isDecimals);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof RandomConstant constant) {
+            return a.equals(constant.a) && b.equals(constant.b) && isDecimals == constant.isDecimals;
+        }
+        return super.equals(obj);
+    }
+
+    @Override
     public void createConfigurator(WidgetGroup group, NumberFunctionConfigurator configurator) {
         var size = group.getSize();
         int width;
@@ -69,11 +82,11 @@ public class RandomConstant implements NumberFunction {
         group.addWidget(bGroup);
         setupNumberConfigurator(configurator, width, aGroup, new NumberConfigurator("", () -> isDecimals ? a.floatValue() : a.intValue(), number -> {
             setA(number);
-            configurator.updateValue();
+            configurator.updateValue(this);
         }, a, true));
         setupNumberConfigurator(configurator, width, bGroup, new NumberConfigurator("", () -> isDecimals ? b.floatValue() : b.intValue(), number -> {
             setB(number);
-            configurator.updateValue();
+            configurator.updateValue(this);
         }, b, true));
 
     }

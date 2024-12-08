@@ -1,0 +1,38 @@
+package com.lowdragmc.photon.client.fx;
+
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+
+/**
+ * @author KilaBash
+ * @date 2023/6/6
+ * @implNote FX
+ */
+public record FXOutDated(ResourceLocation location, List<IParticleEmitter> emitters, CompoundTag rawData) {
+
+    public Collection<? extends IParticleEmitter> generateEmitters() {
+//        List<IParticleEmitter> list = new ArrayList<>(emitters.size());
+//        for (IParticleEmitter emitter : emitters) {
+//            list.add(emitter.copy());
+//        }
+        return List.of();
+    }
+
+    @Override
+    public int hashCode() {
+        return location.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof FXOutDated fx) {
+            return fx.location.equals(location);
+        }
+        return false;
+    }
+}

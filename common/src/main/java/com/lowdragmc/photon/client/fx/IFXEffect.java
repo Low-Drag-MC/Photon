@@ -2,6 +2,8 @@ package com.lowdragmc.photon.client.fx;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 /**
  * @author KilaBash
@@ -9,7 +11,7 @@ import net.fabricmc.api.Environment;
  * @implNote IFXEffect
  */
 @Environment(EnvType.CLIENT)
-public interface IFXEffect extends IEffect{
+public interface IFXEffect extends IEffect {
     /**
      * get all emitters included in this effect.
      */
@@ -18,12 +20,38 @@ public interface IFXEffect extends IEffect{
     /**
      * set effect offset
      */
-    void setOffset(double x, double y, double z);
+    default void setOffset(double x, double y, double z) {
+        setOffset(new Vector3f((float) x, (float) y, (float) z));
+    }
 
     /**
      * set effect rotation
      */
-    void setRotation(double x, double y, double z);
+    default void setRotation(double x, double y, double z) {
+        setRotation(new Quaternionf().rotationXYZ((float) x, (float) y, (float) z));
+    }
+
+    /**
+     * set effect scale
+     */
+    default void setScale(double x, double y, double z) {
+        setScale(new Vector3f((float) x, (float) y, (float) z));
+    }
+
+    /**
+     * set effect offset
+     */
+    void setOffset(Vector3f offset);
+
+    /**
+     * set effect rotation
+     */
+    void setRotation(Quaternionf quaternion);
+
+    /**
+     * set effect scale
+     */
+    void setScale(Vector3f scale);
 
     /**
      * set effect delay

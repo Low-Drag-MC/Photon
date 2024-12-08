@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
-import com.lowdragmc.lowdraglib.gui.editor.ColorPattern;
 import com.lowdragmc.lowdraglib.gui.editor.accessors.TypesAccessor;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.ConfigAccessor;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
@@ -8,11 +7,11 @@ import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.Configurator;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
-import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
+import com.lowdragmc.lowdraglib.gui.editor.configurator.SelectorConfigurator;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.PersistedParser;
-import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib.gui.editor.ui.Editor;
 import com.lowdragmc.lowdraglib.syncdata.ITagSerializable;
-import com.lowdragmc.lowdraglib.utils.ColorUtils;
+import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
@@ -21,8 +20,9 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.fx.IEffect;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
+import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
+import com.lowdragmc.photon.gui.editor.FXEditor;
+import com.lowdragmc.photon.gui.editor.FXProject;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -30,9 +30,8 @@ import net.fabricmc.api.Environment;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import org.joml.Quaternionf;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -46,10 +45,10 @@ import java.util.function.Supplier;
  * @implNote SubEmittersSetting
  */
 @Environment(EnvType.CLIENT)
+@Setter
+@Getter
 public class SubEmittersSetting extends ToggleGroup implements IConfigurable, ITagSerializable<CompoundTag> {
 
-    @Setter
-    @Getter
     @Configurable(persisted = false)
     protected List<Emitter> emitters = new ArrayList<>();
 
@@ -85,16 +84,10 @@ public class SubEmittersSetting extends ToggleGroup implements IConfigurable, IT
         }
     }
 
-    public void triggerEvent(IParticleEmitter emitter, LParticle father, Event event) {
-        if (emitter.getEffect() != null) {
-            for (Emitter candidate : emitters) {
-                if (candidate.event == event) {
-                    var subParticle = candidate.spawnEmitter(father, emitter.getEffect());
-                    if (subParticle != null) {
-                        subParticle.setEffect(emitter.getEffect());
-                        emitter.emitParticle(subParticle.self());
-                    }
-                }
+    public void triggerEvent(FX fx, TileParticle father, Event event) {
+        for (Emitter candidate : emitters) {
+            if (candidate.event == event) {
+                candidate.spawnEmitter(fx, father);
             }
         }
     }
@@ -116,19 +109,7 @@ public class SubEmittersSetting extends ToggleGroup implements IConfigurable, IT
             var group = new ConfiguratorGroup("emitter", true);
             var emitter = supplier.get();
             emitter = emitter == null ? new Emitter() : emitter;
-            ConfiguratorParser.createConfigurators(group, new HashMap<>(), Emitter.class, emitter);
-            Emitter finalEmitter = emitter;
-            group.setDraggingConsumer(
-                    o -> o instanceof IParticleEmitter,
-                    o -> group.setBackground(ColorPattern.T_GREEN.rectTexture()),
-                    o -> group.setBackground(IGuiTexture.EMPTY),
-                    o -> {
-                        if (o instanceof IParticleEmitter particleEmitter) {
-                            finalEmitter.emitter = particleEmitter.getName();
-                            consumer.accept(finalEmitter);
-                        }
-                        group.setBackground(IGuiTexture.EMPTY);
-                    });
+            emitter.buildConfigurator(group);
             return group;
         }
     }
@@ -141,10 +122,8 @@ public class SubEmittersSetting extends ToggleGroup implements IConfigurable, IT
         Tick
     }
 
-    public static class Emitter {
-        @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.name")
+    public static class Emitter implements IConfigurable {
         protected String emitter = "";
-        protected IParticleEmitter cache = null;
         @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.event")
         protected Event event = Event.Birth;
         @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.emit_probability")
@@ -164,32 +143,48 @@ public class SubEmittersSetting extends ToggleGroup implements IConfigurable, IT
         @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.inherit_duration")
         protected boolean inheritDuration = false;
 
-        @Nullable
-        public IParticleEmitter spawnEmitter(LParticle father, @Nonnull IEffect effect) {
-            if (cache == null) cache = effect.getEmitterByName(emitter);
-            if (cache != null && father.getAge() % tickInterval == 0 && father.getRandomSource().nextFloat() < emitProbability.get(father.getT(0), () -> father.getMemRandom("sub_emitter_probability")).floatValue()) {
-                var copied = cache.copy();
-                copied.reset();
-                copied.updatePos(father.getPos());
-                if (inheritLifetime) {
-                    copied.self().setAge(father.getAge());
+        public void spawnEmitter(FX fx, TileParticle father) {
+            // TODO sub emitters
+            if (father.getAge() % tickInterval == 0 && father.getRandomSource().nextFloat() < emitProbability.get(father.getT(0), () -> father.getMemRandom("sub_emitter_probability")).floatValue()) {
+                var runtime = fx.createSubFXRuntime(emitter);
+                if (runtime == null) return;
+                runtime.root.updatePos(father.getWorldPos());
+                for (var value : runtime.objects.values()) {
+                    if (value instanceof IParticleEmitter emitter) {
+                        if (inheritLifetime) {
+                            emitter.setAge(father.getAge());
+                        }
+                        if (inheritDuration) {
+                            emitter.self().setLifetime(father.getLifetime());
+                        }
+                        if (inheritColor) {
+                            emitter.setRGBAColor(father.getRealColor(0));
+                        }
+                        if (inheritSize) {
+                            emitter.transform().scale(father.getRealSize(0));
+                        }
+                        if (inheritRotation) {
+                            var xyz = father.getRealRotation(0);
+                            emitter.transform().rotation(new Quaternionf().rotationXYZ(xyz.x, xyz.y, xyz.z));
+                        }
+                    }
                 }
-                if (inheritDuration) {
-                    copied.self().setLifetime(father.getLifetime());
-                }
-                if (inheritColor) {
-                    var color = father.getColor(0);
-                    copied.self().setARGBColor(ColorUtils.color(color.w(), color.x(), color.y(), color.z()));
-                }
-                if (inheritSize) {
-                    copied.self().setQuadSize(father.getQuadSize(0));
-                }
-                if (inheritRotation) {
-                    copied.self().setRotation(father.getRotation(0));
-                }
-                return copied;
+                runtime.emmit(father.getEmitter().getEffect());
             }
-            return null;
+        }
+
+        @Override
+        public void buildConfigurator(ConfiguratorGroup father) {
+            List<String> candidates = new ArrayList<>();
+            candidates.add("");
+            if (Editor.INSTANCE instanceof FXEditor editor && editor.getCurrentProject() instanceof FXProject project) {
+                project.getFx().getSubFXs().forEach((k, v) -> candidates.add(k));
+            }
+            var emitterSelector = new SelectorConfigurator<>("emitter", () -> emitter, v -> emitter = v,
+                    "", true, candidates, s -> s);
+            emitterSelector.setTips("photon.emitter.config.sub_emitters.emitter.name");
+            father.addConfigurators(emitterSelector);
+            IConfigurable.super.buildConfigurator(father);
         }
     }
 }

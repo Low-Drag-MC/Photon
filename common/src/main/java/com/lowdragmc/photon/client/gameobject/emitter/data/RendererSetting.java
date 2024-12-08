@@ -1,19 +1,30 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
+import com.lowdragmc.lowdraglib.client.renderer.impl.IModelRenderer;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
-import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
+import com.lowdragmc.lowdraglib.gui.editor.configurator.BooleanConfigurator;
+import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorSelectorConfigurator;
+import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib.syncdata.IPersistedSerializable;
+import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import lombok.Getter;
 import lombok.Setter;
-import lombok.val;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.client.Camera;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.AABB;
+import org.apache.commons.lang3.function.TriFunction;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
-import java.util.function.Function;
+import java.util.Arrays;
 
 /**
  * @author KilaBash
@@ -21,83 +32,23 @@ import java.util.function.Function;
  * @implNote RendererSetting
  */
 @Environment(EnvType.CLIENT)
+@Getter
+@Setter
 public class RendererSetting {
-    public enum Mode {
-        Billboard(p -> null),
-        Horizontal(0, 90),
-        Vertical(0, 0),
-        Speed(p -> {
-            var speed = p.getVelocity();
-            if (Vector3fHelper.isZero(speed)) return null;
-            return CalQuaternion(speed.normalize());
-        });
-
-        final Function<LParticle, Quaternionf> quaternion;
-
-        Mode(Function<LParticle, Quaternionf> quaternion) {
-            this.quaternion = quaternion;
-        }
-
-        Mode(float yRot, float xRot) {
-            val q = new Quaternionf();
-            q.rotateY((float) Math.toRadians(-yRot));
-            q.rotateX((float) Math.toRadians(xRot));
-            this.quaternion = p -> q;
-        }
-
-
-        public static Quaternionf CalQuaternion(Vector3f dir) {
-            Quaternionf cal = new Quaternionf();
-            //欧拉角Y: cosY = z/sqrt(x^2+z^2)
-            var CosY = dir.z / Math.sqrt(dir.x * dir.x + dir.z * dir.z);
-            var CosYDiv2 = Math.sqrt((CosY + 1) / 2);
-            if (dir.x < 0) CosYDiv2 = -CosYDiv2;
-
-            var SinYDiv2 = Math.sqrt((1-CosY) / 2);
-
-            //欧拉角X: cosX = sqrt((x^2+z^2)/(x^2+y^2+z^2)
-            var CosX = Math.sqrt((dir.x * dir.x + dir.z * dir.z) / (dir.x * dir.x + dir.y * dir.y + dir.z * dir.z));
-            if (dir.z < 0) CosX = -CosX;
-            var CosXDiv2 = Math.sqrt((CosX + 1) / 2);
-            if (dir.y > 0) CosXDiv2 = -CosXDiv2;
-            var SinXDiv2 = Math.sqrt((1 - CosX) / 2);
-
-            //四元数w = cos(x/2)cos(y/2)
-            cal.set((float) (SinXDiv2 * CosYDiv2),
-                    (float) (CosXDiv2 * SinYDiv2),
-                    (float) (-SinXDiv2 * SinYDiv2),
-                    (float) (CosXDiv2 * CosYDiv2));
-            return cal;
-        }
-    }
 
     public enum Layer {
         Opaque,
         Translucent
     }
 
-    @Getter
-    @Setter
-    @Configurable(tips = "photon.emitter.config.renderer.renderMode")
-    protected Mode renderMode = Mode.Billboard;
-
-    @Getter
-    @Setter
     @Configurable(tips = "photon.emitter.config.renderer.layer")
     protected Layer layer = Layer.Translucent;
 
-    @Getter
-    @Setter
     @Configurable(tips = "photon.emitter.config.renderer.bloomEffect")
     protected boolean bloomEffect = false;
 
-    @Getter
     @Configurable(name = "cull", subConfigurable = true, tips = "photon.emitter.config.renderer.cull")
     protected final Cull cull = new Cull();
-
-    public void setupQuaternion(LParticle emitter, LParticle particle) {
-        particle.setQuaternionSupplier(() -> renderMode.quaternion.apply(emitter));
-    }
 
     public static class Cull extends ToggleGroup {
         @Setter
@@ -112,9 +63,96 @@ public class RendererSetting {
         @NumberRange(range = {-10000, 10000})
         protected Vector3f to = new Vector3f(0.5f, 0.5f, 0.5f);
 
-        public AABB getCullAABB(LParticle particle, float partialTicks) {
-            var pos = particle.getPos(partialTicks);
+        public AABB getCullAABB(Emitter particle, float partialTicks) {
+            var pos = particle.transform().position();
             return new AABB(from.x, from.y, from.z, to.x, to.y, to.z).move(pos.x, pos.y, pos.z);
+        }
+    }
+
+    @Getter
+    @Setter
+    public static class Particle extends RendererSetting implements IConfigurable, IPersistedSerializable {
+
+        public enum Mode {
+            Billboard((p, c, t) -> c.rotation()),
+            Horizontal(0, 90),
+            Vertical(0, 0),
+            VerticalBillboard((p, c, t) -> {
+                var quaternion = new Quaternionf();
+                quaternion.rotateY((float) Math.toRadians(-c.getYRot()));
+                return quaternion;
+            }),
+            Model((p, c, t) -> new Quaternionf());
+
+            public final TriFunction<TileParticle, Camera, Float, Quaternionf> quaternion;
+
+            Mode(TriFunction<TileParticle, Camera, Float, Quaternionf> quaternion) {
+                this.quaternion = quaternion;
+            }
+
+            Mode(Quaternionf quaternion) {
+                this.quaternion = (p, c, t) -> quaternion;
+            }
+
+            Mode(float yRot, float xRot) {
+                var quaternion = new Quaternionf();
+                quaternion.rotateY((float) Math.toRadians(-yRot));
+                quaternion.rotateX((float) Math.toRadians(xRot));
+                this.quaternion = (p, c, t) -> quaternion;
+            }
+        }
+
+        @Persisted
+        protected Mode renderMode = Mode.Billboard;
+        @Nullable
+        protected IModelRenderer model;
+        @Persisted
+        protected boolean shade = true;
+        @Persisted
+        protected boolean useBlockUV = true;
+
+        @Override
+        public void buildConfigurator(ConfiguratorGroup father) {
+            var configurator = new ConfiguratorSelectorConfigurator<>("renderMode",
+                    false, this::getRenderMode, this::setRenderMode, Mode.Billboard, true,
+                    Arrays.stream(Mode.values()).toList(), Mode::name, (mode, container) -> {
+                if (mode == Mode.Model) {
+                    model.buildConfigurator(container);
+                    var shadeConfigurator = new BooleanConfigurator("shade", this::isShade, this::setShade, true, true);
+                    shadeConfigurator.setTips("photon.emitter.config.renderer.renderMode.model.shade");
+                    container.addConfigurators(shadeConfigurator);
+                    var useBlockUVConfigurator = new BooleanConfigurator("useBlockUV", this::isUseBlockUV, this::setUseBlockUV, true, true);
+                    shadeConfigurator.setTips("photon.emitter.config.renderer.renderMode.model.useBlockUV");
+                    container.addConfigurators(useBlockUVConfigurator);
+
+                }
+            });
+            configurator.setTips("photon.emitter.config.renderer.renderMode");
+            father.addConfigurators(configurator);
+        }
+
+        public IModelRenderer getModel() {
+            if (model == null) {
+                model = new IModelRenderer(new ResourceLocation("block/dirt"));
+            }
+            return model;
+        }
+
+        @Override
+        public void deserializeNBT(CompoundTag tag) {
+            IPersistedSerializable.super.deserializeNBT(tag);
+            if (renderMode == Mode.Model && model != null) {
+                model.deserializeNBT(tag.getCompound("model"));
+            }
+        }
+
+        @Override
+        public CompoundTag serializeNBT() {
+            var tag = IPersistedSerializable.super.serializeNBT();
+            if (renderMode == Mode.Model) {
+                tag.put("model", getModel().serializeNBT());
+            }
+            return tag;
         }
     }
 }

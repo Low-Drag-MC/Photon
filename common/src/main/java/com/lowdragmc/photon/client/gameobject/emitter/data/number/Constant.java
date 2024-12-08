@@ -45,10 +45,23 @@ public class Constant implements NumberFunction {
     }
 
     @Override
+    public NumberFunction copy() {
+        return new Constant(number);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof Constant constant) {
+            return number.equals(constant.number);
+        }
+        return super.equals(obj);
+    }
+
+    @Override
     public void createConfigurator(WidgetGroup group, NumberFunctionConfigurator configurator) {
         var widget = new NumberConfigurator("", () -> configurator.getConfig().isDecimals() ? number.floatValue() : number.intValue(), number -> {
             setNumber(number);
-            configurator.updateValue();;
+            configurator.updateValue(this);
         }, number, true);
         group.addWidget(widget);
         widget.setRange(configurator.getConfig().min(), configurator.getConfig().max());

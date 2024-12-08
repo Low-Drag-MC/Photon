@@ -10,6 +10,7 @@ public class PhotonClientProxy {
      * should be called when Minecraft is prepared.
      */
     public static void init() {
+        PhotonShaders.init();
     }
 
 }

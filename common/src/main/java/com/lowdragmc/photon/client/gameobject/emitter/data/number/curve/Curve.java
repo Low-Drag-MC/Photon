@@ -81,6 +81,21 @@ public class Curve implements NumberFunction {
     }
 
     @Override
+    public NumberFunction copy() {
+        var curve = new Curve(min, max, lower, upper, defaultValue, xAxis, yAxis);
+        curve.curves = this.curves.copy();
+        return curve;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof Curve curve) {
+            return min == curve.min && max == curve.max && defaultValue == curve.defaultValue && lower == curve.lower && upper == curve.upper && curves.equals(curve.curves) && xAxis.equals(curve.xAxis) && yAxis.equals(curve.yAxis);
+        }
+        return super.equals(obj);
+    }
+
+    @Override
     public void createConfigurator(WidgetGroup group, NumberFunctionConfigurator configurator) {
         var background = ColorPattern.T_GRAY.rectTexture().setRadius(5);
         group.addWidget(new ButtonWidget(0, 2, group.getSize().width, 10, new GuiTextureGroup(background, new CurveTexture(curves)), cd -> {
@@ -90,7 +105,7 @@ public class Curve implements NumberFunction {
                 var rightPlace = group.getGui().getScreenWidth() - size.width;
                 var dialog = Editor.INSTANCE.openDialog(new DialogWidget(Math.min(position.x, rightPlace), Math.max(0, position.y - size.height), size.width, size.height));
                 dialog.setClickClose(true);
-                dialog.addWidget(new ConfiguratorWidget(0, 0, size.width, size.height, curves -> configurator.updateValue()));
+                dialog.addWidget(new ConfiguratorWidget(0, 0, size.width, size.height, curves -> configurator.updateValue(this)));
             }
         }).setDraggingConsumer(
                 o -> o instanceof CurvesResource.Curves c && !c.isRandomCurve(),
@@ -99,7 +114,7 @@ public class Curve implements NumberFunction {
                 o -> {
                     if (o instanceof CurvesResource.Curves c) {
                         this.curves.deserializeNBT(c.curves0.serializeNBT());
-                        configurator.updateValue();
+                        configurator.updateValue(this);
                         background.setColor(ColorPattern.T_GRAY.color);
                     }
                 }));

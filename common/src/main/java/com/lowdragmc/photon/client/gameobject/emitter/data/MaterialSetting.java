@@ -27,20 +27,18 @@ import java.util.HashMap;
  * @implNote Material
  */
 @Environment(EnvType.CLIENT)
+@Getter
+@Setter
 public class MaterialSetting implements IConfigurable, ITagSerializable<CompoundTag> {
 
     @Configurable(name = "Blend Mode", subConfigurable = true)
     protected final BlendMode blendMode = new BlendMode();
-    @Getter @Setter
     @Configurable
     protected boolean cull = true;
-    @Getter @Setter
     @Configurable
     protected boolean depthTest = true;
-    @Getter @Setter
     @Configurable
     protected boolean depthMask = false;
-    @Getter @Setter
     @Nonnull
     protected IMaterial material = new TextureMaterial();
 

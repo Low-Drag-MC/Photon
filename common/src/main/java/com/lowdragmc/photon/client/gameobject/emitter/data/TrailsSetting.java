@@ -2,9 +2,13 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
+import com.lowdragmc.lowdraglib.gui.editor.configurator.Configurator;
+import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
+import com.lowdragmc.lowdraglib.syncdata.IPersistedSerializable;
+import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
-import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
+import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -16,25 +20,18 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
+import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailConfig;
+import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
-import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
-import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
-import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
-import com.mojang.blaze3d.shaders.BlendMode;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.nbt.CompoundTag;
 import org.joml.Vector4f;
 
-import javax.annotation.Nonnull;
+import java.util.HashMap;
 
 /**
  * @author KilaBash
@@ -42,7 +39,7 @@ import javax.annotation.Nonnull;
  * @implNote TrailsSetting
  */
 @Environment(EnvType.CLIENT)
-public class TrailsSetting extends ToggleGroup {
+public class TrailsSetting extends ToggleGroup implements IPersistedSerializable {
     @Setter
     @Getter
     @Configurable(tips = "photon.emitter.config.trails.ratio")
@@ -55,17 +52,8 @@ public class TrailsSetting extends ToggleGroup {
     protected NumberFunction lifetime = NumberFunction.constant(1);
     @Setter
     @Getter
-    @Configurable(tips = "photon.emitter.config.trails.minimumVertexDistance")
-    @NumberRange(range = {0f, Float.MAX_VALUE})
-    protected float minimumVertexDistance = 0.02f;
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.trails.dieWithParticles")
     protected boolean dieWithParticles = false;
-    @Setter
-    @Getter
-    @Configurable(tips = "photon.emitter.config.trails.uvMode")
-    protected TrailParticle.UVMode uvMode = TrailParticle.UVMode.Stretch;
     @Setter
     @Getter
     @Configurable(tips = "photon.emitter.config.trails.sizeAffectsWidth")
@@ -83,163 +71,78 @@ public class TrailsSetting extends ToggleGroup {
     @Configurable(tips = "photon.emitter.config.trails.colorOverLifetime")
     @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction colorOverLifetime = new Gradient();
-    @Setter
-    @Getter
-    @Configurable(tips = "photon.emitter.config.trails.widthOverTrail")
-    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 1f, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "trail position", yAxis = "width"))
-    protected NumberFunction widthOverTrail = NumberFunction.constant(1f);
-    @Setter
-    @Getter
-    @Configurable(tips = "photon.emitter.config.trails.colorOverTrail")
-    @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
-    protected NumberFunction colorOverTrail = new Gradient();
-    @Getter
-    @Configurable(name = "Material", subConfigurable = true, tips = "photon.emitter.config.material")
-    protected final MaterialSetting material = new MaterialSetting();
 
-    //runtime
-    protected final PhotonParticleRenderType renderType;
+    @Persisted(subPersisted = true)
+    public final TrailConfig config = new TrailConfig();
 
-    public TrailsSetting(ParticleConfig config) {
-        renderType = new RenderType(config);
-        material.setMaterial(new CustomShaderMaterial());
-        material.cull = false;
+    public TrailsSetting() {
+        config.setWidthOverTrail(NumberFunction.constant(0.5f));
     }
 
-    public void setup(ParticleEmitter emitter, LParticle particle) {
+    @Override
+    public void deserializeNBT(CompoundTag tag) {
+        IPersistedSerializable.super.deserializeNBT(tag);
+        // compatible with old version
+        if (tag.contains("material")) {
+            config.getMaterial().deserializeNBT(tag.getCompound("material"));
+            config.setColorOverTrail(NumberFunction.deserializeWrapper(tag.getCompound("colorOverTrail")));
+            config.setWidthOverTrail(NumberFunction.deserializeWrapper(tag.getCompound("widthOverTrail")));
+            config.setUvMode(TrailParticle.UVMode.valueOf(tag.getString("uvMode")));
+            config.setMinVertexDistance(tag.getFloat("minimumVertexDistance"));
+        }
+    }
+
+    public void setup(ParticleEmitter emitter, TileParticle particle) {
         var random = emitter.getRandomSource();
         if (random.nextFloat() < ratio) { // has tail
-            var pos = particle.getPos();
-            var trail = new TrailParticle.Basic(emitter.getClientLevel(), pos.x, pos.y, pos.z, renderType);
+            var trail = new TrailParticle(emitter, config, random);
             trail.setDelay(particle.getDelay());
-            trail.setLevel(emitter.getLevel());
-            trail.setLifetime(particle.getLifetime());
-            trail.setWidth(Vector3fHelper.min(particle.getQuadSize(0)));
-            trail.setUvMode(uvMode);
-            trail.setMinimumVertexDistance(minimumVertexDistance);
-            trail.setOnUpdate(p -> {
-                var positionO = particle.getPos(0);
-                var position = particle.getPos(1);
-                p.setPos(positionO.x, positionO.y, positionO.z, true);
-                p.setPos(position.x, position.y, position.z, false);
+            trail.setHeadPositionSupplier(particle::getWorldPos);
+            trail.setDieWhenAllTailsRemoved(!dieWithParticles);
+            trail.setOnUpdate(() -> {
+                if (particle.isRemoved()) {
+                    trail.setRemoved(true);
+                }
             });
-            trail.setOnRemoveTails(t -> {
-                var maxTails = lifetime.get(t.getT(), () -> t.getMemRandom("trails-lifetime")).floatValue() * particle.getLifetime();
+            trail.setLifetimeSupplier(() -> {
+                var time = lifetime.get(particle.getT(), () -> particle.getMemRandom("trails-lifetime")).floatValue() * particle.getLifetime();
                 if (sizeAffectsLifetime) {
-                    maxTails = maxTails * (Vector3fHelper.min(particle.getQuadSize(0)) / t.getWidth());
+                    time *= Vector3fHelper.max(particle.getRealSize(0));
                 }
-                var tails = t.getTails();
-                while (tails.size() > maxTails) {
-                    tails.removeFirst();
-                }
-                return true;
+                return time;
             });
-            trail.setDieWhenRemoved(dieWithParticles);
-            trail.setDynamicColor((t, partialTicks) -> {
-                float a = 1f;
-                float r = 1f;
-                float g = 1f;
-                float b = 1f;
-
-                if (inheritParticleColor) {
-                    var color = particle.getColor(partialTicks);
-                    a *= color.w();
-                    r *= color.x();
-                    g *= color.y();
-                    b *= color.z();
-                }
-
-                int color = colorOverLifetime.get(t.getT(partialTicks), () -> t.getMemRandom("trails-colorOverLifetime")).intValue();
-                a *= ColorUtils.alpha(color);
-                r *= ColorUtils.red(color);
-                g *= ColorUtils.green(color);
-                b *= ColorUtils.blue(color);
-
-                return new Vector4f(r, g, b, a);
-            });
-            trail.setDynamicTailColor((t, tail, partialTicks) -> {
-                int color = colorOverTrail.get(tail / (t.getTails().size() - 1f), () -> t.getMemRandom("trails-colorOverTrail")).intValue();
-                return new Vector4f(ColorUtils.red(color), ColorUtils.green(color), ColorUtils.blue(color), ColorUtils.alpha(color));
-            });
-            trail.setDynamicTailWidth((t, tail, partialTicks) -> {
-                var width = t.getWidth();
+            trail.setWidthMultiplier(() -> {
                 if (sizeAffectsWidth) {
-                    width = Vector3fHelper.min(particle.getQuadSize(partialTicks));
+                    return Vector3fHelper.max(particle.getRealSize(0));
                 }
-                width = width * widthOverTrail.get(tail / (t.getTails().size() - 1f), () -> t.getMemRandom("trails-widthOverTrail")).floatValue();
-                return width;
+                return 1f;
             });
-
-            trail.setDynamicLight((p, partialTicks) -> {
-                if (emitter.usingBloom()) {
-                    return LightTexture.FULL_BRIGHT;
+            trail.setColorMultiplier(t -> {
+                var color = new Vector4f(1);
+                if (inheritParticleColor) {
+                    color.mul(particle.getRealColor(t));
                 }
-                if (emitter.getConfig().getLights().isEnable()) {
-                    return emitter.getConfig().getLights().getLight(p, partialTicks);
+                if (colorOverLifetime != null) {
+                    var c = colorOverLifetime.get(particle.getT(t), () -> particle.getMemRandom("trails-color")).intValue();
+                    color.mul(ColorUtils.red(c), ColorUtils.green(c), ColorUtils.blue(c), ColorUtils.alpha(c));
                 }
-                return p.getLight(partialTicks);
+                return color;
             });
 
             emitter.emitParticle(trail);
         }
     }
 
-    private class RenderType extends PhotonParticleRenderType {
-        protected final ParticleConfig config;
-        private BlendMode lastBlend = null;
-
-        public RenderType(ParticleConfig config) {
-            this.config = config;
-        }
-
-        @Override
-        public void prepareStatus() {
-            if (config.getRenderer().isBloomEffect()) {
-                beginBloom();
+    @Override
+    public void buildConfigurator(ConfiguratorGroup father) {
+        super.buildConfigurator(father);
+        ConfiguratorParser.createConfigurators(father, new HashMap<>(), config.getClass(), config);
+        // remove time configurator from trail config
+        for (Configurator configurator : father.getConfigurators()) {
+            if (configurator.getName().equals("time")) {
+                father.removeConfigurator(configurator);
+                break;
             }
-            material.pre();
-            material.getMaterial().begin(false);
-            if (RenderSystem.getShader() instanceof ShaderInstanceAccessor shader) {
-                lastBlend = BlendModeAccessor.getLastApplied();
-                BlendModeAccessor.setLastApplied(shader.getBlend());
-            }
-            Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
-        }
-
-        @Override
-        public void begin(@Nonnull BufferBuilder bufferBuilder) {
-            bufferBuilder.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.PARTICLE);
-        }
-
-        @Override
-        public void releaseStatus() {
-            material.getMaterial().end(false);
-            material.post();
-            if (lastBlend != null) {
-                lastBlend.apply();
-                lastBlend = null;
-            }
-            if (config.getRenderer().isBloomEffect()) {
-                endBloom();
-            }
-        }
-
-        @Override
-        public boolean isParallel() {
-            return config.isParallelRendering();
-        }
-
-        @Override
-        public int hashCode() {
-            return config.hashCode();
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (obj instanceof RenderType type) {
-                return type.config.equals(config);
-            }
-            return super.equals(obj);
         }
     }
 }

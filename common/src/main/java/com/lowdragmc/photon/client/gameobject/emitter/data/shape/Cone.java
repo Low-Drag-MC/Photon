@@ -4,8 +4,9 @@ import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import org.joml.Vector3f;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.util.Mth;
@@ -38,7 +39,7 @@ public class Cone implements IShape {
     private float arc = 360;
 
     @Override
-    public void nextPosVel(LParticle particle, LParticle emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
+    public void nextPosVel(TileParticle particle, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         var random = particle.getRandomSource();
         var outer = radius;
         var inner = (1 - radiusThickness) * radius;
@@ -56,7 +57,7 @@ public class Cone implements IShape {
                 .rotateAxis((float) ((r / radius) * Math.toRadians(angle)), 0, 0, -1)
                 .rotateAxis((float) theta, 0, -1, 0);
 
-        particle.setPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getPos()), true);
-        particle.setSpeed(Vector3fHelper.rotateYXY(speed.normalize().mul(0.05f), rotation));
+        particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPos()), true);
+        particle.setInternalVelocity(Vector3fHelper.rotateYXY(speed.normalize().mul(0.05f), rotation));
     }
 }

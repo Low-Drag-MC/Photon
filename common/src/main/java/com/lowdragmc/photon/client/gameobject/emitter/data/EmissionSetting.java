@@ -39,6 +39,8 @@ import java.util.function.Supplier;
  * @implNote EmissionSetting
  */
 @Environment(EnvType.CLIENT)
+@Setter
+@Getter
 public class EmissionSetting implements IConfigurable, ITagSerializable<CompoundTag> {
 
     public enum Mode {
@@ -46,19 +48,13 @@ public class EmissionSetting implements IConfigurable, ITagSerializable<Compound
         Random
     }
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.emission.emissionRate")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 0.5f, curveConfig = @CurveConfig(bound = {0, 5}, xAxis = "duration", yAxis = "emission rate"))
     protected NumberFunction emissionRate = NumberFunction.constant(0.5f);
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.emission.emissionMode")
     protected Mode emissionMode = Mode.Exacting;
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.emission.bursts", persisted = false)
     protected List<Burst> bursts = new ArrayList<>();
 

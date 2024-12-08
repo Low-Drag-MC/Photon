@@ -1,11 +1,9 @@
 package com.lowdragmc.photon.client.fx;
 
-import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.IFXObject;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-
-import javax.annotation.Nullable;
-import java.util.List;
+import net.minecraft.world.level.Level;
 
 /**
  * @author KilaBash
@@ -14,26 +12,27 @@ import java.util.List;
  */
 @Environment(EnvType.CLIENT)
 public interface IEffect {
-    /**
-     * get all emitters included in this effect.
-     */
-    List<IParticleEmitter> getEmitters();
+
+    Level getLevel();
 
     /**
-     * update each emitter during their duration,
-     * @param emitter emitter
-     * @return true - block emitter origin tick logic.
+     * update each FX objects during their duration, per tick. Execute low frequency logic here.
+     * <br>
+     * e.g., kill particle
+     * @param fxObject fx object
      */
-    boolean updateEmitter(IParticleEmitter emitter);
+    default void updateFXObjectTick(IFXObject fxObject) {
+    }
 
     /**
-     * Get emitter by name
+     * update each FX objects during rendering, per frame. Execute high frequency logic here.
+     * <br>
+     * e.g., update emitter position, rotation, scale
+     * @param fxObject fx object
+     * @param partialTicks partialTicks
      */
-    @Nullable
-    default IParticleEmitter getEmitterByName(String name) {
-        for (var emitter : getEmitters()) {
-            if (emitter.getName().equals(name)) return emitter;
-        }
-        return null;
-    };
+    default void updateFXObjectFrame(IFXObject fxObject, float partialTicks) {
+
+    }
+
 }

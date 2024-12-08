@@ -2,9 +2,10 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.shape;
 
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.syncdata.IAutoPersistedSerializable;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.lowdragmc.photon.integration.PhotonLDLibPlugin;
 import org.joml.Vector3f;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
 import net.minecraft.nbt.CompoundTag;
 
 /**
@@ -29,5 +30,5 @@ public interface IShape extends IConfigurable, IAutoPersistedSerializable {
         return null;
     }
 
-    void nextPosVel(LParticle particle, LParticle emitter, Vector3f position, Vector3f rotation, Vector3f scale);
+    void nextPosVel(TileParticle particle, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale);
 }

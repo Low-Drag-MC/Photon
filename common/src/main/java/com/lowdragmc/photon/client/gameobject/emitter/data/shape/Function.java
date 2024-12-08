@@ -3,7 +3,8 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.shape;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import expr.Expr;
 import expr.Parser;
 import expr.SyntaxException;
@@ -87,7 +88,7 @@ public class Function implements IShape {
         PI.setValue(Math.PI);
     }
 
-    private void prepareExpr(LParticle emitter) {
+    private void prepareExpr(IParticleEmitter emitter) {
         T.setValue(emitter.getT());
 
         randomA.setValue(emitter.getRandomSource().nextFloat());
@@ -136,11 +137,11 @@ public class Function implements IShape {
     }
 
     @Override
-    public void nextPosVel(LParticle particle, LParticle emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
+    public void nextPosVel(TileParticle particle, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         prepareExpr(emitter);
         var pos = new Vector3f(xCache != null ? (float) xCache.value() : 0, yCache != null ? (float) yCache.value() : 0, zCache != null ? (float) zCache.value() : 0);
         var speed = new Vector3f(sXCache != null ? (float) sXCache.value() : 0, sYCache != null ? (float) sYCache.value() : 0, sZCache != null ? (float) sZCache.value() : 0);
-        particle.setPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getPos()), true);
-        particle.setSpeed(Vector3fHelper.rotateYXY(speed.normalize().mul(0.05f), rotation));
+        particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPos()), true);
+        particle.setInternalVelocity(Vector3fHelper.rotateYXY(speed.normalize().mul(0.05f), rotation));
     }
 }

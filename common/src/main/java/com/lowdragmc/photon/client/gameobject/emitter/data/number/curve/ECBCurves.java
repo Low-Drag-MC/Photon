@@ -61,4 +61,25 @@ public class ECBCurves extends ArrayList<ExplicitCubicBezierCurve2> implements I
             }
         }
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o instanceof ECBCurves curves) {
+            if (size() != curves.size()) return false;
+            for (int i = 0; i < size(); i++) {
+                if (!get(i).serializeNBT().equals(curves.get(i).serializeNBT())) return false;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    public ECBCurves copy() {
+        var curves = new ECBCurves();
+        curves.clear();
+        for (var curve : this) {
+            curves.add(new ExplicitCubicBezierCurve2(curve.serializeNBT()));
+        }
+        return curves;
+    }
 }

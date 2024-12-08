@@ -44,14 +44,16 @@ public class BlockEffectCommand extends EffectCommand {
                                 .executes(c -> execute(c, 1))
                                 .then(Commands.argument("rotation", Vec3Argument.vec3(false))
                                         .executes(c -> execute(c, 2))
-                                        .then(Commands.argument("delay", IntegerArgumentType.integer(0))
+                                        .then(Commands.argument("scale", Vec3Argument.vec3(false))
                                                 .executes(c -> execute(c, 3))
-                                                .then(Commands.argument("force death", BoolArgumentType.bool())
+                                                .then(Commands.argument("delay", IntegerArgumentType.integer(0))
                                                         .executes(c -> execute(c, 4))
-                                                        .then(Commands.argument("allow multi", BoolArgumentType.bool())
+                                                        .then(Commands.argument("force death", BoolArgumentType.bool())
                                                                 .executes(c -> execute(c, 5))
-                                                                .then(Commands.argument("check state", BoolArgumentType.bool())
-                                                                        .executes(c -> execute(c, 6)))))))));
+                                                                .then(Commands.argument("allow multi", BoolArgumentType.bool())
+                                                                        .executes(c -> execute(c, 6))
+                                                                        .then(Commands.argument("check state", BoolArgumentType.bool())
+                                                                                .executes(c -> execute(c, 7))))))))));
     }
 
     private static int execute(CommandContext<CommandSourceStack> context, int feature) throws CommandSyntaxException {
@@ -65,15 +67,18 @@ public class BlockEffectCommand extends EffectCommand {
             command.setRotation(Vec3Argument.getVec3(context, "rotation"));
         }
         if (feature >= 3) {
-            command.setDelay(IntegerArgumentType.getInteger(context, "delay"));
+            command.setScale(Vec3Argument.getVec3(context, "scale"));
         }
         if (feature >= 4) {
-            command.setForcedDeath(BoolArgumentType.getBool(context, "force death"));
+            command.setDelay(IntegerArgumentType.getInteger(context, "delay"));
         }
         if (feature >= 5) {
-            command.setAllowMulti(BoolArgumentType.getBool(context, "allow multi"));
+            command.setForcedDeath(BoolArgumentType.getBool(context, "force death"));
         }
         if (feature >= 6) {
+            command.setAllowMulti(BoolArgumentType.getBool(context, "allow multi"));
+        }
+        if (feature >= 7) {
             command.setCheckState(BoolArgumentType.getBool(context, "check state"));
         }
         PhotonNetworking.NETWORK.sendToTrackingChunk(command, context.getSource().getLevel().getChunkAt(command.pos));
@@ -103,6 +108,7 @@ public class BlockEffectCommand extends EffectCommand {
                 var effect = new BlockEffect(fx, handler.getLevel(), pos);
                 effect.setOffset(offset.x, offset.y, offset.z);
                 effect.setRotation(rotation.x, offset.y, offset.z);
+                effect.setScale(scale.x, scale.y, scale.z);
                 effect.setDelay(delay);
                 effect.setForcedDeath(forcedDeath);
                 effect.setAllowMulti(allowMulti);

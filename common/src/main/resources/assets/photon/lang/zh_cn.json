@@ -1,6 +1,6 @@
 {
-    "ldlib.gui.editor.register.editor.particle.fxproj": "特效项目",
-    "ldlib.gui.editor.register.editor.particle.particle_info": "粒子信息",
+    "ldlib.gui.editor.register.editor.fx.fxproj": "特效项目",
+    "ldlib.gui.editor.register.editor.fx.particle_info": "粒子信息",
     "ldlib.gui.editor.group.particles": "粒子组",
     "ldlib.gui.editor.tips.other": "其他",
     "photon.emitter.config.duration": "发射器的持续时间（单位：刻/Tick）。\n如果looping（循环）被启用，则表示一个发射周期的长度。",
@@ -148,13 +148,13 @@
     "photon.emitter.beam.config.emitRate": "设置光束在其生命周期内的发射速率。",
     "photon.emitter.beam.config.color": "设置光束在其生命周期内的颜色。",
   
-    "photon.gui.editor.particle_info.restart": "重启",
-    "photon.gui.editor.particle_info.particles": "粒子数",
-    "photon.gui.editor.particle_info.time": "时间",
-    "photon.gui.editor.particle_info.cpu_time": "CPU时间",
-    "photon.gui.editor.particle_info.draggable": "可拖动",
-    "photon.gui.editor.particle_info.drag_all": "拖动全部图层",
-    "photon.gui.editor.particle_info.reset_pos": "重置位置",
-    "photon.gui.editor.particle_info.cull_box": "显示Cull-box边界"
+    "photon.gui.editor.fx_info.restart": "重启",
+    "photon.gui.editor.fx_info.particles": "粒子数",
+    "photon.gui.editor.fx_info.time": "时间",
+    "photon.gui.editor.fx_info.cpu_time": "CPU时间",
+    "photon.gui.editor.fx_info.draggable": "可拖动",
+    "photon.gui.editor.fx_info.drag_all": "拖动全部图层",
+    "photon.gui.editor.fx_info.reset_pos": "重置位置",
+    "photon.gui.editor.fx_info.cull_box": "显示Cull-box边界"
   
   }

@@ -8,7 +8,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
+import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -20,14 +20,14 @@ import net.fabricmc.api.Environment;
  * @implNote LightSetting
  */
 @Environment(EnvType.CLIENT)
+@Setter
+@Getter
 public class LightOverLifetimeSetting extends ToggleGroup {
-    @Setter
-    @Getter
+
     @Configurable(tips = "photon.emitter.config.lights.skyLight")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, isDecimals = false, defaultValue = 15, min = 0, max = 15, wheelDur = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction skyLight = NumberFunction.constant(15);
-    @Setter
-    @Getter
+
     @Configurable(tips = "photon.emitter.config.lights.blockLight")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, isDecimals = false, defaultValue = 15, min = 0, max = 15, wheelDur = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction blockLight = NumberFunction.constant(15);
@@ -36,7 +36,7 @@ public class LightOverLifetimeSetting extends ToggleGroup {
         this.enable = true;
     }
 
-    public int getLight(LParticle particle, float partialTicks) {
+    public int getLight(IParticle particle, float partialTicks) {
         int sky = skyLight.get(particle.getT(partialTicks), () -> particle.getMemRandom("sky-light")).intValue();
         int block = blockLight.get(particle.getT(partialTicks), () -> particle.getMemRandom("block-light")).intValue();
         return sky << 20 | block << 4;

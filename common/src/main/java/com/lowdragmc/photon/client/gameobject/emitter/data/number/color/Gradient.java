@@ -52,6 +52,21 @@ public class Gradient implements NumberFunction {
     }
 
     @Override
+    public NumberFunction copy() {
+        var copied = new Gradient();
+        copied.deserializeNBT(serializeNBT());
+        return copied;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof Gradient gradient) {
+            return gradientColor.serializeNBT().equals(gradient.gradientColor.serializeNBT());
+        }
+        return super.equals(obj);
+    }
+
+    @Override
     public void createConfigurator(WidgetGroup group, NumberFunctionConfigurator configurator) {
         var background = ColorPattern.T_GRAY.borderTexture(1);
         group.addWidget(new ButtonWidget(0, 2, group.getSize().width, 10, new GuiTextureGroup(background, new GradientColorTexture(gradientColor)), cd -> {
@@ -60,7 +75,7 @@ public class Gradient implements NumberFunction {
                 var position = group.getPosition();
                 var rightPlace = group.getGui().getScreenWidth() - size.width;
                 var gradientWidget = new GradientColorWidget(5, 0, 150, gradientColor);
-                gradientWidget.setOnUpdate(g -> configurator.updateValue());
+                gradientWidget.setOnUpdate(g -> configurator.updateValue(this));
                 var dialog = Editor.INSTANCE.openDialog(new DialogWidget(Math.min(position.x, rightPlace), Math.max(0, position.y - size.height), size.width, size.height));
                 dialog.setBackground(new GuiTextureGroup(ColorPattern.BLACK.rectTexture(), ColorPattern.T_WHITE.borderTexture(-1)));
                 dialog.setClickClose(true);
@@ -73,7 +88,7 @@ public class Gradient implements NumberFunction {
                 o -> {
                     if (o instanceof GradientsResource.Gradients g) {
                         this.gradientColor.deserializeNBT(g.gradient0.serializeNBT());
-                        configurator.updateValue();
+                        configurator.updateValue(this);
                         background.setColor(ColorPattern.T_GRAY.color);
                     }
                 }));

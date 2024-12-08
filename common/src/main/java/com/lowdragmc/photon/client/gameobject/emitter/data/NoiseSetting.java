@@ -11,11 +11,11 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import net.minecraft.client.gui.GuiGraphics;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import com.lowdragmc.lowdraglib.utils.noise.PerlinNoise;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
@@ -32,6 +32,8 @@ import net.minecraft.util.Mth;
  * @implNote NoiseSetting
  */
 @Environment(EnvType.CLIENT)
+@Setter
+@Getter
 public class NoiseSetting extends ToggleGroup {
     public enum Quality {
         Noise1D,
@@ -41,35 +43,24 @@ public class NoiseSetting extends ToggleGroup {
 
     private final ThreadLocal<PerlinNoise> noise = ThreadLocal.withInitial(PerlinNoise::new);
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.noise.frequency")
     @NumberRange(range = {Float.MIN_VALUE, Float.MAX_VALUE})
     protected float frequency = 1;
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.noise.quality")
     protected Quality quality = Quality.Noise2D;
 
-    @Getter
     @Configurable(subConfigurable = true, tips = "photon.emitter.config.noise.remap")
     protected final Remap remap = new Remap();
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.noise.position")
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "lifetime", yAxis = "strength")))
     protected NumberFunction3 position = new NumberFunction3(0.1, 0.1, 0.1);
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.noise.rotation")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 180}, xAxis = "rotation amount", yAxis = "lifetime"))
     protected NumberFunction rotation = NumberFunction.constant(0);
 
-    @Setter
-    @Getter
     @Configurable(tips = "photon.emitter.config.noise.size")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "size amount", yAxis = "lifetime"))
     protected NumberFunction size = NumberFunction.constant(0);
@@ -88,11 +79,11 @@ public class NoiseSetting extends ToggleGroup {
         return value;
     }
 
-    public void setupSeed(LParticle particle) {
+    public void setupSeed(IParticle particle) {
         noise.get().setSeed(particle.getMemRandom("noise-seed", randomSource -> (float) randomSource.nextGaussian()) * 255);
     }
 
-    public Vector3f getRotation(LParticle particle, float partialTicks) {
+    public Vector3f getRotation(IParticle particle, float partialTicks) {
         setupSeed(particle);
         var t = particle.getT(partialTicks);
         var degree = rotation.get(t, () -> particle.getMemRandom("noise-rotation")).floatValue();
@@ -102,7 +93,7 @@ public class NoiseSetting extends ToggleGroup {
         return new Vector3f(0 ,0, 0);
     }
 
-    public Vector3f getSize(LParticle particle, float partialTicks) {
+    public Vector3f getSize(IParticle particle, float partialTicks) {
         setupSeed(particle);
         var t = particle.getT(partialTicks);
         var scale = size.get(t, () -> particle.getMemRandom("noise-size")).floatValue();
@@ -112,7 +103,7 @@ public class NoiseSetting extends ToggleGroup {
         return new Vector3f(0 ,0, 0);
     }
 
-    public Vector3f getPosition(LParticle particle, float partialTicks) {
+    public Vector3f getPosition(IParticle particle, float partialTicks) {
         setupSeed(particle);
         var t = particle.getT(partialTicks);
         var offset = position.get(t, () -> particle.getMemRandom("noise-position"));

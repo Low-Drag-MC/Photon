@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib.gui.editor.data.resource.Resource;
 import com.lowdragmc.lowdraglib.gui.editor.ui.ResourcePanel;
 import com.lowdragmc.lowdraglib.gui.editor.ui.resource.ResourceContainer;
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlockTextureSheetMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
@@ -40,6 +41,7 @@ public class MaterialsResource extends Resource<IMaterial> {
         addBuiltinTextureMaterial("ring");
 
         addBuiltinShaderMaterial("circle");
+        data.put("block_texture_sheet", new BlockTextureSheetMaterial());
 
     }
 

@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.utils.Range;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -10,7 +11,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
+import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import lombok.Getter;
 import lombok.Setter;
 import net.fabricmc.api.EnvType;
@@ -22,19 +23,19 @@ import net.fabricmc.api.Environment;
  * @implNote LifetimeByEmitterSpeed
  */
 @Environment(EnvType.CLIENT)
+@Setter
+@Getter
 public class LifetimeByEmitterSpeedSetting extends ToggleGroup {
-    @Setter
-    @Getter
+
     @Configurable(tips = "photon.emitter.config.lifetimeByEmitterSpeed.multiplier")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 1f, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "multiplier", yAxis = "emitter velocity"))
     protected NumberFunction multiplier = NumberFunction.constant(1);
-    @Setter
-    @Getter
+
     @Configurable(tips = "photon.emitter.config.lifetimeByEmitterSpeed.speedRange")
     @NumberRange(range = {0, 1000})
     protected Range speedRange = new Range(0f, 1f);
 
-    public int getLifetime(LParticle particle, LParticle emitter, int initialLifetime) {
+    public int getLifetime(IParticle particle, IParticleEmitter emitter, int initialLifetime) {
         var value = emitter.getVelocity().length() * 20;
         return (int) (multiplier.get((value - speedRange.getA().floatValue()) / (speedRange.getB().floatValue() - speedRange.getA().floatValue()), () -> particle.getMemRandom(this)).floatValue() * initialLifetime);
     }

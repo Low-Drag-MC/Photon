@@ -2,11 +2,11 @@ package com.lowdragmc.photon.gui.editor;
 
 import com.lowdragmc.lowdraglib.gui.editor.ColorPattern;
 import com.lowdragmc.lowdraglib.gui.editor.Icons;
-import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.ui.view.FloatViewWidget;
 import com.lowdragmc.lowdraglib.gui.texture.*;
 import com.lowdragmc.lowdraglib.gui.widget.*;
 import com.lowdragmc.lowdraglib.utils.LocalizationUtils;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import org.joml.Vector3f;
 import com.lowdragmc.photon.core.mixins.accessor.MinecraftAccessor;
 import it.unimi.dsi.fastutil.booleans.BooleanConsumer;
@@ -20,11 +20,22 @@ import java.util.function.Supplier;
  * @date 2023/6/3
  * @implNote ParticleInfoView
  */
-@LDLRegister(name = "particle_info", group = "editor.particle")
 public class ParticleInfoView extends FloatViewWidget {
+    public final ParticleScenePanel panel;
 
-    public ParticleInfoView() {
+    public ParticleInfoView(ParticleScenePanel panel) {
         super(100, 100, 200, 135, false);
+        this.panel = panel;
+    }
+
+    @Override
+    public String name() {
+        return "particle_info";
+    }
+
+    @Override
+    public String group() {
+        return "editor.fx";
     }
 
     @Override
@@ -32,8 +43,8 @@ public class ParticleInfoView extends FloatViewWidget {
         return Icons.INFORMATION.copy();
     }
 
-    public ParticleEditor getEditor() {
-        return (ParticleEditor) editor;
+    public FXEditor getEditor() {
+        return (FXEditor) editor;
     }
 
     @Override
@@ -41,58 +52,52 @@ public class ParticleInfoView extends FloatViewWidget {
         super.initWidget();
         content.setBackground(new GuiTextureGroup(ColorPattern.T_BLACK.rectTexture().setBottomRadius(5f), ColorPattern.GRAY.borderTexture(-1).setBottomRadius(5f)));
         // actions
-        addButton("photon.gui.editor.particle_info.restart", () -> getEditor().restartScene());
+        addButton("photon.gui.editor.fx_info.restart", panel::restartEmitters);
         // particles
-        addInformation("photon.gui.editor.particle_info.particles", () -> {
-            var list = getEditor().getEmittersList();
+        addInformation("photon.gui.editor.fx_info.particles", () -> {
+            var list = panel.getFxObjectsList();
             if (list != null) {
                 var selected = list.getSelected();
-                if (selected != null) {
-                    return String.valueOf(selected.getParticleAmount());
+                if (selected instanceof IParticleEmitter emitter) {
+                    return String.valueOf(emitter.getParticleAmount());
                 }
             }
             return "0";
         });
         // lifetime
-        addInformation("photon.gui.editor.particle_info.time", () -> {
-            var list = getEditor().getEmittersList();
+        addInformation("photon.gui.editor.fx_info.time", () -> {
+            var list = panel.getFxObjectsList();
             if (list != null) {
                 var selected = list.getSelected();
-                if (selected != null) {
-                    return "%.2f (s)".formatted(selected.self().getAge() / 20f);
+                if (selected instanceof IParticleEmitter emitter) {
+                    return "%.2f (s)".formatted(emitter.getAge() / 20f);
                 }
             }
             return "0 / 0";
         });
         content.addWidget(new ProgressWidget(() -> {
-            var list = getEditor().getEmittersList();
+            var list = panel.getFxObjectsList();
             if (list != null) {
                 var selected = list.getSelected();
-                if (selected != null) {
-                    return selected.self().getT(Minecraft.getInstance().getFrameTime());
+                if (selected instanceof IParticleEmitter emitter) {
+                    return emitter.getT(Minecraft.getInstance().getFrameTime());
                 }
             }
             return 0d;
-        }, 3, content.widgets.size() * 15 + 3, 194, 10, new ProgressTexture(ColorPattern.T_GRAY.rectTexture().setRadius(5).setRadius(5), ColorPattern.GREEN.rectTexture().setRadius(5).setRadius(5))));
+        }, 3, content.widgets.size() * 15 + 3, 194, 10,
+                new ProgressTexture(ColorPattern.T_GRAY.rectTexture().setRadius(5).setRadius(5),
+                        ColorPattern.GREEN.rectTexture().setRadius(5).setRadius(5))));
         // fps
         addInformation("FPS", () -> MinecraftAccessor.getFps() + " fps");
         // cpu time
-        addInformation("photon.gui.editor.particle_info.cpu_time", () ->  "%d us".formatted(getEditor().getParticleScene().getParticleManager().getCPUTime()));
+        addInformation("photon.gui.editor.fx_info.cpu_time", () ->  "%d us".formatted(panel.scene.getParticleManager().getCPUTime()));
         // draggable
-        var group = addToggle("photon.gui.editor.particle_info.draggable", () -> getEditor().isDraggable(), draggable -> getEditor().setDraggable(draggable));
-        var textWidth = Minecraft.getInstance().font.width(LocalizationUtils.format("photon.gui.editor.particle_info.draggable")) + 6;
+        var group = addToggle("photon.gui.editor.fx_info.draggable", panel.project::isDraggable, panel.project::setDraggable);
+        var textWidth = Minecraft.getInstance().font.width(LocalizationUtils.format("photon.gui.editor.fx_info.draggable")) + 6;
         group.addWidget(new ButtonWidget(textWidth + (194 - textWidth - 70) / 2, 0, 70, 10,
-                new GuiTextureGroup(ColorPattern.T_GRAY.rectTexture().setRadius(5).setRadius(5), new TextTexture("photon.gui.editor.particle_info.reset_pos").setWidth(194)), cd -> {
-            var list = getEditor().getEmittersList();
-            if (list != null) {
-                var selected = list.getSelected();
-                if (selected != null) {
-                    selected.self().setPos(new Vector3f(0.5f, 3, 0.5f), true);
-                }
-            }
-        }));
-        addToggle("photon.gui.editor.particle_info.drag_all", () -> getEditor().isDragAll(), draggable -> getEditor().setDragAll(draggable));
-        addToggle("photon.gui.editor.particle_info.cull_box", () -> getEditor().isRenderCullBox(), cull -> getEditor().setRenderCullBox(cull));
+                new GuiTextureGroup(ColorPattern.T_GRAY.rectTexture().setRadius(5).setRadius(5), new TextTexture("photon.gui.editor.fx_info.reset_pos").setWidth(194)),
+                cd -> panel.runtime.getRoot().updatePos(new Vector3f(0.5f, 2, 0.5f))));
+        addToggle("photon.gui.editor.fx_info.cull_box", panel.project::isRenderCullBox, panel.project::setRenderCullBox);
 
     }
 

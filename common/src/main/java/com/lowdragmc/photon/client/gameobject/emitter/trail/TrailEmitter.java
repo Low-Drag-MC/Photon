@@ -1,42 +1,24 @@
 package com.lowdragmc.photon.client.gameobject.emitter.trail;
 
-import com.lowdragmc.lowdraglib.gui.editor.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
-import com.lowdragmc.lowdraglib.gui.editor.runtime.PersistedParser;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
-import com.lowdragmc.lowdraglib.utils.ColorUtils;
-import com.lowdragmc.photon.client.gameobject.Transform;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
-import com.lowdragmc.photon.client.fx.IEffect;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.Camera;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.phys.AABB;
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
-import com.lowdragmc.photon.client.gameobject.particle.LParticle;
-import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
-import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
-import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
-import com.mojang.blaze3d.shaders.BlendMode;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.*;
-import lombok.Getter;
-import lombok.Setter;
-import net.minecraft.client.Camera;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.LightTexture;
 import org.jetbrains.annotations.NotNull;
-import org.joml.Vector4f;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Collections;
+import java.util.HashMap;
 
 /**
  * @author KilaBash
@@ -45,59 +27,41 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @ParametersAreNonnullByDefault
 @LDLRegisterClient(name = "trail", group = "emitter")
-public class TrailEmitter extends TrailParticle implements IParticleEmitter {
-    public static int VERSION = 1;
+public class TrailEmitter extends Emitter {
+    public static int VERSION = 2;
 
-    @Setter
-    @Getter
-    @Persisted
-    protected String name = "trail emitter";
-    @Setter
-    @Getter
-    @Persisted
-    protected boolean isSubEmitter = false;
-    @Getter
     @Persisted(subPersisted = true)
-    protected final Transform transform = new Transform();
-    @Getter
-    @Persisted(subPersisted = true)
-    protected final TrailConfig config;
-    protected final PhotonParticleRenderType renderType;
+    public final TrailConfig config;
 
     // runtime
-    @Getter
-    protected final Map<PhotonParticleRenderType, Queue<LParticle>> particles;
-    @Getter @Setter
-    protected boolean visible = true;
-    @Nullable
-    @Getter @Setter
-    protected IEffect effect;
-    protected LinkedList<AtomicInteger> tailsTime = new LinkedList<>();
+    protected TrailParticle trailParticle;
 
     public TrailEmitter() {
         this(new TrailConfig());
-        config.material.setMaterial(new CustomShaderMaterial());
+        config.smoothInterpolation = true;
+        config.minVertexDistance = 0.1f;
     }
 
     public TrailEmitter(TrailConfig config) {
-        super(null, 0, 0, 0);
         this.config = config;
-        this.renderType = new RenderType(config);
-        this.particles = Map.of(renderType, new ArrayDeque<>(1));
+        this.lifetime = -1;
         init();
+    }
+
+    public void init() {
+        trailParticle = new TrailParticle(this, config, getRandomSource());
     }
 
     @Override
     public IParticleEmitter copy(boolean deep) {
-        IParticleEmitter copied = deep ? IParticleEmitter.super.copy() : new TrailEmitter(config);
+        var copied = deep ? (IParticleEmitter) super.copy() : new TrailEmitter(config);
         copied.setName(name);
-        copied.setSubEmitter(isSubEmitter);
         return copied;
     }
 
     @Override
     public CompoundTag serializeNBT() {
-        var tag = IParticleEmitter.super.serializeNBT();
+        var tag = super.serializeNBT();
         tag.putInt("_version", VERSION);
         return tag;
     }
@@ -105,17 +69,19 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     @Override
     public void deserializeNBT(CompoundTag tag) {
         var version = tag.contains("_version") ? tag.getInt("_version") : 0;
-        if (version == 0) { // legacy version
-            name = tag.getString("name");
-            PersistedParser.deserializeNBT(tag, new HashMap<>(), config.getClass(), config);
-            return;
+        // legacy version
+        if (version < 1) {
+            var configTag = tag;
+            tag = new CompoundTag();
+            tag.put("config", configTag);
+            tag.putString("name", configTag.getString("name"));
         }
-        IParticleEmitter.super.deserializeNBT(tag);
+        super.deserializeNBT(tag);
     }
 
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
-        IParticleEmitter.super.buildConfigurator(father);
+        super.buildConfigurator(father);
         ConfiguratorParser.createConfigurators(father, new HashMap<>(), config.getClass(), config);
     }
 
@@ -123,118 +89,42 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     //*****     particle logic     *****//
     //////////////////////////////////////
 
-    public void init() {
-        particles.get(renderType).clear();
-        particles.get(renderType).add(this);
-        super.setLifetime(-1);
-        config.renderer.setupQuaternion(this, this);
-        super.setUvMode(config.uvMode);
-        super.setMinimumVertexDistance(config.minVertexDistance);
-        super.setOnRemoveTails(t -> {
-            var iterT = tailsTime.iterator();
-            var iter = tails.iterator();
-            while (iter.hasNext() && iterT.hasNext()) {
-                var tailTime = iterT.next();
-                iter.next();
-                if (tailTime.getAndAdd(1) > config.time) {
-                    iterT.remove();
-                    iter.remove();
-                }
-            }
-            return true;
-        });
-        super.setDieWhenRemoved(false);
-        super.setDynamicTailColor((t, tail, partialTicks) -> {
-            int color = config.colorOverTrail.get(tail / (t.getTails().size() - 1f), () -> t.getMemRandom("trails-colorOverTrail")).intValue();
-            return new Vector4f(ColorUtils.red(color), ColorUtils.green(color), ColorUtils.blue(color), ColorUtils.alpha(color));
-        });
-        super.setDynamicTailWidth((t, tail, partialTicks) -> 0.2f * config.widthOverTrail.get(tail / (t.getTails().size() - 1f), () -> t.getMemRandom("trails-widthOverTrail")).floatValue());
-        super.setDynamicLight((t, partialTicks) -> {
-            if (usingBloom()) {
-                return LightTexture.FULL_BRIGHT;
-            }
-            if (config.lights.isEnable()) {
-                return config.lights.getLight(t, partialTicks);
-            }
-            return t.getLight(partialTicks);
-        });
-        super.setDynamicUVs((p, partialTicks) -> {
-            if (config.uvAnimation.isEnable()) {
-                var uvs = config.uvAnimation.getUVs(p, partialTicks);
-                var x = uvs.x;
-                var y = uvs.y;
-                var w = uvs.z - uvs.x;
-                var h = uvs.w - uvs.y;
-                return new Vector4f(x + w * p.getU0(partialTicks),
-                        y + h * p.getV0(partialTicks),
-                        x + w * p.getU1(partialTicks),
-                        y + h * p.getV1(partialTicks));
-            }
-            return new Vector4f(p.getU0(partialTicks), p.getV0(partialTicks), p.getU1(partialTicks), p.getV1(partialTicks));
-        });
+    @Override
+    public int getParticleAmount() {
+        return trailParticle.isAlive() ? 1 : 0;
     }
 
     @Override
     protected void update() {
-        // effect first
-        if (effect != null && effect.updateEmitter(this)) {
-            return;
+        if (trailParticle.isAlive()) {
+            trailParticle.tick();
+        } else {
+            remove();
         }
-        if (effect == null) {
-            config.renderer.setupQuaternion(this, this);
-            setUvMode(config.uvMode);
-        }
+
         super.update();
     }
 
     @Override
-    protected void addNewTail(Vector3f tail) {
-        super.addNewTail(tail);
-        tailsTime.addLast(new AtomicInteger(0));
+    public void reset() {
+        super.reset();
+        init();
     }
 
     @Override
-    @ConfigSetter(field = "minVertexDistance")
-    public void setMinimumVertexDistance(float minimumVertexDistance) {
-        super.setMinimumVertexDistance(minimumVertexDistance);
-        config.minVertexDistance = minimumVertexDistance;
-    }
-
-    @Override
-    public void resetParticle() {
-        super.resetParticle();
-        this.tailsTime.clear();
-    }
-
-    @Override
-    public void render(@NotNull PoseStack poseStack, @NotNull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
-        poseStack.pushPose();
-        poseStack.mulPoseMatrix(transform.getMatrix());
-        if (ParticleQueueRenderType.INSTANCE.isRenderingQueue()) {
-            super.render(poseStack, pBuffer, pRenderInfo, pPartialTicks);
-        } else if (delay <= 0 && isVisible() &&
-                PhotonParticleRenderType.checkLayer(config.renderer.getLayer())  &&
+    public void render(@NotNull VertexConsumer buffer, Camera camera, float pPartialTicks) {
+        super.render(buffer, camera, pPartialTicks);
+        if (!ParticleQueueRenderType.INSTANCE.isRenderingQueue() && delay <= 0 && isVisible() &&
+                PhotonParticleRenderType.checkLayer(config.renderer.getLayer()) &&
                 (!config.renderer.getCull().isEnable() ||
                         PhotonParticleRenderType.checkFrustum(config.renderer.getCull().getCullAABB(this, pPartialTicks)))) {
-            ParticleQueueRenderType.INSTANCE.pipeQueue(renderType, particles.get(renderType), new Matrix4f(poseStack.last().pose()), pRenderInfo, pPartialTicks);
+            ParticleQueueRenderType.INSTANCE.pipeQueue(trailParticle.getRenderType(), Collections.singleton(trailParticle), camera, pPartialTicks);
         }
-        poseStack.popPose();
-    }
-
-    @Override
-    @Nonnull
-    public PhotonParticleRenderType getRenderType() {
-        return ParticleQueueRenderType.INSTANCE;
     }
 
     //////////////////////////////////////
     //********      Emitter    *********//
     //////////////////////////////////////
-
-    @Override
-    public boolean emitParticle(LParticle particle) {
-        return false;
-    }
 
     @Override
     @Nullable
@@ -243,76 +133,16 @@ public class TrailEmitter extends TrailParticle implements IParticleEmitter {
     }
 
     @Override
-    public boolean usingBloom() {
-        return config.renderer.isBloomEffect();
+    public boolean isLooping() {
+        return true;
     }
 
     @Override
     public void remove(boolean force) {
-        remove();
+        trailParticle.setRemoved(true);
+        super.remove(force);
         if (force) {
-            dieWhenRemoved = true;
+            trailParticle.getTails().clear();
         }
     }
-
-    private static class RenderType extends PhotonParticleRenderType {
-        protected final TrailConfig config;
-        private BlendMode lastBlend = null;
-
-
-        public RenderType(TrailConfig config) {
-            this.config = config;
-        }
-
-        @Override
-        public void prepareStatus() {
-            if (config.renderer.isBloomEffect()) {
-                beginBloom();
-            }
-            config.material.pre();
-            config.material.getMaterial().begin(false);
-            if (RenderSystem.getShader() instanceof ShaderInstanceAccessor shader) {
-                lastBlend = BlendModeAccessor.getLastApplied();
-                BlendModeAccessor.setLastApplied(shader.getBlend());
-            }
-            Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
-        }
-
-        @Override
-        public void begin(@Nonnull BufferBuilder bufferBuilder) {
-            bufferBuilder.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.PARTICLE);
-        }
-
-        @Override
-        public void releaseStatus() {
-            config.material.getMaterial().end(false);
-            config.material.post();
-            if (lastBlend != null) {
-                lastBlend.apply();
-                lastBlend = null;
-            }
-            if (config.renderer.isBloomEffect()) {
-                endBloom();
-            }
-        }
-
-        @Override
-        public boolean isParallel() {
-            return config.isParallelRendering();
-        }
-
-        @Override
-        public int hashCode() {
-            return config.hashCode();
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (obj instanceof RenderType type) {
-                return type.config.equals(config);
-            }
-            return super.equals(obj);
-        }
-    }
-
 }
