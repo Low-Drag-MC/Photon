@@ -13,6 +13,15 @@ on:
         required: true
         type: boolean
         default: true
+      versionType:
+        description: 'version type'
+        required: true
+        type: choice
+        options:
+          - 'alpha'
+          - 'beta'
+          - 'release'
+        default: 'alpha'
 
 jobs:
   build:
@@ -76,7 +85,7 @@ jobs:
 
           name: Photon Editor ${{ steps.var.outputs.fabric_version }}-fabric
           version: mc${{ steps.var.outputs.fabric_version }}-fabric
-          version-type: beta
+          version-type: ${{ inputs.versionType }}
           changelog-file: CHANGELOG.*
 
           loaders: |
@@ -110,7 +119,7 @@ jobs:
 
           name: Photon Editor ${{ steps.var.outputs.forge_version }}-forge
           version: mc${{ steps.var.outputs.forge_version }}-forge
-          version-type: beta
+          version-type: ${{ inputs.versionType }}
           changelog-file: CHANGELOG.*
 
           loaders: |
