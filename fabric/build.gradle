@@ -93,7 +93,7 @@ dependencies {
 
     // Iris
     modImplementation(fabric.sodium) { transitive = false }
-    modImplementation(fabric.iris) { transitive = false }
+    modCompileOnly(fabric.iris) { transitive = false }
     implementation 'org.anarres:jcpp:1.4.14'
     implementation 'io.github.douira:glsl-transformer:2.0.0-pre13'
 }
