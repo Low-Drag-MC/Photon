@@ -1,3 +1,3 @@
 ## ChangeLog
 
-* bump up ldlib to fix editor issue.
+* Fixed RenderSettings disappear.

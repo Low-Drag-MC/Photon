@@ -129,6 +129,7 @@ public class RendererSetting {
             });
             configurator.setTips("photon.emitter.config.renderer.renderMode");
             father.addConfigurators(configurator);
+            IConfigurable.super.buildConfigurator(father);
         }
 
         public IModelRenderer getModel() {
