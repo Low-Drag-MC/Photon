@@ -54,7 +54,7 @@ public class TrailEmitter extends Emitter {
 
     @Override
     public IParticleEmitter copy(boolean deep) {
-        var copied = deep ? (IParticleEmitter) super.copy() : new TrailEmitter(config);
+        var copied = deep ? (IParticleEmitter) super.copy(deep) : new TrailEmitter(config);
         copied.setName(name);
         return copied;
     }
