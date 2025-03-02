@@ -55,7 +55,7 @@ public class BeamEmitter extends Emitter {
 
     @Override
     public IParticleEmitter copy(boolean deep) {
-        IParticleEmitter copied = deep ? (IParticleEmitter) super.copy() : new BeamEmitter(config);
+        IParticleEmitter copied = deep ? (IParticleEmitter) super.copy(true) : new BeamEmitter(config);
         copied.setName(name);
         return copied;
     }

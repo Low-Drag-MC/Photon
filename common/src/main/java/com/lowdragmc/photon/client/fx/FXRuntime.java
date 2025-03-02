@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.lowdraglib.gui.editor.ui.sceneeditor.sceneobject.IScene;
 import com.lowdragmc.lowdraglib.gui.editor.ui.sceneeditor.sceneobject.ISceneObject;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.EmptyFXObject;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import lombok.Getter;
@@ -74,7 +75,12 @@ public class FXRuntime implements IScene {
     public void addSceneObjectInternal(ISceneObject sceneObject) {
         if (sceneObject instanceof IFXObject fxObject) {
             fxObject.setScene(this);
-            objects.put(fxObject.id(), fxObject);
+            var previous = objects.put(fxObject.id(), fxObject);
+            if (previous != null) {
+                if (previous != fxObject) {
+                    Photon.LOGGER.warn("Duplicate fx runtime object id %s is replaced".formatted(fxObject.id()));
+                }
+            }
         } else {
             throw new IllegalArgumentException("%s is not an instance of IFXObject".formatted(sceneObject));
         }

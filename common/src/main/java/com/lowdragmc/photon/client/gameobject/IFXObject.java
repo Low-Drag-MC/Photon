@@ -74,6 +74,16 @@ public interface IFXObject extends ISceneObject, IAutoPersistedSerializable, ICo
 
     }
 
+    @Override
+    default CompoundTag serializeNBT() {
+        return IAutoPersistedSerializable.super.serializeNBT();
+    }
+
+    @Override
+    default void deserializeNBT(CompoundTag tag) {
+        IAutoPersistedSerializable.super.deserializeNBT(tag);
+    }
+
     /**
      * copy this object
      */
@@ -85,7 +95,11 @@ public interface IFXObject extends ISceneObject, IAutoPersistedSerializable, ICo
      * deep copy this object
      */
     default IFXObject copy(boolean deep) {
-        return deserializeWrapper(serializeNBT());
+        var data = serializeNBT();
+        if (data.contains("transform")) {
+            data.getCompound("transform").remove("id");
+        }
+        return deserializeWrapper(data);
     }
 
     /**
