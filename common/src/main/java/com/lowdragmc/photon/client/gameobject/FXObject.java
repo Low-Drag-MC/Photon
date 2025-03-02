@@ -3,7 +3,6 @@ package com.lowdragmc.photon.client.gameobject;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.ui.sceneeditor.data.Transform;
 import com.lowdragmc.lowdraglib.gui.editor.ui.sceneeditor.sceneobject.IScene;
-import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.fx.IEffect;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.Tesselator;
@@ -30,7 +29,7 @@ import javax.annotation.ParametersAreNonnullByDefault;
 @Getter
 public class FXObject extends Particle implements IFXObject {
     @Setter
-    @Persisted
+    @Configurable(name = "photon.fx_object.name")
     public String name = name();
     @Nullable
     private IScene scene;

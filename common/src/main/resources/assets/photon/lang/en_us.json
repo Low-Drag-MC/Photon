@@ -3,6 +3,7 @@
   "ldlib.gui.editor.register.editor.fx.particle_info": "Particle Information",
   "ldlib.gui.editor.group.particles": "particles",
   "ldlib.gui.editor.tips.other": "other",
+  "photon.fx_object.name": "Name",
   "photon.emitter.config.duration": "The duration of time (tick) the Emitter. If the system is looping, this indicates the length of one cycle.",
   "photon.emitter.config.looping": "If true, the emission cycle will repeat after the duration.",
   "photon.emitter.config.startDelay": "Delay in seconds that this Particle System will wait before emitting particles.",

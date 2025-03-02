@@ -114,4 +114,24 @@ public class FXRuntime implements IScene {
             fxObject.remove(force);
         }
     }
+
+    @Nullable
+    public IFXObject findObject(String name) {
+        for (var fxObject : objects.values()) {
+            if (fxObject.getName().equals(name)) {
+                return fxObject;
+            }
+        }
+        return null;
+    }
+
+    public List<IFXObject> findObjects(String name) {
+        var list = new ArrayList<IFXObject>();
+        for (var fxObject : objects.values()) {
+            if (fxObject.getName().equals(name)) {
+                list.add(fxObject);
+            }
+        }
+        return list;
+    }
 }

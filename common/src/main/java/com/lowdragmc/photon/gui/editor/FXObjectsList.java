@@ -3,6 +3,7 @@ package com.lowdragmc.photon.gui.editor;
 import com.lowdragmc.lowdraglib.gui.editor.ColorPattern;
 import com.lowdragmc.lowdraglib.gui.editor.Icons;
 import com.lowdragmc.lowdraglib.gui.editor.ui.Editor;
+import com.lowdragmc.lowdraglib.gui.editor.ui.sceneeditor.data.Transform;
 import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib.gui.util.TreeBuilder;
@@ -18,6 +19,7 @@ import it.unimi.dsi.fastutil.objects.Object2BooleanOpenHashMap;
 import lombok.Getter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.network.chat.Component;
 import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
@@ -102,8 +104,9 @@ public class FXObjectsList extends DraggableScrollableWidgetGroup {
         // add select button
         container.addWidget(new ButtonWidget(10, 0, width - 20, 10, cd -> setSelectedFX(fxObject)));
         // add fxObject name
-        container.addWidget(new TextTextureWidget(10, 0, width - 20 , 10,
-                fxObject.getName()).textureStyle(t -> t.setType(TextTexture.TextType.LEFT_HIDE))
+        container.addWidget(new TextTextureWidget(10, 0, width - 20 , 10)
+                .setText(() -> Component.literal(fxObject.getName()))
+                .textureStyle(t -> t.setType(TextTexture.TextType.LEFT_HIDE))
                 .setHoverTexture(ColorPattern.T_GRAY.rectTexture()).setDraggingConsumer(
                         o -> o instanceof IParticleEmitter e && e != fxObject && !fxObject.transform().isInheritedParent(e.transform()),
                         o -> {},
@@ -161,9 +164,8 @@ public class FXObjectsList extends DraggableScrollableWidgetGroup {
                 });
                 menu.leaf(Icons.COPY, "ldlib.gui.editor.menu.copy", () -> {
                     var name = selected.getName();
-                    var copied = selected.copy();
+                    var copied = deepCopyFXObject(selected, selected.transform().parent());
                     copied.setName(name + " copied");
-                    addSceneObject(copied);
                     updateList();
                 });
                 menu.leaf(Icons.REMOVE_FILE, "ldlib.gui.editor.menu.remove", () -> {
@@ -176,6 +178,18 @@ public class FXObjectsList extends DraggableScrollableWidgetGroup {
             return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    public IFXObject deepCopyFXObject(IFXObject fxObject, Transform parent) {
+        var copied = fxObject.copy(true);
+        addSceneObject(copied);
+        copied.transform().parent(parent);
+        for (var child : fxObject.transform().children()) {
+            if (child.sceneObject() instanceof IFXObject) {
+                deepCopyFXObject((IFXObject) child.sceneObject(), copied.transform());
+            }
+        }
+        return copied;
     }
 
     private class ChildrenContainer extends WidgetGroup {
