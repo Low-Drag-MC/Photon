@@ -121,6 +121,7 @@ public class FXProject implements IProject {
                                 try {
                                     var tag = new CompoundTag();
                                     tag.put("fx", fx.serializeNBT());
+                                    tag.putInt("_version", VERSION);
                                     NbtIo.writeCompressed(tag, r);
                                 } catch (IOException ignored) {}
                             }
