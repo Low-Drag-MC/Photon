@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.fx;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.util.Mth;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -25,10 +26,10 @@ public interface IFXEffect extends IEffect {
     }
 
     /**
-     * set effect rotation
+     * set effect rotation in degree
      */
     default void setRotation(double x, double y, double z) {
-        setRotation(new Quaternionf().rotationXYZ((float) x, (float) y, (float) z));
+        setRotation(new Quaternionf().rotationXYZ((float) Math.toRadians(x), (float) Math.toRadians(y), (float) Math.toRadians(z)));
     }
 
     /**

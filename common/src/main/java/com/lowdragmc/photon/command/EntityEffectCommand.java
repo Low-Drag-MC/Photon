@@ -122,7 +122,7 @@ public class EntityEffectCommand extends EffectCommand {
                 if (entity != null) {
                     var effect = new EntityEffect(fx, level, entity);
                     effect.setOffset(offset.x, offset.y, offset.z);
-                    effect.setRotation(rotation.x, offset.y, offset.z);
+                    effect.setRotation(rotation.x, rotation.y, rotation.z);
                     effect.setScale(scale.x, scale.y, scale.z);
                     effect.setDelay(delay);
                     effect.setForcedDeath(forcedDeath);
