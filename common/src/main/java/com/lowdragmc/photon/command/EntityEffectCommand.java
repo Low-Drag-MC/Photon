@@ -52,13 +52,13 @@ public class EntityEffectCommand extends EffectCommand {
                                                         .then(Commands.argument("force death", BoolArgumentType.bool())
                                                                 .executes(c -> execute(c, true, true, true, true, true, false))
                                                                 .then(Commands.argument("allow multi", BoolArgumentType.bool())
-                                                                        .executes(c -> execute(c, true, true, true, true, false, true))))))
+                                                                        .executes(c -> execute(c, true, true, true, true, true, true))))))
                                         .then(Commands.argument("delay", IntegerArgumentType.integer(0))
                                                 .executes(c -> execute(c, true, true, false, true, false, false))
                                                 .then(Commands.argument("force death", BoolArgumentType.bool())
                                                         .executes(c -> execute(c, true, true, false, true, true, false))
                                                         .then(Commands.argument("allow multi", BoolArgumentType.bool())
-                                                                .executes(c -> execute(c, true, true, false, true, false, true))))))));
+                                                                .executes(c -> execute(c, true, true, false, true, true, true))))))));
     }
 
     private static int execute(CommandContext<CommandSourceStack> context,

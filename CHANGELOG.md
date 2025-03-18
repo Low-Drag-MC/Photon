@@ -1,3 +1,3 @@
 ## ChangeLog
 
-* Fixed incorrect rotation
+* Fixed entity fx force death doesn't work
