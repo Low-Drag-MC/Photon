@@ -5,7 +5,6 @@ import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
-import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
@@ -54,10 +53,8 @@ public class BeamEmitter extends Emitter {
     }
 
     @Override
-    public IParticleEmitter copy(boolean deep) {
-        IParticleEmitter copied = deep ? (IParticleEmitter) super.copy(true) : new BeamEmitter(config);
-        copied.setName(name);
-        return copied;
+    public BeamEmitter shallowCopy() {
+        return new BeamEmitter(config);
     }
 
     @Override

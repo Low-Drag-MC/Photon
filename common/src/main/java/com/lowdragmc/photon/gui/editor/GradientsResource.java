@@ -2,6 +2,7 @@ package com.lowdragmc.photon.gui.editor;
 
 
 import com.lowdragmc.lowdraglib.gui.editor.Icons;
+import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.WrapperConfigurator;
@@ -17,30 +18,38 @@ import com.lowdragmc.lowdraglib.syncdata.ITagSerializable;
 import com.lowdragmc.lowdraglib.utils.GradientColor;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.GradientColorTexture;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGradientColorTexture;
+import com.mojang.datafixers.util.Either;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.Nonnull;
 
+import java.io.File;
+
+import static com.lowdragmc.photon.gui.editor.GradientsResource.RESOURCE_NAME;
+
 /**
  * @author KilaBash
  * @date 2023/5/31
  * @implNote GradientsResource
  */
+@LDLRegister(name = RESOURCE_NAME, group = "resource")
 public class GradientsResource extends Resource<GradientsResource.Gradients> {
+    public final static String RESOURCE_NAME = "gradients";
+
     @Override
     public String name() {
-        return "gradients";
+        return RESOURCE_NAME;
     }
 
     @Override
     public void buildDefault() {
-        data.put("black white", new Gradients(new GradientColor(0xff000000, 0xffffffff)));
-        data.put("gradient", new Gradients(new GradientColor(0x00ffffff, 0xffffffff, 0x00ffffff)));
-        data.put("rainbow", new Gradients(new GradientColor(0xffff0000, 0xffFFA500, 0xffFFFF00, 0xff00ff00, 0xff007FFF, 0xff0000ff, 0xff8B00FF)));
+        addBuiltinResource("black white", new Gradients(new GradientColor(0xff000000, 0xffffffff)));
+        addBuiltinResource("gradient", new Gradients(new GradientColor(0x00ffffff, 0xffffffff, 0x00ffffff)));
+        addBuiltinResource("rainbow", new Gradients(new GradientColor(0xffff0000, 0xffFFA500, 0xffFFFF00, 0xff00ff00, 0xff007FFF, 0xff0000ff, 0xff8B00FF)));
 
-        data.put("random", new Gradients(new GradientColor(0xffffffff, 0xffffffff), new GradientColor(0xff000000, 0xff000000)));
+        addBuiltinResource("random", new Gradients(new GradientColor(0xffffffff, 0xffffffff), new GradientColor(0xff000000, 0xff000000)));
     }
 
     @Nullable
@@ -63,26 +72,15 @@ public class GradientsResource extends Resource<GradientsResource.Gradients> {
         ResourceContainer<Gradients, ImageWidget> container = new ResourceContainer<>(this, panel) {
             @Override
             protected TreeBuilder.Menu getMenu() {
-                var menu = TreeBuilder.Menu.start();
-                if (onEdit != null) {
-                    menu.leaf(Icons.EDIT_FILE, "ldlib.gui.editor.menu.edit", this::editResource);
-                }
-                menu.leaf("ldlib.gui.editor.menu.rename", this::renameResource);
-                menu.crossLine();
-                menu.leaf(Icons.COPY, "ldlib.gui.editor.menu.copy", this::copy);
-                menu.leaf(Icons.PASTE, "ldlib.gui.editor.menu.paste", this::paste);
-                menu.leaf(Icons.ADD_FILE, "add gradient", () -> {
+                return super.getMenu().leaf(Icons.ADD_FILE, "add gradient", () -> {
                     String randomName = genNewFileName();
-                    resource.addResource(randomName, new Gradients());
+                    resource.addBuiltinResource(randomName, new Gradients());
+                    reBuild();
+                }).leaf(Icons.ADD_FILE, "add random gradient", () -> {
+                    String randomName = genNewFileName();
+                    resource.addBuiltinResource(randomName, new Gradients(new GradientColor(), new GradientColor(0xff000000)));
                     reBuild();
                 });
-                menu.leaf(Icons.ADD_FILE, "add random gradient", () -> {
-                    String randomName = genNewFileName();
-                    resource.addResource(randomName, new Gradients(new GradientColor(), new GradientColor(0xff000000)));
-                    reBuild();
-                });
-                menu.leaf(Icons.REMOVE_FILE, "ldlib.gui.editor.menu.remove", this::removeSelectedResource);
-                return menu;
             }
         };
         container.setWidgetSupplier(k -> new ImageWidget(0, 0, 60, 15, getResource(k).isRandomGradient() ? new RandomGradientColorTexture(getResource(k).gradient0, getResource(k).gradient1) : new GradientColorTexture(getResource(k).gradient0)))
@@ -91,7 +89,7 @@ public class GradientsResource extends Resource<GradientsResource.Gradients> {
         return container;
     }
 
-    private void openConfigurator(ResourceContainer<Gradients, ImageWidget> container, String key) {
+    private void openConfigurator(ResourceContainer<Gradients, ImageWidget> container, Either<String, File> key) {
         container.getPanel().getEditor().getConfigPanel().openConfigurator(ConfigPanel.Tab.RESOURCE, new IConfigurable() {
             @Override
             public void buildConfigurator(ConfiguratorGroup father) {

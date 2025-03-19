@@ -21,13 +21,10 @@ import java.util.function.Function;
 @Environment(EnvType.CLIENT)
 @ParametersAreNonnullByDefault
 public abstract class Emitter extends FXObject implements IParticleEmitter {
-
+    // runtime
     @Setter
     @Getter
     protected int delay;
-
-    // runtime
-
     @Nullable
     protected Vector3f previousPosition;
     protected Vector3f velocity = new Vector3f();

@@ -9,6 +9,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailEmitter;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -45,15 +46,13 @@ public class ParticleEmitter extends Emitter {
         this(new ParticleConfig());
     }
 
-    public ParticleEmitter(ParticleConfig config) {
+    protected ParticleEmitter(ParticleConfig config) {
         this.config = config;
     }
 
     @Override
-    public IParticleEmitter copy(boolean deep) {
-        var copied = deep ? (IParticleEmitter) super.copy(true) : new ParticleEmitter(config);
-        copied.setName(name);
-        return copied;
+    public ParticleEmitter shallowCopy() {
+        return new ParticleEmitter(config);
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor;
 
+import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.data.resource.Resource;
 import com.lowdragmc.lowdraglib.gui.editor.ui.ResourcePanel;
 import com.lowdragmc.lowdraglib.gui.editor.ui.resource.ResourceContainer;
@@ -12,15 +13,20 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 
+import static com.lowdragmc.photon.gui.editor.MaterialsResource.RESOURCE_NAME;
+
 /**
  * @author KilaBash
  * @date 2023/5/29
  * @implNote MaterialsResource
  */
+@LDLRegister(name = RESOURCE_NAME, group = "resource")
 public class MaterialsResource extends Resource<IMaterial> {
+    public final static String RESOURCE_NAME = "material";
+
     @Override
     public String name() {
-        return "material";
+        return RESOURCE_NAME;
     }
 
     @Override
@@ -41,20 +47,20 @@ public class MaterialsResource extends Resource<IMaterial> {
         addBuiltinTextureMaterial("ring");
 
         addBuiltinShaderMaterial("circle");
-        data.put("block_texture_sheet", new BlockTextureSheetMaterial());
+        addBuiltinResource("block_texture_sheet", new BlockTextureSheetMaterial());
 
     }
 
     private void addVanillaTextureMaterial(String name) {
-        data.put(name, new TextureMaterial(new ResourceLocation("textures/particle/%s.png".formatted(name))));
+        addBuiltinResource(name, new TextureMaterial(new ResourceLocation("textures/particle/%s.png".formatted(name))));
     }
 
     private void addBuiltinTextureMaterial(String name) {
-        data.put(name, new TextureMaterial(new ResourceLocation("photon:textures/particle/%s.png".formatted(name))));
+        addBuiltinResource(name, new TextureMaterial(new ResourceLocation("photon:textures/particle/%s.png".formatted(name))));
     }
 
     private void addBuiltinShaderMaterial(String name) {
-        data.put(name, new CustomShaderMaterial(new ResourceLocation("photon:%s".formatted(name))));
+        addBuiltinResource(name, new CustomShaderMaterial(new ResourceLocation("photon:%s".formatted(name))));
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.lowdragmc.photon.gui.editor;
 
 import com.lowdragmc.lowdraglib.gui.editor.ColorPattern;
 import com.lowdragmc.lowdraglib.gui.editor.Icons;
+import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.WrapperConfigurator;
@@ -16,6 +17,7 @@ import com.lowdragmc.lowdraglib.gui.widget.Widget;
 import com.lowdragmc.lowdraglib.syncdata.ITagSerializable;
 import com.lowdragmc.lowdraglib.utils.Size;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.*;
+import com.mojang.datafixers.util.Either;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -24,31 +26,39 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.Nonnull;
 
+import java.io.File;
+
+import static com.lowdragmc.photon.gui.editor.CurvesResource.RESOURCE_NAME;
+
+
 /**
  * @author KilaBash
  * @date 2023/5/29
  * @implNote CurveResource
  */
+@LDLRegister(name = RESOURCE_NAME, group = "resource")
 public class CurvesResource extends Resource<CurvesResource.Curves> {
+    public final static String RESOURCE_NAME = "curves";
+
     @Override
     public String name() {
-        return "curves";
+        return RESOURCE_NAME;
     }
 
     @Override
     public void buildDefault() {
-        data.put("middle", new Curves(new ECBCurves()));
+        addBuiltinResource("middle", new Curves(new ECBCurves()));
 
-        data.put("linear up", new Curves(new ECBCurves(0, 0, 0.1f, 0.3f, 0.9f, 0.7f, 1, 1)));
-        data.put("linear down", new Curves(new ECBCurves(0, 1, 0.1f, 0.7f, 0.9f, 0.3f, 1, 0)));
-        data.put("smooth up", new Curves(new ECBCurves(0, 0, 0.1f, 0, 0.9f, 1f, 1, 1)));
-        data.put("smooth down", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 0f, 1, 0)));
-        data.put("concave", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.4f, 0f, 0.5F, 0, 0.5F, 0, 0.6f, 0, 0.9f, 1f, 1, 1)));
-        data.put("convex", new Curves(new ECBCurves(0, 0, 0.1f, 0, 0.4f, 1, 0.5F, 1, 0.5F, 1, 0.6f, 1, 0.9f, 0, 1, 0)));
+        addBuiltinResource("linear up", new Curves(new ECBCurves(0, 0, 0.1f, 0.3f, 0.9f, 0.7f, 1, 1)));
+        addBuiltinResource("linear down", new Curves(new ECBCurves(0, 1, 0.1f, 0.7f, 0.9f, 0.3f, 1, 0)));
+        addBuiltinResource("smooth up", new Curves(new ECBCurves(0, 0, 0.1f, 0, 0.9f, 1f, 1, 1)));
+        addBuiltinResource("smooth down", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 0f, 1, 0)));
+        addBuiltinResource("concave", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.4f, 0f, 0.5F, 0, 0.5F, 0, 0.6f, 0, 0.9f, 1f, 1, 1)));
+        addBuiltinResource("convex", new Curves(new ECBCurves(0, 0, 0.1f, 0, 0.4f, 1, 0.5F, 1, 0.5F, 1, 0.6f, 1, 0.9f, 0, 1, 0)));
 
-        data.put("random full", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 0, 0.1f, 0, 0.9f, 0, 1, 0)));
-        data.put("random up", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 0, 0.1f, 0, 0.9f, 1f, 1, 1)));
-        data.put("random down", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 1, 0.1f, 1, 0.9f, 0f, 1, 0)));
+        addBuiltinResource("random full", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 0, 0.1f, 0, 0.9f, 0, 1, 0)));
+        addBuiltinResource("random up", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 0, 0.1f, 0, 0.9f, 1f, 1, 1)));
+        addBuiltinResource("random down", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 1, 0.1f, 1, 0.9f, 0f, 1, 0)));
     }
 
     @Nullable
@@ -71,26 +81,15 @@ public class CurvesResource extends Resource<CurvesResource.Curves> {
         ResourceContainer<Curves, ImageWidget> container = new ResourceContainer<>(this, panel) {
             @Override
             protected TreeBuilder.Menu getMenu() {
-                var menu = TreeBuilder.Menu.start();
-                if (onEdit != null) {
-                    menu.leaf(Icons.EDIT_FILE, "ldlib.gui.editor.menu.edit", this::editResource);
-                }
-                menu.leaf("ldlib.gui.editor.menu.rename", this::renameResource);
-                menu.crossLine();
-                menu.leaf(Icons.COPY, "ldlib.gui.editor.menu.copy", this::copy);
-                menu.leaf(Icons.PASTE, "ldlib.gui.editor.menu.paste", this::paste);
-                menu.leaf(Icons.ADD_FILE, "add curve", () -> {
+                return super.getMenu().leaf(Icons.ADD_FILE, "add curve", () -> {
                     String randomName = genNewFileName();
-                    resource.addResource(randomName, new Curves());
+                    resource.addBuiltinResource(randomName, new Curves());
+                    reBuild();
+                }).leaf(Icons.ADD_FILE, "add random curve", () -> {
+                    String randomName = genNewFileName();
+                    resource.addBuiltinResource(randomName, new Curves(new ECBCurves(), new ECBCurves(0, 0.2f, 0.1f, 0.2f, 0.9f, 0.2f, 1, 0.2f)));
                     reBuild();
                 });
-                menu.leaf(Icons.ADD_FILE, "add random curve", () -> {
-                    String randomName = genNewFileName();
-                    resource.addResource(randomName, new Curves(new ECBCurves(), new ECBCurves(0, 0.2f, 0.1f, 0.2f, 0.9f, 0.2f, 1, 0.2f)));
-                    reBuild();
-                });
-                menu.leaf(Icons.REMOVE_FILE, "ldlib.gui.editor.menu.remove", this::removeSelectedResource);
-                return menu;
             }
         };
         container.setWidgetSupplier(k -> new ImageWidget(0, 0, 60, 15, new GuiTextureGroup(ColorPattern.T_WHITE.rectTexture(),
@@ -101,7 +100,7 @@ public class CurvesResource extends Resource<CurvesResource.Curves> {
         return container;
     }
 
-    private void openConfigurator(ResourceContainer<Curves, ImageWidget> container, String key) {
+    private void openConfigurator(ResourceContainer<Curves, ImageWidget> container, Either<String, File> key) {
         container.getPanel().getEditor().getConfigPanel().openConfigurator(ConfigPanel.Tab.RESOURCE, new IConfigurable() {
             @Override
             public void buildConfigurator(ConfiguratorGroup father) {

@@ -21,6 +21,8 @@ import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.nbt.CompoundTag;
 
+import java.util.Map;
+
 /**
  * @author KilaBash
  * @date 2023/5/26
@@ -84,11 +86,14 @@ public class Mesh implements IShape {
         if (Editor.INSTANCE != null && Editor.INSTANCE.getCurrentProject() instanceof FXProject project &&
                 project.getResources().resources.get("mesh") instanceof MeshesResource meshesResource) {
             var selector = new SelectorConfigurator<>("mesh", () -> meshData.meshName, name -> {
-                var mesh = meshesResource.getData().get(name);
+                var mesh = meshesResource.getBuiltinResource(name);
+                if (mesh == null) {
+                    mesh = meshesResource.getStaticResource(meshesResource.getStaticResourceFile(name));
+                }
                 if (mesh != null) {
                     meshData.deserializeNBT(mesh.serializeNBT());
                 }
-            }, meshData.meshName, true, meshesResource.getData().keySet().stream().toList(), String::toString);
+            }, meshData.meshName, true, meshesResource.allResources().map(Map.Entry::getKey).map(meshesResource::getResourceName).toList(), String::toString);
             selector.setDraggingConsumer(
                     o -> o instanceof MeshData,
                     o -> selector.getSelector().setButtonBackground(ColorPattern.GREEN.rectTexture().setRadius(5)),

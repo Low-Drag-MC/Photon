@@ -4,7 +4,6 @@ import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.ConfiguratorParser;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
-import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
@@ -53,10 +52,8 @@ public class TrailEmitter extends Emitter {
     }
 
     @Override
-    public IParticleEmitter copy(boolean deep) {
-        var copied = deep ? (IParticleEmitter) super.copy(true) : new TrailEmitter(config);
-        copied.setName(name);
-        return copied;
+    public TrailEmitter shallowCopy() {
+        return new TrailEmitter(config);
     }
 
     @Override

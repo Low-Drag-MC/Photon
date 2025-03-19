@@ -52,6 +52,25 @@ public class FXObject extends Particle implements IFXObject {
     }
 
     @Override
+    public IFXObject deepCopy() {
+        var data = serializeNBT();
+        if (data.contains("transform")) {
+            data.getCompound("transform").remove("id");
+        }
+        return IFXObject.deserializeWrapper(data);
+    }
+
+    @Override
+    public final IFXObject copy(boolean deep) {
+        var copied = IFXObject.super.copy(deep);
+        if (!deep) {
+            copied.setName(name);
+            copied.copyTransformFrom(this);
+        }
+        return copied;
+    }
+
+    @Override
     public final void setSceneInternal(IScene scene) {
         this.scene = scene;
     }

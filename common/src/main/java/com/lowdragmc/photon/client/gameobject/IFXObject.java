@@ -87,19 +87,19 @@ public interface IFXObject extends ISceneObject, IAutoPersistedSerializable, ICo
     /**
      * copy this object
      */
-    default IFXObject copy() {
-        return copy(true);
+    default IFXObject deepCopy() {
+        return deserializeWrapper(serializeNBT());
+    }
+
+    default IFXObject shallowCopy() {
+        return deepCopy();
     }
 
     /**
      * deep copy this object
      */
     default IFXObject copy(boolean deep) {
-        var data = serializeNBT();
-        if (data.contains("transform")) {
-            data.getCompound("transform").remove("id");
-        }
-        return deserializeWrapper(data);
+        return deep ? deepCopy() : shallowCopy();
     }
 
     /**
@@ -150,4 +150,20 @@ public interface IFXObject extends ISceneObject, IAutoPersistedSerializable, ICo
         transform().scale(newScale);
     }
 
+    default void copyTransformFrom(IFXObject fxObject) {
+        copyTransformFrom(fxObject, true, true);
+    }
+
+    default void copyTransformFrom(IFXObject fxObject, boolean local, boolean copyParent) {
+        if (local) {
+            transform().localPosition(fxObject.transform().localPosition());
+            transform().localRotation(fxObject.transform().localRotation());
+            transform().localScale(fxObject.transform().localScale());
+        } else {
+            transform().set(fxObject.transform());
+        }
+        if (copyParent) {
+            transform().parent(fxObject.transform().parent());
+        }
+    }
 }

@@ -159,6 +159,11 @@
   "photon.gui.editor.fx.particle_panel.main": "Main FX",
   "photon.gui.editor.fx.particle_panel.sub": "%s (sub fx)",
   "photon.gui.editor.fx.particle_panel.add": "Add a new sub fx",
-  "photon.gui.editor.fx.particle_panel.fx_object_list": "FX Object List"
+  "photon.gui.editor.fx.particle_panel.fx_object_list": "FX Object List",
+
+  "curves": "Curves",
+  "gradients": "Gradients",
+  "material": "Material",
+  "mesh": "Mesh"
 
 }

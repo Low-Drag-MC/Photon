@@ -2,6 +2,7 @@ package com.lowdragmc.photon.gui.editor;
 
 import com.lowdragmc.lowdraglib.LDLib;
 import com.lowdragmc.lowdraglib.gui.editor.Icons;
+import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.data.resource.Resource;
 import com.lowdragmc.lowdraglib.gui.editor.ui.ConfigPanel;
 import com.lowdragmc.lowdraglib.gui.editor.ui.Editor;
@@ -14,15 +15,20 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 
+import static com.lowdragmc.photon.gui.editor.MeshesResource.RESOURCE_NAME;
+
 /**
  * @author KilaBash
  * @date 2023/5/29
  * @implNote MeshesResource
  */
+@LDLRegister(name = RESOURCE_NAME, group = "resource")
 public class MeshesResource extends Resource<MeshData> {
+    public final static String RESOURCE_NAME = "mesh";
+
     @Override
     public String name() {
-        return "mesh";
+        return RESOURCE_NAME;
     }
 
     @Override
@@ -33,7 +39,7 @@ public class MeshesResource extends Resource<MeshData> {
     public void addModelMesh(String model) {
         var mesh = new MeshData(LDLib.location("block/" + model));
         mesh.meshName = model;
-        data.put(model, mesh);
+        addBuiltinResource(model, mesh);
     }
 
     @Override
@@ -41,21 +47,25 @@ public class MeshesResource extends Resource<MeshData> {
         ResourceContainer<MeshData, ImageWidget> container = new ResourceContainer<>(this, panel) {
             protected void renameResource() {
                 if (selected != null) {
-                    DialogWidget.showStringEditorDialog(Editor.INSTANCE, LocalizationUtils.format("ldlib.gui.editor.tips.rename") + " " + LocalizationUtils.format(resource.name()), selected, s -> {
-                        if (resource.hasResource(s)) {
-                            return false;
-                        }
-                        if (renamePredicate != null) {
-                            return renamePredicate.test(s);
-                        }
-                        return true;
-                    }, s -> {
-                        if (s == null) return;
-                        var stored =  resource.removeResource(selected);
-                        stored.meshName = s;
-                        resource.addResource(s, stored);
-                        reBuild();
-                    });
+                    DialogWidget.showStringEditorDialog(Editor.INSTANCE, LocalizationUtils.format("ldlib.gui.editor.tips.rename") + " " + LocalizationUtils.format(resource.name()),
+                            resource.getResourceName(selected), s -> {
+                                if (!selected.map(l -> resource.hasBuiltinResource(s), r -> resource.hasStaticResource(resource.getStaticResourceFile(s)))) {
+                                    return false;
+                                }
+                                if (renamePredicate != null) {
+                                    return renamePredicate.test(s);
+                                }
+                                return true;
+                            }, s -> {
+                                if (s == null) return;
+                                var stored = resource.removeResource(selected);
+                                if (stored != null) {
+                                    stored.meshName = s;
+                                    var name = selected.mapBoth(l -> s, r -> resource.getStaticResourceFile(s));
+                                    resource.addResource(name, stored);
+                                }
+                                reBuild();
+                            });
                 }
             }
         };

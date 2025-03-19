@@ -12,6 +12,7 @@ import com.lowdragmc.lowdraglib.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget;
 import com.lowdragmc.lowdraglib.gui.widget.DialogWidget;
 import com.lowdragmc.lowdraglib.syncdata.ITagSerializable;
+import com.mojang.datafixers.util.Either;
 import org.joml.Vector3f;
 import lombok.Getter;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -186,9 +187,9 @@ public class MeshData implements ITagSerializable<CompoundTag>, IConfigurable {
     }
 
     private void saveVector3(ListTag list, Vector3f vec) {
-        list.add(FloatTag.valueOf((float) vec.x));
-        list.add(FloatTag.valueOf((float) vec.y));
-        list.add(FloatTag.valueOf((float) vec.z));
+        list.add(FloatTag.valueOf(vec.x));
+        list.add(FloatTag.valueOf(vec.y));
+        list.add(FloatTag.valueOf(vec.z));
     }
 
     private Vector3f loadVector3(ListTag list, int index) {

@@ -25,23 +25,17 @@ public class MaterialsResourceContainer extends ResourceContainer<IMaterial, Ima
 
     @Override
     protected TreeBuilder.Menu getMenu() {
-        return TreeBuilder.Menu.start()
-                .leaf(Icons.EDIT_FILE, "ldlib.gui.editor.menu.edit", this::editResource)
-                .leaf("ldlib.gui.editor.menu.rename", this::renameResource)
-                .crossLine()
-                .leaf(Icons.COPY, "ldlib.gui.editor.menu.copy", this::copy)
-                .leaf(Icons.PASTE, "ldlib.gui.editor.menu.paste", this::paste)
+        return super.getMenu()
                 .branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.add_resource", menu -> {
                     for (var clazz : IMaterial.MATERIALS) {
                         try {
                             IMaterial icon = clazz.getConstructor().newInstance();
                             menu.leaf(icon.preview(), clazz.getSimpleName(), () -> {
-                                resource.addResource(genNewFileName(), icon);
+                                resource.addBuiltinResource(genNewFileName(), icon);
                                 reBuild();
                             });
                         } catch (Throwable ignored) {}
                     }
-                })
-                .leaf(Icons.REMOVE_FILE, "ldlib.gui.editor.menu.remove", this::removeSelectedResource);
+                });
     }
 }
