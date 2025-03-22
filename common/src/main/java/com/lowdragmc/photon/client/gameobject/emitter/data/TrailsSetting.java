@@ -77,6 +77,7 @@ public class TrailsSetting extends ToggleGroup implements IPersistedSerializable
 
     public TrailsSetting() {
         config.setWidthOverTrail(NumberFunction.constant(0.5f));
+        config.setParallelRendering(true);
     }
 
     @Override

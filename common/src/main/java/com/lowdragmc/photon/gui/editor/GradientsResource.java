@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.gui.editor;
 
 
+import com.lowdragmc.lowdraglib.LDLib;
 import com.lowdragmc.lowdraglib.gui.editor.Icons;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
@@ -37,6 +38,10 @@ import static com.lowdragmc.photon.gui.editor.GradientsResource.RESOURCE_NAME;
 @LDLRegister(name = RESOURCE_NAME, group = "resource")
 public class GradientsResource extends Resource<GradientsResource.Gradients> {
     public final static String RESOURCE_NAME = "gradients";
+
+    public GradientsResource() {
+        super(new File(LDLib.getLDLibDir(), "assets/resources/gradients"));
+    }
 
     @Override
     public String name() {

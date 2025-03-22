@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor;
 
+import com.lowdragmc.lowdraglib.LDLib;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib.gui.editor.data.resource.Resource;
 import com.lowdragmc.lowdraglib.gui.editor.ui.ResourcePanel;
@@ -13,6 +14,8 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 
+import java.io.File;
+
 import static com.lowdragmc.photon.gui.editor.MaterialsResource.RESOURCE_NAME;
 
 /**
@@ -23,6 +26,10 @@ import static com.lowdragmc.photon.gui.editor.MaterialsResource.RESOURCE_NAME;
 @LDLRegister(name = RESOURCE_NAME, group = "resource")
 public class MaterialsResource extends Resource<IMaterial> {
     public final static String RESOURCE_NAME = "material";
+
+    public MaterialsResource() {
+        super(new File(LDLib.getLDLibDir(), "assets/resources/material"));
+    }
 
     @Override
     public String name() {

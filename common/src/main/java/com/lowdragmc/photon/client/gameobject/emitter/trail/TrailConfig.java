@@ -63,7 +63,8 @@ public class TrailConfig implements IPersistedSerializable {
     protected boolean calculateSmoothByShader = false;
     @Setter
     @Getter
-    @Configurable(tips = {"photon.emitter.config.parallelRendering.0",
+    @Configurable(tips = {
+            "photon.emitter.config.parallelRendering.0",
             "photon.emitter.config.parallelRendering.1"})
     protected boolean parallelRendering = false;
     @Setter
@@ -134,7 +135,7 @@ public class TrailConfig implements IPersistedSerializable {
 
         @Override
         public void begin(@Nonnull BufferBuilder bufferBuilder) {
-            bufferBuilder.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.PARTICLE);
+            bufferBuilder.begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.PARTICLE);
         }
 
         @Override

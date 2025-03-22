@@ -1,7 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
-import com.lowdragmc.lowdraglib.utils.DummyWorld;
 import com.lowdragmc.lowdraglib.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
@@ -18,7 +17,6 @@ import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.core.BlockPos;
@@ -128,7 +126,6 @@ public class TileParticle implements IParticle {
         this.initialRotation = config.getStartRotation().get(randomSource, emitterT).mul(Mth.TWO_PI / 360);
         var color = config.getStartColor().get(randomSource, emitterT).intValue();
         this.initialColor = new Vector4f(ColorUtils.red(color), ColorUtils.green(color), ColorUtils.blue(color), ColorUtils.alpha(color));
-        this.light = getLightColor();
         setSize(initialSize);
         setRotation(initialRotation);
         setColor(initialColor);
@@ -249,6 +246,9 @@ public class TileParticle implements IParticle {
     }
 
     public Vector3f getLocalPos(float partialTicks) {
+        if (isRemoved) {
+            return new Vector3f(localX, localY, localZ);
+        }
         var pos = new Vector3f(Mth.lerp(partialTicks, this.localXo, this.localX),
                 Mth.lerp(partialTicks, this.localYo, this.localY),
                 Mth.lerp(partialTicks, this.localZo, this.localZ));
@@ -328,11 +328,7 @@ u     */
     public int getLightColor() {
         var pos = getWorldPos();
         var blockPos = new BlockPos((int) pos.x, (int) pos.y, (int) pos.z);
-        var level = emitter.getLevel();
-        if (level != null && (level.hasChunkAt(blockPos) || level instanceof DummyWorld)) {
-            return LevelRenderer.getLightColor(level, blockPos);
-        }
-        return 0;
+        return emitter.getLightColor(blockPos);
     }
 
     /**
@@ -574,6 +570,7 @@ u     */
     }
 
     protected void updateLight() {
+        if (config.lights.isEnable() || config.renderer.isBloomEffect()) return;
         light = getLightColor();
     }
 

@@ -5,6 +5,7 @@ import com.lowdragmc.photon.client.fx.FXProjectEffect;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.AABB;
 import org.joml.Vector3f;
@@ -66,5 +67,7 @@ public interface IParticleEmitter extends IFXObject, IConfigurable {
     float getMemRandom(Object object, Function<RandomSource, Float> randomFunc);
 
     RandomSource getRandomSource();
+
+    int getLightColor(BlockPos pos);
 
 }

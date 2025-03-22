@@ -15,6 +15,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 
+import java.io.File;
+
 import static com.lowdragmc.photon.gui.editor.MeshesResource.RESOURCE_NAME;
 
 /**
@@ -25,6 +27,10 @@ import static com.lowdragmc.photon.gui.editor.MeshesResource.RESOURCE_NAME;
 @LDLRegister(name = RESOURCE_NAME, group = "resource")
 public class MeshesResource extends Resource<MeshData> {
     public final static String RESOURCE_NAME = "mesh";
+
+    public MeshesResource() {
+        super(new File(LDLib.getLDLibDir(), "assets/resources/mesh"));
+    }
 
     @Override
     public String name() {

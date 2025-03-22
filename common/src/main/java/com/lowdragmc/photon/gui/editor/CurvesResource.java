@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor;
 
+import com.lowdragmc.lowdraglib.LDLib;
 import com.lowdragmc.lowdraglib.gui.editor.ColorPattern;
 import com.lowdragmc.lowdraglib.gui.editor.Icons;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.LDLRegister;
@@ -39,6 +40,10 @@ import static com.lowdragmc.photon.gui.editor.CurvesResource.RESOURCE_NAME;
 @LDLRegister(name = RESOURCE_NAME, group = "resource")
 public class CurvesResource extends Resource<CurvesResource.Curves> {
     public final static String RESOURCE_NAME = "curves";
+
+    public CurvesResource() {
+        super(new File(LDLib.getLDLibDir(), "assets/resources/curves"));
+    }
 
     @Override
     public String name() {

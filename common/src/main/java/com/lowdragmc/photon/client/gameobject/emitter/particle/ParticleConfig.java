@@ -88,8 +88,10 @@ public class ParticleConfig implements IPersistedSerializable {
     protected boolean parallelUpdate = false;
     @Setter
     @Getter
-    @Configurable(tips = {"photon.emitter.config.parallelRendering.0",
-            "photon.emitter.config.parallelRendering.1"})
+    @Configurable(tips = {
+            "photon.emitter.config.parallelRendering.0",
+            "photon.emitter.config.parallelRendering.1",
+            "photon.emitter.config.parallelRendering.2"})
     protected boolean parallelRendering = false;
     @Configurable(name = "Emission", subConfigurable = true, tips = "photon.emitter.config.emission")
     public final EmissionSetting emission = new EmissionSetting();

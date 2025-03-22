@@ -87,10 +87,12 @@ public class ParticleInfoView extends FloatViewWidget {
         }, 3, content.widgets.size() * 15 + 3, 194, 10,
                 new ProgressTexture(ColorPattern.T_GRAY.rectTexture().setRadius(5).setRadius(5),
                         ColorPattern.GREEN.rectTexture().setRadius(5).setRadius(5))));
-        // fps
-        addInformation("FPS", () -> MinecraftAccessor.getFps() + " fps");
         // cpu time
         addInformation("photon.gui.editor.fx_info.cpu_time", () ->  "%d us".formatted(panel.scene.getParticleManager().getCPUTime()));
+        // frame time
+        addInformation("photon.gui.editor.fx_info.frame_time", () ->  "%d us".formatted(panel.scene.getParticleManager().getFrameTime()));
+        // fps
+        addInformation("FPS", () -> MinecraftAccessor.getFps() + " fps");
         // draggable
         var group = addToggle("photon.gui.editor.fx_info.draggable", panel.project::isDraggable, panel.project::setDraggable);
         var textWidth = Minecraft.getInstance().font.width(LocalizationUtils.format("photon.gui.editor.fx_info.draggable")) + 6;

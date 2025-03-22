@@ -32,6 +32,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     protected float t;
     @Getter
     protected ConcurrentHashMap<Object, Float> memRandom = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<BlockPos, Integer> lightCache = new ConcurrentHashMap<>();
 
     protected Emitter() {
         this.friction = 1;
@@ -44,7 +45,6 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     @Override
     public final void tick() {
         super.tick();
-
         if (!isAlive()) {
             return;
         }
@@ -59,6 +59,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         }
         previousPosition = transform.position();
 
+        lightCache.clear();
         updateOrigin();
         update();
     }
@@ -137,6 +138,17 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     public boolean isAlive() {
         if (!removed || getParticleAmount() != 0) return true;
         return super.isAlive();
+    }
+
+    @Override
+    public int getLightColor(BlockPos pos) {
+        return lightCache.computeIfAbsent(pos, p -> {
+            var level = getLevel();
+            if (level != null && (level.hasChunkAt(p) || level instanceof DummyWorld)) {
+                return LevelRenderer.getLightColor(level, p);
+            }
+            return 0;
+        });
     }
 
     public int getAge() {

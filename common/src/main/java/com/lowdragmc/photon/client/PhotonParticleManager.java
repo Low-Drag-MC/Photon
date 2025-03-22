@@ -18,13 +18,18 @@ import java.util.Arrays;
 @Environment(EnvType.CLIENT)
 public class PhotonParticleManager extends ParticleManager {
 
-    private final long[] lastCPUTimes = new long[20];
+    private final long[] lastCPUTimes = new long[60];
     private int tickIndex = 0;
+
+    private final long[] lastFrameTimes = new long[60];
+    private int frameIndex = 0;
 
     @Override
     public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks) {
+        val startTime = System.nanoTime();
         super.render(pMatrixStack, pActiveRenderInfo, pPartialTicks);
         PhotonParticleRenderType.finishRender();
+        lastFrameTimes[frameIndex] = System.nanoTime() - startTime;
     }
 
     @Override
@@ -37,6 +42,10 @@ public class PhotonParticleManager extends ParticleManager {
 
     public long getCPUTime() {
         return (long) Arrays.stream(lastCPUTimes).average().orElse(0)  / 1000;
+    }
+
+    public long getFrameTime() {
+        return (long) Arrays.stream(lastFrameTimes).average().orElse(0) / 1000;
     }
 
 }

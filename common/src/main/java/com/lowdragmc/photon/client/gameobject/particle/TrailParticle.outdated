@@ -26,7 +26,6 @@ import org.lwjgl.opengl.GL43;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.nio.FloatBuffer;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -49,6 +48,50 @@ public class TrailParticle implements IParticle {
     public enum UVMode {
         Stretch,
         Tile
+    }
+
+    public static class Tail {
+        public float lifeTime;
+        public Vector3f position;
+        public Vector4f color;
+        public float width;
+        public Tail previous;
+        public Tail next;
+        public float t;
+
+        public Tail(Vector3f position, float lifeTime) {
+            this.position = position;
+            this.lifeTime = lifeTime;
+            this.color = new Vector4f(1, 1, 1, 1);
+            this.width = 0.2f;
+        }
+
+        public Tail(Vector3f position, Tail previous, Tail next, float t) {
+            this.position = position;
+            this.previous = previous;
+            this.next = next;
+            this.t = t;
+            updateData();
+        }
+
+        public void updateData() {
+            if (previous == null) {
+                return;
+            }
+            if (next == null ) {
+                this.color = new Vector4f(previous.color);
+                this.width = previous.width;
+                this.lifeTime = previous.lifeTime;
+            } else {
+                this.color = new Vector4f(previous.color).lerp(next.color, t);
+                this.width = Mth.lerp(t, previous.width, next.width);
+                this.lifeTime = Mth.lerp(t, previous.lifeTime, next.lifeTime);
+            }
+        }
+
+        public float distanceSquared(Tail next) {
+            return position.distanceSquared(next.position);
+        }
     }
     /**
      * Basic data
@@ -88,9 +131,9 @@ public class TrailParticle implements IParticle {
     protected Float2ObjectFunction<Vector4f> colorMultiplier;
     //runtime
     @Getter
-    protected TailArray rawTails = new TailArray();
+    protected LinkedList<Tail> rawTails = new LinkedList<>();
     @Getter
-    protected TailArray tails = new TailArray();
+    protected LinkedList<Tail> tails = new LinkedList<>();
     @Getter
     protected float t;
     protected TrailConfig config;
@@ -237,88 +280,44 @@ public class TrailParticle implements IParticle {
 
     protected boolean updateTails() {
         var tailChanged = false;
-
-        for (int i = 0; i < rawTails.size(); i++) {
-            rawTails.lifeTime[i] -= 1;
-        }
-
-        TailArray newRawTails = new TailArray();
-        for (int i = 0; i < rawTails.size(); i++) {
-            if (rawTails.lifeTime[i] > 0) {
-                rawTails.copyTailTo(newRawTails, i);
-            } else {
+        var iterator = rawTails.iterator();
+        while (iterator.hasNext()) {
+            var tail = iterator.next();
+            tail.lifeTime--;
+            if (tail.lifeTime <= 0) {
+                iterator.remove();
                 tailChanged = true;
             }
         }
-        rawTails = newRawTails;
 
+        var tail = getHeadPosition();
         if (!isRemoved()) {
-            var headPos = getHeadPosition();
-            var shouldAdd = true;
-            if (!rawTails.isEmpty()) {
-                Vector3f last = rawTails.getPosition(rawTails.size() - 1);
-                if (headPos.distanceSquared(last) < config.getMinVertexDistance() * config.getMinVertexDistance()) {
+            boolean shouldAdd = true;
+            var squareDist = config.getMinVertexDistance() * config.getMinVertexDistance();
+            var last = rawTails.peekLast();
+            if (last != null && squareDist > 0) {
+                var distLast = new Vector3f(tail).sub(last.position).lengthSquared();
+                if (distLast < squareDist) {
                     shouldAdd = false;
                 }
             }
             if (shouldAdd) {
-                Tail newTail = new Tail(headPos, lifetimeSupplier.get());
-                rawTails.add(newTail);
+                this.rawTails.add(new Tail(tail, lifetimeSupplier.get()));
                 tailChanged = true;
             }
         }
         return tailChanged;
     }
 
-    public TailArray generateSmoothPath(TailArray vertices, float distance) {
+
+    public LinkedList<Tail> generateSmoothPath(LinkedList<Tail> vertices, float distance) {
         if (vertices.size() <= 2) {
             return vertices;
         }
 
-        TailArray smoothPath = new TailArray();
-        float minDistanceSq = Math.max(distance, 0.05f) * Math.max(distance, 0.05f);
-        Vector3f prevDir = null;
-
-        for (int i = 0; i < vertices.size() - 1; i++) {
-            Vector3f curr = vertices.getPosition(i);
-            Vector3f next = vertices.getPosition(i + 1);
-            Vector3f dir = new Vector3f(next).sub(curr).normalize();
-            smoothPath.add(vertices.copyAsTail(i));
-
-            if (prevDir != null && dir.dot(prevDir) > 0.99f) {
-                // skip interpolation if angle is small
-                prevDir = dir;
-                continue;
-            }
-
-            float distSq = curr.distanceSquared(next);
-            if (distSq > minDistanceSq) {
-                int steps = (int) (distSq / minDistanceSq);
-                for (int j = 1; j < steps; j++) {
-                    float t = j / (float) steps;
-                    Vector3f interpPos = catmullRomInterpolate(
-                            vertices.getPosition(Math.max(i - 1, 0)),
-                            curr, next,
-                            vertices.getPosition(Math.min(i + 2, vertices.size() - 1)), t);
-                    // build interpolated tail
-                    var interp = new Tail(interpPos, vertices.lifeTime[i]);
-                    interp.color = vertices.getColor(i);
-                    interp.width = vertices.getWidth(i);
-                    smoothPath.add(interp);
-                }
-            }
-            prevDir = dir;
-        }
-        smoothPath.add(vertices.copyAsTail(vertices.size() - 1));
-        return smoothPath;
-    }
-
-    public LinkedList<Tail> generateSmoothPathFromShader(LinkedList<Tail> vertices, float distance) {
-        if (vertices.size() <= 2) {
-            return vertices;
-        }
         var minDistance = Math.max(distance, 0.05f);
         var smoothPath = new LinkedList<Tail>();
+
         if (config.isCalculateSmoothByShader() && Shaders.supportComputeShader() && Shaders.supportSSBO()) {
             var program = PhotonShaders.getCatmullRomProgram();
             var VERTEX_SIZE = Float.BYTES * 9; // 3 position, 4 color, 1 lifetime, 1 width
@@ -389,6 +388,45 @@ public class TrailParticle implements IParticle {
             GL43.glUnmapBuffer(GL43.GL_SHADER_STORAGE_BUFFER);
             return smoothPath;
         }
+
+        var minDistanceSquared = minDistance * minDistance;
+        var slopeThreshold = 0.1f;
+        Vector3f prevDirection = null;
+        for (int i = 0; i < vertices.size() - 1; i++) {
+            var current = vertices.get(i);
+            var next = vertices.get(i + 1);
+            var direction = new Vector3f(next.position).sub(current.position).normalize();
+            smoothPath.add(current);
+
+            var distanceSquared = current.distanceSquared(next);
+            if (distanceSquared > minDistanceSquared) {
+                var skipInterpolation = false;
+                if (prevDirection != null) {
+                    float dotProduct = direction.dot(prevDirection);
+                    float angle = (float) Math.acos(dotProduct);
+
+                    if (Math.abs(angle) < slopeThreshold) {
+                        skipInterpolation = true;
+                    }
+                }
+                if (!skipInterpolation) {
+                    var steps = (int) (distanceSquared / minDistanceSquared);
+                    for (int j = 1; j < steps; j++) {
+                        float t = j / (float) steps;
+                        var interpolatedPosition = catmullRomInterpolate(
+                                vertices.get(Math.max(i - 1, 0)).position,
+                                current.position,
+                                next.position,
+                                vertices.get(Math.min(i + 2, vertices.size() - 1)).position, t);
+                        smoothPath.add(new Tail(interpolatedPosition, current, next, t));
+                    }
+                }
+            }
+
+            prevDirection = direction;
+        }
+
+        smoothPath.add(vertices.get(vertices.size() - 1));
         return smoothPath;
     }
 
@@ -399,6 +437,7 @@ public class TrailParticle implements IParticle {
         result.x = 0.5f * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
         result.y = 0.5f * (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
         result.z = 0.5f * (2 * p1.z + (-p0.z + p2.z) * t + (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * t2 + (-p0.z + 3 * p1.z - 3 * p2.z + p3.z) * t3);
+
         return result;
     }
 
@@ -413,19 +452,13 @@ public class TrailParticle implements IParticle {
     }
 
     protected void updateRawTrailProperties(int tailIndex, int tailsSize) {
-        float t = ((float) tailIndex) / (tailsSize - 1);
-
-        int colorInt = config.getColorOverTrail().get(t, () -> getMemRandom("trails-colorOverTrail")).intValue();
-        rawTails.colorR[tailIndex] = ColorUtils.red(colorInt);
-        rawTails.colorG[tailIndex] = ColorUtils.green(colorInt);
-        rawTails.colorB[tailIndex] = ColorUtils.blue(colorInt);
-        rawTails.colorA[tailIndex] = ColorUtils.alpha(colorInt);
-
-        float widthValue = config.getWidthOverTrail().get(t, () -> getMemRandom("trails-widthOverTrail")).floatValue();
+        var tail = rawTails.get(tailIndex);
+        var color = config.getColorOverTrail().get(((float) tailIndex) / (tailsSize - 1), () -> getMemRandom("trails-colorOverTrail")).intValue();
+        tail.color = new Vector4f(ColorUtils.red(color), ColorUtils.green(color), ColorUtils.blue(color), ColorUtils.alpha(color));
+        tail.width = config.getWidthOverTrail().get(((float) tailIndex) / (tailsSize - 1), () -> getMemRandom("trails-widthOverTrail")).floatValue();
         if (widthMultiplier != null) {
-            widthValue *= widthMultiplier.get();
+            tail.width *= widthMultiplier.get();
         }
-        rawTails.width[tailIndex] = widthValue;
     }
 
     protected void updateLight() {
@@ -433,18 +466,123 @@ public class TrailParticle implements IParticle {
         light = getLightColor();
     }
 
-    public void render(@Nonnull VertexConsumer pBuffer, Camera pRenderInfo, float partialTicks) {
+    public void render(@Nonnull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
         if (delay <= 0 && this.emitter.isVisible()) {
-            tails.renderInternal(pBuffer, partialTicks, pRenderInfo.getPosition().toVector3f(), getRealColor(partialTicks), getRealLight(partialTicks));
+            renderInternal(pBuffer, pRenderInfo, pPartialTicks);
         }
     }
 
-    public Vector4f getUVs(int tailIndex, int size, float partialTicks) {
+    public void renderInternal(@Nonnull VertexConsumer buffer, @Nonnull Camera camera, float partialTicks) {
+        var vec3 = camera.getPosition();
+
+        var headPos = getHeadPosition(partialTicks);
+
+        var cameraPos = vec3.toVector3f();
+
+        var color = getRealColor(partialTicks);
+        var r = color.x();
+        var g = color.y();
+        var b = color.z();
+        var a = color.w();
+
+        int light = getRealLight(partialTicks);
+
+        var pushHead = true;
+        if (tails.peekLast() != null && tails.peekLast().position.equals(headPos)) {
+            pushHead = false;
+        } else {
+            var lastTail = new Tail(headPos, getLifetime());
+            lastTail.previous = tails.peekLast();
+            lastTail.updateData();
+            tails.addLast(lastTail);
+        }
+
+        var iter = tails.iterator();
+        Vector3f lastUp = null, lastDown = null, lastNormal = null;
+        Tail tail = null;
+        float la = a;
+        float lr = r;
+        float lg = g ;
+        float lb = b;
+        int tailIndex = 0;
+        while (iter.hasNext()) {
+            var nextTail = iter.next();
+            if (nextTail.lifeTime - partialTicks <= 0) {
+                continue;
+            }
+            if (tail == null) {
+                tail = nextTail;
+            } else {
+                var vec = new Vector3f(nextTail.position).sub(tail.position);
+                var toTail = new Vector3f(tail.position).sub(cameraPos);
+                var normal = vec.cross(toTail).normalize();
+                if (lastNormal == null) {
+                    lastNormal= normal;
+                }
+
+                var avgNormal = lastNormal.add(normal).div(2);
+                var up = new Vector3f(tail.position).add(new Vector3f(avgNormal).mul(tail.width)).sub(cameraPos);
+                var down = new Vector3f(tail.position).add(new Vector3f(avgNormal).mul(-tail.width)).sub(cameraPos);
+
+                float ta = a * tail.color.w;
+                float tr = r * tail.color.x;
+                float tg = g * tail.color.y;
+                float tb = b * tail.color.z;
+
+                if (lastUp != null) {
+                    var uvs = getUVs(tailIndex - 1, partialTicks);
+                    float u0 = uvs.x(), u1 = uvs.z(), v0 = uvs.y(), v1 = uvs.w();
+                    pushBuffer(buffer, light, lastUp, lastDown, la, lr, lg, lb, u0, u1, v0, v1, ta, tr, tg, tb, up, down);
+                }
+
+                la = ta;
+                lr = tr;
+                lg = tg;
+                lb = tb;
+                lastUp = up;
+                lastDown = down;
+                tail = nextTail;
+                lastNormal = normal;
+                tailIndex++;
+            }
+        }
+
+        // add head
+        if (tail != null && lastNormal != null) {
+            var uvs = getUVs(tailIndex - 1, partialTicks);
+            float u0 = uvs.x(), u1 = uvs.z(), v0 = uvs.y(), v1 = uvs.w();
+
+            float ta = a * tail.color.w;
+            float tr = r * tail.color.x;
+            float tg = g * tail.color.y;
+            float tb = b * tail.color.z;
+
+            var up = new Vector3f(tail.position).add(new Vector3f(lastNormal).mul(tail.width)).sub(cameraPos);
+            var down = new Vector3f(tail.position).add(new Vector3f(lastNormal).mul(-tail.width)).sub(cameraPos);
+            pushBuffer(buffer, light, lastUp, lastDown, la, lr, lg, lb, u0, u1, v0, v1, ta, tr, tg, tb, up, down);
+        }
+
+        if (pushHead) {
+            tails.pollLast();
+        }
+    }
+
+    private void pushBuffer(@Nonnull VertexConsumer buffer, int light, Vector3f lastUp, Vector3f lastDown, float la, float lr, float lg, float lb, float u0, float u1, float v0, float v1, float ta, float tr, float tg, float tb, Vector3f up, Vector3f down) {
+        buffer.vertex(down.x, down.y, down.z).uv(u1, v1).color(tr, tg, tb, ta).uv2(light).endVertex();
+        buffer.vertex(up.x, up.y, up.z).uv(u1, v0).color(tr, tg, tb, ta).uv2(light).endVertex();
+        buffer.vertex(lastUp.x, lastUp.y, lastUp.z).uv(u0, v0).color(lr, lg, lb, la).uv2(light).endVertex();
+
+        buffer.vertex(lastUp.x, lastUp.y, lastUp.z).uv(u0, v0).color(lr, lg, lb, la).uv2(light).endVertex();
+        buffer.vertex(lastDown.x, lastDown.y, lastDown.z).uv(u0, v1).color(lr, lg, lb, la).uv2(light).endVertex();
+        buffer.vertex(down.x, down.y, down.z).uv(u1, v1).color(tr, tg, tb, ta).uv2(light).endVertex();
+    }
+
+    public Vector4f getUVs(int tailIndex, float partialTicks) {
         float u0, u1, v0, v1;
         var uvMode = config.getUvMode();
         if (uvMode == UVMode.Stretch) {
-            u0 = tailIndex / (size - 1f);
-            u1 = (tailIndex + 1f) / (size - 1f);
+            u0 = tailIndex / (tails.size() - 1f);
+            u1 = (tailIndex + 1f) / (tails.size() - 1f);
             v0 = 0;
             v1 = 1;
 
@@ -476,264 +614,4 @@ public class TrailParticle implements IParticle {
         return new Vector4f(u0, v0, u1, v1);
     }
 
-    public class TailArray {
-        private int size = 0;
-        private int capacity = 16;
-
-        // SoA布局
-        private float[] posX = new float[capacity];
-        private float[] posY = new float[capacity];
-        private float[] posZ = new float[capacity];
-
-        private float[] colorR = new float[capacity];
-        private float[] colorG = new float[capacity];
-        private float[] colorB = new float[capacity];
-        private float[] colorA = new float[capacity];
-
-        private float[] width = new float[capacity];
-        private float[] lifeTime = new float[capacity];
-
-        public void clear() {
-            size = 0;
-        }
-
-        public int size() {
-            return size;
-        }
-
-        public boolean isEmpty() {
-            return size == 0;
-        }
-
-        public void add(Tail tail) {
-            ensureCapacity();
-            posX[size] = tail.position.x;
-            posY[size] = tail.position.y;
-            posZ[size] = tail.position.z;
-
-            colorR[size] = tail.color.x;
-            colorG[size] = tail.color.y;
-            colorB[size] = tail.color.z;
-            colorA[size] = tail.color.w;
-
-            width[size] = tail.width;
-            lifeTime[size] = tail.lifeTime;
-            size++;
-        }
-
-        private void removeLast() {
-            if (size > 0) {
-                size--;
-            }
-        }
-
-        public Vector3f getPosition(int index) {
-            return new Vector3f(posX[index], posY[index], posZ[index]);
-        }
-
-        public Vector4f getColor(int index) {
-            return new Vector4f(colorR[index], colorG[index], colorB[index], colorA[index]);
-        }
-
-        public float getWidth(int index) {
-            return width[index];
-        }
-
-        public float getLifeTime(int index) {
-            return lifeTime[index];
-        }
-
-        private void ensureCapacity() {
-            if (size >= capacity) {
-                int newCapacity = capacity * 2;
-                posX = Arrays.copyOf(posX, newCapacity);
-                posY = Arrays.copyOf(posY, newCapacity);
-                posZ = Arrays.copyOf(posZ, newCapacity);
-
-                colorR = Arrays.copyOf(colorR, newCapacity);
-                colorG = Arrays.copyOf(colorG, newCapacity);
-                colorB = Arrays.copyOf(colorB, newCapacity);
-                colorA = Arrays.copyOf(colorA, newCapacity);
-
-                width = Arrays.copyOf(width, newCapacity);
-                lifeTime = Arrays.copyOf(lifeTime, newCapacity);
-
-                capacity = newCapacity;
-            }
-        }
-
-        private void copyTailTo(TailArray dest, int index) {
-            dest.ensureCapacity();
-            dest.posX[dest.size()] = posX[index];
-            dest.posY[dest.size()] = posY[index];
-            dest.posZ[dest.size()] = posZ[index];
-
-            dest.colorR[dest.size()] = colorR[index];
-            dest.colorG[dest.size()] = colorG[index];
-            dest.colorB[dest.size()] = colorB[index];
-            dest.colorA[dest.size()] = colorA[index];
-
-            dest.width[dest.size()] = width[index];
-            dest.lifeTime[dest.size()] = lifeTime[index];
-            dest.size++;
-        }
-
-        private Tail copyAsTail(int index) {
-            Vector3f pos = getPosition(index);
-            Tail tail = new Tail(pos, lifeTime[index]);
-            tail.color = getColor(index);
-            tail.width = width[index];
-            return tail;
-        }
-
-        public void renderInternal(VertexConsumer buffer, float partialTicks, Vector3f cameraPos, Vector4f color, int light) {
-            Vector3f lastNormal = null;
-            Vector3f lastUp = null;
-
-            Vector3f headPos = getHeadPosition(partialTicks);
-            boolean pushHead = true;
-            int tailSize = tails.size();
-            if (tailSize > 0) {
-                Vector3f lastPos = tails.getPosition(tailSize - 1);
-                if (lastPos.equals(headPos)) {
-                    pushHead = false;
-                }
-            }
-
-            if (pushHead) {
-                Tail headTail = new Tail(headPos, 100);
-                headTail.previous = tailSize > 1 ? copyAsTail(tailSize - 1) : null;
-                headTail.updateData();
-                tails.add(headTail);
-            }
-
-            for (int i = 0; i < size - 1; i++) {
-                // skip dead tails
-                if (lifeTime[i] - partialTicks <= 0 || lifeTime[i + 1] - partialTicks <= 0) {
-                    continue;
-                }
-
-                // 基础参数
-                Vector3f tailPos = new Vector3f(posX[i], posY[i], posZ[i]);
-                Vector3f curr = new Vector3f(posX[i], posY[i], posZ[i]);
-                Vector3f next = new Vector3f(posX[i + 1], posY[i + 1], posZ[i + 1]);
-                Vector3f vec = new Vector3f(next).sub(curr);
-                Vector3f toTail = new Vector3f(curr).sub(cameraPos);
-                Vector3f normal = vec.cross(toTail).normalize();
-
-                if (lastNormal == null) lastNormal = normal;
-
-                Vector3f avgNormal = new Vector3f(lastNormal).add(normal).div(2);
-                Vector3f up = new Vector3f(tailPos).add(new Vector3f(avgNormal).mul(width[i])).sub(cameraPos);
-                Vector3f down = new Vector3f(tailPos).add(new Vector3f(avgNormal).mul(-width[i])).sub(cameraPos);
-
-                float ta = color.w() * colorA[i];
-                float tr = color.x() * colorR[i];
-                float tg = color.y() * colorG[i];
-                float tb = color.z() * colorB[i];
-
-                Vector4f uvs = getUVs(i, size, partialTicks);
-                float u0 = uvs.x(), u1 = uvs.z(), v0 = uvs.y(), v1 = uvs.w();
-
-                // 1. push first strip segment
-                if (lastUp == null) {
-                    pushVertex(buffer, light, up, tr, tg, tb, ta, u0, v0);
-                    pushVertex(buffer, light, up, tr, tg, tb, ta, u0, v0);
-                }
-
-                // 2. push next segment
-                pushVertex(buffer, light, up, tr, tg, tb, ta, u0, v0);
-                pushVertex(buffer, light, down, tr, tg, tb, ta, u0, v1);
-
-                // 保留 last
-                lastUp = up;
-                lastNormal = normal;
-            }
-
-            // handle head segment
-            int headIndex = size - 1;
-            // 修改 head segment 处理
-            if (headIndex > 0 && lastNormal != null) {
-                Vector3f head = getPosition(headIndex);
-
-                // 注意这里，直接用 lastNormal
-
-                Vector3f up = new Vector3f(head).add(new Vector3f(lastNormal).mul(width[headIndex])).sub(cameraPos);
-                Vector3f down = new Vector3f(head).add(new Vector3f(lastNormal).mul(-width[headIndex])).sub(cameraPos);
-
-                float ta = color.w() * colorA[headIndex];
-                float tr = color.x() * colorR[headIndex];
-                float tg = color.y() * colorG[headIndex];
-                float tb = color.z() * colorB[headIndex];
-
-                Vector4f uvs = getUVs(headIndex - 1, size, partialTicks);
-                float u0 = uvs.x(), u1 = uvs.z(), v0 = uvs.y(), v1 = uvs.w();
-
-                // 继续用之前的 u1、v0、v1
-                pushVertex(buffer, light, up, tr, tg, tb, ta, u1, v0);
-                pushVertex(buffer, light, down, tr, tg, tb, ta, u1, v1);
-                lastUp = up;
-            }
-
-
-            // 3. **Degenerate triangle 插入**
-            if (lastUp != null) {
-                pushVertex(buffer, light, lastUp, 0, 0, 0, 0, 0, 0); // 重复点1
-                pushVertex(buffer, light, lastUp, 0, 0, 0, 0, 0, 0); // 重复点2
-            }
-
-            if (pushHead) {
-                tails.removeLast(); // 新增函数，见下
-            }
-        }
-
-        private void pushVertex(VertexConsumer buffer, int light, Vector3f pos, float r, float g, float b, float a, float u, float v) {
-            buffer.vertex(pos.x, pos.y, pos.z).uv(u, v).color(r, g, b, a).uv2(light).endVertex();
-        }
-
-    }
-
-    public static class Tail {
-        public float lifeTime;
-        public Vector3f position;
-        public Vector4f color;
-        public float width;
-        public Tail previous;
-        public Tail next;
-        public float t;
-
-        public Tail(Vector3f position, float lifeTime) {
-            this.position = position;
-            this.lifeTime = lifeTime;
-            this.color = new Vector4f(1, 1, 1, 1);
-            this.width = 0.2f;
-        }
-
-        public Tail(Vector3f position, Tail previous, Tail next, float t) {
-            this.position = position;
-            this.previous = previous;
-            this.next = next;
-            this.t = t;
-            updateData();
-        }
-
-        public void updateData() {
-            if (previous == null) {
-                return;
-            }
-            if (next == null ) {
-                this.color = new Vector4f(previous.color);
-                this.width = previous.width;
-                this.lifeTime = previous.lifeTime;
-            } else {
-                this.color = new Vector4f(previous.color).lerp(next.color, t);
-                this.width = Mth.lerp(t, previous.width, next.width);
-                this.lifeTime = Mth.lerp(t, previous.lifeTime, next.lifeTime);
-            }
-        }
-
-        public float distanceSquared(Tail next) {
-            return position.distanceSquared(next.position);
-        }
-    }
 }

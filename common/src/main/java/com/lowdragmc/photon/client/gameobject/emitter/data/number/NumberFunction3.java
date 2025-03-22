@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number;
 
-import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
+import com.google.common.base.Suppliers;
 import org.joml.Vector3f;
 import net.minecraft.util.RandomSource;
 
@@ -12,8 +12,6 @@ import java.util.function.Supplier;
  * @implNote NumberFunction3
  */
 public class NumberFunction3 {
-
-    @Persisted
     public NumberFunction x, y, z;
 
     public NumberFunction3(NumberFunction x, NumberFunction y, NumberFunction z) {
@@ -29,11 +27,20 @@ public class NumberFunction3 {
     }
 
     public Vector3f get(RandomSource randomSource, float t) {
-        return new Vector3f(x.get(randomSource, t).floatValue(), y.get(randomSource, t).floatValue(), z.get(randomSource, t).floatValue());
+        var lerp = Suppliers.memoize(randomSource::nextFloat);
+        return new Vector3f(x.get(t, lerp).floatValue(), y.get(t, lerp).floatValue(), z.get(t, lerp).floatValue());
     }
 
     public Vector3f get(float t, Supplier<Float> lerp) {
         return new Vector3f(x.get(t, lerp).floatValue(), y.get(t, lerp).floatValue(), z.get(t, lerp).floatValue());
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        return obj instanceof NumberFunction3 numberFunction3 &&
+                x.equals(numberFunction3.x) &&
+                y.equals(numberFunction3.y) &&
+                z.equals(numberFunction3.z);
+    }
 }

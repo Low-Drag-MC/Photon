@@ -4,15 +4,15 @@ import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import lombok.Getter;
-import lombok.val;
 import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.GameRenderer;
-import org.apache.commons.lang3.ArrayUtils;
+import net.minecraft.util.Mth;
 
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RecursiveTask;
 
@@ -24,14 +24,21 @@ import java.util.concurrent.RecursiveTask;
 @MethodsReturnNonnullByDefault
 @ParametersAreNonnullByDefault
 public class ParticleQueueRenderType extends PhotonParticleRenderType {
+    private static class BufferBuilderPool {
+        private final ConcurrentLinkedQueue<BufferBuilder> pool = new ConcurrentLinkedQueue<>();
 
-    public static final ParticleQueueRenderType INSTANCE = new ParticleQueueRenderType();
-    private static final BufferBuilder[] BUFFERS = new BufferBuilder[ForkJoinPool.getCommonPoolParallelism() + 1];
-    static {
-        for (int i = 0; i < BUFFERS.length; i++) {
-            BUFFERS[i] = new BufferBuilder(256);
+        public BufferBuilder acquire() {
+            BufferBuilder buffer = pool.poll();
+            return buffer != null ? buffer : new BufferBuilder(256);
+        }
+
+        public void release(BufferBuilder buffer) {
+            pool.offer(buffer);
         }
     }
+
+    public static final ParticleQueueRenderType INSTANCE = new ParticleQueueRenderType();
+    private static final BufferBuilderPool BUILDER_POOL = new BufferBuilderPool();
 
     // runtime
     protected final Map<PhotonParticleRenderType, Queue<IParticle>> particles = new HashMap<>();
@@ -59,16 +66,16 @@ public class ParticleQueueRenderType extends PhotonParticleRenderType {
                 type.prepareStatus();
 
                 if (type.isParallel()) {
-                    val forkJoinPool = ForkJoinPool.commonPool();
-                    val task = forkJoinPool.submit(new ParallelRenderingTask(BUFFERS, type, list.spliterator()));
+                    var forkJoinPool = ForkJoinPool.commonPool();
+                    var maxThreads = ForkJoinPool.getCommonPoolParallelism() + 1;
+                    var task = forkJoinPool.submit(new ParallelRenderingTask(Math.max(list.size() / maxThreads, 64),type, list.spliterator()));
                     try {
                         for (var buffer : task.get()) {
                             type.end(buffer);
+                            BUILDER_POOL.release(buffer);
                         }
                     } catch (Throwable ignored) {
                         ignored.printStackTrace();
-                    } finally {
-                        forkJoinPool.shutdown();
                     }
                 } else {
                     type.begin(builder);
@@ -93,32 +100,29 @@ public class ParticleQueueRenderType extends PhotonParticleRenderType {
     }
 
     class ParallelRenderingTask extends RecursiveTask<List<BufferBuilder>> {
-        private final BufferBuilder[] buffers;
+        private final int threshold; // ForkJoin granularity threshold
         private final PhotonParticleRenderType type;
         private final Spliterator<IParticle> particles;
 
-        public ParallelRenderingTask(BufferBuilder[] buffers, PhotonParticleRenderType type, Spliterator<IParticle> particles) {
-            this.buffers = buffers;
+        public ParallelRenderingTask(int threshold, PhotonParticleRenderType type, Spliterator<IParticle> particles) {
             this.type = type;
             this.particles = particles;
+            this.threshold = threshold;
         }
 
         @Override
         protected List<BufferBuilder> compute() {
-            if(buffers.length > 1){
+            if(particles.estimateSize() > threshold){
                 var split = particles.trySplit();
-                var task1 = new ParallelRenderingTask(ArrayUtils.subarray(buffers, 0, buffers.length / 2), type, particles).fork();
-                if (split != null) {
-                    var task2 = new ParallelRenderingTask(ArrayUtils.subarray(buffers, buffers.length / 2, buffers.length), type, split).fork();
-                    var result = new ArrayList<>(task1.join());
-                    result.addAll(task2.join());
-                    return result;
-                }
-                return task1.join();
+                var task1 = new ParallelRenderingTask(threshold, type, particles).fork();
+                var result = new ArrayList<>(split != null ? new ParallelRenderingTask(threshold, type, split).compute() : List.of());
+                result.addAll(task1.join());
+                return result;
             } else {
-                type.begin(buffers[0]);
-                particles.forEachRemaining(particle -> particle.render(buffers[0], camera, pPartialTicks));
-                return List.of(buffers[0]);
+                BufferBuilder buffer = BUILDER_POOL.acquire();
+                type.begin(buffer);
+                particles.forEachRemaining(p -> p.render(buffer, camera, pPartialTicks));
+                return List.of(buffer);
             }
         }
 

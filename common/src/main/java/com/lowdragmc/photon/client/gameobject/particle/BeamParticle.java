@@ -1,7 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
-import com.lowdragmc.lowdraglib.utils.DummyWorld;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamConfig;
@@ -11,7 +10,6 @@ import lombok.Setter;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
@@ -118,6 +116,7 @@ public class BeamParticle implements IParticle {
     }
 
     protected void updateLight() {
+        if (config.lights.isEnable() || config.renderer.isBloomEffect()) return;
         light = getLightColor();
     }
 
@@ -134,11 +133,7 @@ public class BeamParticle implements IParticle {
     public int getLightColor() {
         var pos = getWorldPos();
         var blockPos = new BlockPos((int) pos.x, (int) pos.y, (int) pos.z);
-        var level = emitter.getLevel();
-        if (level != null && (level.hasChunkAt(blockPos) || level instanceof DummyWorld)) {
-            return LevelRenderer.getLightColor(level, blockPos);
-        }
-        return 0;
+        return emitter.getLightColor(blockPos);
     }
 
     public Vector3f getWorldPos() {
