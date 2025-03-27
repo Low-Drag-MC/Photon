@@ -96,7 +96,7 @@ public class TrailsSetting extends ToggleGroup implements IPersistedSerializable
     public void setup(ParticleEmitter emitter, TileParticle particle) {
         var random = emitter.getRandomSource();
         if (random.nextFloat() < ratio) { // has tail
-            var trail = new TrailParticle(emitter, config, random);
+            var trail = new TrailParticle(emitter, config, emitter.getThreadSafeRandomSource());
             trail.setDelay(particle.getDelay());
             trail.setHeadPositionSupplier(particle::getWorldPos);
             trail.setDieWhenAllTailsRemoved(!dieWithParticles);

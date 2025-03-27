@@ -49,7 +49,7 @@ public class BeamEmitter extends Emitter {
     }
 
     public void init() {
-        beamParticle = new BeamParticle(this, config, getRandomSource());
+        beamParticle = new BeamParticle(this, config, getThreadSafeRandomSource());
     }
 
     @Override

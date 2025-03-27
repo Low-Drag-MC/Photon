@@ -155,13 +155,7 @@ public interface IFXObject extends ISceneObject, IAutoPersistedSerializable, ICo
     }
 
     default void copyTransformFrom(IFXObject fxObject, boolean local, boolean copyParent) {
-        if (local) {
-            transform().localPosition(fxObject.transform().localPosition());
-            transform().localRotation(fxObject.transform().localRotation());
-            transform().localScale(fxObject.transform().localScale());
-        } else {
-            transform().set(fxObject.transform());
-        }
+        transform().set(fxObject.transform(), local);
         if (copyParent) {
             transform().parent(fxObject.transform().parent());
         }

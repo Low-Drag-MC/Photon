@@ -85,7 +85,7 @@ public class ParticleEmitter extends Emitter {
     //*****     particle logic     *****//
     //////////////////////////////////////
     protected TileParticle createNewParticle() {
-        return new TileParticle(this, config, getRandomSource());
+        return new TileParticle(this, config, getThreadSafeRandomSource());
     }
 
     @Override

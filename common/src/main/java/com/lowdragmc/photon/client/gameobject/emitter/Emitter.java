@@ -31,6 +31,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     @Getter
     protected float t;
     @Getter
+    private final RandomSource threadSafeRandomSource = RandomSource.createThreadSafe();
+    @Getter
     protected ConcurrentHashMap<Object, Float> memRandom = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<BlockPos, Integer> lightCache = new ConcurrentHashMap<>();
 

@@ -48,7 +48,7 @@ public class TrailEmitter extends Emitter {
     }
 
     public void init() {
-        trailParticle = new TrailParticle(this, config, getRandomSource());
+        trailParticle = new TrailParticle(this, config, getThreadSafeRandomSource());
     }
 
     @Override
