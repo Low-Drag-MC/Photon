@@ -65,12 +65,7 @@ public class TrailParticle implements IParticle {
     @Setter @Getter
     protected int delay;
     @Setter @Getter
-    protected int age;
-    @Setter @Getter
-    protected int lifetime;
-    @Setter @Getter
     protected boolean isRemoved;
-
     @Getter
     @Setter
     protected Runnable onUpdate;
@@ -91,8 +86,6 @@ public class TrailParticle implements IParticle {
     protected TailArray rawTails = new TailArray();
     @Getter
     protected TailArray tails = new TailArray();
-    @Getter
-    protected float t;
     protected TrailConfig config;
     @Getter
     protected IParticleEmitter emitter;
@@ -110,7 +103,6 @@ public class TrailParticle implements IParticle {
     }
 
     public void setup() {
-        this.setLifetime(-1);
         this.lifetimeSupplier = () -> (float) config.getTime();
         update();
         updateOrigin();
@@ -132,8 +124,13 @@ public class TrailParticle implements IParticle {
     }
 
     @Override
+    public float getT() {
+        return emitter.getT();
+    }
+
+    @Override
     public float getT(float partialTicks) {
-        return t + partialTicks / getLifetime();
+        return emitter.getT(partialTicks);
     }
 
     @Override
@@ -197,15 +194,7 @@ public class TrailParticle implements IParticle {
 
         updateOrigin();
 
-        if (this.age++ >= this.lifetime && lifetime > 0) {
-            setRemoved(true);
-        }
-
         update();
-
-        if (lifetime > 0) {
-            t = 1.0f * age / this.lifetime;
-        }
     }
 
     protected void updateOrigin() {

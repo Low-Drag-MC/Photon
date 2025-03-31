@@ -1,3 +1,3 @@
 ## ChangeLog
 
-* Fixed async thread access of the random source
+* Fixed beam particle and trail particle doesn't have a correct T value.

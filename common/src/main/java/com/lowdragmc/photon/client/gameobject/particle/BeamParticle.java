@@ -42,14 +42,8 @@ public class BeamParticle implements IParticle {
     @Setter @Getter
     protected int delay;
     @Setter @Getter
-    protected int age;
-    @Setter @Getter
-    protected int lifetime;
-    @Setter @Getter
     protected boolean isRemoved;
 
-    @Getter
-    protected float t;
     protected BeamConfig config;
     @Getter
     protected IParticleEmitter emitter;
@@ -66,7 +60,6 @@ public class BeamParticle implements IParticle {
     }
 
     public void setup() {
-        this.setLifetime(-1);
         update();
         updateOrigin();
     }
@@ -80,15 +73,7 @@ public class BeamParticle implements IParticle {
 
         updateOrigin();
 
-        if (this.age++ >= this.lifetime && lifetime > 0) {
-            setRemoved(true);
-        }
-
         update();
-
-        if (lifetime > 0) {
-            t = 1.0f * age / this.lifetime;
-        }
     }
 
     protected void updateOrigin() {
@@ -170,7 +155,7 @@ public class BeamParticle implements IParticle {
         var from = getWorldPos();
         var end = new Vector3f(from).add(emitter.transform().localToWorldMatrix().transformDirection(config.getEnd(), new Vector3f()));
 
-        var offset = - getRealEmit(partialTicks) * (getAge() + partialTicks);
+        var offset = - getRealEmit(partialTicks);
         var uvs = getRealUVs(partialTicks);
         var u0 = uvs.x + offset;
         var u1 = uvs.z + offset;
@@ -207,8 +192,13 @@ public class BeamParticle implements IParticle {
     }
 
     @Override
+    public float getT() {
+        return emitter.getT();
+    }
+
+    @Override
     public float getT(float partialTicks) {
-        return t + partialTicks / getLifetime();
+        return emitter.getT(partialTicks);
     }
 
     @Override
