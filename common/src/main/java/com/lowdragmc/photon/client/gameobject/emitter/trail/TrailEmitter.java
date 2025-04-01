@@ -43,7 +43,6 @@ public class TrailEmitter extends Emitter {
 
     public TrailEmitter(TrailConfig config) {
         this.config = config;
-        this.lifetime = -1;
         init();
     }
 
@@ -87,6 +86,22 @@ public class TrailEmitter extends Emitter {
     //////////////////////////////////////
 
     @Override
+    public int getLifetime() {
+        return config.duration;
+    }
+
+    @Override
+    protected void updateOrigin() {
+        super.updateOrigin();
+        setLifetime(config.duration);
+    }
+
+    @Override
+    public boolean isLooping() {
+        return config.isLooping();
+    }
+
+    @Override
     public int getParticleAmount() {
         return trailParticle.isAlive() ? 1 : 0;
     }
@@ -127,11 +142,6 @@ public class TrailEmitter extends Emitter {
     @Nullable
     public AABB getCullBox(float partialTicks) {
         return config.renderer.getCull().isEnable() ? config.renderer.getCull().getCullAABB(this, partialTicks) : null;
-    }
-
-    @Override
-    public boolean isLooping() {
-        return true;
     }
 
     @Override

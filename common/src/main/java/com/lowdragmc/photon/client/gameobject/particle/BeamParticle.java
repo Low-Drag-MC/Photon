@@ -60,6 +60,7 @@ public class BeamParticle implements IParticle {
     }
 
     public void setup() {
+        this.setDelay(config.getStartDelay());
         update();
         updateOrigin();
     }

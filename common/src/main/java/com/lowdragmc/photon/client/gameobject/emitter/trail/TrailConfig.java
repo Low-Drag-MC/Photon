@@ -41,6 +41,20 @@ import javax.annotation.Nonnull;
 public class TrailConfig implements IPersistedSerializable {
     @Setter
     @Getter
+    @Configurable(tips = "photon.emitter.config.duration")
+    @NumberRange(range = {1, Integer.MAX_VALUE})
+    protected int duration = 100;
+    @Setter
+    @Getter
+    @Configurable(tips = "photon.emitter.config.looping")
+    protected boolean looping = true;
+    @Setter
+    @Getter
+    @Configurable(tips = "photon.emitter.config.startDelay")
+    @NumberRange(range = {0, Integer.MAX_VALUE})
+    protected int startDelay = 0;
+    @Setter
+    @Getter
     @Configurable(tips = "photon.emitter.trail.config.time")
     @NumberRange(range = {0f, Integer.MAX_VALUE})
     protected int time = 20;

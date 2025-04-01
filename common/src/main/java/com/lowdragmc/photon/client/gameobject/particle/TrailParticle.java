@@ -103,6 +103,7 @@ public class TrailParticle implements IParticle {
     }
 
     public void setup() {
+        this.setDelay(config.getStartDelay());
         this.lifetimeSupplier = () -> (float) config.getTime();
         update();
         updateOrigin();
