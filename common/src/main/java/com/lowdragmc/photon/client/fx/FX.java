@@ -2,7 +2,9 @@ package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.lowdraglib.syncdata.ITagSerializable;
 import lombok.Getter;
+import lombok.Setter;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
 
 import javax.annotation.Nullable;
 import java.util.*;
@@ -14,6 +16,9 @@ import java.util.*;
  */
 @Getter
 public class FX implements ITagSerializable<CompoundTag> {
+    @Nullable
+    @Setter
+    private ResourceLocation fxLocation;
     private final FXData mainFX;
     private final Map<String, FXData> subFXs = new LinkedHashMap<>();
 

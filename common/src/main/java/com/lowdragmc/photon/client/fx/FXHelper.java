@@ -38,6 +38,7 @@ public class FXHelper {
                 var tag = NbtIo.readCompressed(inputStream);
                 var version = tag.contains("_version") ? tag.getInt("_version") : 0;
                 var fx = new FX();
+                fx.setFxLocation(fxLocation);
                 fx.deserializeNBT(tag.getCompound("fx"));
                 if (version < 1) {
                     var emitters = new CompoundTag();

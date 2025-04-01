@@ -4,6 +4,8 @@ import com.lowdragmc.lowdraglib.networking.INetworking;
 import com.lowdragmc.lowdraglib.networking.LDLNetworking;
 import com.lowdragmc.photon.command.BlockEffectCommand;
 import com.lowdragmc.photon.command.EntityEffectCommand;
+import com.lowdragmc.photon.command.RemoveBlockEffectCommand;
+import com.lowdragmc.photon.command.RemoveEntityEffectCommand;
 import net.minecraft.resources.ResourceLocation;
 
 public class PhotonNetworking {
@@ -13,6 +15,8 @@ public class PhotonNetworking {
     public static void init() {
         NETWORK.registerS2C(BlockEffectCommand.class);
         NETWORK.registerS2C(EntityEffectCommand.class);
+        NETWORK.registerS2C(RemoveBlockEffectCommand.class);
+        NETWORK.registerC2S(RemoveEntityEffectCommand.class);
     }
 
 }

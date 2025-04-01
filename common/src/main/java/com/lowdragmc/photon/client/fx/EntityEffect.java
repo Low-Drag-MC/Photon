@@ -7,10 +7,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import org.joml.Vector3f;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+
 /**
  * @author KilaBash
  * @date 2023/6/5
@@ -32,6 +30,9 @@ public class EntityEffect extends FXEffect {
             if (!entity.isAlive()) {
                 runtime.destroy(forcedDeath);
                 CACHE.computeIfAbsent(entity, p -> new ArrayList<>()).remove(this);
+                if (CACHE.get(entity).isEmpty()) {
+                    CACHE.remove(entity);
+                }
             }
         }
     }
@@ -58,7 +59,7 @@ public class EntityEffect extends FXEffect {
                     iter.remove();
                     removed = true;
                 }
-                if (effect.fx.equals(fx) && !removed) {
+                if ((effect.fx.equals(fx) || Objects.equals(effect.fx.getFxLocation(), fx.getFxLocation())) && !removed) {
                     return;
                 }
             }

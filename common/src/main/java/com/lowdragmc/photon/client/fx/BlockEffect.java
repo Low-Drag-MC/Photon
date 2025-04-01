@@ -52,7 +52,7 @@ public class BlockEffect extends FXEffect {
                     iter.remove();
                     removed = true;
                 }
-                if (effect.fx.equals(fx) && !removed) {
+                if ((effect.fx.equals(fx) || Objects.equals(effect.fx.getFxLocation(), fx.getFxLocation())) && !removed) {
                     return;
                 }
             }
