@@ -13,6 +13,12 @@ Github: https://github.com/Low-Drag-MC/Photon
 
 Video: https://youtu.be/rdB0qVXRgaY
 
+CurseForge: https://www.curseforge.com/minecraft/mc-mods/photon
+
+Modrinth: https://modrinth.com/mod/photon-editor
+
+QQ: 933426877
+
 
 
 There will be video tutorials in details in the future.
