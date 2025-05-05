@@ -5,6 +5,8 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
+import org.joml.Math;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.*;
@@ -16,12 +18,20 @@ import java.util.*;
  */
 @Environment(EnvType.CLIENT)
 public class EntityEffect extends FXEffect {
+    public enum AutoRotate {
+        NONE,
+        FORWARD,
+        LOOK,
+        XROT,
+    }
     public static Map<Entity, List<EntityEffect>> CACHE = new HashMap<>();
     public final Entity entity;
+    public final AutoRotate autoRotate;
 
-    public EntityEffect(FX fx, Level level, Entity entity) {
+    public EntityEffect(FX fx, Level level, Entity entity, AutoRotate autoRotate) {
         super(fx, level);
         this.entity = entity;
+        this.autoRotate = autoRotate;
     }
 
     @Override
@@ -42,6 +52,36 @@ public class EntityEffect extends FXEffect {
         if (runtime != null && fxObject == runtime.root) {
             var position = entity.getPosition(partialTicks);
             runtime.root.updatePos(new Vector3f((float) (position.x + offset.x), (float) (position.y + offset.y), (float) (position.z + offset.z)));
+            if (autoRotate != AutoRotate.NONE) {
+                switch (autoRotate) {
+                    case FORWARD -> {
+                        var forward = entity.getForward();
+                        var newRotation = new Quaternionf(rotation).rotateXYZ(
+                                0,
+                                (float) Math.atan2(-forward.z, forward.x),
+                                (float) forward.y
+                        );
+                        runtime.root.updateRotation(newRotation);
+                    }
+                    case LOOK -> {
+                        var lookAngles = entity.getLookAngle();
+                        var newRotation = new Quaternionf(rotation).rotateXYZ(
+                                0,
+                                (float) Math.atan2(-lookAngles.z, lookAngles.x),
+                                (float) lookAngles.y
+                        );
+                        runtime.root.updateRotation(newRotation);
+                    }
+                    case XROT -> {
+                        var newRotation = new Quaternionf(rotation).rotateXYZ(
+                                0,
+                                Math.toRadians(-90 - entity.getVisualRotationYInDegrees()),
+                                0
+                        );
+                        runtime.root.updateRotation(newRotation);
+                    }
+                }
+            }
         }
     }
 

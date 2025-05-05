@@ -3,6 +3,7 @@ package com.lowdragmc.photon.forge;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonCommonProxy;
 import com.lowdragmc.photon.ServerCommands;
+import com.lowdragmc.photon.command.EntityEffectCommand;
 import com.lowdragmc.photon.command.FxLocationArgument;
 import net.minecraft.commands.synchronization.ArgumentTypeInfo;
 import net.minecraft.commands.synchronization.ArgumentTypeInfos;
@@ -20,6 +21,7 @@ import net.minecraftforge.registries.RegistryObject;
 public class CommonProxyImpl {
     static final DeferredRegister<ArgumentTypeInfo<?, ?>> ARG_TYPES = DeferredRegister.create(ForgeRegistries.COMMAND_ARGUMENT_TYPES, Photon.MOD_ID);
     static final RegistryObject<ArgumentTypeInfo<FxLocationArgument, ?>> FX_LOCATION_ARG_TYPE = ARG_TYPES.register("fx_location", () -> SingletonArgumentInfo.contextFree(FxLocationArgument::new));
+    static final RegistryObject<ArgumentTypeInfo<EntityEffectCommand.AutoRotateType, ?>> AUTO_ROTATE_ARG_TYPE = ARG_TYPES.register("fx_auto_rotate", () -> SingletonArgumentInfo.contextFree(EntityEffectCommand.AutoRotateType::new));
 
     public CommonProxyImpl() {
         // used for forge events (ClientProxy + CommonProxy)
@@ -35,6 +37,7 @@ public class CommonProxyImpl {
     @SubscribeEvent
     public void setup(FMLCommonSetupEvent event) {
         ArgumentTypeInfos.registerByClass(FxLocationArgument.class, FX_LOCATION_ARG_TYPE.get());
+        ArgumentTypeInfos.registerByClass(EntityEffectCommand.AutoRotateType.class, AUTO_ROTATE_ARG_TYPE.get());
     }
 
     public void registerCommand(RegisterCommandsEvent event) {

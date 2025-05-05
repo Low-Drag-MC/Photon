@@ -16,7 +16,7 @@ public class PhotonNetworking {
         NETWORK.registerS2C(BlockEffectCommand.class);
         NETWORK.registerS2C(EntityEffectCommand.class);
         NETWORK.registerS2C(RemoveBlockEffectCommand.class);
-        NETWORK.registerC2S(RemoveEntityEffectCommand.class);
+        NETWORK.registerS2C(RemoveEntityEffectCommand.class);
     }
 
 }

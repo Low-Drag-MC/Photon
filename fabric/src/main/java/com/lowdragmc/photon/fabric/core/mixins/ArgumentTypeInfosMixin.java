@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.fabric.core.mixins;
 
+import com.lowdragmc.photon.command.EntityEffectCommand;
 import com.lowdragmc.photon.command.FxLocationArgument;
 import com.mojang.brigadier.arguments.ArgumentType;
 import net.minecraft.commands.synchronization.ArgumentTypeInfo;
@@ -30,5 +31,6 @@ public abstract class ArgumentTypeInfosMixin {
             at = {@At(value = "HEAD")})
     private static void injectRegisterArgumentTypes(Registry<ArgumentTypeInfo<?, ?>> registry, CallbackInfoReturnable<ArgumentTypeInfo<?, ?>> cir) {
         register(registry, "fx_location", FxLocationArgument.class, SingletonArgumentInfo.contextFree(FxLocationArgument::new));
+        register(registry, "fx_auto_rotate", EntityEffectCommand.AutoRotateType.class, SingletonArgumentInfo.contextFree(EntityEffectCommand.AutoRotateType::new));
     }
 }
