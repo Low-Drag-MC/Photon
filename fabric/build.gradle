@@ -77,7 +77,7 @@ repositories {
     maven { url = "https://mvn.devos.one/snapshots/" } // Create Fabric, Porting Lib, Forge Tags, Milk Lib, Registrate Fabric
     maven { url = "https://maven.jamieswhiteshirt.com/libs-release" } // Reach Entity Attributes
     maven { url = "https://jitpack.io/" } // Mixin Extras, Fabric ASM
-    maven { url = "https://maven.saps.dev/minecraft" } // kjs
+    maven { url = "https://maven.latvian.dev/releases" } // kjs
 }
 
 dependencies {
