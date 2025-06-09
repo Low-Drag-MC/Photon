@@ -1,110 +1,13 @@
 pluginManagement {
     repositories {
-        maven { url = "https://maven.fabricmc.net/" }
-        maven { url = "https://maven.architectury.dev/" }
-        maven { url = "https://maven.minecraftforge.net/" }
-        maven { url = "https://maven.quiltmc.org/repository/release" }
+        mavenLocal()
         gradlePluginPortal()
+        maven { url = 'https://maven.neoforged.net/releases' }
     }
 }
 
-dependencyResolutionManagement {
-    repositories {
-         mavenCentral()
-    }
-    versionCatalogs {
-        // Minecraft Version
-        def minecraftVersion = "1.20.1"
-
-        // Mod Dependencies Versions
-
-        // Fabric
-        def fabricLoaderVersion = "0.15.11" // https://fabricmc.net/develop/
-        def fabricApiVersion = "0.92.2" // https://fabricmc.net/develop/
-        def sodiumVersion = "mc1.20.1-0.5.11"
-        def irisVersion = "1.7.0+1.20.1"
-        // Forge
-        def forgeVersion = "47.1.3"
-        def embeddiumVersion = "0.3.31-beta.52+mc1.20.1"
-        def oculusVersion = "1.20.1-1.7.0"
-
-        // Libs
-        def quiltMappingsVersion = "5"  // https://lambdaurora.dev/tools/import_quilt.html
-        def parchmentVersion = "1.20.1:2023.09.03" // https://parchmentmc.org/docs/getting-started
-        def shadowVersion = "7.1.2"
-        def architecturyPluginVersion = "3.4-SNAPSHOT"
-        def architecturyLoomVersion = "1.6-SNAPSHOT"
-        def quiltFlowerVersion = "1.+"
-        def macheteVersion = "1.+"
-        def ldLibVersion = "1.0.39.a"
-
-        fabric {
-            def parchment = version("parchment", parchmentVersion)
-            library("parchment", "org.parchmentmc.data", "parchment-${minecraftVersion}").versionRef(parchment)
-
-            def fabricLoader = version("fabricLoader", fabricLoaderVersion)
-            library("fabricLoader", "net.fabricmc", "fabric-loader").versionRef(fabricLoader)
-
-            def fabricApi = version("fabricApi", "${fabricApiVersion}+${minecraftVersion}")
-            library("fabricApi", "net.fabricmc.fabric-api", "fabric-api").versionRef(fabricApi)
-
-            def ldLib = version("ldlib", ldLibVersion)
-            library("ldlib-common", "com.lowdragmc.ldlib", "ldlib-common-${minecraftVersion}").versionRef(ldLib)
-            library("ldlib-fabric", "com.lowdragmc.ldlib", "ldlib-fabric-${minecraftVersion}").versionRef(ldLib)
-
-            def sodium = version("sodium", sodiumVersion)
-            library("sodium", "maven.modrinth", "sodium").versionRef(sodium)
-
-            def iris = version("iris", irisVersion)
-            library("iris", "maven.modrinth", "iris").versionRef(iris)
-        }
-
-        forge {
-            version("forgeShortVersion", forgeVersion)
-            def minecraftForge = version("minecratfForge", "${minecraftVersion}-${forgeVersion}")
-            library("minecraftForge", "net.minecraftforge", "forge").versionRef(minecraftForge)
-
-            def ldLib = version("ldlib", ldLibVersion)
-            library("ldlib-forge", "com.lowdragmc.ldlib", "ldlib-forge-${minecraftVersion}").versionRef(ldLib)
-
-            def embeddium = version("embeddium", embeddiumVersion)
-            library("embeddium", "org.embeddedt", "embeddium-${minecraftVersion}").versionRef(embeddium)
-
-            def oculus = version("oculus", oculusVersion)
-            library("oculus", "maven.modrinth", "oculus").versionRef(oculus)
-        }
-
-        libs {
-            version("quiltMappings", quiltMappingsVersion)
-            version("parchment", parchmentVersion)
-
-            def minecraft = version("minecraft", minecraftVersion)
-            library("minecraft", "com.mojang", "minecraft").versionRef(minecraft)
-
-            def shadow = version("shadow", shadowVersion)
-            plugin("shadow", "com.github.johnrengelman.shadow").versionRef(shadow)
-
-            def architecturyPlugin = version("architectury", architecturyPluginVersion)
-            plugin("architectury", "architectury-plugin").versionRef(architecturyPlugin)
-
-            def architecturyLoom = version("architectury-loom", architecturyLoomVersion)
-            plugin("architectury-loom", "dev.architectury.loom").versionRef(architecturyLoom)
-
-            def quiltFlower = version("quiltFlower", quiltFlowerVersion)
-            plugin("quiltFlower", "io.github.juuxel.loom-quiltflower").versionRef(quiltFlower)
-
-            def machete = version("machete", macheteVersion)
-            plugin("machete", "io.github.p03w.machete").versionRef(machete)
-        }
-    }
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.5.0'
 }
 
-include("${mod_id}-common")
-include("${mod_id}-fabric")
-include("${mod_id}-forge")
-
-project(":${mod_id}-common").setProjectDir(new File("common"))
-project(":${mod_id}-forge").setProjectDir(new File("forge"))
-project(":${mod_id}-fabric").setProjectDir(new File("fabric"))
-
-rootProject.name = "${mod_name}"
+rootProject.name = "${mod_id}-neoforge"

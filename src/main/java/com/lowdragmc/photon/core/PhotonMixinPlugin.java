@@ -1,4 +1,4 @@
-package com.lowdragmc.photon.fabric.core;
+package com.lowdragmc.photon.core;
 
 import com.lowdragmc.lowdraglib2.core.mixins.MixinPluginShared;
 import org.objectweb.asm.tree.ClassNode;
@@ -19,6 +19,7 @@ public class PhotonMixinPlugin implements IMixinConfigPlugin, MixinPluginShared 
 
     @Override
     public void onLoad(String mixinPackage) {
+
     }
 
     @Override
@@ -28,7 +29,7 @@ public class PhotonMixinPlugin implements IMixinConfigPlugin, MixinPluginShared 
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if (mixinClassName.contains("com.lowdragmc.photon.fabric.core.mixins.no_iris")) {
+        if (mixinClassName.contains("com.lowdragmc.photon.core.mixins.no_iris")) {
             return !IS_IRIS_LOAD;
         }
         return true;

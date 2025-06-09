@@ -1,0 +1,69 @@
+package com.lowdragmc.photon.integration;
+
+import com.lowdragmc.lowdraglib2.LDLib;
+import com.lowdragmc.lowdraglib2.LDLib2;
+import com.lowdragmc.lowdraglib2.gui.editor.annotation.LDLRegister;
+import com.lowdragmc.lowdraglib2.gui.editor.annotation.LDLRegisterClient;
+import com.lowdragmc.lowdraglib2.gui.editor.runtime.AnnotationDetector;
+import com.lowdragmc.lowdraglib2.plugin.ILDLibPlugin;
+import com.lowdragmc.lowdraglib2.plugin.LDLibPlugin;
+import com.lowdragmc.lowdraglib2.syncdata.IAccessor;
+import com.lowdragmc.lowdraglib2.syncdata.payload.NbtTagPayload;
+import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.IFXObject;
+import com.lowdragmc.photon.client.gameobject.emitter.data.shape.IShape;
+import com.lowdragmc.photon.gui.editor.accessor.IShapeAccessor;
+import com.lowdragmc.photon.gui.editor.accessor.NumberFunction3Accessor;
+import com.lowdragmc.photon.gui.editor.accessor.NumberFunctionAccessor;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+
+import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import static com.lowdragmc.lowdraglib2.syncdata.TypedPayloadRegistries.register;
+
+/**
+ * @author KilaBash
+ * @date 2023/6/4
+ * @implNote LDLibPlugin
+ */
+@LDLibPlugin
+public class PhotonLDLibPlugin implements ILDLibPlugin {
+    public static final IAccessor NUMBER_FUNCTION_ACCESSOR = new NumberFunctionAccessor();
+    public static final IAccessor NUMBER_FUNCTION3_ACCESSOR = new NumberFunction3Accessor();
+    public static final IAccessor SHAPE_ACCESSOR = new IShapeAccessor();
+
+    @OnlyIn(Dist.CLIENT)
+    public static Map<String, AnnotationDetector.Wrapper<LDLRegisterClient, ? extends IFXObject>> REGISTER_FX_OBJECTS;
+    public static Map<String, AnnotationDetector.Wrapper<LDLRegister, ? extends IShape>> REGISTER_SHAPES;
+
+    @Override
+    public void onLoad() {
+        var fxLocation = new File(LDLib2.getAssetsDir(), "photon/fx");
+        if (fxLocation.mkdirs()) {
+            Photon.LOGGER.info("creat the photon fx folder");
+        }
+
+        register(NbtTagPayload.class, NbtTagPayload::new, NUMBER_FUNCTION_ACCESSOR, 1000);
+        register(NbtTagPayload.class, NbtTagPayload::new, NUMBER_FUNCTION3_ACCESSOR, 1000);
+        register(NbtTagPayload.class, NbtTagPayload::new, SHAPE_ACCESSOR, 1000);
+
+        if (LDLib.isClient()) {
+            REGISTER_FX_OBJECTS = new HashMap<>();
+            AnnotationDetector.scanClasses(LDLRegisterClient.class, IFXObject.class, AnnotationDetector::checkNoArgsConstructor, PhotonLDLibPlugin::toUINoArgsBuilder, PhotonLDLibPlugin::UIWrapperSorter, l -> REGISTER_FX_OBJECTS.putAll(l.stream().collect(Collectors.toMap(w -> w.annotation().name(), w -> w))));
+        }
+        REGISTER_SHAPES = new HashMap<>();
+        AnnotationDetector.scanClasses(LDLRegister.class, IShape.class, AnnotationDetector::checkNoArgsConstructor, AnnotationDetector::toUINoArgsBuilder, AnnotationDetector::UIWrapperSorter, l -> REGISTER_SHAPES.putAll(l.stream().collect(Collectors.toMap(w -> w.annotation().name(), w -> w))));
+    }
+
+    public static <T> AnnotationDetector.Wrapper<LDLRegisterClient, T> toUINoArgsBuilder(Class<? extends T> clazz) {
+        return new AnnotationDetector.Wrapper<>(clazz.getAnnotation(LDLRegisterClient.class), clazz, () -> AnnotationDetector.createNoArgsInstance(clazz));
+    }
+
+    public static int UIWrapperSorter(AnnotationDetector.Wrapper<LDLRegisterClient, ?> a, AnnotationDetector.Wrapper<LDLRegisterClient, ?> b) {
+        return b.annotation().priority() - a.annotation().priority();
+    }
+}
