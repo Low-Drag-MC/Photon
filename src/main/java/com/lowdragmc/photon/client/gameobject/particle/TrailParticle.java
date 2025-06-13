@@ -5,7 +5,7 @@ import com.lowdragmc.lowdraglib2.client.shader.management.ShaderSSBO;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.PhotonShaders;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
-import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailConfig;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.floats.Float2ObjectFunction;
@@ -112,7 +112,7 @@ public class TrailParticle implements IParticle {
     }
 
     @Override
-    public PhotonParticleRenderType getRenderType() {
+    public PhotonFXRenderPass getRenderType() {
         return config.particleRenderType;
     }
 
@@ -678,7 +678,7 @@ public class TrailParticle implements IParticle {
         }
 
         private void pushVertex(VertexConsumer buffer, int light, Vector3f pos, float r, float g, float b, float a, float u, float v) {
-            buffer.vertex(pos.x, pos.y, pos.z).uv(u, v).color(r, g, b, a).uv2(light).endVertex();
+            buffer.addVertex(pos.x, pos.y, pos.z).setUv(u, v).setColor(r, g, b, a).setLight(light);
         }
 
     }

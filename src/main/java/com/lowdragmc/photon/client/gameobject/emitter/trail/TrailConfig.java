@@ -1,9 +1,10 @@
 package com.lowdragmc.photon.client.gameobject.emitter.trail;
 
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
-import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
@@ -18,14 +19,15 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomCo
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGradient;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
-import net.minecraft.nbt.CompoundTag;
 
 import javax.annotation.Nonnull;
 
@@ -34,7 +36,7 @@ import javax.annotation.Nonnull;
  * @date 2023/6/11
  * @implNote TrailConfig
  */
-public class TrailConfig implements IPersistedSerializable {
+public class TrailConfig implements IConfigurable, IPersistedSerializable {
     @Setter
     @Getter
     @Configurable(tips = "photon.emitter.config.duration")
@@ -105,33 +107,18 @@ public class TrailConfig implements IPersistedSerializable {
     public final UVAnimationSetting uvAnimation = new UVAnimationSetting();
 
     // runtime
-    public final PhotonParticleRenderType particleRenderType = new RenderType();
+    public final PhotonFXRenderPass particleRenderType = new RenderPass();
 
     public TrailConfig() {
         material.setMaterial(new CustomShaderMaterial());
     }
 
-    @Override
-    public void deserializeNBT(CompoundTag tag) {
-        IPersistedSerializable.super.deserializeNBT(tag);
-        // compatible with old version
-        if (!tag.contains("smoothInterpolation")) {
-            if (widthOverTrail instanceof Constant constant) {
-                constant.setNumber(constant.getNumber().floatValue() / 10);
-            } else if (widthOverTrail instanceof Curve curve) {
-                curve.setMax(curve.getMax() / 10);
-                curve.setMin(curve.getMin() / 10);
-                curve.setDefaultValue(curve.getDefaultValue() / 10);
-            }
-        }
-    }
-
-    private class RenderType extends PhotonParticleRenderType {
+    private class RenderPass extends PhotonFXRenderPass {
 
         @Override
-        public void prepareStatus() {
+        public void prepareStatus(@Nonnull RenderPassPipeline pipeline) {
             if (renderer.isBloomEffect()) {
-                beginBloom();
+                pipeline.beginBloom();
             }
             material.pre();
             material.getMaterial().begin(false);
@@ -139,16 +126,16 @@ public class TrailConfig implements IPersistedSerializable {
         }
 
         @Override
-        public void begin(@Nonnull BufferBuilder bufferBuilder) {
-            bufferBuilder.begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.PARTICLE);
+        public BufferBuilder begin(@Nonnull Tesselator tesselator) {
+            return tesselator.begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.PARTICLE);
         }
 
         @Override
-        public void releaseStatus() {
+        public void releaseStatus(@Nonnull RenderPassPipeline pipeline) {
             material.getMaterial().end(false);
             material.post();
             if (renderer.isBloomEffect()) {
-                endBloom();
+                pipeline.endBloom();
             }
         }
 

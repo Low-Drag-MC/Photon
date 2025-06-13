@@ -2,7 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.utils.Range;
+import com.lowdragmc.lowdraglib2.math.Range;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import org.joml.Vector3f;
@@ -29,8 +29,8 @@ public class SizeBySpeedSetting extends ToggleGroup {
     protected NumberFunction3 size = new NumberFunction3(1, 1, 1);
 
     @Configurable(tips = "photon.emitter.config.sizeBySpeed.speedRange")
-    @ConfigNumber(range = {0, 1000})
-    protected Range speedRange = new Range(0f, 1f);
+    @ConfigNumber(range = {0, 1000}, type = ConfigNumber.Type.FLOAT)
+    protected Range speedRange = Range.of(0f, 1f);
     
     public Vector3f getSize(TileParticle particle) {
         var value = particle.getRealVelocity().length() * 20;

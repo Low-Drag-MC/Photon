@@ -1,18 +1,19 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.client.renderer.impl.IModelRenderer;
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.BooleanConfigurator;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.ConfiguratorSelectorConfigurator;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.core.HolderLookup;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Camera;
@@ -20,17 +21,11 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.AABB;
 import org.apache.commons.lang3.function.TriFunction;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
-import java.util.Arrays;
-
-/**
- * @author KilaBash
- * @date 2023/6/4
- * @implNote RendererSetting
- */
 @OnlyIn(Dist.CLIENT)
 @Getter
 @Setter
@@ -102,7 +97,8 @@ public class RendererSetting {
             }
         }
 
-        @Persisted
+        @Configurable(tips = "photon.emitter.config.renderer.renderMode")
+        @ConfigSelector(subConfiguratorBuilder = "buildSubConfigurator")
         protected Mode renderMode = Mode.Billboard;
         @Nullable
         protected IModelRenderer model;
@@ -111,47 +107,37 @@ public class RendererSetting {
         @Persisted
         protected boolean useBlockUV = true;
 
-        @Override
-        public void buildConfigurator(ConfiguratorGroup father) {
-            var configurator = new ConfiguratorSelectorConfigurator<>("renderMode",
-                    false, this::getRenderMode, this::setRenderMode, Mode.Billboard, true,
-                    Arrays.stream(Mode.values()).toList(), Mode::name, (mode, container) -> {
-                if (mode == Mode.Model) {
-                    model.buildConfigurator(container);
-                    var shadeConfigurator = new BooleanConfigurator("shade", this::isShade, this::setShade, true, true);
-                    shadeConfigurator.setTips("photon.emitter.config.renderer.renderMode.model.shade");
-                    container.addConfigurators(shadeConfigurator);
-                    var useBlockUVConfigurator = new BooleanConfigurator("useBlockUV", this::isUseBlockUV, this::setUseBlockUV, true, true);
-                    shadeConfigurator.setTips("photon.emitter.config.renderer.renderMode.model.useBlockUV");
-                    container.addConfigurators(useBlockUVConfigurator);
-
-                }
-            });
-            configurator.setTips("photon.emitter.config.renderer.renderMode");
-            father.addConfigurators(configurator);
-            IConfigurable.super.buildConfigurator(father);
+        public void buildSubConfigurator(Mode mode, ConfiguratorGroup group) {
+            if (mode == Mode.Model) {
+                getModel().buildConfigurator(group);
+                group.addConfigurators(
+                        new BooleanConfigurator("shade", this::isShade, this::setShade, true, true)
+                                .setTips("photon.emitter.config.renderer.renderMode.model.shade"),
+                        new BooleanConfigurator("useBlockUV", this::isUseBlockUV, this::setUseBlockUV, true, true)
+                                .setTips("photon.emitter.config.renderer.renderMode.model.useBlockUV"));
+            }
         }
 
         public IModelRenderer getModel() {
             if (model == null) {
-                model = new IModelRenderer(new ResourceLocation("block/dirt"));
+                model = new IModelRenderer(ResourceLocation.parse("block/dirt"));
             }
             return model;
         }
 
         @Override
-        public void deserializeNBT(CompoundTag tag) {
-            IPersistedSerializable.super.deserializeNBT(tag);
+        public void deserializeNBT(HolderLookup.@NotNull Provider provider, @NotNull CompoundTag tag) {
+            IPersistedSerializable.super.deserializeNBT(provider, tag);
             if (renderMode == Mode.Model && model != null) {
-                model.deserializeNBT(tag.getCompound("model"));
+                model.deserializeNBT(provider, tag.getCompound("model"));
             }
         }
 
         @Override
-        public CompoundTag serializeNBT() {
-            var tag = IPersistedSerializable.super.serializeNBT();
+        public CompoundTag serializeNBT(HolderLookup.@NotNull Provider provider) {
+            var tag = IPersistedSerializable.super.serializeNBT(provider);
             if (renderMode == Mode.Model) {
-                tag.put("model", getModel().serializeNBT());
+                tag.put("model", getModel().serializeNBT(provider));
             }
             return tag;
         }

@@ -1,13 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
-import com.lowdragmc.lowdraglib2.gui.editor.ColorPattern;
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.IConfigurable;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.WrapperConfigurator;
-import com.lowdragmc.lowdraglib2.gui.editor.runtime.PersistedParser;
-import com.lowdragmc.lowdraglib2.gui.widget.ImageWidget;
-import com.lowdragmc.lowdraglib2.syncdata.ITagSerializable;
+import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlendMode;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
@@ -16,10 +11,8 @@ import lombok.Getter;
 import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.nbt.CompoundTag;
 
 import javax.annotation.Nonnull;
-import java.util.HashMap;
 
 /**
  * @author KilaBash
@@ -29,7 +22,7 @@ import java.util.HashMap;
 @OnlyIn(Dist.CLIENT)
 @Getter
 @Setter
-public class MaterialSetting implements IConfigurable, ITagSerializable<CompoundTag> {
+public class MaterialSetting implements IConfigurable, IPersistedSerializable {
 
     @Configurable(name = "Blend Mode", subConfigurable = true)
     protected final BlendMode blendMode = new BlendMode();
@@ -40,6 +33,7 @@ public class MaterialSetting implements IConfigurable, ITagSerializable<Compound
     @Configurable
     protected boolean depthMask = false;
     @Nonnull
+    @Configurable
     protected IMaterial material = new TextureMaterial();
 
     public void pre() {
@@ -56,45 +50,5 @@ public class MaterialSetting implements IConfigurable, ITagSerializable<Compound
         if (!cull) RenderSystem.enableCull();
         if (!depthTest) RenderSystem.enableDepthTest();
         if (!depthMask) RenderSystem.depthMask(true);
-    }
-
-    @Override
-    public void buildConfigurator(ConfiguratorGroup father) {
-        IConfigurable.super.buildConfigurator(father);
-        var setting = new ConfiguratorGroup("Setting");
-        material.buildConfigurator(setting);
-        ImageWidget preview;
-        var wrapper = new WrapperConfigurator("preview", preview = new ImageWidget(0, 0, 50, 50, () -> material.preview()).setBorder(2, ColorPattern.T_WHITE.color));
-        preview.setDraggingConsumer(
-                o -> o instanceof IMaterial,
-                o -> preview.setBorder(2, ColorPattern.GREEN.color),
-                o -> preview.setBorder(2, ColorPattern.T_WHITE.color),
-                o -> {
-                    if (o instanceof IMaterial mat) {
-                        this.material = mat.copy();
-                        setting.removeAllConfigurators();
-                        this.material.buildConfigurator(setting);
-                        setting.computeLayout();
-                        preview.setBorder(2, ColorPattern.T_WHITE.color);
-                    }
-                });
-        wrapper.setTips("photon.emitter.config.material.preview");
-        father.addConfigurator(0, wrapper);
-        father.addConfigurators(setting);
-    }
-
-    @Override
-    public CompoundTag serializeNBT() {
-        var nbt = new CompoundTag();
-        PersistedParser.serializeNBT(nbt, this.getClass(), this);
-        nbt.put("material", material.serializeNBT());
-        return nbt;
-    }
-
-    @Override
-    public void deserializeNBT(CompoundTag nbt) {
-        PersistedParser.deserializeNBT(nbt, new HashMap<>(), this.getClass(), this);
-        var material = IMaterial.deserializeWrapper(nbt.getCompound("material"));
-        this.material = material == null ? new TextureMaterial() : material;
     }
 }

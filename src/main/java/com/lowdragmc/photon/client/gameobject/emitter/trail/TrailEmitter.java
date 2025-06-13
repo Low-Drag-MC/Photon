@@ -1,15 +1,13 @@
 package com.lowdragmc.photon.client.gameobject.emitter.trail;
 
-import com.lowdragmc.lowdraglib2.gui.editor.annotation.LDLRegisterClient;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.editor.runtime.ConfiguratorParser;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
-import com.lowdragmc.photon.client.gameobject.emitter.ParticleQueueRenderType;
-import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.Camera;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.NotNull;
@@ -17,7 +15,6 @@ import org.jetbrains.annotations.NotNull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Collections;
-import java.util.HashMap;
 
 /**
  * @author KilaBash
@@ -25,7 +22,7 @@ import java.util.HashMap;
  * @implNote TrailEmitter
  */
 @ParametersAreNonnullByDefault
-@LDLRegisterClient(name = "trail", group = "emitter")
+@LDLRegisterClient(name = "trail_emitter", registry = "photon:fx_object")
 public class TrailEmitter extends Emitter {
     public static int VERSION = 2;
 
@@ -56,29 +53,16 @@ public class TrailEmitter extends Emitter {
     }
 
     @Override
-    public CompoundTag serializeNBT() {
-        var tag = super.serializeNBT();
+    public CompoundTag serializeNBT(HolderLookup.@NotNull Provider provider) {
+        var tag = super.serializeNBT(provider);
         tag.putInt("_version", VERSION);
         return tag;
     }
 
     @Override
-    public void deserializeNBT(CompoundTag tag) {
-        var version = tag.contains("_version") ? tag.getInt("_version") : 0;
-        // legacy version
-        if (version < 1) {
-            var configTag = tag;
-            tag = new CompoundTag();
-            tag.put("config", configTag);
-            tag.putString("name", configTag.getString("name"));
-        }
-        super.deserializeNBT(tag);
-    }
-
-    @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         super.buildConfigurator(father);
-        ConfiguratorParser.createConfigurators(father, new HashMap<>(), config.getClass(), config);
+        config.buildConfigurator(father);
     }
 
     //////////////////////////////////////
@@ -124,13 +108,13 @@ public class TrailEmitter extends Emitter {
     }
 
     @Override
-    public void render(@NotNull VertexConsumer buffer, Camera camera, float pPartialTicks) {
-        super.render(buffer, camera, pPartialTicks);
-        if (!ParticleQueueRenderType.INSTANCE.isRenderingQueue() && delay <= 0 && isVisible() &&
-                PhotonParticleRenderType.checkLayer(config.renderer.getLayer()) &&
-                (!config.renderer.getCull().isEnable() ||
-                        PhotonParticleRenderType.checkFrustum(config.renderer.getCull().getCullAABB(this, pPartialTicks)))) {
-            ParticleQueueRenderType.INSTANCE.pipeQueue(trailParticle.getRenderType(), Collections.singleton(trailParticle), camera, pPartialTicks);
+    public boolean useTranslucentPipeline() {
+        return config.renderer.getLayer() == RendererSetting.Layer.Translucent;
+    }
+
+    public void prepareRenderPass(RenderPassPipeline buffer) {
+        if (delay <= 0 && isVisible()) {
+            buffer.pipeQueue(trailParticle.getRenderType(), Collections.singleton(trailParticle));
         }
     }
 

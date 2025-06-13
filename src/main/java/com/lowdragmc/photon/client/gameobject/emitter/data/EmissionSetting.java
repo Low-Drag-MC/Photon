@@ -1,15 +1,13 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
-import com.lowdragmc.lowdraglib2.gui.editor.accessors.TypesAccessor;
-import com.lowdragmc.lowdraglib2.gui.editor.annotation.ConfigAccessor;
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigList;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.Configurator;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.IConfigurable;
-import com.lowdragmc.lowdraglib2.gui.editor.runtime.ConfiguratorParser;
-import com.lowdragmc.lowdraglib2.gui.editor.runtime.PersistedParser;
-import com.lowdragmc.lowdraglib2.syncdata.ITagSerializable;
+import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
+import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -19,16 +17,13 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveCon
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.nbt.IntTag;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.util.RandomSource;
+import org.appliedenergistics.yoga.YogaDisplay;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -41,7 +36,7 @@ import java.util.function.Supplier;
 @OnlyIn(Dist.CLIENT)
 @Setter
 @Getter
-public class EmissionSetting implements IConfigurable, ITagSerializable<CompoundTag> {
+public class EmissionSetting implements IConfigurable, IPersistedSerializable {
 
     public enum Mode {
         Exacting,
@@ -55,41 +50,15 @@ public class EmissionSetting implements IConfigurable, ITagSerializable<Compound
     @Configurable(tips = "photon.emitter.config.emission.emissionMode")
     protected Mode emissionMode = Mode.Exacting;
 
-    @Configurable(tips = "photon.emitter.config.emission.bursts", persisted = false)
+    @Configurable(tips = "photon.emitter.config.emission.bursts")
+    @ConfigList(configuratorMethod = "buildBurstConfigurator", addDefaultMethod = "addDefaultBurst")
+    @ReadOnlyManaged(serializeMethod = "burstsSerialize", deserializeMethod = "burstsDeserialize")
     protected List<Burst> bursts = new ArrayList<>();
-
-    @Override
-    public CompoundTag serializeNBT() {
-        var tag = new CompoundTag();
-        PersistedParser.serializeNBT(tag, getClass(), this);
-        var list = new ListTag();
-        for (var burst : bursts) {
-            var element = new CompoundTag();
-            PersistedParser.serializeNBT(element, Burst.class, burst);
-            list.add(element);
-        }
-        tag.put("bursts", list);
-        return tag;
-    }
-
-    @Override
-    public void deserializeNBT(CompoundTag tag) {
-        PersistedParser.deserializeNBT(tag, new HashMap<>(), getClass(), this);
-        bursts.clear();
-        var list = tag.getList("bursts", Tag.TAG_COMPOUND);
-        for (var element : list) {
-            if (element instanceof CompoundTag nbt) {
-                var burst = new Burst();
-                PersistedParser.deserializeNBT(nbt, new HashMap<>(), Burst.class, burst);
-                bursts.add(burst);
-            }
-        }
-    }
 
     public int getEmissionCount(int emitterAge, float t, RandomSource randomSource) {
         var result = emissionRate.get(randomSource, t);
         var number = result.intValue();
-        var decimals = result.floatValue() - result.intValue();
+        var decimals = result - result.intValue();
         if (emissionMode == Mode.Exacting) {
             if (decimals > 0 && emitterAge % ((int) (1 / decimals)) == 0) {
                 number += 1;
@@ -119,29 +88,33 @@ public class EmissionSetting implements IConfigurable, ITagSerializable<Compound
         return number;
     }
 
-    @ConfigAccessor
-    public static class BurstAccessor extends TypesAccessor<Burst> {
-
-        public BurstAccessor() {
-            super(Burst.class);
-        }
-
-        @Override
-        public Burst defaultValue(Field field, Class<?> type) {
-            return new Burst();
-        }
-
-        @Override
-        public Configurator create(String name, Supplier<Burst> supplier, Consumer<Burst> consumer, boolean forceUpdate, Field field) {
-            var group = new ConfiguratorGroup("burst", true);
-            var burst = supplier.get();
-            burst = burst == null ? new Burst() : burst;
-            ConfiguratorParser.createConfigurators(group, new HashMap<>(), Burst.class, burst);
+    private Configurator buildBurstConfigurator(Supplier<Burst> getter, Consumer<Burst> setter) {
+        var instance = getter.get();
+        if (instance != null && instance.createDirectConfigurator() instanceof ConfiguratorGroup group) {
+            group.setCollapse(false);
+            group.lineContainer.setDisplay(YogaDisplay.NONE);
             return group;
         }
+        return new Configurator();
     }
 
-    public static class Burst {
+    private Burst addDefaultBurst() {
+        return new Burst();
+    }
+
+    private IntTag burstsSerialize(List<Burst> bursts) {
+        return IntTag.valueOf(bursts.size());
+    }
+
+    private List<Burst> burstsDeserialize(IntTag tag) {
+        var groups = new ArrayList<Burst>();
+        for (int i = 0; i < tag.getAsInt(); i++) {
+            groups.add(addDefaultBurst());
+        }
+        return groups;
+    }
+
+    public static class Burst implements IConfigurable, IPersistedSerializable{
         @Configurable(tips = "photon.emitter.config.emission.bursts.time")
         @ConfigNumber(range = {0, Integer.MAX_VALUE}, wheel = 1)
         public int time = 0;

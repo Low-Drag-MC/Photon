@@ -1,26 +1,29 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.client.shader.Shaders;
-import com.lowdragmc.lowdraglib2.gui.editor.ColorPattern;
+import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.WrapperConfigurator;
-import com.lowdragmc.lowdraglib2.gui.editor.ui.Editor;
+import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
-import com.lowdragmc.lowdraglib2.gui.texture.ResourceTexture;
-import com.lowdragmc.lowdraglib2.gui.widget.ButtonWidget;
-import com.lowdragmc.lowdraglib2.gui.widget.DialogWidget;
-import com.lowdragmc.lowdraglib2.gui.widget.ImageWidget;
-import com.lowdragmc.lowdraglib2.gui.widget.WidgetGroup;
+import com.lowdragmc.lowdraglib2.gui.texture.SpriteTexture;
+import com.lowdragmc.lowdraglib2.gui.ui.Dialog;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
+import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.Photon;
 import com.mojang.blaze3d.systems.RenderSystem;
+import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.renderer.ShaderInstance;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import org.appliedenergistics.yoga.YogaAlign;
+import org.appliedenergistics.yoga.YogaEdge;
+import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
@@ -36,6 +39,7 @@ import java.io.File;
 public class TextureMaterial extends ShaderInstanceMaterial {
 
     @Configurable
+    @Setter
     public ResourceLocation texture = ResourceLocation.parse("textures/particle/glow.png");
 
     @Configurable
@@ -69,7 +73,8 @@ public class TextureMaterial extends ShaderInstanceMaterial {
 
     @Override
     public void begin(boolean isInstancing) {
-        if (Photon.isUsingShaderPack() && Editor.INSTANCE == null) {
+        // TODO better shader pack support
+        if (Photon.isUsingShaderPack()) {
             RenderSystem.setShaderTexture(0, texture);
         } else {
             RenderSystem.setShader(this::getShader);
@@ -79,26 +84,58 @@ public class TextureMaterial extends ShaderInstanceMaterial {
 
     @Override
     public IGuiTexture preview() {
-        return new ResourceTexture(texture.toString());
+        return SpriteTexture.of(texture.toString());
     }
 
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
-        WidgetGroup widgetGroup = new WidgetGroup(0, 0, 100, 100);
-        widgetGroup.addWidget(new ImageWidget(0, 0, 100, 100, () -> new ResourceTexture(texture.toString())).setBorder(2, ColorPattern.T_WHITE.color));
-        widgetGroup.addWidget(new ButtonWidget(0, 0, 100, 100, IGuiTexture.EMPTY, cd -> {
-            if (Editor.INSTANCE == null) return;
-            File path = new File(Editor.INSTANCE.getWorkSpace(), "assets/ldlib/textures");
-            DialogWidget.showFileDialog(Editor.INSTANCE, "ldlib.gui.editor.tips.select_image", path, true,
-                    DialogWidget.suffixFilter(".png"), r -> {
-                        if (r != null && r.isFile()) {
-                            texture = new ResourceLocation("ldlib:" + r.getPath().replace(path.getPath(), "textures").replace('\\', '/'));
-                        }
-                    });
-        }));
-        WrapperConfigurator base = new WrapperConfigurator("ldlib.gui.editor.group.base_image", widgetGroup);
-        base.setTips("ldlib.gui.editor.tips.click_select_image");
-        father.addConfigurators(base);
+        var configurator = new Configurator("ldlib.gui.editor.group.base_image");
+        father.addConfigurators(configurator
+                .addChildren(
+                        // raw image preview
+                        new UIElement().layout(layout -> {
+                                    layout.setAspectRatio(1.0f);
+                                    layout.setWidthPercent(80);
+                                    layout.setPadding(YogaEdge.ALL, 3);
+                                    layout.setAlignSelf(YogaAlign.CENTER);
+                                }).style(style -> style.backgroundTexture(Sprites.BORDER1_RT1))
+                                .addChild(new UIElement().layout(layout -> {
+                                    layout.setWidthPercent(100);
+                                    layout.setHeightPercent(100);
+                                }).style(style -> style.backgroundTexture(DynamicTexture.of(() -> SpriteTexture.of(texture.toString()))))),
+                        // button to select image
+                        new Button().setText("ldlib.gui.editor.tips.select_image").setOnClick(e -> {
+                            var mui = e.currentElement.getModularUI();
+                            if (mui == null) return;
+                            Dialog.showFileDialog("ldlib.gui.editor.tips.select_image", LDLib2.getAssetsDir(), true, Dialog.suffixFilter(".png"), r -> {
+                                if (r != null && r.isFile()) {
+                                    var location = getTextureFromFile(r);
+                                    if (location == null) return;
+                                    texture = location;
+                                    configurator.notifyChanges();
+                                }
+                            }).show(mui.ui.rootElement);
+                        }).layout(layout -> layout.setAlignSelf(YogaAlign.CENTER))
+                ));
         super.buildConfigurator(father);
+    }
+
+    public @Nullable ResourceLocation getTextureFromFile(File filePath) {
+        String fullPath = filePath.getPath().replace('\\', '/');
+        int assetsIndex = fullPath.indexOf("assets/");
+        if (assetsIndex == -1) {
+            return null;
+        } else {
+            String relativePath = fullPath.substring(assetsIndex + "assets/".length());
+            int slashIndex = relativePath.indexOf(47);
+            if (slashIndex == -1) {
+                return null;
+            } else {
+                String modId = relativePath.substring(0, slashIndex);
+                String subPath = relativePath.substring(slashIndex + 1);
+                String location = modId + ":" + subPath;
+                return LDLib2.isValidResourceLocation(location) ? ResourceLocation.parse(location) : null;
+            }
+        }
     }
 }

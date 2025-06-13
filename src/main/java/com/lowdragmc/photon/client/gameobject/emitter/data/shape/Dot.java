@@ -1,16 +1,11 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.shape;
 
-import com.lowdragmc.lowdraglib2.gui.editor.annotation.LDLRegister;
+import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import org.joml.Vector3f;
 
-/**
- * @author KilaBash
- * @date 2023/5/26
- * @implNote Dot
- */
-@LDLRegister(name = "dot", group = "shape")
+@LDLRegisterClient(name = "dot", registry = "photon:shape")
 public class Dot implements IShape {
 
     @Override

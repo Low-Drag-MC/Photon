@@ -69,4 +69,6 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
                 .flatMap(tag -> CODEC.parse(NbtOps.INSTANCE, tag).result())
                 .orElse(MISSING);
     }
+
+    // TODO IConfigurable
 }

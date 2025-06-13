@@ -1,7 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.client.shader.management.ShaderManager;
-import com.lowdragmc.lowdraglib2.gui.editor.ui.Editor;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.photon.Photon;
 import com.mojang.blaze3d.platform.GlStateManager;
@@ -39,7 +38,8 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
 
     @Override
     public void begin(boolean isInstancing) {
-        if (Photon.isUsingShaderPack() && Editor.INSTANCE == null) {
+        // TODO better shader pack support
+        if (Photon.isUsingShaderPack()) {
             var lastShader = RenderSystem.getShader();
 
             ShaderManager.getTempTarget().clear(false);
@@ -50,8 +50,6 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
             float imageV = 0;
             float imageWidth = 1;
             float imageHeight = 1;
-            Tesselator tessellator = Tesselator.getInstance();
-            BufferBuilder bufferbuilder = tessellator.getBuilder();
             RenderSystem.setShader(this::getShader);
             setupUniform();
 
@@ -59,26 +57,24 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
             RenderSystem.setProjectionMatrix(new Matrix4f(), VertexSorting.DISTANCE_TO_ORIGIN);
 
             var stack = RenderSystem.getModelViewStack();
-            stack.pushPose();
-            stack.setIdentity();
+            stack.pushMatrix();
+            stack.identity();
             RenderSystem.applyModelViewMatrix();
 
             var lightTexture = Minecraft.getInstance().gameRenderer.lightTexture();
             lightTexture.turnOnLightLayer();
-            bufferbuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
+            var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
 
+            buffer.addVertex(-1, -1, 0).setUv(imageU, imageV).setColor(-1).setLight(LightTexture.FULL_BRIGHT);
+            buffer.addVertex(1, -1, 0).setUv(imageU + imageWidth, imageV).setColor(-1).setLight(LightTexture.FULL_BRIGHT);
+            buffer.addVertex(1, 1, 0).setUv(imageU + imageWidth, imageV + imageHeight).setColor(-1).setLight(LightTexture.FULL_BRIGHT);
+            buffer.addVertex(-1, 1, 0).setUv(imageU, imageV + imageHeight).setColor(-1).setLight(LightTexture.FULL_BRIGHT);
 
-
-            bufferbuilder.vertex(-1, -1, 0).uv(imageU, imageV).color(-1).uv2(LightTexture.FULL_BRIGHT).endVertex();
-            bufferbuilder.vertex(1, -1, 0).uv(imageU + imageWidth, imageV).color(-1).uv2(LightTexture.FULL_BRIGHT).endVertex();
-            bufferbuilder.vertex(1, 1, 0).uv(imageU + imageWidth, imageV + imageHeight).color(-1).uv2(LightTexture.FULL_BRIGHT).endVertex();
-            bufferbuilder.vertex(-1, 1, 0).uv(imageU, imageV + imageHeight).color(-1).uv2(LightTexture.FULL_BRIGHT).endVertex();
-
-            tessellator.end();
+            BufferUploader.drawWithShader(buffer.buildOrThrow());
             lightTexture.turnOffLightLayer();
             RenderSystem.restoreProjectionMatrix();
 
-            stack.popPose();
+            stack.popMatrix();
             RenderSystem.applyModelViewMatrix();
 
             GlStateManager._glBindFramebuffer(36160, lastID);

@@ -23,7 +23,7 @@ public record FXData(List<IFXObject> objects) implements INBTSerializable<Compou
         var tag = new CompoundTag();
         var fxObjects = new ListTag();
         for (var fxObject : objects) {
-            fxObjects.add(fxObject.serializeNBT());
+            fxObjects.add(fxObject.serializeWrapper());
         }
         tag.put("fxObjects", fxObjects);
         return tag;

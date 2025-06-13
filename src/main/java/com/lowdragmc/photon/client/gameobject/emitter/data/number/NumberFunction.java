@@ -1,20 +1,18 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number;
 
-import com.lowdragmc.lowdraglib2.gui.widget.WidgetGroup;
-import com.lowdragmc.lowdraglib2.syncdata.ITagSerializable;
+import com.lowdragmc.lowdraglib2.registry.ILDLRegisterClient;
+import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
+import com.lowdragmc.lowdraglib2.utils.PersistedParser;
+import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Color;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Gradient;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomColor;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGradient;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import com.lowdragmc.photon.gui.editor.configurator.NumberFunctionConfigurator;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.util.RandomSource;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -22,42 +20,27 @@ import java.util.function.Supplier;
  * @date 2023/5/25
  * @implNote NumberFunction
  */
-public interface NumberFunction extends ITagSerializable<CompoundTag> {
-    Map<String, Class< ? extends NumberFunction>> REGISTRY = new HashMap<>(Map.ofEntries(
-            Map.entry(Color.class.getSimpleName(), Color.class),
-            Map.entry(RandomColor.class.getSimpleName(), RandomColor.class),
-            Map.entry(Constant.class.getSimpleName(), Constant.class),
-            Map.entry(RandomConstant.class.getSimpleName(), RandomConstant.class),
-            Map.entry(Curve.class.getSimpleName(), Curve.class),
-            Map.entry(RandomCurve.class.getSimpleName(), RandomCurve.class),
-            Map.entry(Gradient.class.getSimpleName(), Gradient.class),
-            Map.entry(RandomGradient.class.getSimpleName(), RandomGradient.class)
-    ));
+public interface NumberFunction extends IPersistedSerializable, ILDLRegisterClient<NumberFunction, Supplier<NumberFunction>> {
+    NumberFunction ZERO = NumberFunction.constant(0);
+    Codec<NumberFunction> CODEC = PhotonRegistries.NUMBER_FUNCTIONS.optionalCodec().dispatch(ILDLRegisterClient::getRegistryHolderOptional,
+            optional -> optional.map(holder ->
+                            PersistedParser.createCodec(holder.value()).fieldOf("data"))
+                    .orElseGet(() -> MapCodec.unit(ZERO)));
 
     static NumberFunction constant(Number constant) {
         return new Constant(constant);
     }
 
-    static NumberFunction color(Number color) {
+    static NumberFunction color(int color) {
         return new Color(color);
     }
 
-    static CompoundTag serializeWrapper(NumberFunction value) {
-        var tag = value.serializeNBT();
-        tag.putString("_type", value.getClass().getSimpleName());
-        return tag;
+    default CompoundTag serializeWrapper() {
+        return (CompoundTag) CODEC.encodeStart(NbtOps.INSTANCE, this).result().orElse(new CompoundTag());
     }
 
-    static NumberFunction deserializeWrapper(CompoundTag tag) {
-        var type = REGISTRY.get(tag.getString("_type"));
-        if (type != null) {
-            try {
-                var function = type.getConstructor().newInstance();
-                function.deserializeNBT(tag);
-                return function;
-            } catch (Throwable ignored) {}
-        }
-        return constant(0);
+    static NumberFunction deserializeWrapper(Tag tag) {
+        return CODEC.parse(NbtOps.INSTANCE, tag).result().orElse(ZERO);
     }
 
     static NumberFunction copy(NumberFunction function) {
@@ -68,14 +51,17 @@ public interface NumberFunction extends ITagSerializable<CompoundTag> {
         return a.equals(b);
     }
 
+    /**
+     * Copy a new instance of this number function
+     */
     NumberFunction copy();
 
-    void createConfigurator(WidgetGroup group, NumberFunctionConfigurator configurator);
+    void createConfigurator(NumberFunctionConfigurator configurator);
 
-    default Number get(RandomSource randomSource, float t) {
+    default Float get(RandomSource randomSource, float t) {
         return get(t, randomSource::nextFloat);
     }
 
-    Number get(float t, Supplier<Float> lerp);
+    Float get(float t, Supplier<Float> lerp);
 
 }

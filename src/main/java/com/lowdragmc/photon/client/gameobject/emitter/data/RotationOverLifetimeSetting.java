@@ -41,9 +41,9 @@ public class RotationOverLifetimeSetting extends ToggleGroup {
     public Vector3f getRotation(IParticle particle, float partialTicks) {
         var t = particle.getT(partialTicks);
         return new Vector3f(
-                yaw.get(t, () -> particle.getMemRandom("rol2")).floatValue(),
-                pitch.get(t, () -> particle.getMemRandom("rol1")).floatValue(),
-                roll.get(t, () -> particle.getMemRandom("rol0")).floatValue()).mul(Mth.TWO_PI / 360);
+                yaw.get(t, () -> particle.getMemRandom("rol2")),
+                pitch.get(t, () -> particle.getMemRandom("rol1")),
+                roll.get(t, () -> particle.getMemRandom("rol0"))).mul(Mth.TWO_PI / 360);
     }
 
 }

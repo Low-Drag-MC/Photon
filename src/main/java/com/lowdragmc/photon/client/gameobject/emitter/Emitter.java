@@ -1,9 +1,12 @@
 package com.lowdragmc.photon.client.gameobject.emitter;
 
-import com.lowdragmc.lowdraglib2.utils.DummyWorld;
+import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.client.gameobject.FXObject;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQueueRenderType;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.world.phys.AABB;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -131,9 +134,13 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         this.t = 0;
     }
 
+    public boolean useTranslucentPipeline() {
+        return true;
+    }
+
     @Nonnull
-    public final PhotonParticleRenderType getRenderType() {
-        return ParticleQueueRenderType.INSTANCE;
+    public final ParticleRenderType getRenderType() {
+        return useTranslucentPipeline() ? ParticleQueueRenderType.TRANSLUCENT_QUEUE : ParticleQueueRenderType.OPAQUE_QUEUE;
     }
 
     @Override
@@ -151,6 +158,13 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
             }
             return 0;
         });
+    }
+
+    @Override
+    @Nonnull
+    public AABB getRenderBoundingBox(float partialTicks) {
+        var cullBox = getCullBox(partialTicks);
+        return cullBox == null ? AABB.INFINITE : cullBox;
     }
 
     public int getAge() {

@@ -1,11 +1,9 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
+import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.Configurator;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.editor.runtime.ConfiguratorParser;
-import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
@@ -26,9 +24,9 @@ import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.nbt.CompoundTag;
 import org.joml.Vector4f;
 
 import java.util.HashMap;
@@ -39,7 +37,7 @@ import java.util.HashMap;
  * @implNote TrailsSetting
  */
 @OnlyIn(Dist.CLIENT)
-public class TrailsSetting extends ToggleGroup implements IPersistedSerializable {
+public class TrailsSetting extends ToggleGroup {
     @Setter
     @Getter
     @Configurable(tips = "photon.emitter.config.trails.ratio")
@@ -80,19 +78,6 @@ public class TrailsSetting extends ToggleGroup implements IPersistedSerializable
         config.setParallelRendering(true);
     }
 
-    @Override
-    public void deserializeNBT(CompoundTag tag) {
-        IPersistedSerializable.super.deserializeNBT(tag);
-        // compatible with old version
-        if (tag.contains("material")) {
-            config.getMaterial().deserializeNBT(tag.getCompound("material"));
-            config.setColorOverTrail(NumberFunction.deserializeWrapper(tag.getCompound("colorOverTrail")));
-            config.setWidthOverTrail(NumberFunction.deserializeWrapper(tag.getCompound("widthOverTrail")));
-            config.setUvMode(TrailParticle.UVMode.valueOf(tag.getString("uvMode")));
-            config.setMinVertexDistance(tag.getFloat("minimumVertexDistance"));
-        }
-    }
-
     public void setup(ParticleEmitter emitter, TileParticle particle) {
         var random = emitter.getRandomSource();
         if (random.nextFloat() < ratio) { // has tail
@@ -106,7 +91,7 @@ public class TrailsSetting extends ToggleGroup implements IPersistedSerializable
                 }
             });
             trail.setLifetimeSupplier(() -> {
-                var time = lifetime.get(particle.getT(), () -> particle.getMemRandom("trails-lifetime")).floatValue() * particle.getLifetime();
+                var time = lifetime.get(particle.getT(), () -> particle.getMemRandom("trails-lifetime")) * particle.getLifetime();
                 if (sizeAffectsLifetime) {
                     time *= Vector3fHelper.max(particle.getRealSize(0));
                 }
@@ -139,8 +124,8 @@ public class TrailsSetting extends ToggleGroup implements IPersistedSerializable
         super.buildConfigurator(father);
         ConfiguratorParser.createConfigurators(father, new HashMap<>(), config.getClass(), config);
         // remove time configurator from trail config
-        for (Configurator configurator : father.getConfigurators()) {
-            if (configurator.getName().equals("time")) {
+        for (var configurator : father.getConfigurators()) {
+            if (configurator.label.getText().equals(Component.translatable("time"))) {
                 father.removeConfigurator(configurator);
                 break;
             }

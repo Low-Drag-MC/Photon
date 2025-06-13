@@ -1,5 +1,7 @@
 package com.lowdragmc.photon.client.fx;
 
+import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.IScene;
+import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.EmptyFXObject;
 import com.lowdragmc.photon.client.gameobject.IFXObject;

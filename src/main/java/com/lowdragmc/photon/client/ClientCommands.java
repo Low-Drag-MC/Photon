@@ -1,11 +1,12 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib2.LDLib;
+import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.gui.modular.IUIHolder;
 import com.lowdragmc.lowdraglib2.gui.modular.ModularUI;
 import com.lowdragmc.lowdraglib2.gui.modular.ModularUIGuiContainer;
 import com.lowdragmc.photon.client.gameobject.FXObject;
-import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.fx.BlockEffect;
 import com.lowdragmc.photon.client.fx.EntityEffect;
 import com.lowdragmc.photon.client.fx.FXHelper;
@@ -35,7 +36,7 @@ public class ClientCommands {
                 (LiteralArgumentBuilder<S>) createLiteral("photon_editor").executes(context -> {
                     var minecraft = Minecraft.getInstance();
                     var entityPlayer = minecraft.player;
-                    var modular = new ModularUI(IUIHolder.EMPTY, entityPlayer).widget(new FXEditor(LDLib.getLDLibDir()));
+                    var modular = new ModularUI(IUIHolder.EMPTY, entityPlayer).widget(new FXEditor(LDLib2.getAssetsDir()));
                     modular.initWidgets();
                     ModularUIGuiContainer ModularUIGuiContainer = new ModularUIGuiContainer(modular, entityPlayer.containerMenu.containerId);
                     minecraft.setScreen(ModularUIGuiContainer);
@@ -47,7 +48,7 @@ public class ClientCommands {
                                 .executes(context -> {
                                     if (Minecraft.getInstance().particleEngine instanceof ParticleEngineAccessor accessor) {
                                         accessor.getParticles().entrySet().removeIf(entry ->
-                                                entry.getKey() instanceof PhotonParticleRenderType ||
+                                                entry.getKey() instanceof PhotonFXRenderPass ||
                                                 entry.getKey() == FXObject.NO_RENDER_RENDER_TYPE);
                                     }
                                     EntityEffect.CACHE.clear();

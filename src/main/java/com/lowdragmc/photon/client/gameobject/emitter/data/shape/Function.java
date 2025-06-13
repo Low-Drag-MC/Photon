@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.shape;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
-import com.lowdragmc.lowdraglib2.gui.editor.annotation.LDLRegister;
+import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
@@ -13,12 +13,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.joml.Vector3f;
 
-/**
- * @author KilaBash
- * @date 2023/5/29
- * @implNote Circle
- */
-@LDLRegister(name = "function", group = "shape")
+@LDLRegisterClient(name = "function", registry = "photon:shape")
 public class Function implements IShape {
     @Getter
     @Setter
@@ -76,6 +71,7 @@ public class Function implements IShape {
     })
     private String speedZ = "0";
 
+    // runtime
     private Expr xCache, yCache, zCache, sXCache, sYCache, sZCache;
     private static final Variable T = Variable.make("t");
     private static final Variable PI = Variable.make("PI");

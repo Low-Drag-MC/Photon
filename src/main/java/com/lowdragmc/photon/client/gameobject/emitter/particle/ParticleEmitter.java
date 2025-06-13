@@ -1,24 +1,21 @@
 package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
 import com.google.common.collect.Queues;
-import com.lowdragmc.lowdraglib2.gui.editor.annotation.LDLRegisterClient;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.editor.runtime.ConfiguratorParser;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
-import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
-import com.lowdragmc.photon.client.gameobject.emitter.ParticleQueueRenderType;
-import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
-import net.minecraft.client.Camera;
-import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.phys.AABB;
+import org.jetbrains.annotations.NotNull;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.*;
@@ -29,7 +26,7 @@ import java.util.*;
  * @implNote ParticleEmitter
  */
 @ParametersAreNonnullByDefault
-@LDLRegisterClient(name = "particle", group = "emitter")
+@LDLRegisterClient(name = "particle_emitter", registry = "photon:fx_object")
 public class ParticleEmitter extends Emitter {
     public static int VERSION = 2;
 
@@ -38,7 +35,7 @@ public class ParticleEmitter extends Emitter {
 
     // runtime
     @Getter
-    protected final Map<PhotonParticleRenderType, Queue<IParticle>> particles = new LinkedHashMap<>();
+    protected final Map<PhotonFXRenderPass, Queue<IParticle>> particles = new LinkedHashMap<>();
     public final Queue<IParticle> waitToAdded = Queues.newArrayDeque();
 
     public ParticleEmitter() {
@@ -55,29 +52,16 @@ public class ParticleEmitter extends Emitter {
     }
 
     @Override
-    public CompoundTag serializeNBT() {
-        var tag = super.serializeNBT();
+    public CompoundTag serializeNBT(HolderLookup.@NotNull Provider provider) {
+        var tag = super.serializeNBT(provider);
         tag.putInt("_version", VERSION);
         return tag;
     }
 
     @Override
-    public void deserializeNBT(CompoundTag tag) {
-        var version = tag.contains("_version") ? tag.getInt("_version") : 0;
-        // legacy version
-        if (version < 1) {
-            var configTag = tag;
-            tag = new CompoundTag();
-            tag.put("config", configTag);
-            tag.putString("name", configTag.getString("name"));
-        }
-        super.deserializeNBT(tag);
-    }
-
-    @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         super.buildConfigurator(father);
-        ConfiguratorParser.createConfigurators(father, new HashMap<>(), config.getClass(), config);
+        config.buildConfigurator(father);
     }
 
     //////////////////////////////////////
@@ -153,23 +137,17 @@ public class ParticleEmitter extends Emitter {
     }
 
     @Override
-    public void render(@Nonnull VertexConsumer buffer, Camera camera, float pPartialTicks) {
-        super.render(buffer, camera, pPartialTicks);
-        if (!ParticleQueueRenderType.INSTANCE.isRenderingQueue() && delay <= 0 && isVisible() &&
-                PhotonParticleRenderType.checkLayer(config.renderer.getLayer()) &&
-                (!config.renderer.getCull().isEnable() ||
-                        PhotonParticleRenderType.checkFrustum(config.renderer.getCull().getCullAABB(this, pPartialTicks)))) {
+    public boolean useTranslucentPipeline() {
+        return config.renderer.getLayer() == RendererSetting.Layer.Translucent;
+    }
+
+    public void prepareRenderPass(RenderPassPipeline buffer) {
+        if (delay <= 0 && isVisible()) {
             for(var entry : this.particles.entrySet()) {
-                var type = entry.getKey();
-                if (type == ParticleRenderType.NO_RENDER) continue;
+                var pass = entry.getKey();
                 var queue = entry.getValue();
-                if (type == ParticleQueueRenderType.INSTANCE) {
-                    // TODO sub emitters
-                    for (var emitter : queue) {
-                        emitter.render(buffer, camera, pPartialTicks);
-                    }
-                } else if (!queue.isEmpty()) {
-                    ParticleQueueRenderType.INSTANCE.pipeQueue(type, queue, camera, pPartialTicks);
+                if (!queue.isEmpty()) {
+                    buffer.pipeQueue(pass, queue);
                 }
             }
         }
@@ -182,16 +160,7 @@ public class ParticleEmitter extends Emitter {
 
     @Override
     public int getParticleAmount() {
-        var sum = 0;
-        for (var entry : getParticles().entrySet()) {
-            if (entry.getKey() == ParticleQueueRenderType.INSTANCE) {
-                for (var particle : entry.getValue()) {
-                    sum += ((IParticleEmitter) particle).getParticleAmount();
-                }
-            }
-            sum += entry.getValue().size();
-        }
-        return sum + waitToAdded.size();
+        return getParticles().values().stream().mapToInt(Collection::size).sum() + waitToAdded.size();
     }
 
     @Override

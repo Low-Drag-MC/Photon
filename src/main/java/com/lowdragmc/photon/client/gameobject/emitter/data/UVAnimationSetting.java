@@ -2,7 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.utils.Range;
+import com.lowdragmc.lowdraglib2.math.Range;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -33,7 +33,7 @@ public class UVAnimationSetting extends ToggleGroup {
     @Getter
     @Configurable(tips = "photon.emitter.config.uvAnimation.tiles")
     @ConfigNumber(range = {1, Integer.MAX_VALUE})
-    protected Range tiles = new Range(1, 1);
+    protected Range tiles = Range.of(1, 1);
 
     @Setter
     @Getter
@@ -62,8 +62,8 @@ public class UVAnimationSetting extends ToggleGroup {
         var t = particle.getT(partialTicks);
         var cellU = 1f / tiles.getA().intValue();
         var cellV = 1f / tiles.getB().intValue();
-        var currentFrame = this.startFrame.get(t, () -> particle.getMemRandom("startFrame")).floatValue();
-        currentFrame += cycle * frameOverTime.get(t, () -> particle.getMemRandom("frameOverTime")).floatValue();
+        var currentFrame = this.startFrame.get(t, () -> particle.getMemRandom("startFrame"));
+        currentFrame += cycle * frameOverTime.get(t, () -> particle.getMemRandom("frameOverTime"));
         float u0, v0, u1, v1;
         var cellSize = tiles.getA().intValue();
         if (animation == Animation.WholeSheet) {

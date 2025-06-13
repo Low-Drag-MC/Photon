@@ -1,7 +1,6 @@
 package com.lowdragmc.photon.command;
 
-import com.lowdragmc.lowdraglib2.networking.IHandlerContext;
-import com.lowdragmc.photon.PhotonNetworking;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.BlockEffect;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.mojang.brigadier.Command;
@@ -11,15 +10,22 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.FriendlyByteBuf;
+import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
+
+import javax.annotation.Nonnull;
 
 /**
  * @author KilaBash
@@ -27,6 +33,10 @@ import net.minecraft.network.FriendlyByteBuf;
  * @implNote BlockEffectCommand
  */
 public class BlockEffectCommand extends EffectCommand {
+    public static final ResourceLocation ID = Photon.id("block_effect_command");
+    public static final Type<BlockEffectCommand> TYPE = new Type<>(ID);
+    public static final StreamCodec<RegistryFriendlyByteBuf, BlockEffectCommand> CODEC = StreamCodec.ofMember(BlockEffectCommand::encode, BlockEffectCommand::decodePacket);
+
     @Setter
     protected BlockPos pos;
     @Setter
@@ -34,6 +44,12 @@ public class BlockEffectCommand extends EffectCommand {
 
     public BlockEffectCommand() {
         super();
+    }
+
+    @Override
+    @Nonnull
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
     }
 
     public static LiteralArgumentBuilder<CommandSourceStack> createServerCommand() {
@@ -97,40 +113,49 @@ public class BlockEffectCommand extends EffectCommand {
         if (checkState) {
             command.setCheckState(BoolArgumentType.getBool(context, "check state"));
         }
-        PhotonNetworking.NETWORK.sendToTrackingChunk(command, context.getSource().getLevel().getChunkAt(command.pos));
+        PacketDistributor.sendToPlayersTrackingChunk(context.getSource().getLevel(), new ChunkPos(command.pos), command);
         return Command.SINGLE_SUCCESS;
     }
 
     @Override
-    public void encode(FriendlyByteBuf buf) {
+    public void encode(RegistryFriendlyByteBuf buf) {
         super.encode(buf);
         buf.writeBlockPos(pos);
         buf.writeBoolean(checkState);
     }
 
     @Override
-    public void decode(FriendlyByteBuf buf) {
+    public void decode(RegistryFriendlyByteBuf buf) {
         super.decode(buf);
         pos = buf.readBlockPos();
         checkState = buf.readBoolean();
     }
 
-    @Override
-    @OnlyIn(Dist.CLIENT)
-    public void execute(IHandlerContext handler) {
-        if (handler.getLevel().isLoaded(pos)) {
-            var fx = FXHelper.getFX(location);
+    public static BlockEffectCommand decodePacket(RegistryFriendlyByteBuf buf) {
+        var packet = new BlockEffectCommand();
+        packet.decode(buf);
+        return packet;
+    }
+
+    public static void execute(BlockEffectCommand packet, IPayloadContext context) {
+        var level = Minecraft.getInstance().level;
+        if (level != null && level.isLoaded(packet.pos)) {
+            var fx = FXHelper.getFX(packet.location);
             if (fx != null) {
-                var effect = new BlockEffect(fx, handler.getLevel(), pos);
+                var effect = new BlockEffect(fx, level, packet.pos);
+                var offset = packet.offset;
+                var rotation = packet.rotation;
+                var scale = packet.scale;
                 effect.setOffset(offset.x, offset.y, offset.z);
                 effect.setRotation(rotation.x, rotation.y, rotation.z);
                 effect.setScale(scale.x, scale.y, scale.z);
-                effect.setDelay(delay);
-                effect.setForcedDeath(forcedDeath);
-                effect.setAllowMulti(allowMulti);
-                effect.setCheckState(checkState);
+                effect.setDelay(packet.delay);
+                effect.setForcedDeath(packet.forcedDeath);
+                effect.setAllowMulti(packet.allowMulti);
+                effect.setCheckState(packet.checkState);
                 effect.start();
             }
         }
     }
+
 }

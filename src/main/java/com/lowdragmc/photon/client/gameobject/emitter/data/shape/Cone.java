@@ -1,8 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.shape;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
-import com.lowdragmc.lowdraglib2.gui.editor.annotation.LDLRegister;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
+import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
@@ -11,12 +11,8 @@ import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.util.Mth;
 
-/**
- * @author KilaBash
- * @date 2023/5/29
- * @implNote Circle
- */
-@LDLRegister(name = "cone", group = "shape")
+
+@LDLRegisterClient(name = "cone", registry = "photon:shape")
 public class Cone implements IShape {
 
     @Getter

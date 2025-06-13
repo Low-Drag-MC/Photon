@@ -2,7 +2,7 @@ package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
-import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamConfig;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
@@ -181,14 +181,14 @@ public class BeamParticle implements IParticle {
         var p3 = new Vector3f(end).add(n).sub(cameraPos);
         var p4 = new Vector3f(end).add(n.mul(-1)).sub(cameraPos);
 
-        pBuffer.vertex(p1.x, p1.y, p1.z).uv(u0, v0).color(r, g, b, a).uv2(light).endVertex();
-        pBuffer.vertex(p0.x, p0.y, p0.z).uv(u0, v1).color(r, g, b, a).uv2(light).endVertex();
-        pBuffer.vertex(p4.x, p4.y, p4.z).uv(u1, v1).color(r, g, b, a).uv2(light).endVertex();
-        pBuffer.vertex(p3.x, p3.y, p3.z).uv(u1, v0).color(r, g, b, a).uv2(light).endVertex();
+        pBuffer.addVertex(p1.x, p1.y, p1.z).setUv(u0, v0).setColor(r, g, b, a).setLight(light);
+        pBuffer.addVertex(p0.x, p0.y, p0.z).setUv(u0, v1).setColor(r, g, b, a).setLight(light);
+        pBuffer.addVertex(p4.x, p4.y, p4.z).setUv(u1, v1).setColor(r, g, b, a).setLight(light);
+        pBuffer.addVertex(p3.x, p3.y, p3.z).setUv(u1, v0).setColor(r, g, b, a).setLight(light);
     }
 
     @Override
-    public PhotonParticleRenderType getRenderType() {
+    public PhotonFXRenderPass getRenderType() {
         return config.particleRenderType;
     }
 

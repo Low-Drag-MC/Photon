@@ -1,15 +1,18 @@
 package com.lowdragmc.photon.client.gameobject;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
-import com.lowdragmc.lowdraglib2.gui.editor.ui.sceneeditor.data.Transform;
-import com.lowdragmc.lowdraglib2.gui.editor.ui.sceneeditor.sceneobject.IScene;
+import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.IScene;
+import com.lowdragmc.lowdraglib2.math.Transform;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.IEffect;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
+import net.minecraft.world.phys.AABB;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Camera;
@@ -49,15 +52,6 @@ public class FXObject extends Particle implements IFXObject {
         super(null, 0, 0, 0);
         this.hasPhysics = false;
         this.friction = 1;
-    }
-
-    @Override
-    public IFXObject deepCopy() {
-        var data = serializeNBT();
-        if (data.contains("transform")) {
-            data.getCompound("transform").remove("id");
-        }
-        return IFXObject.deserializeWrapper(data);
     }
 
     @Override
@@ -138,8 +132,19 @@ public class FXObject extends Particle implements IFXObject {
     }
 
     @Override
-    public void render(@Nonnull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
+    public void render(@Nonnull VertexConsumer buffer, Camera pRenderInfo, float pPartialTicks) {
         updateFrame(pPartialTicks);
+        if (buffer instanceof RenderPassPipeline passBuffer) {
+            passBuffer.setupRenderingState(pRenderInfo, pPartialTicks);
+            prepareRenderPass(passBuffer);
+        } else {
+            Photon.LOGGER.error("Photon FX Object {} is not using a RenderPassBuffer. " +
+                            "Please use a RenderPassBuffer to render your FX Objects.", name);
+        }
+    }
+
+    public void prepareRenderPass(RenderPassPipeline buffer) {
+
     }
 
     @Override
@@ -155,16 +160,23 @@ public class FXObject extends Particle implements IFXObject {
         return NO_RENDER_RENDER_TYPE;
     }
 
-    // compatibility with forge particle
-    public boolean shouldCull() {
-        return false;
+    @Override
+    @Nonnull
+    public AABB getRenderBoundingBox(float partialTicks) {
+        return AABB.INFINITE;
     }
 
     public static ParticleRenderType NO_RENDER_RENDER_TYPE = new ParticleRenderType() {
-        @Override
-        public void begin(BufferBuilder builder, TextureManager textureManager) {}
+        public final RenderPassPipeline pipeline = new RenderPassPipeline();
 
         @Override
-        public void end(Tesselator tesselator) {}
+        public BufferBuilder begin(Tesselator tesselator, TextureManager textureManager) {
+            return pipeline;
+        }
+
+        @Override
+        public boolean isTranslucent() {
+            return false;
+        }
     };
 }

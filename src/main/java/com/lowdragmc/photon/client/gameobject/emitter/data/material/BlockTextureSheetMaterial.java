@@ -5,6 +5,8 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.world.inventory.InventoryMenu;
 
+import javax.annotation.Nonnull;
+
 @OnlyIn(Dist.CLIENT)
 public class BlockTextureSheetMaterial extends TextureMaterial {
 
@@ -13,7 +15,7 @@ public class BlockTextureSheetMaterial extends TextureMaterial {
     }
 
     @Override
-    public void buildConfigurator(ConfiguratorGroup father) {
+    public void buildConfigurator(@Nonnull ConfiguratorGroup father) {
 
     }
 }

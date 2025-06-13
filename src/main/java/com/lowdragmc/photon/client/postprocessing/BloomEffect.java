@@ -6,6 +6,7 @@ import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Minecraft;
@@ -33,7 +34,7 @@ public class BloomEffect {
 
     private static ShaderInstance loadShader(String shaderName) {
         try {
-            return new ShaderInstance(Minecraft.getInstance().getResourceManager(), shaderName, DefaultVertexFormat.POSITION);
+            return new ShaderInstance(Minecraft.getInstance().getResourceManager(), ResourceLocation.parse(shaderName), DefaultVertexFormat.POSITION);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -172,13 +173,12 @@ public class BloomEffect {
         dist.bindWrite(false);
         shaderInstance.apply();
         Tesselator tesselator = RenderSystem.renderThreadTesselator();
-        BufferBuilder bufferbuilder = tesselator.getBuilder();
-        bufferbuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
-        bufferbuilder.vertex(-1, 1, 0).endVertex();
-        bufferbuilder.vertex(-1, -1, 0).endVertex();
-        bufferbuilder.vertex(1, -1, 0).endVertex();
-        bufferbuilder.vertex(1, 1, 0).endVertex();
-        BufferUploader.draw(bufferbuilder.end());
+        var buffer = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
+        buffer.addVertex(-1, 1, 0);
+        buffer.addVertex(-1, -1, 0);
+        buffer.addVertex(1, -1, 0);
+        buffer.addVertex(1, 1, 0);
+        BufferUploader.draw(buffer.buildOrThrow());
         shaderInstance.clear();
     }
 }

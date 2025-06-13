@@ -21,9 +21,7 @@ public class PhotonClientProxy extends PhotonCommonProxy {
 
     @SubscribeEvent
     public void clientSetup(final FMLClientSetupEvent e) {
-        e.enqueueWork(() -> {
-            PhotonShaders.init();
-        });
+        e.enqueueWork(PhotonShaders::init);
     }
 
 

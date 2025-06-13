@@ -182,6 +182,7 @@ public class FXObjectsList extends DraggableScrollableWidgetGroup {
 
     public IFXObject deepCopyFXObject(IFXObject fxObject, Transform parent) {
         var copied = fxObject.copy(true);
+        copied.transform()._refreshInternalID();
         addSceneObject(copied);
         copied.transform().parent(parent);
         for (var child : fxObject.transform().children()) {

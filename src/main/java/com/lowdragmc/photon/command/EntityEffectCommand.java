@@ -1,7 +1,6 @@
 package com.lowdragmc.photon.command;
 
-import com.lowdragmc.lowdraglib2.networking.IHandlerContext;
-import com.lowdragmc.photon.PhotonNetworking;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.EntityEffect;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.mojang.brigadier.Command;
@@ -16,16 +15,21 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
-import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.Entity;
+import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 
+import javax.annotation.Nonnull;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -38,6 +42,9 @@ import java.util.concurrent.CompletableFuture;
  */
 @NoArgsConstructor
 public class EntityEffectCommand extends EffectCommand {
+    public static final ResourceLocation ID = Photon.id("entity_effect_command");
+    public static final Type<EntityEffectCommand> TYPE = new Type<>(ID);
+    public static final StreamCodec<RegistryFriendlyByteBuf, EntityEffectCommand> CODEC = StreamCodec.ofMember(EntityEffectCommand::encode, EntityEffectCommand::decodePacket);
 
     @Setter
     protected List<Entity> entities;
@@ -45,6 +52,12 @@ public class EntityEffectCommand extends EffectCommand {
     private int[] ids = new int[0];
     @Setter
     private EntityEffect.AutoRotate autoRotate = EntityEffect.AutoRotate.NONE;
+
+    @Override
+    @Nonnull
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
 
     public static class AutoRotateType implements ArgumentType<EntityEffect.AutoRotate> {
         private static final Collection<String> EXAMPLES = Arrays.asList("none", "forward", "look", "xrot");
@@ -144,12 +157,12 @@ public class EntityEffectCommand extends EffectCommand {
         if (autoRotate) {
             command.setAutoRotate(AutoRotateType.getValue(context, "auto rotate"));
         }
-        PhotonNetworking.NETWORK.sendToAll(command);
+        PacketDistributor.sendToAllPlayers(command);
         return Command.SINGLE_SUCCESS;
     }
 
     @Override
-    public void encode(FriendlyByteBuf buf) {
+    public void encode(RegistryFriendlyByteBuf buf) {
         super.encode(buf);
         buf.writeEnum(autoRotate);
         buf.writeVarInt(entities.size());
@@ -159,7 +172,7 @@ public class EntityEffectCommand extends EffectCommand {
     }
 
     @Override
-    public void decode(FriendlyByteBuf buf) {
+    public void decode(RegistryFriendlyByteBuf buf) {
         super.decode(buf);
         autoRotate = buf.readEnum(EntityEffect.AutoRotate.class);
         ids = new int[buf.readVarInt()];
@@ -168,25 +181,36 @@ public class EntityEffectCommand extends EffectCommand {
         }
     }
 
-    @Override
-    @OnlyIn(Dist.CLIENT)
-    public void execute(IHandlerContext handler) {
-        var level = handler.getLevel();
-        var fx = FXHelper.getFX(location);
-        if (fx != null) {
-            for (var id : ids) {
-                var entity = level.getEntity(id);
-                if (entity != null) {
-                    var effect = new EntityEffect(fx, level, entity, autoRotate);
-                    effect.setOffset(offset.x, offset.y, offset.z);
-                    effect.setRotation(rotation.x, rotation.y, rotation.z);
-                    effect.setScale(scale.x, scale.y, scale.z);
-                    effect.setDelay(delay);
-                    effect.setForcedDeath(forcedDeath);
-                    effect.setAllowMulti(allowMulti);
-                    effect.start();
+    public static EntityEffectCommand decodePacket(RegistryFriendlyByteBuf buf) {
+        var packet = new EntityEffectCommand();
+        packet.decode(buf);
+        return packet;
+    }
+
+
+    public static void execute(EntityEffectCommand packet, IPayloadContext context) {
+        var level = Minecraft.getInstance().level;
+        if (level != null) {
+            var fx = FXHelper.getFX(packet.location);
+            if (fx != null) {
+                for (var id : packet.ids) {
+                    var entity = level.getEntity(id);
+                    if (entity != null) {
+                        var effect = new EntityEffect(fx, level, entity, packet.autoRotate);
+                        var offset = packet.offset;
+                        var rotation = packet.rotation;
+                        var scale = packet.scale;
+                        effect.setOffset(offset.x, offset.y, offset.z);
+                        effect.setRotation(rotation.x, rotation.y, rotation.z);
+                        effect.setScale(scale.x, scale.y, scale.z);
+                        effect.setDelay(packet.delay);
+                        effect.setForcedDeath(packet.forcedDeath);
+                        effect.setAllowMulti(packet.allowMulti);
+                        effect.start();
+                    }
                 }
             }
         }
     }
+
 }

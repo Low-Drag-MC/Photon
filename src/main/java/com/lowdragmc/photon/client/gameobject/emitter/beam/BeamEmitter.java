@@ -1,18 +1,15 @@
 package com.lowdragmc.photon.client.gameobject.emitter.beam;
 
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
-import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
-import com.lowdragmc.photon.client.gameobject.emitter.ParticleQueueRenderType;
-import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.BeamParticle;
-import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
-import net.minecraft.client.Camera;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.AABB;
@@ -28,7 +25,7 @@ import java.util.*;
  * @implNote BeamEmitter
  */
 @ParametersAreNonnullByDefault
-@LDLRegisterClient(name = "beam", registry = "photon:fx_object")
+@LDLRegisterClient(name = "beam_emitter", registry = "photon:fx_object")
 public class BeamEmitter extends Emitter {
     public static int VERSION = 2;
 
@@ -59,23 +56,10 @@ public class BeamEmitter extends Emitter {
     }
 
     @Override
-    public CompoundTag serializeNBT() {
-        var tag = super.serializeNBT();
+    public CompoundTag serializeNBT(HolderLookup.@NotNull Provider provider) {
+        var tag = super.serializeNBT(provider);
         tag.putInt("_version", VERSION);
         return tag;
-    }
-
-    @Override
-    public void deserializeNBT(CompoundTag tag) {
-        var version = tag.contains("_version") ? tag.getInt("_version") : 0;
-        // legacy version
-        if (version < 1) {
-            var configTag = tag;
-            tag = new CompoundTag();
-            tag.put("config", configTag);
-            tag.putString("name", configTag.getString("name"));
-        }
-        super.deserializeNBT(tag);
     }
 
     @Override
@@ -130,14 +114,9 @@ public class BeamEmitter extends Emitter {
         init();
     }
 
-    @Override
-    public void render(@NotNull VertexConsumer buffer, Camera camera, float pPartialTicks) {
-        super.render(buffer, camera, pPartialTicks);
-        if (!ParticleQueueRenderType.INSTANCE.isRenderingQueue() && delay <= 0 && isVisible() &&
-                PhotonParticleRenderType.checkLayer(config.renderer.getLayer()) &&
-                (!config.renderer.getCull().isEnable() ||
-                        PhotonParticleRenderType.checkFrustum(config.renderer.getCull().getCullAABB(this, pPartialTicks)))) {
-            ParticleQueueRenderType.INSTANCE.pipeQueue(beamParticle.getRenderType(), Collections.singleton(beamParticle), camera, pPartialTicks);
+    public void prepareRenderPass(RenderPassPipeline buffer) {
+        if (delay <= 0 && isVisible()) {
+            buffer.pipeQueue(beamParticle.getRenderType(), Collections.singleton(beamParticle));
         }
     }
 

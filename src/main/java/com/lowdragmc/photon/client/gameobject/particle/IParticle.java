@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
-import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
 import net.minecraft.util.RandomSource;
@@ -9,7 +9,7 @@ import java.util.function.Function;
 
 public interface IParticle {
 
-    PhotonParticleRenderType getRenderType();
+    PhotonFXRenderPass getRenderType();
 
     RandomSource getRandomSource();
 

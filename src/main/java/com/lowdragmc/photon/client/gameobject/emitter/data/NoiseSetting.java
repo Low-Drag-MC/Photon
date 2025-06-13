@@ -1,12 +1,12 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
-import com.lowdragmc.lowdraglib2.LDLib;
+import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.WrapperConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.widget.ImageWidget;
+import com.lowdragmc.lowdraglib2.math.noise.PerlinNoise;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
@@ -15,7 +15,6 @@ import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import net.minecraft.client.gui.GuiGraphics;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import com.lowdragmc.lowdraglib2.utils.noise.PerlinNoise;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
@@ -44,7 +43,7 @@ public class NoiseSetting extends ToggleGroup {
     private final ThreadLocal<PerlinNoise> noise = ThreadLocal.withInitial(PerlinNoise::new);
 
     @Configurable(tips = "photon.emitter.config.noise.frequency")
-    @ConfigNumber(range = {Float.MIN_VALUE, Float.MAX_VALUE})
+    @ConfigNumber(range = {-Float.MAX_VALUE, Float.MAX_VALUE})
     protected float frequency = 1;
 
     @Configurable(tips = "photon.emitter.config.noise.quality")
@@ -74,7 +73,7 @@ public class NoiseSetting extends ToggleGroup {
             case Noise3D -> noise.get().noise(input, input, input);
         };
         if (remap.isEnable()) {
-            value = remap.remapCurve.get((value + 1) / 2, () -> 0f).floatValue();
+            value = remap.remapCurve.get((value + 1) / 2, () -> 0f);
         }
         return value;
     }
@@ -86,7 +85,7 @@ public class NoiseSetting extends ToggleGroup {
     public Vector3f getRotation(IParticle particle, float partialTicks) {
         setupSeed(particle);
         var t = particle.getT(partialTicks);
-        var degree = rotation.get(t, () -> particle.getMemRandom("noise-rotation")).floatValue();
+        var degree = rotation.get(t, () -> particle.getMemRandom("noise-rotation"));
         if (degree != 0) {
             return new Vector3f(degree, 0, 0).mul(getNoise((t + 10 * particle.getMemRandom("noise-rotation-degree")) * 100) * Mth.TWO_PI / 360);
         }
@@ -96,7 +95,7 @@ public class NoiseSetting extends ToggleGroup {
     public Vector3f getSize(IParticle particle, float partialTicks) {
         setupSeed(particle);
         var t = particle.getT(partialTicks);
-        var scale = size.get(t, () -> particle.getMemRandom("noise-size")).floatValue();
+        var scale = size.get(t, () -> particle.getMemRandom("noise-size"));
         if (scale != 0) {
             return new Vector3f(scale, scale, scale).mul(getNoise((t + 10 * particle.getMemRandom("noise-size-scale")) * 100));
         }
@@ -119,8 +118,8 @@ public class NoiseSetting extends ToggleGroup {
 
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
+        new NoisePreview(LDLib2.RANDOM.nextGaussian() * 255).createPreview(father);
         super.buildConfigurator(father);
-        father.addConfigurator(0, new WrapperConfigurator("Noise preview", new ImageWidget(0, 0, 100, 100, new NoisePreview(LDLib.random.nextGaussian() * 255))));
     }
 
 
@@ -142,27 +141,26 @@ public class NoiseSetting extends ToggleGroup {
 
         @Override
         @OnlyIn(Dist.CLIENT)
-        public void draw(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, int width, int height) {
+        public void draw(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTicks) {
             noise.get().setSeed(seed);
             // render color bar
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
             Matrix4f mat = graphics.pose().last().pose();
             Tesselator tesselator = Tesselator.getInstance();
-            BufferBuilder buffer = tesselator.getBuilder();
             RenderSystem.setShader(GameRenderer::getPositionColorShader);
-            buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+            var buffer = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
 
             for (int i = 0; i < width; i++) {
                 if (quality == Quality.Noise1D) {
                     var value = ((float) noise.get().noise(i * frequency) + 1) / 2;
                     if (remap.isEnable()) {
-                        value = (remap.remapCurve.get(value, () -> 0f).floatValue() + 1) / 2;
+                        value = (remap.remapCurve.get(value, () -> 0f) + 1) / 2;
                     }
-                    buffer.vertex(mat,x + i + 1, y, 0).color(value, value, value, 1).endVertex();
-                    buffer.vertex(mat, x + i, y, 0).color(value, value, value, 1).endVertex();
-                    buffer.vertex(mat, x + i, y + height, 0).color(value, value, value, 1).endVertex();
-                    buffer.vertex(mat, x + i + 1, y + height, 0).color(value, value, value, 1).endVertex();
+                    buffer.addVertex(mat,x + i + 1, y, 0).setColor(value, value, value, 1);
+                    buffer.addVertex(mat, x + i, y, 0).setColor(value, value, value, 1);
+                    buffer.addVertex(mat, x + i, y + height, 0).setColor(value, value, value, 1);
+                    buffer.addVertex(mat, x + i + 1, y + height, 0).setColor(value, value, value, 1);
                 } else {
                     for (int j = 0; j < height; j++) {
                         float value;
@@ -173,20 +171,20 @@ public class NoiseSetting extends ToggleGroup {
                         }
 
                         if (remap.isEnable()) {
-                            value = (remap.remapCurve.get(value, () -> 0f).floatValue() + 1) / 2;
+                            value = (remap.remapCurve.get(value, () -> 0f) + 1) / 2;
                         }
 
-                        buffer.vertex(mat,x + i + 1, y + j, 0).color(value, value, value, 1).endVertex();
-                        buffer.vertex(mat, x + i, y + j, 0).color(value, value, value, 1).endVertex();
-                        buffer.vertex(mat, x + i, y + j + 1, 0).color(value, value, value, 1).endVertex();
-                        buffer.vertex(mat, x + i + 1, y + j + 1, 0).color(value, value, value, 1).endVertex();
+                        buffer.addVertex(mat,x + i + 1, y + j, 0).setColor(value, value, value, 1);
+                        buffer.addVertex(mat, x + i, y + j, 0).setColor(value, value, value, 1);
+                        buffer.addVertex(mat, x + i, y + j + 1, 0).setColor(value, value, value, 1);
+                        buffer.addVertex(mat, x + i + 1, y + j + 1, 0).setColor(value, value, value, 1);
 
                     }
                 }
 
             }
 
-            tesselator.end();
+            BufferUploader.drawWithShader(buffer.buildOrThrow());
         }
     }
 }

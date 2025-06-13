@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.command;
 
-import com.lowdragmc.lowdraglib2.LDLib;
+import com.lowdragmc.lowdraglib2.LDLib2;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
@@ -19,10 +19,10 @@ import java.util.concurrent.CompletableFuture;
 public class FxLocationArgument extends ResourceLocationArgument {
     @Override
     public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
-        if (LDLib.isClient()) {
+        if (LDLib2.isClient()) {
             return SharedSuggestionProvider.suggestResource(
                     Minecraft.getInstance().getResourceManager().listResources("fx", arg -> arg.getPath().endsWith(".fx")).keySet()
-                            .stream().map(rl -> new ResourceLocation(rl.getNamespace(), rl.getPath().substring(3, rl.getPath().length() - 3))),
+                            .stream().map(rl -> ResourceLocation.fromNamespaceAndPath(rl.getNamespace(), rl.getPath().substring(3, rl.getPath().length() - 3))),
                     builder);
         }
         return super.listSuggestions(context, builder);

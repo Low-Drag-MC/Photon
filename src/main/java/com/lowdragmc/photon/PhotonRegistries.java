@@ -3,6 +3,8 @@ package com.lowdragmc.photon;
 import com.lowdragmc.lowdraglib2.registry.AutoRegistry;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.gameobject.emitter.data.shape.IShape;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
@@ -17,6 +19,14 @@ public class PhotonRegistries {
     @OnlyIn(Dist.CLIENT)
     public final static AutoRegistry.LDLibRegisterClient<IMaterial, Supplier<IMaterial>> MATERIALS = AutoRegistry.LDLibRegisterClient
             .create(Photon.id("material"), IMaterial.class, AutoRegistry::noArgsCreator);
+
+    @OnlyIn(Dist.CLIENT)
+    public final static AutoRegistry.LDLibRegisterClient<NumberFunction, Supplier<NumberFunction>> NUMBER_FUNCTIONS = AutoRegistry.LDLibRegisterClient
+            .create(Photon.id("number_function"), NumberFunction.class, AutoRegistry::noArgsCreator);
+
+    @OnlyIn(Dist.CLIENT)
+    public final static AutoRegistry.LDLibRegisterClient<IShape, Supplier<IShape>> SHAPES = AutoRegistry.LDLibRegisterClient
+            .create(Photon.id("shape"), IShape.class, AutoRegistry::noArgsCreator);
 
     public static void init() {
 

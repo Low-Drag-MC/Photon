@@ -1,11 +1,13 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.curve;
 
-import com.lowdragmc.lowdraglib2.syncdata.ITagSerializable;
-import com.lowdragmc.lowdraglib2.utils.curve.ExplicitCubicBezierCurve2;
+import com.lowdragmc.lowdraglib2.math.curve.ExplicitCubicBezierCurve2;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.phys.Vec2;
+import net.neoforged.neoforge.common.util.INBTSerializable;
 
+import javax.annotation.Nonnull;
 import java.util.ArrayList;
 
 /**
@@ -13,7 +15,7 @@ import java.util.ArrayList;
  * @date 2023/5/29
  * @implNote ECBCurves
  */
-public class ECBCurves extends ArrayList<ExplicitCubicBezierCurve2> implements ITagSerializable<ListTag> {
+public class ECBCurves extends ArrayList<ExplicitCubicBezierCurve2> implements INBTSerializable<ListTag> {
 
     public ECBCurves() {
         add(new ExplicitCubicBezierCurve2(new Vec2(0, 0.5f), new Vec2(0.1f, 0.5f), new Vec2(0.9f, 0.5f), new Vec2(1, 0.5f)));
@@ -44,16 +46,16 @@ public class ECBCurves extends ArrayList<ExplicitCubicBezierCurve2> implements I
     }
 
     @Override
-    public ListTag serializeNBT() {
+    public ListTag serializeNBT(@Nonnull HolderLookup.Provider provider) {
         var list = new ListTag();
         for (var curve : this) {
-            list.add(curve.serializeNBT());
+            list.add(curve.serializeNBT(provider));
         }
         return list;
     }
 
     @Override
-    public void deserializeNBT(ListTag list) {
+    public void deserializeNBT(@Nonnull HolderLookup.Provider provider, ListTag list) {
         clear();
         for (Tag tag : list) {
             if (tag instanceof ListTag curve) {
@@ -67,7 +69,7 @@ public class ECBCurves extends ArrayList<ExplicitCubicBezierCurve2> implements I
         if (o instanceof ECBCurves curves) {
             if (size() != curves.size()) return false;
             for (int i = 0; i < size(); i++) {
-                if (!get(i).serializeNBT().equals(curves.get(i).serializeNBT())) return false;
+                if (!get(i).serializeNBT(null).equals(curves.get(i).serializeNBT(null))) return false;
             }
             return true;
         }

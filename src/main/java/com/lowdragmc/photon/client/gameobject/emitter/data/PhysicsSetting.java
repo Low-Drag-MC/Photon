@@ -45,22 +45,22 @@ public class PhysicsSetting extends ToggleGroup {
     protected NumberFunction bounceSpreadRate = NumberFunction.constant(0);
 
     public float getFriction(IParticle particle) {
-        return friction.get(particle.getT(), () -> particle.getMemRandom("friction")).floatValue();
+        return friction.get(particle.getT(), () -> particle.getMemRandom("friction"));
     }
 
     public float getGravity(IParticle particle) {
-        return gravity.get(particle.getT(), () -> particle.getMemRandom("gravity")).floatValue();
+        return gravity.get(particle.getT(), () -> particle.getMemRandom("gravity"));
     }
 
     public float getBounceChance(IParticle particle) {
-        return bounceChance.get(particle.getT(), () -> particle.getMemRandom("bounceChance")).floatValue();
+        return bounceChance.get(particle.getT(), () -> particle.getMemRandom("bounceChance"));
     }
 
     public float getBounceRate(IParticle particle) {
-        return bounceRate.get(particle.getT(), () -> particle.getMemRandom("bounceRate")).floatValue();
+        return bounceRate.get(particle.getT(), () -> particle.getMemRandom("bounceRate"));
     }
 
     public float getBounceSpreadRate(IParticle particle) {
-        return bounceSpreadRate.get(particle.getT(), () -> particle.getMemRandom("bounceSpreadRate")).floatValue();
+        return bounceSpreadRate.get(particle.getT(), () -> particle.getMemRandom("bounceSpreadRate"));
     }
 }

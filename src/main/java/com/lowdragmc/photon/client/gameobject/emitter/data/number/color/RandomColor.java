@@ -1,9 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.color;
 
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.ColorConfigurator;
-import com.lowdragmc.lowdraglib2.gui.widget.WidgetGroup;
+import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
-import com.lowdragmc.lowdraglib2.utils.Size;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant;
@@ -19,13 +17,14 @@ import static com.lowdragmc.lowdraglib2.utils.ColorUtils.*;
  * @date 2023/5/27
  * @implNote RandomColor
  */
+@LDLRegisterClient(name = "random_color", registry = "photon:number_function")
 public class RandomColor extends RandomConstant {
     public RandomColor() {
         this(0xff000000, 0xffffffff);
     }
 
-    public RandomColor(Number a, Number b) {
-        super(a, b, false);
+    public RandomColor(int a, int b) {
+        super(a, b);
     }
 
     public RandomColor(NumberFunctionConfig config) {
@@ -34,22 +33,22 @@ public class RandomColor extends RandomConstant {
 
     @Override
     public NumberFunction copy() {
-        return new RandomColor(getA(), getB());
+        return new RandomColor((int) getA(), (int) getB());
     }
 
     @Override
     public boolean equals(Object obj) {
         if (obj instanceof RandomColor randomColor) {
-            return getA().equals(randomColor.getA()) && getB().equals(randomColor.getB());
+            return super.equals(randomColor);
         }
-        return super.equals(obj);
+        return false;
     }
 
     @Override
-    public Number get(float t, Supplier<Float> lerp) {
-        int colorA = getA().intValue();
-        int colorB = getB().intValue();
-        return ColorUtils.blendColor(colorA, colorB, lerp.get());
+    public Float get(float t, Supplier<Float> lerp) {
+        int colorA = (int) getA();
+        int colorB = (int) getB();
+        return (float) ColorUtils.blendColor(colorA, colorB, lerp.get());
     }
 
     private int randomColor(RandomSource randomSource, int minA, int maxA, int minR, int maxR, int minG, int maxG, int minB, int maxB) {
@@ -67,26 +66,27 @@ public class RandomColor extends RandomConstant {
     }
 
     @Override
-    public void createConfigurator(WidgetGroup group, NumberFunctionConfigurator configurator) {
-        var size = group.getSize();
-        var aGroup = new WidgetGroup(0, 0, size.width / 2, size.height);
-        var bGroup = new WidgetGroup(size.width / 2, 0, size.width / 2, size.height);
-        group.addWidget(aGroup);
-        group.addWidget(bGroup);
-
-        setupNumberConfigurator(size, aGroup, new ColorConfigurator("", () -> getA().intValue(), number -> {
-            setA(number);
-            configurator.updateValue(this);
-        }, getA().intValue(), true), configurator);
-        setupNumberConfigurator(size, bGroup, new ColorConfigurator("", () -> getB().intValue(), number -> {
-            setB(number);
-            configurator.updateValue(this);
-        }, getB().intValue(), true), configurator);
+    public void createConfigurator(NumberFunctionConfigurator configurator) {
+        // TODO configurator
+//        var size = group.getSize();
+//        var aGroup = new WidgetGroup(0, 0, size.width / 2, size.height);
+//        var bGroup = new WidgetGroup(size.width / 2, 0, size.width / 2, size.height);
+//        group.addWidget(aGroup);
+//        group.addWidget(bGroup);
+//
+//        setupNumberConfigurator(size, aGroup, new ColorConfigurator("", () -> getA().intValue(), number -> {
+//            setA(number);
+//            configurator.updateValue(this);
+//        }, getA().intValue(), true), configurator);
+//        setupNumberConfigurator(size, bGroup, new ColorConfigurator("", () -> getB().intValue(), number -> {
+//            setB(number);
+//            configurator.updateValue(this);
+//        }, getB().intValue(), true), configurator);
     }
 
-    private void setupNumberConfigurator(Size size, WidgetGroup group, ColorConfigurator widget, NumberFunctionConfigurator configurator) {
-        group.addWidget(widget);
-        widget.setConfiguratorContainer(configurator.getConfiguratorContainer());
-        widget.init(size.width / 2);
-    }
+//    private void setupNumberConfigurator(Size size, WidgetGroup group, ColorConfigurator widget, NumberFunctionConfigurator configurator) {
+//        group.addWidget(widget);
+//        widget.setConfiguratorContainer(configurator.getConfiguratorContainer());
+//        widget.init(size.width / 2);
+//    }
 }

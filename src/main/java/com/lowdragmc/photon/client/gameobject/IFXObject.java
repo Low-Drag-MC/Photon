@@ -1,19 +1,16 @@
 package com.lowdragmc.photon.client.gameobject;
 
-import com.lowdragmc.lowdraglib2.LDLib2Registries;
-import com.lowdragmc.lowdraglib2.client.renderer.IRenderer;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
-import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
 import com.lowdragmc.lowdraglib2.registry.ILDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.LDLibExtraCodecs;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
+import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.fx.IEffect;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
-import com.lowdragmc.photon.integration.PhotonLDLibPlugin;
 import com.mojang.serialization.Codec;
-import com.mojang.serialization.MapCodec;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.nbt.CompoundTag;
@@ -91,7 +88,7 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
      * copy this object
      */
     default IFXObject deepCopy() {
-        return deserializeWrapper(serializeNBT());
+        return CODEC.encodeStart(NbtOps.INSTANCE, this).result().flatMap((tag) -> CODEC.parse(NbtOps.INSTANCE, tag).result()).orElse(null);
     }
 
     default IFXObject shallowCopy() {
@@ -126,10 +123,7 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
         setLevel(effect.getLevel());
         if (this instanceof Particle particle) {
             if (effect.getLevel() instanceof DummyWorld dummyWorld) {
-                var particleManager = dummyWorld.getParticleManager();
-                if (particleManager != null) {
-                    particleManager.addParticle(particle);
-                }
+                dummyWorld.getParticleManager().addParticle(particle);
             } else {
                 Minecraft.getInstance().particleEngine.add(particle);
             }

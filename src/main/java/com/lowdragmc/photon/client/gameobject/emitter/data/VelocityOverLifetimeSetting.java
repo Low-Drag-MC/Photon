@@ -104,7 +104,7 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
 
     public float getVelocityMultiplier(IParticle particle) {
         var lifetime = particle.getT();
-        return speedModifier.get(lifetime, () -> particle.getMemRandom(this)).floatValue();
+        return speedModifier.get(lifetime, () -> particle.getMemRandom(this));
     }
 
 }

@@ -1,16 +1,14 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
-import com.lowdragmc.lowdraglib2.gui.editor.accessors.TypesAccessor;
-import com.lowdragmc.lowdraglib2.gui.editor.annotation.ConfigAccessor;
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigList;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.Configurator;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.IConfigurable;
-import com.lowdragmc.lowdraglib2.gui.editor.configurator.SelectorConfigurator;
-import com.lowdragmc.lowdraglib2.gui.editor.runtime.PersistedParser;
-import com.lowdragmc.lowdraglib2.gui.editor.ui.Editor;
-import com.lowdragmc.lowdraglib2.syncdata.ITagSerializable;
+import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
+import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
+import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
 import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
@@ -25,16 +23,13 @@ import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.FXProject;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.nbt.IntTag;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
+import org.appliedenergistics.yoga.YogaDisplay;
 import org.joml.Quaternionf;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -47,42 +42,12 @@ import java.util.function.Supplier;
 @OnlyIn(Dist.CLIENT)
 @Setter
 @Getter
-public class SubEmittersSetting extends ToggleGroup implements IConfigurable, ITagSerializable<CompoundTag> {
+public class SubEmittersSetting extends ToggleGroup {
 
-    @Configurable(persisted = false)
+    @Configurable
+    @ConfigList(configuratorMethod = "buildEmitterConfigurator", addDefaultMethod = "addDefaultEmitter")
+    @ReadOnlyManaged(serializeMethod = "emittersSerialize", deserializeMethod = "emittersDeserialize")
     protected List<Emitter> emitters = new ArrayList<>();
-
-    @Override
-    public CompoundTag serializeNBT() {
-        var tag = new CompoundTag();
-        PersistedParser.serializeNBT(tag, getClass(), this);
-        var list = new ListTag();
-        for (var emitter : emitters) {
-            var element = new CompoundTag();
-            PersistedParser.serializeNBT(element, Emitter.class, emitter);
-            list.add(element);
-        }
-        tag.put("emitters", list);
-        return tag;
-    }
-
-    @Override
-    public void deserializeNBT(CompoundTag tag) {
-        PersistedParser.deserializeNBT(tag, new HashMap<>(), getClass(), this);
-        emitters.clear();
-        var list = tag.getList("emitters", Tag.TAG_COMPOUND);
-        for (var element : list) {
-            if (element instanceof CompoundTag nbt) {
-                var emitter = new Emitter();
-                try {
-                    PersistedParser.deserializeNBT(nbt, new HashMap<>(), Emitter.class, emitter);
-                    emitters.add(emitter);
-                } catch (Exception ignored) {
-
-                }
-            }
-        }
-    }
 
     public void triggerEvent(FX fx, TileParticle father, Event event) {
         for (Emitter candidate : emitters) {
@@ -92,26 +57,30 @@ public class SubEmittersSetting extends ToggleGroup implements IConfigurable, IT
         }
     }
 
-    @ConfigAccessor
-    public static class EmitterAccessor extends TypesAccessor<Emitter> {
-
-        public EmitterAccessor() {
-            super(Emitter.class);
-        }
-
-        @Override
-        public Emitter defaultValue(Field field, Class<?> type) {
-            return new Emitter();
-        }
-
-        @Override
-        public Configurator create(String name, Supplier<Emitter> supplier, Consumer<Emitter> consumer, boolean forceUpdate, Field field) {
-            var group = new ConfiguratorGroup("emitter", true);
-            var emitter = supplier.get();
-            emitter = emitter == null ? new Emitter() : emitter;
-            emitter.buildConfigurator(group);
+    private Configurator buildEmitterConfigurator(Supplier<Emitter> getter, Consumer<Emitter> setter) {
+        var instance = getter.get();
+        if (instance != null && instance.createDirectConfigurator() instanceof ConfiguratorGroup group) {
+            group.setCollapse(false);
+            group.lineContainer.setDisplay(YogaDisplay.NONE);
             return group;
         }
+        return new Configurator();
+    }
+
+    private Emitter addDefaultEmitter() {
+        return new Emitter();
+    }
+
+    private IntTag emittersSerialize(List<Emitter> bursts) {
+        return IntTag.valueOf(bursts.size());
+    }
+
+    private List<Emitter> emittersDeserialize(IntTag tag) {
+        var groups = new ArrayList<Emitter>();
+        for (int i = 0; i < tag.getAsInt(); i++) {
+            groups.add(addDefaultEmitter());
+        }
+        return groups;
     }
 
     public enum Event {
@@ -122,7 +91,7 @@ public class SubEmittersSetting extends ToggleGroup implements IConfigurable, IT
         Tick
     }
 
-    public static class Emitter implements IConfigurable {
+    public static class Emitter implements IConfigurable, IPersistedSerializable {
         protected String emitter = "";
         @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.event")
         protected Event event = Event.Birth;
@@ -145,27 +114,27 @@ public class SubEmittersSetting extends ToggleGroup implements IConfigurable, IT
 
         public void spawnEmitter(FX fx, TileParticle father) {
             // TODO sub emitters
-            if (father.getAge() % tickInterval == 0 && father.getRandomSource().nextFloat() < emitProbability.get(father.getT(0), () -> father.getMemRandom("sub_emitter_probability")).floatValue()) {
+            if (father.getAge() % tickInterval == 0 && father.getRandomSource().nextFloat() < emitProbability.get(father.getT(0), () -> father.getMemRandom("sub_emitter_probability"))) {
                 var runtime = fx.createSubFXRuntime(emitter);
                 if (runtime == null) return;
                 runtime.root.updatePos(father.getWorldPos());
                 for (var value : runtime.objects.values()) {
-                    if (value instanceof IParticleEmitter emitter) {
+                    if (value instanceof IParticleEmitter particleEmitter) {
                         if (inheritLifetime) {
-                            emitter.setAge(father.getAge());
+                            particleEmitter.setAge(father.getAge());
                         }
                         if (inheritDuration) {
-                            emitter.self().setLifetime(father.getLifetime());
+                            particleEmitter.self().setLifetime(father.getLifetime());
                         }
                         if (inheritColor) {
-                            emitter.setRGBAColor(father.getRealColor(0));
+                            particleEmitter.setRGBAColor(father.getRealColor(0));
                         }
                         if (inheritSize) {
-                            emitter.transform().scale(father.getRealSize(0));
+                            particleEmitter.transform().scale(father.getRealSize(0));
                         }
                         if (inheritRotation) {
                             var xyz = father.getRealRotation(0);
-                            emitter.transform().rotation(new Quaternionf().rotationXYZ(xyz.x, xyz.y, xyz.z));
+                            particleEmitter.transform().rotation(new Quaternionf().rotationXYZ(xyz.x, xyz.y, xyz.z));
                         }
                     }
                 }
@@ -177,13 +146,12 @@ public class SubEmittersSetting extends ToggleGroup implements IConfigurable, IT
         public void buildConfigurator(ConfiguratorGroup father) {
             List<String> candidates = new ArrayList<>();
             candidates.add("");
+            // TODO editor instance
             if (Editor.INSTANCE instanceof FXEditor editor && editor.getCurrentProject() instanceof FXProject project) {
                 project.getFx().getSubFXs().forEach((k, v) -> candidates.add(k));
             }
-            var emitterSelector = new SelectorConfigurator<>("emitter", () -> emitter, v -> emitter = v,
-                    "", true, candidates, s -> s);
-            emitterSelector.setTips("photon.emitter.config.sub_emitters.emitter.name");
-            father.addConfigurators(emitterSelector);
+            father.addConfigurators(new SelectorConfigurator<>("emitter", () -> emitter, v -> emitter = v,
+                    "", true, candidates, s -> s).setTips("photon.emitter.config.sub_emitters.emitter.name"));
             IConfigurable.super.buildConfigurator(father);
         }
     }

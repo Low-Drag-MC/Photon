@@ -1,9 +1,10 @@
 package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
-import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Color;
@@ -13,13 +14,14 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
-import net.minecraft.nbt.CompoundTag;
 
 import javax.annotation.Nonnull;
 
@@ -28,7 +30,7 @@ import javax.annotation.Nonnull;
  * @date 2023/6/11
  * @implNote ParticleConfig
  */
-public class ParticleConfig implements IPersistedSerializable {
+public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     @Setter
     @Getter
     @Configurable(tips = "photon.emitter.config.duration")
@@ -131,7 +133,7 @@ public class ParticleConfig implements IPersistedSerializable {
     public final SubEmittersSetting subEmitters = new SubEmittersSetting();
 
     // runtime
-    public final PhotonParticleRenderType particleRenderType = new RenderType();
+    public final PhotonFXRenderPass particleRenderType = new RenderPass();
 
     public enum Space {
         Local,
@@ -141,24 +143,12 @@ public class ParticleConfig implements IPersistedSerializable {
     public ParticleConfig() {
     }
 
-    @Override
-    public void deserializeNBT(CompoundTag tag) {
-        IPersistedSerializable.super.deserializeNBT(tag);
-        // compatible with old version
-        if (!tag.contains("simulationSpace")) {
-            var number = NumberFunction.deserializeWrapper(tag.getCompound("startSize"));
-            startSize = new NumberFunction3(number, NumberFunction.copy(number), NumberFunction.copy(number));
-            startRotation = new NumberFunction3(startRotation.z, startRotation.y, startRotation.x);
-            simulationSpace = Space.World;
-        }
-    }
-
-    private class RenderType extends PhotonParticleRenderType {
+    private class RenderPass extends PhotonFXRenderPass {
 
         @Override
-        public void prepareStatus() {
+        public void prepareStatus(@Nonnull RenderPassPipeline pipeline) {
             if (renderer.isBloomEffect()) {
-                beginBloom();
+                pipeline.beginBloom();
             }
             material.pre();
             material.getMaterial().begin(false);
@@ -166,16 +156,16 @@ public class ParticleConfig implements IPersistedSerializable {
         }
 
         @Override
-        public void begin(@Nonnull BufferBuilder bufferBuilder) {
-            bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
+        public BufferBuilder begin(@Nonnull Tesselator tesselator) {
+            return tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
         }
 
         @Override
-        public void releaseStatus() {
+        public void releaseStatus(@Nonnull RenderPassPipeline pipeline) {
             material.getMaterial().end(false);
             material.post();
             if (renderer.isBloomEffect()) {
-                endBloom();
+                pipeline.endBloom();
             }
         }
 

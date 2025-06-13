@@ -4,7 +4,7 @@ import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
-import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
@@ -26,6 +26,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.client.model.data.ModelData;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -138,7 +139,7 @@ public class TileParticle implements IParticle {
     }
 
     @Override
-    public PhotonParticleRenderType getRenderType() {
+    public PhotonFXRenderPass getRenderType() {
         return config.particleRenderType;
     }
 
@@ -623,10 +624,8 @@ u     */
                     case WEST:
                     case EAST:
                         yield 0.6F;
-                    default:
-                        yield 1.0F;
                 } : 1f;
-                var quads = model.renderModel(null, null, null, side, randomSource);
+                var quads = model.renderModel(null, null, null, side, randomSource, ModelData.EMPTY, null);
                 for (var quad : quads) {
                     putBulkData(transform, buffer, quad, brightness, uvs, r, g, b, a, light);
                 }
@@ -652,23 +651,22 @@ u     */
             var u1 = uvs.z();
             var v1 = uvs.w();
 
-            buffer.vertex(rawVertexes[0].x(), rawVertexes[0].y(), rawVertexes[0].z()).uv(u1, v1).color(r, g, b, a).uv2(light).endVertex();
-            buffer.vertex(rawVertexes[1].x(), rawVertexes[1].y(), rawVertexes[1].z()).uv(u1, v0).color(r, g, b, a).uv2(light).endVertex();
-            buffer.vertex(rawVertexes[2].x(), rawVertexes[2].y(), rawVertexes[2].z()).uv(u0, v0).color(r, g, b, a).uv2(light).endVertex();
-            buffer.vertex(rawVertexes[3].x(), rawVertexes[3].y(), rawVertexes[3].z()).uv(u0, v1).color(r, g, b, a).uv2(light).endVertex();
+            buffer.addVertex(rawVertexes[0].x(), rawVertexes[0].y(), rawVertexes[0].z()).setUv(u1, v1).setColor(r, g, b, a).setLight(light);
+            buffer.addVertex(rawVertexes[1].x(), rawVertexes[1].y(), rawVertexes[1].z()).setUv(u1, v0).setColor(r, g, b, a).setLight(light);
+            buffer.addVertex(rawVertexes[2].x(), rawVertexes[2].y(), rawVertexes[2].z()).setUv(u0, v0).setColor(r, g, b, a).setLight(light);
+            buffer.addVertex(rawVertexes[3].x(), rawVertexes[3].y(), rawVertexes[3].z()).setUv(u0, v1).setColor(r, g, b, a).setLight(light);
         }
     }
 
     public void putBulkData(Matrix4f transform, VertexConsumer buffer, BakedQuad quad, float brightness, Vector4f uvs, float red, float green, float blue, float alpha, int light) {
         int[] vertices = quad.getVertices();
         int points = vertices.length / 8;
-        MemoryStack memoryStack = MemoryStack.stackPush();
 
-        try {
+        try (MemoryStack memoryStack = MemoryStack.stackPush()) {
             var byteBuffer = memoryStack.malloc(DefaultVertexFormat.BLOCK.getVertexSize());
             var intBuffer = byteBuffer.asIntBuffer();
 
-            for(int k = 0; k < points; ++k) {
+            for (int k = 0; k < points; ++k) {
                 intBuffer.clear();
                 intBuffer.put(vertices, k * 8, 8);
                 var x = byteBuffer.getFloat(0);
@@ -681,25 +679,10 @@ u     */
                     v = (k == 0 || k == 1) ? uvs.y : uvs.w;
                 }
                 var pos = transform.transform(new Vector4f(x, y, z, 1.0F));
-                buffer.vertex(pos.x, pos.y, pos.z).uv(u, v)
-                        .color(red * brightness, green * brightness, blue * brightness, alpha)
-                        .uv2(light)
-                        .endVertex();
+                buffer.addVertex(pos.x, pos.y, pos.z).setUv(u, v)
+                        .setColor(red * brightness, green * brightness, blue * brightness, alpha)
+                        .setLight(light);
             }
-        } catch (Throwable var33) {
-            if (memoryStack != null) {
-                try {
-                    memoryStack.close();
-                } catch (Throwable var32) {
-                    var33.addSuppressed(var32);
-                }
-            }
-
-            throw var33;
-        }
-
-        if (memoryStack != null) {
-            memoryStack.close();
         }
 
     }

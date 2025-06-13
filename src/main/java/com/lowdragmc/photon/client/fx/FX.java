@@ -34,21 +34,21 @@ public class FX implements INBTSerializable<CompoundTag> {
     @Override
     public CompoundTag serializeNBT(HolderLookup.Provider provider) {
         var tag = new CompoundTag();
-        tag.put("mainFX", mainFX.serializeNBT());
+        tag.put("mainFX", mainFX.serializeNBT(provider));
         var subFXs = new CompoundTag();
         for (var entry : this.subFXs.entrySet()) {
-            subFXs.put(entry.getKey(), entry.getValue().serializeNBT());
+            subFXs.put(entry.getKey(), entry.getValue().serializeNBT(provider));
         }
         return tag;
     }
 
     @Override
     public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
-        mainFX.deserializeNBT(tag.getCompound("mainFX"));
+        mainFX.deserializeNBT(provider, tag.getCompound("mainFX"));
         var subFXs = tag.getCompound("subFXs");
         for (var key : subFXs.getAllKeys()) {
             var subFX = new FXData();
-            subFX.deserializeNBT(subFXs.getCompound(key));
+            subFX.deserializeNBT(provider, subFXs.getCompound(key));
             this.subFXs.put(key, subFX);
         }
     }

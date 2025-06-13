@@ -1,6 +1,5 @@
 package com.lowdragmc.photon;
 
-import com.lowdragmc.photon.client.ClientCommands;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.neoforged.bus.api.IEventBus;
