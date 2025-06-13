@@ -5,7 +5,7 @@ import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Color;
-import com.lowdragmc.photon.gui.editor.configurator.NumberFunctionConfigurator;
+import com.lowdragmc.photon.gui.configurator.NumberFunctionConfigurator;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.nbt.CompoundTag;

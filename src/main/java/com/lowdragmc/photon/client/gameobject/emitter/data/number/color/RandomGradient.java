@@ -6,7 +6,7 @@ import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
-import com.lowdragmc.photon.gui.editor.configurator.NumberFunctionConfigurator;
+import com.lowdragmc.photon.gui.configurator.NumberFunctionConfigurator;
 import lombok.Getter;
 
 import java.util.function.Supplier;

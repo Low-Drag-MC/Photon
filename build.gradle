@@ -119,7 +119,7 @@ dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
 
     // LDLib2
-    implementation("com.lowdragmc.ldlib2:ldlib2-neoforge-${minecraft_version}:${ldlib2_version}") { transitive = false }
+    implementation("com.lowdragmc.ldlib2:ldlib2-neoforge-${minecraft_version}:${ldlib2_version}:all") { transitive = false }
     libraries("org.appliedenergistics.yoga:yoga:1.0.0")
 
     // JEI

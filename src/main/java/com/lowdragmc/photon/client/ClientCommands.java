@@ -1,10 +1,9 @@
 package com.lowdragmc.photon.client;
 
-import com.lowdragmc.lowdraglib2.LDLib;
-import com.lowdragmc.lowdraglib2.LDLib2;
-import com.lowdragmc.lowdraglib2.gui.modular.IUIHolder;
-import com.lowdragmc.lowdraglib2.gui.modular.ModularUI;
-import com.lowdragmc.lowdraglib2.gui.modular.ModularUIGuiContainer;
+import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
+import com.lowdragmc.lowdraglib2.gui.ui.ModularUIContainerMenu;
+import com.lowdragmc.lowdraglib2.gui.ui.ModularUIContainerScreen;
+import com.lowdragmc.lowdraglib2.gui.ui.UI;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.fx.BlockEffect;
@@ -36,11 +35,14 @@ public class ClientCommands {
                 (LiteralArgumentBuilder<S>) createLiteral("photon_editor").executes(context -> {
                     var minecraft = Minecraft.getInstance();
                     var entityPlayer = minecraft.player;
-                    var modular = new ModularUI(IUIHolder.EMPTY, entityPlayer).widget(new FXEditor(LDLib2.getAssetsDir()));
-                    modular.initWidgets();
-                    ModularUIGuiContainer ModularUIGuiContainer = new ModularUIGuiContainer(modular, entityPlayer.containerMenu.containerId);
-                    minecraft.setScreen(ModularUIGuiContainer);
-                    entityPlayer.containerMenu = ModularUIGuiContainer.getMenu();
+                    if (entityPlayer == null) return 0;
+                    var ui = new ModularUI(UI.of(new FXEditor().layout(layout -> {
+                        layout.setWidthPercent(100);
+                        layout.setHeightPercent(100);
+                    }).setId("fx_editor"), size -> size)).shouldCloseOnEsc(false);
+                    var screen = new ModularUIContainerScreen<>(ui, new ModularUIContainerMenu(entityPlayer.containerMenu.containerId), entityPlayer.getInventory(), Component.empty());
+                    minecraft.setScreen(screen);
+                    entityPlayer.containerMenu = screen.getMenu();
                     return 1;
                 }),
                 (LiteralArgumentBuilder<S>) createLiteral("photon_client")

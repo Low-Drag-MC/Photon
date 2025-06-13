@@ -2,7 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.number;
 
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
-import com.lowdragmc.photon.gui.editor.configurator.NumberFunctionConfigurator;
+import com.lowdragmc.photon.gui.configurator.NumberFunctionConfigurator;
 import lombok.Setter;
 import net.minecraft.util.RandomSource;
 

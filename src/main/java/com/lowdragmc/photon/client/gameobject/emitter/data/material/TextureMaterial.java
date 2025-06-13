@@ -84,7 +84,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
 
     @Override
     public IGuiTexture preview() {
-        return SpriteTexture.of(texture.toString());
+        return DynamicTexture.of(() -> SpriteTexture.of(texture.toString()));
     }
 
     @Override

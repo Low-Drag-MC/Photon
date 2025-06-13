@@ -5,7 +5,7 @@ import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant;
-import com.lowdragmc.photon.gui.editor.configurator.NumberFunctionConfigurator;
+import com.lowdragmc.photon.gui.configurator.NumberFunctionConfigurator;
 import net.minecraft.util.RandomSource;
 
 import java.util.function.Supplier;

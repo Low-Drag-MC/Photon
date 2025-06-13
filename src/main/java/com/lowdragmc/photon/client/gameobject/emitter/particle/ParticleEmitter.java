@@ -64,9 +64,6 @@ public class ParticleEmitter extends Emitter {
         config.buildConfigurator(father);
     }
 
-    //////////////////////////////////////
-    //*****     particle logic     *****//
-    //////////////////////////////////////
     protected TileParticle createNewParticle() {
         return new TileParticle(this, config, getThreadSafeRandomSource());
     }
@@ -152,11 +149,6 @@ public class ParticleEmitter extends Emitter {
             }
         }
     }
-
-
-    //////////////////////////////////////
-    //********      Emitter    *********//
-    //////////////////////////////////////
 
     @Override
     public int getParticleAmount() {
