@@ -91,7 +91,7 @@ public class TrailsSetting extends ToggleGroup {
                 }
             });
             trail.setLifetimeSupplier(() -> {
-                var time = lifetime.get(particle.getT(), () -> particle.getMemRandom("trails-lifetime")) * particle.getLifetime();
+                var time = lifetime.get(particle.getT(), () -> particle.getMemRandom("trails-lifetime")).floatValue() * particle.getLifetime();
                 if (sizeAffectsLifetime) {
                     time *= Vector3fHelper.max(particle.getRealSize(0));
                 }

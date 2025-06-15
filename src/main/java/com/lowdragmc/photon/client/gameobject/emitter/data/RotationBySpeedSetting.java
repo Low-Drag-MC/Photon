@@ -48,9 +48,9 @@ public class RotationBySpeedSetting extends ToggleGroup {
         var value = particle.getRealVelocity().length() * 20;
         var t = ((value - speedRange.getA().floatValue()) / (speedRange.getB().floatValue() - speedRange.getA().floatValue()));
         return new Vector3f(
-                roll.get(t, () -> particle.getMemRandom("rbs0")),
-                pitch.get(t, () -> particle.getMemRandom("rbs1")),
-                yaw.get(t, () -> particle.getMemRandom("rbs2"))).mul(Mth.TWO_PI / 360);
+                roll.get(t, () -> particle.getMemRandom("rbs0")).floatValue(),
+                pitch.get(t, () -> particle.getMemRandom("rbs1")).floatValue(),
+                yaw.get(t, () -> particle.getMemRandom("rbs2")).floatValue()).mul(Mth.TWO_PI / 360);
     }
 
 }

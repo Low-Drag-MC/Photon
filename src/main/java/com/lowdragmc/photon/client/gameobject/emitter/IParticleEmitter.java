@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter;
 
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
-import com.lowdragmc.photon.client.fx.FXProjectEffect;
+import com.lowdragmc.photon.gui.editor.FXProjectEffect;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;

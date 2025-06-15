@@ -1,14 +1,15 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.mojang.blaze3d.vertex.PoseStack;
 import lombok.val;
+import net.minecraft.client.particle.ParticleRenderType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Camera;
 
 import java.util.Arrays;
+import java.util.function.Predicate;
 
 @OnlyIn(Dist.CLIENT)
 public class PhotonParticleManager extends ParticleManager {
@@ -20,10 +21,9 @@ public class PhotonParticleManager extends ParticleManager {
     private int frameIndex = 0;
 
     @Override
-    public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks) {
+    public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks, Predicate<ParticleRenderType> renderTypeFilter) {
         val startTime = System.nanoTime();
-        super.render(pMatrixStack, pActiveRenderInfo, pPartialTicks);
-        PhotonFXRenderPass.finishRender();
+        super.render(pMatrixStack, pActiveRenderInfo, pPartialTicks, renderTypeFilter);
         lastFrameTimes[frameIndex] = System.nanoTime() - startTime;
         frameIndex = (frameIndex + 1) % lastFrameTimes.length;
     }

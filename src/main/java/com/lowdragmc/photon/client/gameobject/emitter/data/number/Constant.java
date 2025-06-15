@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number;
 
+import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.gui.configurator.NumberFunctionConfigurator;
@@ -17,7 +18,7 @@ import java.util.function.Supplier;
 public class Constant implements NumberFunction {
     @Setter
     @Persisted
-    private float number;
+    private Number number;
 
     public Constant() {
         number = 0;
@@ -28,20 +29,20 @@ public class Constant implements NumberFunction {
     }
 
     public Constant(NumberFunctionConfig config) {
-        this(config.isDecimals() ? config.defaultValue() : ((int) config.defaultValue()));
+        this(config.defaultValue());
     }
 
-    public Float getNumber() {
+    public Number getNumber() {
         return number;
     }
 
     @Override
-    public Float get(RandomSource randomSource, float t) {
+    public Number get(RandomSource randomSource, float t) {
         return number;
     }
 
     @Override
-    public Float get(float t, Supplier<Float> lerp) {
+    public Number get(float t, Supplier<Float> lerp) {
         return number;
     }
 
@@ -60,15 +61,12 @@ public class Constant implements NumberFunction {
 
     @Override
     public void createConfigurator(NumberFunctionConfigurator configurator) {
-        // TODO Configurator
-//        var widget = new NumberConfigurator("", () -> configurator.getConfig().isDecimals() ? number.floatValue() : number.intValue(), number -> {
-//            setNumber(number);
-//            configurator.updateValue(this);
-//        }, number, true);
-//        group.addWidget(widget);
-//        widget.setRange(configurator.getConfig().min(), configurator.getConfig().max());
-//        widget.setWheel(configurator.getConfig().isDecimals() ? configurator.getConfig().wheelDur() : Math.max(1, (int) configurator.getConfig().wheelDur()));
-//        widget.setConfiguratorContainer(configurator.getConfiguratorContainer());
-//        widget.init(group.getSize().width);
+        configurator.inlineContainer.addChildren(new NumberConfigurator("", () -> number, value -> {
+            setNumber(value.floatValue());
+            configurator.updateValue(this);
+            }, number, true)
+                .setRange(configurator.getConfig().min(), configurator.getConfig().max())
+                .setWheel(configurator.getConfig().wheelDur())
+                .setType(configurator.getConfig().numberType()));
     }
 }

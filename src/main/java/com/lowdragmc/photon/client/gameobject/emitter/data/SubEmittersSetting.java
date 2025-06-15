@@ -9,7 +9,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
-import com.lowdragmc.photon.client.fx.FX;
+import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
@@ -19,16 +19,17 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
-import com.lowdragmc.photon.gui.editor_outdated.FXEditor;
-import com.lowdragmc.photon.gui.editor_outdated.FXProject;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.IntTag;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.appliedenergistics.yoga.YogaDisplay;
 import org.joml.Quaternionf;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -49,10 +50,10 @@ public class SubEmittersSetting extends ToggleGroup {
     @ReadOnlyManaged(serializeMethod = "emittersSerialize", deserializeMethod = "emittersDeserialize")
     protected List<Emitter> emitters = new ArrayList<>();
 
-    public void triggerEvent(FX fx, TileParticle father, Event event) {
+    public void triggerEvent(TileParticle father, Event event) {
         for (Emitter candidate : emitters) {
             if (candidate.event == event) {
-                candidate.spawnEmitter(fx, father);
+                candidate.spawnEmitter(father);
             }
         }
     }
@@ -92,7 +93,8 @@ public class SubEmittersSetting extends ToggleGroup {
     }
 
     public static class Emitter implements IConfigurable, IPersistedSerializable {
-        protected String emitter = "";
+        @Nullable
+        protected ResourceLocation fxLocation = null;
         @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.event")
         protected Event event = Event.Birth;
         @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.emit_probability")
@@ -112,11 +114,13 @@ public class SubEmittersSetting extends ToggleGroup {
         @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.inherit_duration")
         protected boolean inheritDuration = false;
 
-        public void spawnEmitter(FX fx, TileParticle father) {
-            // TODO sub emitters
-            if (father.getAge() % tickInterval == 0 && father.getRandomSource().nextFloat() < emitProbability.get(father.getT(0), () -> father.getMemRandom("sub_emitter_probability"))) {
-                var runtime = fx.createSubFXRuntime(emitter);
-                if (runtime == null) return;
+        public void spawnEmitter(TileParticle father) {
+            if (fxLocation != null && father.getAge() % tickInterval == 0 &&
+                    father.getRandomSource().nextFloat() < emitProbability.get(father.getT(0),
+                            () -> father.getMemRandom("sub_emitter_probability")).floatValue()) {
+                var fx = FXHelper.getFX(fxLocation);
+                if (fx == null) return;
+                var runtime = fx.createRuntime();
                 runtime.root.updatePos(father.getWorldPos());
                 for (var value : runtime.objects.values()) {
                     if (value instanceof IParticleEmitter particleEmitter) {
@@ -146,12 +150,14 @@ public class SubEmittersSetting extends ToggleGroup {
         public void buildConfigurator(ConfiguratorGroup father) {
             List<String> candidates = new ArrayList<>();
             candidates.add("");
-            // TODO editor instance
-            if (Editor.INSTANCE instanceof FXEditor editor && editor.getCurrentProject() instanceof FXProject project) {
-                project.getFx().getSubFXs().forEach((k, v) -> candidates.add(k));
-            }
-            father.addConfigurators(new SelectorConfigurator<>("emitter", () -> emitter, v -> emitter = v,
-                    "", true, candidates, s -> s).setTips("photon.emitter.config.sub_emitters.emitter.name"));
+            Minecraft.getInstance().getResourceManager()
+                    .listResources("fx", arg -> arg.getPath().endsWith(".fx"))
+                    .keySet().forEach(fx -> candidates.add(fx.toString()));
+            father.addConfigurators(new SelectorConfigurator<>("fx",
+                    () -> fxLocation == null ? "" : fxLocation.toString(),
+                    v -> fxLocation = v.isEmpty() ? null : ResourceLocation.parse(v),
+                    "", true, candidates, s -> s)
+                    .setTips("photon.emitter.config.sub_emitters.emitter.name"));
             IConfigurable.super.buildConfigurator(father);
         }
     }

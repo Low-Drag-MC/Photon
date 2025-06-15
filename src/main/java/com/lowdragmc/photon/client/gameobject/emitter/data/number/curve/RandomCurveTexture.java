@@ -1,8 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.curve;
 
-import com.lowdragmc.lowdraglib2.gui.editor.ColorPattern;
+import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.TransformTexture;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Setter;
@@ -10,10 +9,8 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.world.phys.Vec2;
+import org.joml.Vector2f;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -42,50 +39,37 @@ public class RandomCurveTexture extends TransformTexture {
 
     @Override
     @OnlyIn(Dist.CLIENT)
-    protected void drawInternal(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, int width, int height) {
+    protected void drawInternal(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTicks) {
         // render area
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         var matrix = graphics.pose().last().pose();
-        Function<Vec2, Vec2> getPointPosition = coord -> new Vec2(x + width * coord.x, y + height * (1 - coord.y));
+        Function<Vector2f, Vector2f> getPointPosition = coord -> new Vector2f(x + width * coord.x, y + height * (1 - coord.y));
         for (int i = 0; i < width; i++) {
             float x0 = i * 1f / width;
             float x1 = (i + 1) * 1f / width;
 
-            var p0 = getPointPosition.apply(new Vec2(x0, curves0.getCurveY(x0)));
-            var p1 = getPointPosition.apply(new Vec2(x1, curves0.getCurveY(x1)));
-            var p2 = getPointPosition.apply(new Vec2(x1, curves1.getCurveY(x1)));
-            var p3 = getPointPosition.apply(new Vec2(x0, curves1.getCurveY(x0)));
+            var p0 = getPointPosition.apply(new Vector2f(x0, curves0.getCurveY(x0)));
+            var p1 = getPointPosition.apply(new Vector2f(x1, curves0.getCurveY(x1)));
+            var p2 = getPointPosition.apply(new Vector2f(x1, curves1.getCurveY(x1)));
+            var p3 = getPointPosition.apply(new Vector2f(x0, curves1.getCurveY(x0)));
 
-            bufferBuilder.vertex(matrix, p0.x, p0.y, 0.0f).color(ColorPattern.T_RED.color).endVertex();
-            bufferBuilder.vertex(matrix, p1.x, p1.y, 0.0f).color(ColorPattern.T_RED.color).endVertex();
-            bufferBuilder.vertex(matrix, p2.x, p2.y, 0.0f).color(ColorPattern.T_RED.color).endVertex();
-            bufferBuilder.vertex(matrix, p3.x, p3.y, 0.0f).color(ColorPattern.T_RED.color).endVertex();
+            buffer.addVertex(matrix, p0.x, p0.y, 0.0f).setColor(ColorPattern.T_RED.color);
+            buffer.addVertex(matrix, p1.x, p1.y, 0.0f).setColor(ColorPattern.T_RED.color);
+            buffer.addVertex(matrix, p2.x, p2.y, 0.0f).setColor(ColorPattern.T_RED.color);
+            buffer.addVertex(matrix, p3.x, p3.y, 0.0f).setColor(ColorPattern.T_RED.color);
 
-            bufferBuilder.vertex(matrix, p3.x, p3.y, 0.0f).color(ColorPattern.T_RED.color).endVertex();
-            bufferBuilder.vertex(matrix, p2.x, p2.y, 0.0f).color(ColorPattern.T_RED.color).endVertex();
-            bufferBuilder.vertex(matrix, p1.x, p1.y, 0.0f).color(ColorPattern.T_RED.color).endVertex();
-            bufferBuilder.vertex(matrix, p0.x, p0.y, 0.0f).color(ColorPattern.T_RED.color).endVertex();
+            buffer.addVertex(matrix, p3.x, p3.y, 0.0f).setColor(ColorPattern.T_RED.color);
+            buffer.addVertex(matrix, p2.x, p2.y, 0.0f).setColor(ColorPattern.T_RED.color);
+            buffer.addVertex(matrix, p1.x, p1.y, 0.0f).setColor(ColorPattern.T_RED.color);
+            buffer.addVertex(matrix, p0.x, p0.y, 0.0f).setColor(ColorPattern.T_RED.color);
         }
 
-        BufferUploader.drawWithShader(bufferBuilder.end());
+        BufferUploader.drawWithShader(buffer.buildOrThrow());
         // render lines
-        renderLines(graphics, curves0, x, y, width, height);
-        renderLines(graphics, curves1, x, y, width, height);
+        new CurveTexture(curves0).setColor(color).drawInternal(graphics, mouseX, mouseY, x, y, width, height, partialTicks);
+        new CurveTexture(curves1).setColor(color).drawInternal(graphics, mouseX, mouseY, x, y, width, height, partialTicks);
     }
-
-    @OnlyIn(Dist.CLIENT)
-    private void renderLines(GuiGraphics graphics, ECBCurves curves, float x, float y, int width, int height) {
-        List<Vec2> points = new ArrayList<>();
-        for (int i = 0; i < width; i++) {
-            float coordX = i * 1f / width;
-            points.add(new Vec2(coordX, curves.getCurveY(coordX)));
-        }
-        points.add(new Vec2(1, curves.getCurveY(1)));
-        DrawerHelper.drawLines(graphics, points.stream().map(coord -> new Vec2(x + width * coord.x, y + height * (1 - coord.y))).toList(), color, color, this.width);
-    }
-
 }

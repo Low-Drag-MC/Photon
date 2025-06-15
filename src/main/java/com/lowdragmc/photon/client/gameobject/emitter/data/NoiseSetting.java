@@ -73,7 +73,7 @@ public class NoiseSetting extends ToggleGroup {
             case Noise3D -> noise.get().noise(input, input, input);
         };
         if (remap.isEnable()) {
-            value = remap.remapCurve.get((value + 1) / 2, () -> 0f);
+            value = remap.remapCurve.get((value + 1) / 2, () -> 0f).floatValue();
         }
         return value;
     }
@@ -85,7 +85,7 @@ public class NoiseSetting extends ToggleGroup {
     public Vector3f getRotation(IParticle particle, float partialTicks) {
         setupSeed(particle);
         var t = particle.getT(partialTicks);
-        var degree = rotation.get(t, () -> particle.getMemRandom("noise-rotation"));
+        var degree = rotation.get(t, () -> particle.getMemRandom("noise-rotation")).floatValue();
         if (degree != 0) {
             return new Vector3f(degree, 0, 0).mul(getNoise((t + 10 * particle.getMemRandom("noise-rotation-degree")) * 100) * Mth.TWO_PI / 360);
         }
@@ -95,7 +95,7 @@ public class NoiseSetting extends ToggleGroup {
     public Vector3f getSize(IParticle particle, float partialTicks) {
         setupSeed(particle);
         var t = particle.getT(partialTicks);
-        var scale = size.get(t, () -> particle.getMemRandom("noise-size"));
+        var scale = size.get(t, () -> particle.getMemRandom("noise-size")).floatValue();
         if (scale != 0) {
             return new Vector3f(scale, scale, scale).mul(getNoise((t + 10 * particle.getMemRandom("noise-size-scale")) * 100));
         }
@@ -155,7 +155,7 @@ public class NoiseSetting extends ToggleGroup {
                 if (quality == Quality.Noise1D) {
                     var value = ((float) noise.get().noise(i * frequency) + 1) / 2;
                     if (remap.isEnable()) {
-                        value = (remap.remapCurve.get(value, () -> 0f) + 1) / 2;
+                        value = (remap.remapCurve.get(value, () -> 0f).floatValue() + 1) / 2;
                     }
                     buffer.addVertex(mat,x + i + 1, y, 0).setColor(value, value, value, 1);
                     buffer.addVertex(mat, x + i, y, 0).setColor(value, value, value, 1);
@@ -171,7 +171,7 @@ public class NoiseSetting extends ToggleGroup {
                         }
 
                         if (remap.isEnable()) {
-                            value = (remap.remapCurve.get(value, () -> 0f) + 1) / 2;
+                            value = (remap.remapCurve.get(value, () -> 0f).floatValue() + 1) / 2;
                         }
 
                         buffer.addVertex(mat,x + i + 1, y + j, 0).setColor(value, value, value, 1);

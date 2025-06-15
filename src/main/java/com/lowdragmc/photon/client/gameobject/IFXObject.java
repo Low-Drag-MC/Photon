@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject;
 
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
+import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.ILDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.LDLibExtraCodecs;
@@ -43,6 +44,10 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
     @Nullable
     static IFXObject deserializeWrapper(Tag tag) {
         return CODEC.parse(NbtOps.INSTANCE, tag).result().orElse(null);
+    }
+
+    default IGuiTexture getIcon() {
+        return IGuiTexture.EMPTY;
     }
 
     /**

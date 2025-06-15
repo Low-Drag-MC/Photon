@@ -39,7 +39,7 @@ public class ClientCommands {
                     var ui = new ModularUI(UI.of(new FXEditor().layout(layout -> {
                         layout.setWidthPercent(100);
                         layout.setHeightPercent(100);
-                    }).setId("fx_editor"), size -> size)).shouldCloseOnEsc(false);
+                    }).setId("fx_editor"), size -> size)).shouldCloseOnEsc(false).shouldCloseOnKeyInventory(false);
                     var screen = new ModularUIContainerScreen<>(ui, new ModularUIContainerMenu(entityPlayer.containerMenu.containerId), entityPlayer.getInventory(), Component.empty());
                     minecraft.setScreen(screen);
                     entityPlayer.containerMenu = screen.getMenu();

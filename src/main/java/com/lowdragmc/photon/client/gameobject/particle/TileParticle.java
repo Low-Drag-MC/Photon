@@ -342,7 +342,7 @@ u     */
         }
 
         if (config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
-            config.subEmitters.triggerEvent(fxRuntime.getFx(), this, SubEmittersSetting.Event.Birth);
+            config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Birth);
         }
 
         // update origin data
@@ -352,7 +352,7 @@ u     */
         if (this.age++ >= this.lifetime && lifetime > 0) {
             setRemoved(true);
             if (config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
-                config.subEmitters.triggerEvent(fxRuntime.getFx(), this, SubEmittersSetting.Event.Death);
+                config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
             }
         }
 
@@ -360,7 +360,7 @@ u     */
         update();
 
         if (config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
-            config.subEmitters.triggerEvent(fxRuntime.getFx(), this, SubEmittersSetting.Event.Tick);
+            config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Tick);
         }
 
         if (lifetime > 0) {
@@ -469,14 +469,14 @@ u     */
         if (config.physics.isEnable() && config.physics.isRemovedWhenCollided()) {
             this.setRemoved(true);
             if (config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
-                config.subEmitters.triggerEvent(fxRuntime.getFx(), this, SubEmittersSetting.Event.Death);
+                config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
             }
         }
         if (config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
-            config.subEmitters.triggerEvent(fxRuntime.getFx(), this, SubEmittersSetting.Event.Collision);
+            config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Collision);
             if (!isFirstCollision) {
                 isFirstCollision = true;
-                config.subEmitters.triggerEvent(fxRuntime.getFx(), this, SubEmittersSetting.Event.FirstCollision);
+                config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.FirstCollision);
             }
         }
     }
@@ -632,10 +632,11 @@ u     */
             }
         } else {
             var rawVertexes = new Vector3f[]{
-                    new Vector3f(-1.0F, -1.0F, 0.0F),
-                    new Vector3f(-1.0F, 1.0F, 0.0F),
+                    new Vector3f(1.0F, -1.0F, 0.0F),
                     new Vector3f(1.0F, 1.0F, 0.0F),
-                    new Vector3f(1.0F, -1.0F, 0.0F)};
+                    new Vector3f(-1.0F, 1.0F, 0.0F),
+                    new Vector3f(-1.0F, -1.0F, 0.0F),
+            };
 
             for (var i = 0; i < 4; ++i) {
                 var vertex = rawVertexes[i];

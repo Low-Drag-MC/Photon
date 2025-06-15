@@ -37,7 +37,7 @@ public class InheritVelocitySetting extends ToggleGroup {
     protected NumberFunction multiply = NumberFunction.constant(1);
 
     public Vector3f getVelocity(Emitter emitter) {
-        return emitter.getVelocity().mul(multiply.get(emitter.getT(), () -> emitter.getMemRandom(this)));
+        return emitter.getVelocity().mul(multiply.get(emitter.getT(), () -> emitter.getMemRandom(this)).floatValue());
     }
 
 }

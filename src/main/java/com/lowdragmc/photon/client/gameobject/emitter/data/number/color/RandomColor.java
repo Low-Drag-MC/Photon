@@ -1,5 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.color;
 
+import com.lowdragmc.lowdraglib2.configurator.ui.ColorConfigurator;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
@@ -7,6 +9,10 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant;
 import com.lowdragmc.photon.gui.configurator.NumberFunctionConfigurator;
 import net.minecraft.util.RandomSource;
+import org.appliedenergistics.yoga.YogaEdge;
+import org.appliedenergistics.yoga.YogaFlexDirection;
+import org.appliedenergistics.yoga.YogaGutter;
+import org.appliedenergistics.yoga.YogaWrap;
 
 import java.util.function.Supplier;
 
@@ -45,10 +51,10 @@ public class RandomColor extends RandomConstant {
     }
 
     @Override
-    public Float get(float t, Supplier<Float> lerp) {
+    public Integer get(float t, Supplier<Float> lerp) {
         int colorA = (int) getA();
         int colorB = (int) getB();
-        return (float) ColorUtils.blendColor(colorA, colorB, lerp.get());
+        return ColorUtils.blendColor(colorA, colorB, lerp.get());
     }
 
     private int randomColor(RandomSource randomSource, int minA, int maxA, int minR, int maxR, int minG, int maxG, int minB, int maxB) {
@@ -67,26 +73,33 @@ public class RandomColor extends RandomConstant {
 
     @Override
     public void createConfigurator(NumberFunctionConfigurator configurator) {
-        // TODO configurator
-//        var size = group.getSize();
-//        var aGroup = new WidgetGroup(0, 0, size.width / 2, size.height);
-//        var bGroup = new WidgetGroup(size.width / 2, 0, size.width / 2, size.height);
-//        group.addWidget(aGroup);
-//        group.addWidget(bGroup);
-//
-//        setupNumberConfigurator(size, aGroup, new ColorConfigurator("", () -> getA().intValue(), number -> {
-//            setA(number);
-//            configurator.updateValue(this);
-//        }, getA().intValue(), true), configurator);
-//        setupNumberConfigurator(size, bGroup, new ColorConfigurator("", () -> getB().intValue(), number -> {
-//            setB(number);
-//            configurator.updateValue(this);
-//        }, getB().intValue(), true), configurator);
+        ColorConfigurator a, b;
+        configurator.inlineContainer.addChild(new UIElement().layout(layout -> {
+            layout.setWidthPercent(100);
+            layout.setGap(YogaGutter.ALL, 2);
+            layout.setMargin(YogaEdge.LEFT, 2);
+            layout.setFlexDirection(YogaFlexDirection.ROW);
+            layout.setWrap(YogaWrap.WRAP);
+        }).addChildren(
+                a = new ColorConfigurator("", () -> (int) getA(), color -> {
+                    setA(color);
+                    configurator.updateValue(this);
+                }, (int) getA(), true),
+                b = new ColorConfigurator("", () -> (int) getB(), color -> {
+                    setB(color);
+                    configurator.updateValue(this);
+                }, (int) getB(), true)
+        ));
+        a.layout(layout -> {
+            layout.setFlex(1);
+            layout.setMinWidth(40);
+            layout.setHeight(14);
+        });
+        b.layout(layout -> {
+            layout.setFlex(1);
+            layout.setMinWidth(40);
+            layout.setHeight(14);
+        });
     }
 
-//    private void setupNumberConfigurator(Size size, WidgetGroup group, ColorConfigurator widget, NumberFunctionConfigurator configurator) {
-//        group.addWidget(widget);
-//        widget.setConfiguratorContainer(configurator.getConfiguratorContainer());
-//        widget.init(size.width / 2);
-//    }
 }

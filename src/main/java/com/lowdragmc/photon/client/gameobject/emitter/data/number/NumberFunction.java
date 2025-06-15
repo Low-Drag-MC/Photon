@@ -58,10 +58,10 @@ public interface NumberFunction extends IPersistedSerializable, ILDLRegisterClie
 
     void createConfigurator(NumberFunctionConfigurator configurator);
 
-    default Float get(RandomSource randomSource, float t) {
+    default Number get(RandomSource randomSource, float t) {
         return get(t, randomSource::nextFloat);
     }
 
-    Float get(float t, Supplier<Float> lerp);
+    Number get(float t, Supplier<Float> lerp);
 
 }

@@ -39,10 +39,20 @@ public class RenderPassPipeline extends BufferBuilder {
     private static final BufferBuilderPool BUILDER_POOL = new BufferBuilderPool();
 
     // runtime
-    private final Map<PhotonFXRenderPass, Queue<IParticle>> particles = Maps.newTreeMap(Comparator.comparingInt(PhotonFXRenderPass::layerOrder));
+    private final Map<PhotonFXRenderPass, Queue<IParticle>> particles = Maps.newTreeMap(makeRenderPassComparator());
     private Camera camera;
     private float partialTicks;
     private boolean hasBloom = false;
+
+    public static Comparator<PhotonFXRenderPass> makeRenderPassComparator() {
+        return (passOne, passTwo) -> {
+            var comparedResult = passOne.layerOrder() - passTwo.layerOrder();
+            if (comparedResult == 0) {
+                return Integer.compare(System.identityHashCode(passOne), System.identityHashCode(passTwo));
+            }
+            return comparedResult;
+        };
+    }
 
     public RenderPassPipeline() {
         super(new ByteBufferBuilder(1), VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
@@ -50,6 +60,8 @@ public class RenderPassPipeline extends BufferBuilder {
 
     @Override
     public @Nullable MeshData build() {
+        RenderSystem.setShader(GameRenderer::getParticleShader);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
         for (var entry : particles.entrySet()) {
             var renderPass = entry.getKey();
             var particleQueue = entry.getValue();
@@ -67,9 +79,6 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     private void renderParticles(PhotonFXRenderPass renderPass, Queue<IParticle> particleQueue) {
-        RenderSystem.setShader(GameRenderer::getParticleShader);
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-
         if (renderPass.isParallel()) {
             renderParticlesParallel(renderPass, particleQueue);
         } else {

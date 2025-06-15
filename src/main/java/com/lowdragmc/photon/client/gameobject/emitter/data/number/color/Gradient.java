@@ -40,13 +40,13 @@ public class Gradient implements NumberFunction {
     }
 
     @Override
-    public Float get(RandomSource randomSource, float t) {
-        return (float) gradientColor.getColor(t);
+    public Integer get(RandomSource randomSource, float t) {
+        return gradientColor.getColor(t);
     }
 
     @Override
-    public Float get(float t, Supplier<Float> lerp) {
-        return (float) gradientColor.getColor(t);
+    public Integer get(float t, Supplier<Float> lerp) {
+        return gradientColor.getColor(t);
     }
 
     @Override
@@ -64,31 +64,13 @@ public class Gradient implements NumberFunction {
 
     @Override
     public void createConfigurator(NumberFunctionConfigurator configurator) {
-        // TODO configurator
-//        var background = ColorPattern.T_GRAY.borderTexture(1);
-//        group.addWidget(new ButtonWidget(0, 2, group.getSize().width, 10, new GuiTextureGroup(background, new GradientColorTexture(gradientColor)), cd -> {
-//            if (Editor.INSTANCE != null) {
-//                var size = new Size(160, 150 + 15 + 20 + 3);
-//                var position = group.getPosition();
-//                var rightPlace = group.getGui().getScreenWidth() - size.width;
-//                var gradientWidget = new GradientColorWidget(5, 0, 150, gradientColor);
-//                gradientWidget.setOnUpdate(g -> configurator.updateValue(this));
-//                var dialog = Editor.INSTANCE.openDialog(new DialogWidget(Math.min(position.x, rightPlace), Math.max(0, position.y - size.height), size.width, size.height));
-//                dialog.setBackground(new GuiTextureGroup(ColorPattern.BLACK.rectTexture(), ColorPattern.T_WHITE.borderTexture(-1)));
-//                dialog.setClickClose(true);
-//                dialog.addWidget(gradientWidget);
-//            }
-//        }).setDraggingConsumer(
-//                o -> o instanceof GradientsResource.Gradients g && !g.isRandomGradient(),
-//                o -> background.setColor(ColorPattern.GREEN.color),
-//                o -> background.setColor(ColorPattern.T_GRAY.color),
-//                o -> {
-//                    if (o instanceof GradientsResource.Gradients g) {
-//                        this.gradientColor.deserializeNBT(g.gradient0.serializeNBT());
-//                        configurator.updateValue(this);
-//                        background.setColor(ColorPattern.T_GRAY.color);
-//                    }
-//                }));
+        configurator.inlineContainer.addChildren(new GradientColorConfigurator("", gradientColor::copy, gradientColor -> {
+            this.gradientColor.getAP().clear();
+            this.gradientColor.getAP().addAll(gradientColor.getAP());
+            this.gradientColor.getRgbP().clear();
+            this.gradientColor.getRgbP().addAll(gradientColor.getRgbP());
+            configurator.updateValue(this);
+        }, getGradientColor(), true));
     }
 
 }

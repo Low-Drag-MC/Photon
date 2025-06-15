@@ -62,8 +62,8 @@ public class UVAnimationSetting extends ToggleGroup {
         var t = particle.getT(partialTicks);
         var cellU = 1f / tiles.getA().intValue();
         var cellV = 1f / tiles.getB().intValue();
-        var currentFrame = this.startFrame.get(t, () -> particle.getMemRandom("startFrame"));
-        currentFrame += cycle * frameOverTime.get(t, () -> particle.getMemRandom("frameOverTime"));
+        var currentFrame = this.startFrame.get(t, () -> particle.getMemRandom("startFrame")).floatValue();
+        currentFrame += cycle * frameOverTime.get(t, () -> particle.getMemRandom("frameOverTime")).floatValue();
         float u0, v0, u1, v1;
         var cellSize = tiles.getA().intValue();
         if (animation == Animation.WholeSheet) {

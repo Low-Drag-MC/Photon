@@ -15,14 +15,12 @@ import java.util.*;
  */
 @Getter
 public class FXRuntime implements IScene {
-    public final FX fx;
     public final FXData fxData;
     public final Map<UUID, IFXObject> objects = new LinkedHashMap<>();
     public final IFXObject root;
     private final boolean isCopy;
 
-    public FXRuntime(FX fx, FXData fxData, boolean copy, boolean deepCopy) {
-        this.fx = fx;
+    public FXRuntime(FXData fxData, boolean copy, boolean deepCopy) {
         this.fxData = fxData;
         this.isCopy = copy;
         addSceneObjectInternal(root = new EmptyFXObject());

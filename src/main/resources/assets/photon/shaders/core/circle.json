@@ -4,7 +4,7 @@
         "srcrgb": "srcalpha",
         "dstrgb": "1-srcalpha"
     },
-    "vertex": "ldlib:particle",
+    "vertex": "ldlib2:particle",
     "fragment": "photon:circle",
     "attributes": [
         "Position",

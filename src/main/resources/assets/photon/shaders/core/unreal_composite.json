@@ -4,7 +4,7 @@
         "srcrgb": "one",
         "dstrgb": "zero"
     },
-    "vertex": "ldlib:fast_blit",
+    "vertex": "ldlib2:fast_blit",
     "fragment": "photon:unreal_composite",
     "attributes": [ "Position" ],
     "samplers": [

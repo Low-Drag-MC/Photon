@@ -70,11 +70,11 @@ public class RendererSetting {
 
         public enum Mode {
             Billboard((p, c, t) -> c.rotation()),
-            Horizontal(0, 90),
+            Horizontal(0, -90),
             Vertical(0, 0),
             VerticalBillboard((p, c, t) -> {
                 var quaternion = new Quaternionf();
-                quaternion.rotateY((float) Math.toRadians(-c.getYRot()));
+                quaternion.rotateY((float) Math.toRadians(180 - c.getYRot()));
                 return quaternion;
             }),
             Model((p, c, t) -> new Quaternionf());
@@ -91,7 +91,7 @@ public class RendererSetting {
 
             Mode(float yRot, float xRot) {
                 var quaternion = new Quaternionf();
-                quaternion.rotateY((float) Math.toRadians(-yRot));
+                quaternion.rotateY((float) Math.toRadians(yRot));
                 quaternion.rotateX((float) Math.toRadians(xRot));
                 this.quaternion = (p, c, t) -> quaternion;
             }

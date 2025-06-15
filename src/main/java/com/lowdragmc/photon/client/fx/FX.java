@@ -10,7 +10,6 @@ import net.neoforged.neoforge.common.util.INBTSerializable;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.util.*;
 
 /**
  * FX is a definition of a FX.
@@ -24,33 +23,22 @@ public class FX implements INBTSerializable<CompoundTag> {
     @Nullable
     @Setter
     private ResourceLocation fxLocation;
-    private final FXData mainFX;
-    private final Map<String, FXData> subFXs = new LinkedHashMap<>();
+    private final FXData fxData;
 
     public FX() {
-        mainFX = new FXData();
+        fxData = new FXData();
     }
 
     @Override
     public CompoundTag serializeNBT(HolderLookup.Provider provider) {
         var tag = new CompoundTag();
-        tag.put("mainFX", mainFX.serializeNBT(provider));
-        var subFXs = new CompoundTag();
-        for (var entry : this.subFXs.entrySet()) {
-            subFXs.put(entry.getKey(), entry.getValue().serializeNBT(provider));
-        }
+        tag.put("fxData", fxData.serializeNBT(provider));
         return tag;
     }
 
     @Override
     public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
-        mainFX.deserializeNBT(provider, tag.getCompound("mainFX"));
-        var subFXs = tag.getCompound("subFXs");
-        for (var key : subFXs.getAllKeys()) {
-            var subFX = new FXData();
-            subFX.deserializeNBT(provider, subFXs.getCompound(key));
-            this.subFXs.put(key, subFX);
-        }
+        fxData.deserializeNBT(provider, tag.getCompound("fxData"));
     }
 
     /**
@@ -58,7 +46,7 @@ public class FX implements INBTSerializable<CompoundTag> {
      * @return a runtime of this FX
      */
     public FXRuntime createRuntime() {
-        return new FXRuntime(this, mainFX, true, false);
+        return new FXRuntime(fxData, true, false);
     }
 
     /**
@@ -67,22 +55,20 @@ public class FX implements INBTSerializable<CompoundTag> {
      * @return a runtime of this FX
      */
     public FXRuntime createRuntime(boolean deepCopy) {
-        return new FXRuntime(this, mainFX, true, deepCopy);
+        return new FXRuntime(fxData, true, deepCopy);
     }
 
     /**
      * Create a runtime of this FX which use the raw data.
      */
     public FXRuntime createInternalRuntime() {
-        return new FXRuntime(this, mainFX, false, false);
+        return new FXRuntime(fxData, false, false);
     }
 
     @Nullable
+    @Deprecated
     public FXRuntime createSubFXRuntime(String name) {
-        if (!subFXs.containsKey(name)) {
-            return null;
-        }
-        return new FXRuntime(this, subFXs.get(name), true, false);
+        return null;
     }
 
 }

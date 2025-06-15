@@ -1,15 +1,26 @@
 package com.lowdragmc.photon.gui.configurator;
 
 import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
-import com.lowdragmc.lowdraglib2.gui.widget.WidgetGroup;
+import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
+import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Menu;
+import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
+import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
 import lombok.Getter;
 import net.minecraft.MethodsReturnNonnullByDefault;
+import org.appliedenergistics.yoga.YogaDisplay;
+import org.appliedenergistics.yoga.YogaEdge;
 
+import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.Arrays;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 
 /**
@@ -20,9 +31,9 @@ import java.util.function.Supplier;
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction> {
+    public final Button numberFunctionButton = new Button();
     @Getter
     private NumberFunctionConfig config;
-    private WidgetGroup group;
 
     public NumberFunctionConfigurator(String name, Supplier<NumberFunction> supplier, Consumer<NumberFunction> onUpdate, boolean forceUpdate, NumberFunctionConfig config) {
         super(name, supplier, onUpdate, NumberFunction.constant(config.defaultValue()), forceUpdate);
@@ -30,57 +41,57 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
         if (value == null) {
             value = defaultValue;
         }
+        value.createConfigurator(this);
+        this.lineContainer.addChildAt(numberFunctionButton, 2);
+        if (config.types().length <= 1) {
+            numberFunctionButton.setDisplay(YogaDisplay.NONE);
+        } else {
+            numberFunctionButton.noText().setOnClick(e -> {
+                var menu = TreeBuilder.Menu.start();
+                var types = Arrays.stream(config.types()).collect(Collectors.toSet());
+                for (var holder : PhotonRegistries.NUMBER_FUNCTIONS) {
+                    var clazz = holder.clazz();
+                    if (types.contains(clazz)) {
+                        menu.leaf(clazz == value.getClass() ? Icons.CHECK_SPRITE : IGuiTexture.EMPTY, holder.annotation().name(), () -> {
+                            var newValue = holder.value().get();
+                            updateValue(newValue);
+                            inlineContainer.clearAllChildren();
+                            value.createConfigurator(this);
+                        });
+                    }
+                }
+                var mui = getModularUI();
+                if (mui != null) {
+                    mui.ui.rootElement.addChild(new Menu<>(menu.build(), TreeBuilder.Menu::uiProvider)
+                            .setHoverTextureProvider(TreeBuilder.Menu::hoverTextureProvider)
+                            .setOnNodeClicked(TreeBuilder.Menu::handle)
+                            .layout(layout -> {
+                                layout.setPosition(YogaEdge.LEFT, numberFunctionButton.getPositionX() +
+                                        numberFunctionButton.getSizeWidth() - 120 + - mui.ui.rootElement.getPositionX());
+                                layout.setPosition(YogaEdge.TOP, numberFunctionButton.getPositionY() +
+                                        numberFunctionButton.getSizeHeight() - mui.ui.rootElement.getContentY());
+                            }));
+                }
+            }).layout(layout -> {
+                layout.setAspectRatio(1);
+            }).addChild(new UIElement().layout(layout -> {
+                layout.setWidthPercent(100);
+                layout.setHeightPercent(100);
+            }).style(style -> style.backgroundTexture(Icons.DOWN_ARROW_NO_BAR)));
+        }
     }
-    // TODO configurator
 
-//
-//    @Override
-//    protected void onValueUpdate(NumberFunction newValue) {
-//        if (newValue == null) newValue = defaultValue;
-//        if (newValue == value || newValue.equals(value)) return;
-//        super.onValueUpdate(newValue);
-//    }
-//
-//    @Override
-//    public void init(int width) {
-//        super.init(width);
-//        var w = width - leftWidth - 6 - rightWidth - 9;
-//        group = new WidgetGroup(leftWidth, 0, w, 15);
-//        this.addWidget(group);
-//        this.addWidget(new ButtonWidget(width - (tips.length > 0 ? 24 : 12), 2, 9, 9,
-//                Icons.DOWN,
-//                cd -> {
-//                    if (Editor.INSTANCE != null) {
-//                        var menu = TreeBuilder.Menu.start();
-//                        for (Class<? extends NumberFunction> type : config.types()) {
-//                            menu.leaf(type == value.getClass() ?Icons.CHECK : IGuiTexture.EMPTY, type.getSimpleName(), () -> {
-//                                if (type == value.getClass()) return;
-//                                try {
-//                                    var newValue = type.getConstructor(NumberFunctionConfig.class).newInstance(config);
-//                                    updateValue(newValue);
-//                                    group.clearAllWidgets();
-//                                    group.setSize(new Size(w, 15));
-//                                    value.createConfigurator(group, this);
-//                                    computeLayout();
-//                                } catch (Throwable ignored) {
-//                                }
-//                            });
-//                        }
-//                        Editor.INSTANCE.openMenu(group.getPosition().x + width, group.getPosition().y, menu);
-//                    }
-//                }).setHoverTooltips("ldlib.gui.editor.tips.other"));
-//        assert value != null;
-//        value.createConfigurator(group, this);
-//    }
-//
-//    @Override
-//    public void computeHeight() {
-//        super.computeHeight();
-//        setSize(new Size(getSize().width, group.getSize().height));
-//    }
-//
-//    public void updateValue(NumberFunction value) {
-//        onValueUpdate(value);
-//        super.updateValue();
-//    }
+    @Override
+    protected void onValueUpdatePassively(@Nullable NumberFunction newValue) {
+        if (newValue == null) newValue = defaultValue;
+        if (newValue == value || NumberFunction.isEqual(newValue, value)) return;
+        super.onValueUpdatePassively(newValue);
+        inlineContainer.clearAllChildren();
+        newValue.createConfigurator(this);
+    }
+
+    public void updateValue(NumberFunction value) {
+        updateValueActively(value);
+    }
+
 }

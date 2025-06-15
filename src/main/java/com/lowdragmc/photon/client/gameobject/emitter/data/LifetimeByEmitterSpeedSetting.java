@@ -39,7 +39,7 @@ public class LifetimeByEmitterSpeedSetting extends ToggleGroup {
         var value = emitter.getVelocity().length() * 20;
         var min = speedRange.getMin().floatValue();
         var max = speedRange.getMax().floatValue();
-        return (int) (multiplier.get((value - min) / (max - min), () -> particle.getMemRandom(this)) * initialLifetime);
+        return (int) (multiplier.get((value - min) / (max - min), () -> particle.getMemRandom(this)).floatValue() * initialLifetime);
     }
 
 }

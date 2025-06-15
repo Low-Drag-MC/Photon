@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number;
 
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 
 import java.lang.annotation.ElementType;
@@ -20,6 +21,6 @@ public @interface NumberFunctionConfig {
     float max() default Integer.MAX_VALUE;
     float wheelDur() default 0.1f;
     float defaultValue() default 0;
-    boolean isDecimals() default true;
+    ConfigNumber.Type numberType() default ConfigNumber.Type.AUTO;
     CurveConfig curveConfig() default @CurveConfig();
 }

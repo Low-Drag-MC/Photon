@@ -13,7 +13,9 @@ public class PhotonShaders {
     private static ShaderProgram CATMULL_ROM_PROGRAM;
 
     public static void init() {
-        CATMULL_ROM = Shaders.load(Shader.ShaderType.COMPUTE, Photon.id("catmull_rom"));
+        if (Shaders.supportComputeShader()) {
+            CATMULL_ROM = Shaders.load(Shader.ShaderType.COMPUTE, Photon.id("catmull_rom"));
+        }
     }
 
     public static ShaderProgram getCatmullRomProgram() {

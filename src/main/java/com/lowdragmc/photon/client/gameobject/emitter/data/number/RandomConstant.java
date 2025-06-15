@@ -18,7 +18,7 @@ public class RandomConstant implements NumberFunction {
     @Setter
     @Getter
     @Persisted
-    private float a, b;
+    private Number a, b;
 
     public RandomConstant() {
         a = 0;
@@ -35,9 +35,9 @@ public class RandomConstant implements NumberFunction {
     }
 
     @Override
-    public Float get(float t, Supplier<Float> lerp) {
-        float min = Math.min(a, b);
-        float max = Math.max(a, b);
+    public Number get(float t, Supplier<Float> lerp) {
+        var min = Math.min(a.doubleValue(), b.doubleValue());
+        var max = Math.max(a.doubleValue(), b.doubleValue());
         if (min == max) return max;
         return (min + lerp.get() * (max - min));
     }

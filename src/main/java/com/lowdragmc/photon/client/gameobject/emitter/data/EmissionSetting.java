@@ -58,7 +58,7 @@ public class EmissionSetting implements IConfigurable, IPersistedSerializable {
     public int getEmissionCount(int emitterAge, float t, RandomSource randomSource) {
         var result = emissionRate.get(randomSource, t);
         var number = result.intValue();
-        var decimals = result - result.intValue();
+        var decimals = result.floatValue() - result.intValue();
         if (emissionMode == Mode.Exacting) {
             if (decimals > 0 && emitterAge % ((int) (1 / decimals)) == 0) {
                 number += 1;

@@ -4,7 +4,7 @@
         "srcrgb": "one",
         "dstrgb": "zero"
     },
-    "vertex": "ldlib:fast_blit",
+    "vertex": "ldlib2:fast_blit",
     "fragment": "photon:separable_blur",
     "attributes": [ "Position" ],
     "samplers": [

@@ -17,18 +17,11 @@ public class PhotonClientProxy extends PhotonCommonProxy {
 
     public PhotonClientProxy(IEventBus eventBus) {
         super(eventBus);
+        eventBus.addListener(this::clientSetup);
     }
 
     @SubscribeEvent
     public void clientSetup(final FMLClientSetupEvent e) {
         e.enqueueWork(PhotonShaders::init);
-    }
-
-
-    @SubscribeEvent
-    public void onRegisterCommands(RegisterClientCommandsEvent event) {
-        var dispatcher = event.getDispatcher();
-        List<LiteralArgumentBuilder<CommandSourceStack>> commands = ClientCommands.createClientCommands();
-        commands.forEach(dispatcher::register);
     }
 }

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.color;
 
+import com.lowdragmc.lowdraglib2.configurator.ui.ColorConfigurator;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
@@ -28,14 +29,10 @@ public class Color extends Constant {
 
     @Override
     public void createConfigurator(NumberFunctionConfigurator configurator) {
-        // TODO configurator
-//        var widget = new ColorConfigurator("", () -> getNumber().intValue(), number -> {
-//            setNumber(number);
-//            configurator.updateValue(this);;
-//        }, getNumber().intValue(), true);
-//        widget.setConfiguratorContainer(configurator.getConfiguratorContainer());
-//        widget.init(group.getSize().width);
-//        group.addWidget(widget);
+        configurator.inlineContainer.addChildren(new ColorConfigurator("", () -> getNumber().intValue(), color -> {
+            setNumber(color);
+            configurator.updateValue(this);
+            }, getNumber().intValue(), true));
     }
 
     @Override
