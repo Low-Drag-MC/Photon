@@ -34,6 +34,7 @@ public class FX implements ITagSerializable<CompoundTag> {
         for (var entry : this.subFXs.entrySet()) {
             subFXs.put(entry.getKey(), entry.getValue().serializeNBT());
         }
+        tag.put("subFXs", subFXs);
         return tag;
     }
 
