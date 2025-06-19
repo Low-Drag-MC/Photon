@@ -1,7 +1,11 @@
 ## ChangeLogs
 
+# v1.1.10
+* Fixed sub fxs won't be saved
+
 # v1.1.9
-* fixed sub fxs won't be saved
+* Fixed the delay of the Beam Particle doesn't work
+* Fixed the animation time normalization
 
 # v1.1.8
 * Fixed remove entity command.
