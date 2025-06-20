@@ -48,7 +48,7 @@ public class NumberFunction3Accessor extends TypesAccessor<NumberFunction3> {
                 isSeperated.set(true);
             }
             return new ConfiguratorSelectorConfigurator<>(name, isSeperated::get, isSeperated::set, isSeperated.get(), true,
-                    List.of(true, false), v -> v ? "Separate Axes" : "All in one", (v, father) -> {
+                    List.of(true, false), v -> v ? "photon.separated axes" : "photon.all_in_one", (v, father) -> {
                 if (v) {
                     father.addConfigurators(new NumberFunction3Configurator("", supplier, consumer, forceUpdate, config));
                 } else {

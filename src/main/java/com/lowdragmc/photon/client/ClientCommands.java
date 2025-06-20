@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client;
 
+import com.lowdragmc.lowdraglib2.editor.ui.EditorWindow;
 import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
 import com.lowdragmc.lowdraglib2.gui.ui.ModularUIContainerMenu;
 import com.lowdragmc.lowdraglib2.gui.ui.ModularUIContainerScreen;
@@ -36,10 +37,7 @@ public class ClientCommands {
                     var minecraft = Minecraft.getInstance();
                     var entityPlayer = minecraft.player;
                     if (entityPlayer == null) return 0;
-                    var ui = new ModularUI(UI.of(new FXEditor().layout(layout -> {
-                        layout.setWidthPercent(100);
-                        layout.setHeightPercent(100);
-                    }).setId("fx_editor"), size -> size)).shouldCloseOnEsc(false).shouldCloseOnKeyInventory(false);
+                    var ui = new ModularUI(UI.of(new EditorWindow(FXEditor::new).setId("fx_editor"), size -> size)).shouldCloseOnEsc(false).shouldCloseOnKeyInventory(false);
                     var screen = new ModularUIContainerScreen<>(ui, new ModularUIContainerMenu(entityPlayer.containerMenu.containerId), entityPlayer.getInventory(), Component.empty());
                     minecraft.setScreen(screen);
                     entityPlayer.containerMenu = screen.getMenu();

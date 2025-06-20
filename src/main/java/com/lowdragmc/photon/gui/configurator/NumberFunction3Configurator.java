@@ -19,7 +19,6 @@ import java.util.function.Supplier;
  * @implNote NumberFunction3Configurator
  */
 public class NumberFunction3Configurator extends ValueConfigurator<NumberFunction3> {
-
     @Getter
     private NumberFunction3Config config;
     private NumberFunctionConfigurator x, y, z;
@@ -37,16 +36,28 @@ public class NumberFunction3Configurator extends ValueConfigurator<NumberFunctio
 
         inlineContainer.addChildren(
                 x = new NumberFunctionConfigurator("x", () -> this.value.x, number -> {
+                    var notifyChange = value.x != number;
                     this.value.x = number;
-                    updateValue();
+                    if (onUpdate != null) {
+                        onUpdate.accept(value);
+                    }
+                    if (notifyChange) notifyChanges();
                 }, true, config.xyz().length > 0 ? config.xyz()[0] : config.common()),
                 y = new NumberFunctionConfigurator("y", () -> this.value.y, number -> {
+                    var notifyChange = value.y != number;
                     this.value.y = number;
-                    updateValue();
+                    if (onUpdate != null) {
+                        onUpdate.accept(value);
+                    }
+                    if (notifyChange) notifyChanges();
                 }, true, config.xyz().length > 1 ? config.xyz()[1] : config.common()),
                 z = new NumberFunctionConfigurator("z", () -> this.value.z, number -> {
+                    var notifyChange = value.z != number;
                     this.value.z = number;
-                    updateValue();
+                    if (onUpdate != null) {
+                        onUpdate.accept(value);
+                    }
+                    if (notifyChange) notifyChanges();
                 }, true, config.xyz().length > 2 ? config.xyz()[2] : config.common())
         ).layout(layout -> {
             layout.setGap(YogaGutter.ALL, 2);

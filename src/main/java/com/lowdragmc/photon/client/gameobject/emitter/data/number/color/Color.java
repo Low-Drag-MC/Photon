@@ -6,6 +6,9 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
 import com.lowdragmc.photon.gui.configurator.NumberFunctionConfigurator;
+import lombok.EqualsAndHashCode;
+
+import java.util.Objects;
 
 /**
  * @author KilaBash
@@ -23,8 +26,8 @@ public class Color extends Constant {
         super(number);
     }
 
-    public Color(NumberFunctionConfig config) {
-        super(config);
+    public void loadConfig(NumberFunctionConfig config) {
+        setNumber((int) config.defaultValue());
     }
 
     @Override
@@ -42,9 +45,16 @@ public class Color extends Constant {
 
     @Override
     public boolean equals(Object obj) {
+        if (obj == null) return false;
+        if (obj == this) return true;
         if (obj instanceof Color color) {
-            return color.getNumber() == getNumber();
+            return Objects.equals(color.getNumber(), getNumber());
         }
         return super.equals(obj);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getNumber());
     }
 }

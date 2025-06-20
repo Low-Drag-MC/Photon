@@ -2,19 +2,15 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.number;
 
 import com.google.common.base.Suppliers;
 import com.mojang.serialization.Codec;
+import lombok.EqualsAndHashCode;
 import net.minecraft.Util;
-import org.joml.Vector2f;
 import org.joml.Vector3f;
 import net.minecraft.util.RandomSource;
 
 import java.util.List;
 import java.util.function.Supplier;
 
-/**
- * @author KilaBash
- * @date 2023/5/30
- * @implNote NumberFunction3
- */
+@EqualsAndHashCode
 public class NumberFunction3 {
     public static final Codec<NumberFunction3> CODEC = NumberFunction.CODEC
             .listOf()
@@ -44,14 +40,5 @@ public class NumberFunction3 {
 
     public Vector3f get(float t, Supplier<Float> lerp) {
         return new Vector3f(x.get(t, lerp).floatValue(), y.get(t, lerp).floatValue(), z.get(t, lerp).floatValue());
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) return true;
-        return obj instanceof NumberFunction3 numberFunction3 &&
-                x.equals(numberFunction3.x) &&
-                y.equals(numberFunction3.y) &&
-                z.equals(numberFunction3.z);
     }
 }

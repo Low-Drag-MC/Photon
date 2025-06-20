@@ -54,6 +54,7 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
                     if (types.contains(clazz)) {
                         menu.leaf(clazz == value.getClass() ? Icons.CHECK_SPRITE : IGuiTexture.EMPTY, holder.annotation().name(), () -> {
                             var newValue = holder.value().get();
+                            newValue.loadConfig(config);
                             updateValue(newValue);
                             inlineContainer.clearAllChildren();
                             value.createConfigurator(this);
@@ -88,6 +89,18 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
         super.onValueUpdatePassively(newValue);
         inlineContainer.clearAllChildren();
         newValue.createConfigurator(this);
+    }
+
+    @Override
+    protected void updateValueActively(NumberFunction newValue) {
+        var notifyChange = value != newValue;
+        value = newValue;
+        if (onUpdate != null) {
+            onUpdate.accept(value);
+        }
+        if (notifyChange) {
+            notifyChanges();
+        }
     }
 
     public void updateValue(NumberFunction value) {

@@ -51,6 +51,8 @@ public interface NumberFunction extends IPersistedSerializable, ILDLRegisterClie
         return a.equals(b);
     }
 
+    void loadConfig(NumberFunctionConfig config);
+
     /**
      * Copy a new instance of this number function
      */

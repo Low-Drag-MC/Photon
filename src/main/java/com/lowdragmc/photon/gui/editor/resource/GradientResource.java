@@ -1,6 +1,10 @@
 package com.lowdragmc.photon.gui.editor.resource;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
+import com.lowdragmc.lowdraglib2.Platform;
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
 import com.lowdragmc.lowdraglib2.editor.resource.ResourceProvider;
@@ -9,6 +13,7 @@ import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.GradientColorSelector;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.GradientColorTexture;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGradientColorTexture;
 import net.minecraft.core.HolderLookup;
@@ -31,8 +36,6 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
 
         builtinResource.addResource("random", new Gradients(new GradientColor(0xffffffff, 0xffffffff), new GradientColor(0xff000000, 0xff000000)));
         addResourceProvider(builtinResource);
-        setList(true);
-        setUiWidth(15);
     }
 
     @Override
@@ -73,9 +76,10 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
             layout.setHeightPercent(100);
         }).style(style -> style.backgroundTexture(provider.getResource(path).preview())));
         container.setOnEdit((c, path) -> {
-            // TODO edit
+            var gradients = provider.getResource(path);
+            if (gradients == null) return;
+            c.getEditor().inspectorView.inspect(gradients, configurator -> c.markResourceDirty(path), null);
         });
-
         if (provider.supportAdd()) {
             container.setOnMenu((c, m) -> m.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.add_resource", menu -> {
                 menu.leaf("gradient", () -> {
@@ -89,7 +93,7 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
         return container;
     }
 
-    public static class Gradients implements INBTSerializable<CompoundTag> {
+    public static class Gradients implements IConfigurable, INBTSerializable<CompoundTag> {
         @Nonnull
         public final GradientColor gradient0;
         @Nullable
@@ -135,6 +139,26 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
 
         public IGuiTexture preview() {
             return isRandomGradient() ? new RandomGradientColorTexture(gradient0, gradient1) : new GradientColorTexture(gradient0);
+        }
+
+        @Override
+        public void buildConfigurator(ConfiguratorGroup father) {
+            var container = new Configurator();
+            container.addInlineChild(
+                    new GradientColorSelector().setValue(gradient0.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
+                        gradient0.deserializeNBT(Platform.getFrozenRegistry(), gradientColor.serializeNBT(Platform.getFrozenRegistry()));
+                        container.notifyChanges();
+                    }).layout(layout -> layout.setWidthPercent(100))
+            );
+            if (gradient1 != null) {
+                container.addInlineChild(
+                        new GradientColorSelector().setValue(gradient1.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
+                            gradient1.deserializeNBT(Platform.getFrozenRegistry(), gradientColor.serializeNBT(Platform.getFrozenRegistry()));
+                            container.notifyChanges();
+                        }).layout(layout -> layout.setWidthPercent(100))
+                );
+            }
+            father.addConfigurator(container);
         }
     }
 }

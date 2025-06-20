@@ -33,10 +33,6 @@ public class RandomColor extends RandomConstant {
         super(a, b);
     }
 
-    public RandomColor(NumberFunctionConfig config) {
-        super(config);
-    }
-
     @Override
     public NumberFunction copy() {
         return new RandomColor((int) getA(), (int) getB());
@@ -44,10 +40,17 @@ public class RandomColor extends RandomConstant {
 
     @Override
     public boolean equals(Object obj) {
+        if (obj == null) return false;
+        if (obj == this) return true;
         if (obj instanceof RandomColor randomColor) {
             return super.equals(randomColor);
         }
         return false;
+    }
+
+    @Override
+    public int hashCode() {
+        return super.hashCode();
     }
 
     @Override

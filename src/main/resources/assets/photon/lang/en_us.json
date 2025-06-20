@@ -7,6 +7,11 @@
   "editor.fx_object.hierarchy": "FX Hierarchy",
   "editor.scene": "Scene",
 
+  "editor.lock_control_points": "Lock Control Points",
+  "editor.edit_curve": "edit curve",
+
+  "photon.separated axes": "Separated axes",
+  "photon.all_in_one": "All in one",
   "photon.fx_object.name": "Name",
   "photon.emitter.config.duration": "The duration of time (tick) the Emitter. If the system is looping, this indicates the length of one cycle.",
   "photon.emitter.config.looping": "If true, the emission cycle will repeat after the duration.",

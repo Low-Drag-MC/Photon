@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number;
 
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
@@ -7,6 +8,7 @@ import com.lowdragmc.photon.gui.configurator.NumberFunctionConfigurator;
 import lombok.Setter;
 import net.minecraft.util.RandomSource;
 
+import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -25,11 +27,18 @@ public class Constant implements NumberFunction {
     }
 
     public Constant(Number number) {
-        this.number = number.floatValue();
+        this.number = number;
     }
 
-    public Constant(NumberFunctionConfig config) {
-        this(config.defaultValue());
+    public void loadConfig(NumberFunctionConfig config) {
+        number = switch (config.numberType()) {
+            case INTEGER -> (int) config.defaultValue();
+            case FLOAT -> (float) config.defaultValue();
+            case LONG -> (long) config.defaultValue();
+            case SHORT -> (short) config.defaultValue();
+            case BYTE -> (byte) config.defaultValue();
+            default -> config.defaultValue();
+        };
     }
 
     public Number getNumber() {
@@ -53,8 +62,10 @@ public class Constant implements NumberFunction {
 
     @Override
     public boolean equals(Object obj) {
+        if (obj == null) return false;
+        if (obj == this) return true;
         if (obj instanceof Constant constant) {
-            return number == constant.number;
+            return Objects.equals(number, constant.number);
         }
         return super.equals(obj);
     }

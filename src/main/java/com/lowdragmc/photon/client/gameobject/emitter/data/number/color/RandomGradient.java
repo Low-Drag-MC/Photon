@@ -7,7 +7,11 @@ import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
 import com.lowdragmc.photon.gui.configurator.NumberFunctionConfigurator;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import org.apache.commons.lang3.tuple.Pair;
+import org.joml.Vector2f;
+import org.joml.Vector4f;
 
 import java.util.function.Supplier;
 
@@ -17,6 +21,7 @@ import java.util.function.Supplier;
  * @implNote RandomGradient
  */
 @LDLRegisterClient(name = "random_gradient", registry = "photon:number_function")
+@EqualsAndHashCode(callSuper = false)
 public class RandomGradient implements NumberFunction {
 
     @Getter
@@ -38,8 +43,20 @@ public class RandomGradient implements NumberFunction {
         this.gradientColor1 = b;
     }
 
-    public RandomGradient(NumberFunctionConfig config) {
-        this((int) config.defaultValue());
+    public void loadConfig(NumberFunctionConfig config) {
+        var color = (int) config.defaultValue();
+        gradientColor0.getAP().clear();
+        gradientColor0.getRgbP().clear();
+        gradientColor1.getAP().clear();
+        gradientColor1.getRgbP().clear();
+        var colors = new int[]{color, color};
+        for (int i = 0; i < colors.length; i++) {
+            var t = i / (colors.length - 1f);
+            gradientColor0.getAP().add(new Vector2f(t, ColorUtils.alpha(colors[i])));
+            gradientColor0.getRgbP().add(new Vector4f(t, ColorUtils.red(colors[i]), ColorUtils.green(colors[i]), ColorUtils.blue(colors[i])));
+            gradientColor1.getAP().add(new Vector2f(t, ColorUtils.alpha(colors[i])));
+            gradientColor1.getRgbP().add(new Vector4f(t, ColorUtils.red(colors[i]), ColorUtils.green(colors[i]), ColorUtils.blue(colors[i])));
+        }
     }
 
     @Override
@@ -55,46 +72,19 @@ public class RandomGradient implements NumberFunction {
     }
 
     @Override
-    public boolean equals(Object obj) {
-        if (obj instanceof RandomGradient gradient) {
-            return gradientColor0.equals(gradient.gradientColor0) &&
-                    gradientColor1.equals(gradient.gradientColor1);
-        }
-        return super.equals(obj);
-    }
-
-    @Override
     public void createConfigurator(NumberFunctionConfigurator configurator) {
-//        var background = ColorPattern.T_GRAY.borderTexture(1);
-//        group.addWidget(new ButtonWidget(0, 2, group.getSize().width, 10, new GuiTextureGroup(background, new RandomGradientColorTexture(gradientColor0, gradientColor1)), cd -> {
-//            if (Editor.INSTANCE != null) {
-//                var size = new Size(315, 150 + 15 + 20 + 3);
-//                var position = group.getPosition();
-//                var rightPlace = group.getGui().getScreenWidth() - size.width;
-//                var gradientWidget0 = new GradientColorWidget(5, 0, 150, gradientColor0);
-//                gradientWidget0.setOnUpdate(g -> configurator.updateValue(this));
-//
-//                var gradientWidget1 = new GradientColorWidget(160, 0, 150, gradientColor1);
-//                gradientWidget1.setOnUpdate(g -> configurator.updateValue(this));
-//
-//                var dialog = Editor.INSTANCE.openDialog(new DialogWidget(Math.min(position.x, rightPlace), Math.max(0, position.y - size.height), size.width, size.height));
-//                dialog.setBackground(new GuiTextureGroup(ColorPattern.BLACK.rectTexture(), ColorPattern.T_WHITE.borderTexture(-1)));
-//                dialog.setClickClose(true);
-//                dialog.addWidget(gradientWidget0);
-//                dialog.addWidget(gradientWidget1);
-//            }
-//        }).setDraggingConsumer(
-//                o -> o instanceof GradientsResource.Gradients g && g.isRandomGradient(),
-//                o -> background.setColor(ColorPattern.GREEN.color),
-//                o -> background.setColor(ColorPattern.T_GRAY.color),
-//                o -> {
-//                    if (o instanceof GradientsResource.Gradients g && g.gradient1 != null) {
-//                        this.gradientColor0.deserializeNBT(g.gradient0.serializeNBT());
-//                        this.gradientColor1.deserializeNBT(g.gradient1.serializeNBT());
-//                        configurator.updateValue(this);
-//                        background.setColor(ColorPattern.T_GRAY.color);
-//                    }
-//                }));
+        configurator.inlineContainer.addChildren(new RandomGradientColorConfigurator("", () -> Pair.of(gradientColor0.copy(), gradientColor1.copy()), gradientColors -> {
+            this.gradientColor0.getAP().clear();
+            this.gradientColor0.getAP().addAll(gradientColors.getLeft().getAP());
+            this.gradientColor0.getRgbP().clear();
+            this.gradientColor0.getRgbP().addAll(gradientColors.getLeft().getRgbP());
+
+            this.gradientColor1.getAP().clear();
+            this.gradientColor1.getAP().addAll(gradientColors.getRight().getAP());
+            this.gradientColor1.getRgbP().clear();
+            this.gradientColor1.getRgbP().addAll(gradientColors.getRight().getRgbP());
+            configurator.updateValue(this);
+        }, Pair.of(gradientColor0.copy(), gradientColor1.copy()), true));
     }
 
 }

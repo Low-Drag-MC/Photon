@@ -20,7 +20,7 @@ public @interface NumberFunctionConfig {
     float min() default Integer.MIN_VALUE;
     float max() default Integer.MAX_VALUE;
     float wheelDur() default 0.1f;
-    float defaultValue() default 0;
-    ConfigNumber.Type numberType() default ConfigNumber.Type.AUTO;
+    double defaultValue() default 0;
+    ConfigNumber.Type numberType() default ConfigNumber.Type.FLOAT;
     CurveConfig curveConfig() default @CurveConfig();
 }

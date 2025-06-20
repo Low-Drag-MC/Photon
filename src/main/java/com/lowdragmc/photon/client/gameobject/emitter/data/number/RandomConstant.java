@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.number;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.gui.configurator.NumberFunctionConfigurator;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -14,6 +15,7 @@ import java.util.function.Supplier;
  * @implNote RandomConstant
  */
 @LDLRegisterClient(name = "random_constant", registry = "photon:number_function")
+@EqualsAndHashCode(callSuper = false)
 public class RandomConstant implements NumberFunction {
     @Setter
     @Getter
@@ -26,12 +28,27 @@ public class RandomConstant implements NumberFunction {
     }
 
     public RandomConstant(Number a, Number b) {
-        this.a = a.floatValue();
-        this.b = b.floatValue();
+        this.a = a;
+        this.b = b;
     }
 
-    public RandomConstant(NumberFunctionConfig config) {
-        this(config.defaultValue(), config.defaultValue());
+    public void loadConfig(NumberFunctionConfig config) {
+        a = switch (config.numberType()) {
+            case INTEGER -> (int) config.defaultValue();
+            case FLOAT -> (float) config.defaultValue();
+            case LONG -> (long) config.defaultValue();
+            case SHORT -> (short) config.defaultValue();
+            case BYTE -> (byte) config.defaultValue();
+            default -> config.defaultValue();
+        };
+        b = switch (config.numberType()) {
+            case INTEGER -> (int) config.defaultValue();
+            case FLOAT -> (float) config.defaultValue();
+            case LONG -> (long) config.defaultValue();
+            case SHORT -> (short) config.defaultValue();
+            case BYTE -> (byte) config.defaultValue();
+            default -> config.defaultValue();
+        };
     }
 
     @Override
@@ -45,14 +62,6 @@ public class RandomConstant implements NumberFunction {
     @Override
     public NumberFunction copy() {
         return new RandomConstant(a, b);
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (obj instanceof RandomConstant constant) {
-            return a == constant.a && b == constant.b;
-        }
-        return super.equals(obj);
     }
 
     @Override
