@@ -46,7 +46,7 @@ public class FX implements INBTSerializable<CompoundTag> {
      * @return a runtime of this FX
      */
     public FXRuntime createRuntime() {
-        return new FXRuntime(fxData, true, false);
+        return createRuntime(false);
     }
 
     /**
@@ -55,14 +55,14 @@ public class FX implements INBTSerializable<CompoundTag> {
      * @return a runtime of this FX
      */
     public FXRuntime createRuntime(boolean deepCopy) {
-        return new FXRuntime(fxData, true, deepCopy);
+        return new FXRuntime(fxData.copy(deepCopy));
     }
 
     /**
      * Create a runtime of this FX which use the raw data.
      */
     public FXRuntime createInternalRuntime() {
-        return new FXRuntime(fxData, false, false);
+        return new FXRuntime(fxData);
     }
 
     @Nullable

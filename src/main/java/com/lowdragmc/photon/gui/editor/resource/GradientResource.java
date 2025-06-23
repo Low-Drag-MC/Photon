@@ -78,7 +78,7 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
         container.setOnEdit((c, path) -> {
             var gradients = provider.getResource(path);
             if (gradients == null) return;
-            c.getEditor().inspectorView.inspect(gradients, configurator -> c.markResourceDirty(path), null);
+            c.getEditor().inspectorView.inspect(gradients, configurator -> c.markResourceDirty(path));
         });
         if (provider.supportAdd()) {
             container.setOnMenu((c, m) -> m.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.add_resource", menu -> {

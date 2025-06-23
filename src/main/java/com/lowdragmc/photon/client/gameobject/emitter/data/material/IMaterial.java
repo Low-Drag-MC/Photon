@@ -1,6 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.ILDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
@@ -69,6 +71,4 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
                 .flatMap(tag -> CODEC.parse(NbtOps.INSTANCE, tag).result())
                 .orElse(MISSING);
     }
-
-    // TODO IConfigurable
 }

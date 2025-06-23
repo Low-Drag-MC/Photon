@@ -12,10 +12,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveGraph;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveTexture;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurveTexture;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.*;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -23,8 +20,8 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.common.util.INBTSerializable;
 import org.appliedenergistics.yoga.YogaEdge;
-import org.appliedenergistics.yoga.YogaPositionType;
 import org.appliedenergistics.yoga.style.StyleSizeLength;
+import oshi.util.tuples.Pair;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -102,6 +99,28 @@ public class CurveResource extends Resource<CurveResource.Curves> {
                         .addButton(new Button().setOnClick(e -> {
                             var previousCurves = provider.getResource(path);
                             var newCurves = new Curves(curveGraph.getValue());
+                            container.getEditor().historyView.pushHistory(Component.translatable("editor.edit_curve"), EditAction.of(() -> {
+                                provider.addResource(path, newCurves);
+                                container.reloadSpecificResource(path);
+                            }, () -> {
+                                provider.addResource(path, previousCurves);
+                                container.reloadSpecificResource(path);
+                            }));
+                            dialog.close();
+                        }).setText("ldlib.gui.tips.confirm"));
+            } else {
+                var curveGraph = new RandomCurveGraph();
+                curveGraph.style(style -> style.zIndex(1).backgroundTexture(Sprites.BORDER));
+                curveGraph.layout(layout -> {
+                    layout.setWidthPercent(100);
+                    layout.setHeight(100);
+                    layout.setPadding(YogaEdge.ALL, 4);
+                });
+                curveGraph.setValue(new Pair<>(curves.curves0.copy(), curves.curves1.copy()), false);
+                dialog.addContent(curveGraph)
+                        .addButton(new Button().setOnClick(e -> {
+                            var previousCurves = provider.getResource(path);
+                            var newCurves = new Curves(curveGraph.getValue().getA(), curveGraph.getValue().getB());
                             container.getEditor().historyView.pushHistory(Component.translatable("editor.edit_curve"), EditAction.of(() -> {
                                 provider.addResource(path, newCurves);
                                 container.reloadSpecificResource(path);

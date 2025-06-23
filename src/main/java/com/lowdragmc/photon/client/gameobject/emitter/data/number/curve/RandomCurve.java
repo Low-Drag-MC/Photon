@@ -4,7 +4,7 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
-import com.lowdragmc.photon.gui.configurator.NumberFunctionConfigurator;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.configurator.NumberFunctionConfigurator;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
@@ -96,66 +96,6 @@ public class RandomCurve implements NumberFunction {
 
     @Override
     public void createConfigurator(NumberFunctionConfigurator configurator) {
-//        var background = ColorPattern.T_GRAY.rectTexture().setRadius(5);
-//        group.addWidget(new ButtonWidget(0, 2, group.getSize().width, 10, new GuiTextureGroup(background, new RandomCurveTexture(curves0, curves1)), cd -> {
-//            if (Editor.INSTANCE != null) {
-//                var size = new Size(360, 100);
-//                var position = group.getPosition();
-//                var rightPlace = group.getGui().getScreenWidth() - size.width;
-//                var dialog = Editor.INSTANCE.openDialog(new DialogWidget(Math.min(position.x, rightPlace), Math.max(0, position.y - size.height), size.width, size.height));
-//                dialog.setClickClose(true);
-//                dialog.addWidget(new ConfiguratorWidget(0, 0, size.width, size.height, curvesPair -> configurator.updateValue(this)));
-//            }
-//        }).setDraggingConsumer(
-//                o -> o instanceof CurvesResource.Curves c && c.isRandomCurve(),
-//                o -> background.setColor(ColorPattern.GREEN.color),
-//                o -> background.setColor(ColorPattern.T_GRAY.color),
-//                o -> {
-//                    if (o instanceof CurvesResource.Curves c && c.curves1 != null) {
-//                        this.curves0.deserializeNBT(c.curves0.serializeNBT());
-//                        this.curves1.deserializeNBT(c.curves1.serializeNBT());
-//                        configurator.updateValue(this);
-//                        background.setColor(ColorPattern.T_GRAY.color);
-//                    }
-//                }));
+        configurator.inlineContainer.addChildren(new RandomCurveConfigurator("", () -> this, curves -> configurator.updateValue(this), this, true));
     }
-
-//
-//    public class ConfiguratorWidget extends WidgetGroup {
-//
-//        public ConfiguratorWidget(int x, int y, int width, int height, Consumer<Pair<ECBCurves, ECBCurves>> onUpdate) {
-//            super(x, y, width, height);
-//
-//            // bound setter
-//            var upper = new NumberConfigurator("", () -> RandomCurve.this.upper, value -> RandomCurve.this.upper = value.floatValue(), defaultValue, true);
-//            var lower = new NumberConfigurator("", () -> RandomCurve.this.lower, value -> RandomCurve.this.lower = value.floatValue(), defaultValue, true);
-//            upper.setRange(min, max);
-//            lower.setRange(min, max);
-//            upper.init(60);
-//            lower.init(60);
-//            upper.addSelfPosition(0, 1);
-//            lower.addSelfPosition(0, height - 15);
-//
-//            // axis
-//            if (!xAxis.isBlank()) {
-//                this.addWidget(new ImageWidget(60, height, width - 63, 10, new TextTexture(xAxis)));
-//            }
-//            if (!yAxis.isBlank()) {
-//                this.addWidget(new ImageWidget(12, height / 2 - 5, 80, 10, new TextTexture(yAxis).rotate(-90)));
-//            }
-//
-//            // curve line
-//            var curveLine = new RandomCurveLineWidget(60, 3, width - 63, height - 7, curves0, curves1);
-//            curveLine.setOnUpdate(onUpdate);
-//            curveLine.setLockControlPoint(lockControlPoint);
-//            curveLine.setGridSize(new Size(6, 2));
-//            curveLine.setHoverTips(coord -> Component.literal(String.valueOf(RandomCurve.this.lower + coord.y * (RandomCurve.this.upper - RandomCurve.this.lower))));
-//            curveLine.setBackground(new GuiTextureGroup(ColorPattern.BLACK.rectTexture(), ColorPattern.T_WHITE.borderTexture(-1)));
-//            addWidget(curveLine);
-//
-//            this.addWidget(upper);
-//            this.addWidget(lower);
-//        }
-//
-//    }
 }

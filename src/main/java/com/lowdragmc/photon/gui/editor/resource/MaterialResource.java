@@ -93,7 +93,7 @@ public class MaterialResource extends Resource<IMaterial> {
         container.setOnEdit((c, path) -> {
             var material = provider.getResource(path);
             if (material == null) return;
-            c.getEditor().inspectorView.inspect(material, configurator -> c.markResourceDirty(path), null);
+            c.getEditor().inspectorView.inspect(material, configurator -> c.markResourceDirty(path));
         });
 
         if (provider.supportAdd()) {

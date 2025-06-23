@@ -18,26 +18,27 @@ public class FXRuntime implements IScene {
     public final FXData fxData;
     public final Map<UUID, IFXObject> objects = new LinkedHashMap<>();
     public final IFXObject root;
-    private final boolean isCopy;
 
-    public FXRuntime(FXData fxData, boolean copy, boolean deepCopy) {
+    public FXRuntime(FXData fxData) {
         this.fxData = fxData;
-        this.isCopy = copy;
-        addSceneObjectInternal(root = new EmptyFXObject());
+        addSceneObject(root = new EmptyFXObject());
         root.setName("root");
+        initRuntime();
+    }
+
+    private void initRuntime() {
         for (var fxObject : fxData.objects()) {
-            if (copy) {
-                var copied = fxObject.copy(deepCopy);
-                addSceneObjectInternal(copied);
-            } else {
-                addSceneObjectInternal(fxObject);
-            }
+            fxObject.setScene(this);
+            addSceneObjectInternal(fxObject);
         }
-        awake();
-        for (var fxObject : objects.values()) {
-            if (fxObject != root && fxObject.transform().parent() == null) {
+        for (var fxObject : fxData.objects()) {
+            fxObject.awake();
+        }
+        for (var fxObject : fxData.objects()) {
+            if (fxObject.transform().parent() == null) {
                 fxObject.transform().parent(root.transform(), false);
             }
+            fxObject.transform().rebuildChildOrder();
         }
     }
 
@@ -54,25 +55,8 @@ public class FXRuntime implements IScene {
     }
 
     @Override
-    public void addSceneObject(ISceneObject sceneObject) {
-        IScene.super.addSceneObject(sceneObject);
-        if (!isCopy && sceneObject instanceof IFXObject fxObject) {
-            fxData.objects().add(fxObject);
-        }
-    }
-
-    @Override
-    public void removeSceneObject(ISceneObject sceneObject) {
-        IScene.super.removeSceneObject(sceneObject);
-        if (!isCopy && sceneObject instanceof IFXObject fxObject) {
-            fxData.objects().remove(fxObject);
-        }
-    }
-
-    @Override
     public void addSceneObjectInternal(ISceneObject sceneObject) {
         if (sceneObject instanceof IFXObject fxObject) {
-            fxObject.setScene(this);
             var previous = objects.put(fxObject.id(), fxObject);
             if (previous != null) {
                 if (previous != fxObject) {
@@ -88,9 +72,6 @@ public class FXRuntime implements IScene {
     public void removeSceneObjectInternal(ISceneObject sceneObject) {
         if (sceneObject instanceof IFXObject fxObject) {
             objects.remove(fxObject.id());
-            if (!isCopy) {
-                fxData.objects().remove(fxObject);
-            }
         } else {
             throw new IllegalArgumentException("%s is not an instance of IFXObject".formatted(sceneObject));
         }
@@ -132,4 +113,21 @@ public class FXRuntime implements IScene {
         }
         return list;
     }
+//
+//    @Override
+//    public @UnknownNullability CompoundTag serializeNBT(@Nonnull HolderLookup.Provider provider) {
+//        var runtimeData = new CompoundTag();
+//        runtimeData.put("fxData", fxData.serializeNBT(provider));
+//        runtimeData.put("root", root.serializeNBT(provider));
+//        return runtimeData;
+//    }
+//
+//    @Override
+//    public void deserializeNBT(@Nonnull HolderLookup.Provider provider, @Nonnull CompoundTag nbt) {
+//        root.transform().children().clear();
+//        objects.clear();
+//        fxData.deserializeNBT(provider, nbt.getCompound("fxData"));
+//        root.deserializeNBT(provider, nbt.getCompound("root"));
+//        initRuntime();
+//    }
 }

@@ -66,12 +66,24 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
     /**
      * should render particle
      */
-    boolean isVisible();
+    default boolean isVisible() {
+        if (!isSelfVisible()) return false;
+        var parent = transform().parent();
+        if (parent != null && parent.sceneObject() instanceof IFXObject ifxObject) {
+            return ifxObject.isVisible();
+        }
+        return true;
+    }
 
     /**
-     * set particle visible
+     * set fx self visible
      */
-    void setVisible(boolean visible);
+    void setSelfVisible(boolean visible);
+
+    /**
+     * is fx self visible
+     */
+    boolean isSelfVisible();
 
     void setEffect(IEffect effect);
 

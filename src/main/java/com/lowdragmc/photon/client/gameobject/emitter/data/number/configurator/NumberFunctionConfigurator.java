@@ -1,4 +1,4 @@
-package com.lowdragmc.photon.gui.configurator;
+package com.lowdragmc.photon.client.gameobject.emitter.data.number.configurator;
 
 import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
@@ -80,6 +80,12 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
                 layout.setHeightPercent(100);
             }).style(style -> style.backgroundTexture(Icons.DOWN_ARROW_NO_BAR)));
         }
+        setCopiable(value -> value.copy());
+        setPastable(NumberFunction.class::isAssignableFrom, pasted -> {
+            if (pasted instanceof NumberFunction function) {
+                onPaste(function);
+            }
+        });
     }
 
     @Override

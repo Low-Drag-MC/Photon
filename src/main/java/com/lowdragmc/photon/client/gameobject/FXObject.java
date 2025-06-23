@@ -43,7 +43,7 @@ public class FXObject extends Particle implements IFXObject {
     @Nullable
     private Level realLevel;
     @Setter
-    protected boolean visible = true;
+    protected boolean selfVisible = true;
     @Nullable
     @Getter @Setter
     protected IEffect effect;
@@ -77,15 +77,6 @@ public class FXObject extends Particle implements IFXObject {
             }
         }
         return false;
-    }
-
-    @Override
-    public boolean isVisible() {
-        if (!visible) return false;
-        if (transform.parent() != null && transform.parent().sceneObject() instanceof IFXObject ifxObject) {
-            return ifxObject.isVisible();
-        }
-        return true;
     }
 
     @Nullable

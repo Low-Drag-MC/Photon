@@ -1,4 +1,4 @@
-package com.lowdragmc.photon.gui.configurator;
+package com.lowdragmc.photon.client.gameobject.emitter.data.number.configurator;
 
 import com.lowdragmc.lowdraglib2.configurator.accessors.TypesAccessor;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;

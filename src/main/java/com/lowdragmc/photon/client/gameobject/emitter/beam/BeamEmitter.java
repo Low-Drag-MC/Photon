@@ -2,8 +2,12 @@ package com.lowdragmc.photon.client.gameobject.emitter.beam;
 
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
+import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.SpriteTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
@@ -27,6 +31,7 @@ import java.util.*;
 @ParametersAreNonnullByDefault
 @LDLRegisterClient(name = "beam_emitter", registry = "photon:fx_object")
 public class BeamEmitter extends Emitter {
+    public static final IGuiTexture ICON = Icons.icon(Photon.MOD_ID, "beam");
     public static int VERSION = 2;
 
     @Getter
@@ -48,6 +53,11 @@ public class BeamEmitter extends Emitter {
 
     public void init() {
         beamParticle = new BeamParticle(this, config, getThreadSafeRandomSource());
+    }
+
+    @Override
+    public IGuiTexture getIcon() {
+        return ICON;
     }
 
     @Override

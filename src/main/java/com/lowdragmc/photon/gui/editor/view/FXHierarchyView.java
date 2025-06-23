@@ -1,20 +1,27 @@
 package com.lowdragmc.photon.gui.editor.view;
 
+import com.lowdragmc.lowdraglib2.configurator.EditAction;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
+import com.lowdragmc.lowdraglib2.gui.ColorPattern;
+import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.ScrollerView;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.TextElement;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.TreeList;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.*;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.style.value.TextWrap;
+import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
+import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.FXEditor;
+import it.unimi.dsi.fastutil.ints.IntComparator;
+import it.unimi.dsi.fastutil.ints.IntComparators;
 import lombok.Getter;
 import net.minecraft.network.chat.Component;
 import org.appliedenergistics.yoga.YogaFlexDirection;
@@ -23,13 +30,18 @@ import org.appliedenergistics.yoga.YogaOverflow;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.stream.Collectors;
 
 public class FXHierarchyView extends View {
+    public record DraggingNode(FXObjectTreeNode draggedNode) {}
     public final FXEditor fxEditor;
     public final ScrollerView scrollerView = new ScrollerView();
     public final TreeList<FXObjectTreeNode> treeList = new TreeList<>();
 
     // runtime
+    private long lastClickTime = 0;
     @Getter @Nullable
     private FXRuntime runtime;
     @Getter @Nullable
@@ -71,19 +83,137 @@ public class FXHierarchyView extends View {
                         if (!label.getText().equals(name)) {
                             label.setText(name);
                         }
+                    }).addEventListener(UIEvents.TICK, e -> {
+                        label.getTextStyle().textColor(node.getKey().isVisible() ? ColorPattern.WHITE.color : ColorPattern.LIGHT_GRAY.color);
                     });
                     return container.addChildren(icon, label);
                 })
-                .setOnSelectedChanged(nodes -> {
-                    if (nodes.size() == 1) {
-                        var fxObject = nodes.stream().findFirst().get().getKey();
-                        fxEditor.inspectorView.inspect(fxObject);
-                        fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(fxObject.transform());
-                    } else {
-                        fxEditor.inspectorView.clear();
-                        fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
-                    }
+                .setOnNodeUICreated((node, nodeUI) -> {
+                    var eyeButton = new Button().noText().setOnClick(e -> {
+                        node.getKey().setSelfVisible(!node.getKey().isSelfVisible());
+                    }).buttonStyle(style -> {
+                        style.defaultTexture(DynamicTexture.of(() -> node.getKey().isSelfVisible() ? Icons.EYE : Icons.EYE_OFF));
+                        style.hoverTexture(DynamicTexture.of(() -> (node.getKey().isSelfVisible() ? Icons.EYE : Icons.EYE_OFF)
+                                .copy().setColor(ColorPattern.LIGHT_GRAY.color)));
+                        style.pressedTexture(DynamicTexture.of(() -> (node.getKey().isSelfVisible() ? Icons.EYE : Icons.EYE_OFF)
+                                .copy().setColor(ColorPattern.LIGHT_GRAY.color)));
+                    }).layout((layout) -> {
+                        layout.setWidth(7);
+                        layout.setHeight(7);
+                    });
+                    nodeUI.addChildAt(eyeButton, 0);
+                    nodeUI.addEventListener(UIEvents.MOUSE_DOWN, e -> {
+                        if (e.button == 0) {
+                            lastClickTime = System.currentTimeMillis();
+                        }
+                    });
+                    nodeUI.addEventListener(UIEvents.MOUSE_LEAVE, e -> {
+                        if (lastClickTime != 0 && isMouseDown(0) && treeList.getSelected().size() == 1) {
+                            nodeUI.startDrag(new DraggingNode(node), new TextTexture(node.getKey().getName()));
+                        }
+                        lastClickTime = 0;
+                    }, true);
+                    nodeUI.addEventListener(UIEvents.MOUSE_UP, e -> {
+                        var fxObject = node.getKey();
+                        if (treeList.getSelected().size() == 1) {
+                            if (fxEditor.inspectorView.getInspectedConfigurable() != fxObject) {
+                                fxEditor.inspectorView.inspect(fxObject);
+                                fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(fxObject.transform());
+                            }
+                        } else {
+                            fxEditor.inspectorView.clear();
+                            fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
+                        }
+                        lastClickTime = 0;
+                    });
+                    nodeUI.addEventListener(UIEvents.DRAG_ENTER, e -> {
+                        if (e.dragHandler.getDraggingObject() instanceof DraggingNode(var dragged) && dragged != node) {
+                            var mode = isMouseOverNodeAbove(e) ? 0 : isMouseOverNodeCenter(e) ? 1 : isMouseOverNodeBelow(e) ? 2 : -1;
+                            e.currentElement.style(style -> style.overlayTexture(createDraggingOverlay(mode)));
+                        }
+                    });
+                    nodeUI.addEventListener(UIEvents.DRAG_END, e -> {
+                        e.currentElement.style(style -> style.overlayTexture(IGuiTexture.EMPTY));
+                    });
+                    nodeUI.addEventListener(UIEvents.DRAG_UPDATE, e -> {
+                        if (e.dragHandler.getDraggingObject() instanceof DraggingNode(var dragged) && dragged != node) {
+                            var mode = isMouseOverNodeAbove(e) ? 0 : isMouseOverNodeCenter(e) ? 1 : isMouseOverNodeBelow(e) ? 2 : -1;
+                            e.currentElement.style(style -> style.overlayTexture(createDraggingOverlay(mode)));
+                        }
+                    });
+                    nodeUI.addEventListener(UIEvents.DRAG_PERFORM, e -> {
+                        e.currentElement.style(style -> style.overlayTexture(IGuiTexture.EMPTY));
+                        if (e.dragHandler.getDraggingObject() instanceof DraggingNode(var dragged) && dragged != node) {
+                            if (isMouseOverNodeAbove(e)) {
+                                // sibling
+
+                            } else if (isMouseOverNodeCenter(e)) {
+                                // children
+                                var target = node.getKey().transform();
+                                var toMoved = dragged.getKey().transform();
+                                if (target.isInheritedParent(toMoved)) {
+                                    return;
+                                }
+                                var originalParent = toMoved.parent();
+
+                                fxEditor.historyView.pushHistory(Component.translatable("photon.move_fx_object"), EditAction.of(
+                                        () -> {
+                                            toMoved.parent(target, true);
+                                        },
+                                        () -> {
+                                            toMoved.parent(originalParent, true);
+                                        }
+                                ));
+                            } else if (isMouseOverNodeBelow(e)) {
+
+                            }
+                        }
+                    });
                 }));
+    }
+
+    private boolean isMouseOverNodeAbove(UIEvent event) {
+        var ui = event.currentElement;
+        var x = ui.getPositionX();
+        var y = ui.getPositionY();
+        var width = ui.getSizeWidth();
+        var height = ui.getSizeHeight();
+        return isMouseOver(x, y, width, height / 3, event.x, event.y);
+    }
+
+    private boolean isMouseOverNodeCenter(UIEvent event) {
+        var ui = event.currentElement;
+        var x = ui.getPositionX();
+        var y = ui.getPositionY();
+        var width = ui.getSizeWidth();
+        var height = ui.getSizeHeight();
+        return isMouseOver(x, y + height / 3, width, height / 3, event.x, event.y);
+    }
+
+    private boolean isMouseOverNodeBelow(UIEvent event) {
+        var ui = event.currentElement;
+        var x = ui.getPositionX();
+        var y = ui.getPositionY();
+        var width = ui.getSizeWidth();
+        var height = ui.getSizeHeight();
+        return isMouseOver(x, y + height * 2 / 3, width, height / 3, event.x, event.y);
+    }
+
+    private IGuiTexture createDraggingOverlay(int mode) {
+        if (mode == 0) {
+            return (graphics, mouseX, mouseY, x, y, width, height, partialTicks) -> {
+                DrawerHelper.drawSolidRect(graphics, x, y - 1, width, 1, ColorPattern.T_WHITE.color);
+            };
+        } else if (mode == 1) {
+            return (graphics, mouseX, mouseY, x, y, width, height, partialTicks) -> {
+                DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.T_WHITE.color);
+            };
+        } else if (mode == 2) {
+            return (graphics, mouseX, mouseY, x, y, width, height, partialTicks) -> {
+                DrawerHelper.drawSolidRect(graphics, x, y + height, width, 1, ColorPattern.T_WHITE.color);
+            };
+        }
+        return IGuiTexture.EMPTY;
     }
 
     protected void onMouseDown(UIEvent event) {
@@ -114,37 +244,71 @@ public class FXHierarchyView extends View {
             for (var fx : PhotonRegistries.FX_OBJECTS) {
                 m.leaf(fx.annotation().name(), () -> {
                     var fxObject = fx.value().get();
-                    addSceneObject(fxObject, false);
-                    fxEditor.reloadEffect();
+                    var father = treeList.getSelected().size() == 1 ?
+                            treeList.getSelected().stream().findFirst().get().getKey().transform():
+                            runtime.getRoot().transform();
+                    fxEditor.historyView.pushHistory(Component.translatable("photon.add_fx_object"), EditAction.of(
+                            () -> {
+                                fxObject.transform().parent(father, false);
+                                addSceneObject(fxObject);
+                                fxEditor.reloadEffect();
+                            },
+                            () -> {
+                                removeSceneObject(fxObject);
+                                fxEditor.reloadEffect();
+                            }
+                    ));
                 });
             }
         });
         var selected = treeList.getSelected();
-        if (!selected.isEmpty() && (selected.size() > 1 || selected.stream().findFirst().get() != rootNode)) {
+        if ((!selected.isEmpty() && selected.stream().findAny().get() != rootNode) && selected.stream()
+                .map(FXObjectTreeNode::getKey)
+                .map(IFXObject::transform)
+                .map(Transform::parent).distinct().count() <= 1) {
             menu.leaf(Icons.REMOVE_FILE, "ldlib.gui.editor.menu.remove", () -> {
                 var nodes = treeList.getSelected();
-                if (nodes.isEmpty()) return;
-                for (var node : nodes) {
-                    var fxObject = node.getKey();
-                    if (runtime.objects.containsValue(fxObject)) {
-                        removeSceneObject(fxObject);
-                    }
-                }
-                fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
-                fxEditor.reloadEffect();
+                if (nodes.isEmpty() || nodes.stream().findAny().get() == rootNode) return;
+                var toRemoved = nodes.stream().map(FXObjectTreeNode::getKey)
+                        .sorted(Comparator.comparingInt(a -> a.transform().getSiblingIndex())).toList();
+                var other = toRemoved.stream().map(IFXObject::transform).map(Transform::getSiblingIndex).toList();
+                fxEditor.historyView.pushHistory(Component.translatable("photon.remove_fx_object"), EditAction.of(
+                        () -> {
+                            for (var removed : toRemoved) {
+                                removeSceneObject(removed);
+                            }
+                            fxEditor.reloadEffect();
+                        },
+                        () -> {
+                            for (int i = 0; i < toRemoved.size(); i++) {
+                                var removed = toRemoved.get(i);
+                                addSceneObject(removed);
+                                removed.transform().setSiblingIndex(other.get(i));
+                            }
+                            fxEditor.reloadEffect();
+                        }
+                ));
+
             });
         }
         return menu;
     }
 
-    public void addSceneObject(IFXObject fxObject, boolean keepWorldTransform) {
+    public void addSceneObject(IFXObject fxObject) {
         if (runtime == null) return;
+        runtime.fxData.objects().add(fxObject);
         runtime.addSceneObject(fxObject);
-        fxObject.transform().parent(runtime.getRoot().transform(), keepWorldTransform);
     }
 
     public void removeSceneObject(IFXObject fxObject) {
         if (runtime == null) return;
+        if (fxEditor.sceneView.sceneEditor.getTransformGizmo().getTargetTransform() == fxObject.transform()) {
+            fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
+        }
+        if (fxEditor.inspectorView.getInspectedConfigurable() == fxObject) {
+            fxEditor.inspectorView.clear();
+        }
+        runtime.fxData.objects().remove(fxObject);
         runtime.removeSceneObject(fxObject);
     }
 }

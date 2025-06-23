@@ -219,9 +219,6 @@ public class CurveGraph extends BindableUIElement<ECBCurves> {
         return new Vector2f(percentX, 1 - percentY);
     }
 
-    private record Result(float percentX, float percentY) {
-    }
-
     public void refreshGraph() {
         pointsUI.forEach(graphView::removeChild);
         pointsUI.clear();

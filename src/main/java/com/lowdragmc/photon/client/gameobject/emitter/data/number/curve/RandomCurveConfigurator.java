@@ -11,19 +11,20 @@ import net.minecraft.util.Mth;
 import org.appliedenergistics.yoga.YogaEdge;
 import org.appliedenergistics.yoga.YogaFlexDirection;
 import org.appliedenergistics.yoga.YogaPositionType;
+import oshi.util.tuples.Pair;
 
 import javax.annotation.Nonnull;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class CurveConfigurator extends ValueConfigurator<Curve> {
+public class RandomCurveConfigurator extends ValueConfigurator<RandomCurve> {
     public final TextField upperBound = new TextField();
     public final TextField lowerBound = new TextField();
     public final UIElement dialog = new UIElement();
-    public final CurveGraph curveGraph = new CurveGraph();
+    public final RandomCurveGraph curveGraph = new RandomCurveGraph();
     public final UIElement curvePreview = new UIElement();
 
-    public CurveConfigurator(String name, Supplier<Curve> supplier, Consumer<Curve> onUpdate, @Nonnull Curve defaultValue, boolean forceUpdate) {
+    public RandomCurveConfigurator(String name, Supplier<RandomCurve> supplier, Consumer<RandomCurve> onUpdate, @Nonnull RandomCurve defaultValue, boolean forceUpdate) {
         super(name, supplier, onUpdate, defaultValue, forceUpdate);
         if (value == null) {
             value = defaultValue;
@@ -60,10 +61,10 @@ public class CurveConfigurator extends ValueConfigurator<Curve> {
         }).style(style -> style.backgroundTexture(Sprites.RECT_RD_SOLID))
                 .addChildren(new UIElement()
                         .layout(layout -> layout.setHeightPercent(100))
-                        .style(style -> style.backgroundTexture(DynamicTexture.of(() -> new CurveTexture(value.getCurves()))))
+                        .style(style -> style.backgroundTexture(DynamicTexture.of(() -> new RandomCurveTexture(value.getCurves0(), value.getCurves1()))))
                         .addEventListener(UIEvents.MOUSE_DOWN, this::onClick)));
 
-        this.curveGraph.setValue(value.getCurves(), false);
+        this.curveGraph.setValue(new Pair<>(value.getCurves0(), value.getCurves1()), false);
 
         this.dialog.style(style -> style.zIndex(1).backgroundTexture(Sprites.BORDER));
         this.dialog.layout(layout -> {
@@ -86,11 +87,11 @@ public class CurveConfigurator extends ValueConfigurator<Curve> {
     }
 
     @Override
-    protected void onValueUpdatePassively(Curve newValue) {
+    protected void onValueUpdatePassively(RandomCurve newValue) {
         if (newValue == null) newValue = defaultValue;
         if (newValue == value || newValue.equals(value)) return;
         super.onValueUpdatePassively(newValue);
-        this.curveGraph.setValue(newValue.getCurves(), false);
+        this.curveGraph.setValue(new Pair<>(newValue.getCurves0(), newValue.getCurves1()), false);
     }
 
     public void show() {

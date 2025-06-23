@@ -9,6 +9,9 @@
 
   "editor.lock_control_points": "Lock Control Points",
   "editor.edit_curve": "edit curve",
+  "photon.add_fx_object": "add fx object",
+  "photon.remove_fx_object": "remove fx object",
+  "photon.move_fx_object": "move fx object",
 
   "photon.separated axes": "Separated axes",
   "photon.all_in_one": "All in one",

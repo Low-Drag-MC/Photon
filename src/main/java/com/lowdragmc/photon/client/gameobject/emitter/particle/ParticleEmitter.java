@@ -2,8 +2,11 @@ package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
 import com.google.common.collect.Queues;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
+import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
@@ -28,6 +31,7 @@ import java.util.*;
 @ParametersAreNonnullByDefault
 @LDLRegisterClient(name = "particle_emitter", registry = "photon:fx_object")
 public class ParticleEmitter extends Emitter {
+    public static final IGuiTexture ICON = Icons.icon(Photon.MOD_ID, "particle");
     public static int VERSION = 2;
 
     @Persisted(subPersisted = true)
@@ -44,6 +48,11 @@ public class ParticleEmitter extends Emitter {
 
     protected ParticleEmitter(ParticleConfig config) {
         this.config = config;
+    }
+
+    @Override
+    public IGuiTexture getIcon() {
+        return ICON;
     }
 
     @Override

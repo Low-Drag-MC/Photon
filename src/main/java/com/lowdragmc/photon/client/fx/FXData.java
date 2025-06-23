@@ -10,6 +10,7 @@ import net.neoforged.neoforge.common.util.INBTSerializable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
@@ -17,6 +18,10 @@ public record FXData(List<IFXObject> objects) implements INBTSerializable<Compou
 
     public FXData() {
         this(new ArrayList<>());
+    }
+
+    public FXData copy(boolean deepCopy) {
+        return new FXData(objects.stream().map(obj -> obj.copy(deepCopy)).collect(Collectors.toList()));
     }
 
     public CompoundTag serializeNBT(HolderLookup.Provider provider) {
