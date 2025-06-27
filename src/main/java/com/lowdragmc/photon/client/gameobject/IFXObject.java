@@ -63,6 +63,11 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
 
     boolean isAlive();
 
+    @Override
+    default String getConfigurableName() {
+        return getName();
+    }
+
     /**
      * should render particle
      */

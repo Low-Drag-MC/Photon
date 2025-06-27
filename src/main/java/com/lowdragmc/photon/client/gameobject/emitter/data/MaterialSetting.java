@@ -2,12 +2,10 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
-import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
-import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
@@ -67,7 +65,18 @@ public class MaterialSetting implements IConfigurable, IPersistedSerializable {
         IConfigurable.super.buildConfigurator(father);
         var matConfigurator = new ValueConfigurator<>("material",
                 this::getMaterial,
-                this::setMaterial, this.getMaterial(), true);
+                this::setMaterial, this.getMaterial(), true) {
+            @Override
+            public void onPaste(IMaterial pasted) {
+                super.onPaste(pasted);
+            }
+        };
+        matConfigurator.setPastable(IMaterial.class::isAssignableFrom, pasted -> {
+            if (pasted instanceof IMaterial mat) {
+                matConfigurator.onPaste(mat);
+            }
+        });
+        matConfigurator.setCanDropPredicate(obj -> obj instanceof IMaterial);
         matConfigurator.setTips("photon.emitter.config.material.preview");
         matConfigurator.inlineContainer.addChild(new UIElement().layout(layout -> {
             layout.setAspectRatio(1.0f);

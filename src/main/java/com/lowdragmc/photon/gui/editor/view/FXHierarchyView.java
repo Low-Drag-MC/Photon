@@ -2,6 +2,7 @@ package com.lowdragmc.photon.gui.editor.view;
 
 import com.lowdragmc.lowdraglib2.configurator.EditAction;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
+import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
 import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
@@ -32,6 +33,8 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class FXHierarchyView extends View {
@@ -144,16 +147,34 @@ public class FXHierarchyView extends View {
                     nodeUI.addEventListener(UIEvents.DRAG_PERFORM, e -> {
                         e.currentElement.style(style -> style.overlayTexture(IGuiTexture.EMPTY));
                         if (e.dragHandler.getDraggingObject() instanceof DraggingNode(var dragged) && dragged != node) {
+                            var target = node.getKey().transform();
+                            var toMoved = dragged.getKey().transform();
+                            if (target.isInheritedParent(toMoved)) return;
                             if (isMouseOverNodeAbove(e)) {
                                 // sibling
-
+                                var originalParent = toMoved.parent();
+                                var originalSiblingIndex = toMoved.getSiblingIndex();
+                                var newParent = target.parent();
+                                var newSiblingIndex = target.getSiblingIndex();
+                                if (newParent == null) return;
+                                if (originalParent == newParent) {
+                                    if (originalSiblingIndex < newSiblingIndex) {
+                                        newSiblingIndex--;
+                                    }
+                                }
+                                var finalNewSiblingIndex = newSiblingIndex;
+                                fxEditor.historyView.pushHistory(Component.translatable("photon.move_fx_object"), EditAction.of(
+                                        () -> {
+                                            toMoved.parent(newParent, true);
+                                            toMoved.setSiblingIndex(finalNewSiblingIndex);
+                                        },
+                                        () -> {
+                                            toMoved.parent(originalParent, true);
+                                            toMoved.setSiblingIndex(originalSiblingIndex);
+                                        }
+                                ));
                             } else if (isMouseOverNodeCenter(e)) {
                                 // children
-                                var target = node.getKey().transform();
-                                var toMoved = dragged.getKey().transform();
-                                if (target.isInheritedParent(toMoved)) {
-                                    return;
-                                }
                                 var originalParent = toMoved.parent();
 
                                 fxEditor.historyView.pushHistory(Component.translatable("photon.move_fx_object"), EditAction.of(
@@ -165,11 +186,51 @@ public class FXHierarchyView extends View {
                                         }
                                 ));
                             } else if (isMouseOverNodeBelow(e)) {
-
+                                // sibling
+                                var originalParent = toMoved.parent();
+                                var originalSiblingIndex = toMoved.getSiblingIndex();
+                                var newParent = target.parent();
+                                var newSiblingIndex = target.getSiblingIndex() + 1;
+                                if (newParent == null) return;
+                                if (originalParent == newParent) {
+                                    if (originalSiblingIndex < newSiblingIndex) {
+                                        newSiblingIndex--;
+                                    }
+                                }
+                                var finalNewSiblingIndex = newSiblingIndex;
+                                fxEditor.historyView.pushHistory(Component.translatable("photon.move_fx_object"), EditAction.of(
+                                        () -> {
+                                            toMoved.parent(newParent, true);
+                                            toMoved.setSiblingIndex(finalNewSiblingIndex);
+                                        },
+                                        () -> {
+                                            toMoved.parent(originalParent, true);
+                                            toMoved.setSiblingIndex(originalSiblingIndex);
+                                        }
+                                ));
                             }
                         }
                     });
                 }));
+    }
+
+    public void clearFXRuntime() {
+        this.treeList.setRoot(null);
+        this.runtime = null;
+        this.rootNode = null;
+    }
+
+    public void loadFXRuntime(@Nonnull FXRuntime runtime) {
+        this.runtime = runtime;
+        this.rootNode = new FXObjectTreeNode(runtime.root);
+        this.treeList.setRoot(rootNode);
+    }
+
+    private boolean isSelectedNodeValid(Set<FXObjectTreeNode> selected) {
+        return (!selected.isEmpty() && selected.stream().findAny().get() != rootNode) && selected.stream()
+                .map(FXObjectTreeNode::getKey)
+                .map(IFXObject::transform)
+                .map(Transform::parent).distinct().count() <= 1;
     }
 
     private boolean isMouseOverNodeAbove(UIEvent event) {
@@ -223,52 +284,42 @@ public class FXHierarchyView extends View {
         }
     }
 
-    public void clearFXRuntime() {
-        this.treeList.setRoot(null);
-        this.runtime = null;
-        this.rootNode = null;
-    }
-
-    public void loadFXRuntime(@Nonnull FXRuntime runtime) {
-        this.runtime = runtime;
-        this.rootNode = new FXObjectTreeNode(runtime.root);
-        this.treeList.setRoot(rootNode);
-    }
 
     @Nullable
     protected TreeBuilder.Menu createMenu() {
         if (runtime == null) return null;
         var menu = TreeBuilder.Menu.start();
-        // add fx objects
-        menu.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.new", m -> {
-            for (var fx : PhotonRegistries.FX_OBJECTS) {
-                m.leaf(fx.annotation().name(), () -> {
-                    var fxObject = fx.value().get();
-                    var father = treeList.getSelected().size() == 1 ?
-                            treeList.getSelected().stream().findFirst().get().getKey().transform():
-                            runtime.getRoot().transform();
-                    fxEditor.historyView.pushHistory(Component.translatable("photon.add_fx_object"), EditAction.of(
-                            () -> {
-                                fxObject.transform().parent(father, false);
-                                addSceneObject(fxObject);
-                                fxEditor.reloadEffect();
-                            },
-                            () -> {
-                                removeSceneObject(fxObject);
-                                fxEditor.reloadEffect();
-                            }
-                    ));
-                });
-            }
-        });
+        if (treeList.getSelected().size() <= 1) {
+            // add fx objects
+            menu.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.new", m -> {
+                for (var fx : PhotonRegistries.FX_OBJECTS) {
+                    m.leaf(fx.annotation().name(), () -> {
+                        var fxObject = fx.value().get();
+                        var father = treeList.getSelected().stream().findFirst()
+                                .map(FXObjectTreeNode::getKey)
+                                .map(ISceneObject::transform)
+                                .map(Transform::parent)
+                                .orElse(runtime.getRoot().transform());
+                        fxEditor.historyView.pushHistory(Component.translatable("photon.add_fx_object"), EditAction.of(
+                                () -> {
+                                    fxObject.transform().parent(father, false);
+                                    addSceneObject(fxObject);
+                                    fxEditor.reloadEffect();
+                                },
+                                () -> {
+                                    removeSceneObject(fxObject);
+                                    fxEditor.reloadEffect();
+                                }
+                        ));
+                    });
+                }
+            });
+        }
         var selected = treeList.getSelected();
-        if ((!selected.isEmpty() && selected.stream().findAny().get() != rootNode) && selected.stream()
-                .map(FXObjectTreeNode::getKey)
-                .map(IFXObject::transform)
-                .map(Transform::parent).distinct().count() <= 1) {
+        if (isSelectedNodeValid(selected)) {
             menu.leaf(Icons.REMOVE_FILE, "ldlib.gui.editor.menu.remove", () -> {
                 var nodes = treeList.getSelected();
-                if (nodes.isEmpty() || nodes.stream().findAny().get() == rootNode) return;
+                if (!isSelectedNodeValid(nodes)) return;
                 var toRemoved = nodes.stream().map(FXObjectTreeNode::getKey)
                         .sorted(Comparator.comparingInt(a -> a.transform().getSiblingIndex())).toList();
                 var other = toRemoved.stream().map(IFXObject::transform).map(Transform::getSiblingIndex).toList();

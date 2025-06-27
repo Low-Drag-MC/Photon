@@ -84,7 +84,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
 
     @Override
     public IGuiTexture preview() {
-        return DynamicTexture.of(() -> SpriteTexture.of(texture.toString()));
+        return DynamicTexture.of(() -> SpriteTexture.of(texture));
     }
 
     @Override
@@ -102,7 +102,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
                                 .addChild(new UIElement().layout(layout -> {
                                     layout.setWidthPercent(100);
                                     layout.setHeightPercent(100);
-                                }).style(style -> style.backgroundTexture(DynamicTexture.of(() -> SpriteTexture.of(texture.toString()))))),
+                                }).style(style -> style.backgroundTexture(DynamicTexture.of(() -> SpriteTexture.of(texture))))),
                         // button to select image
                         new Button().setText("ldlib.gui.editor.tips.select_image").setOnClick(e -> {
                             var mui = e.currentElement.getModularUI();

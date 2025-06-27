@@ -27,8 +27,8 @@ public class FXEditor extends Editor {
     public FXEditor() {
         fileMenu.addProjectProvider(FXProject.PROVIDER);
         this.icon.style(style -> style.backgroundTexture(ICON));
-        this.left.addView(hierarchyView);
-        this.center.addView(sceneView);
+        this.leftWindow.getLeftTop().addView(hierarchyView);
+        this.centerWindow.getLeftTop().addView(sceneView);
     }
 
     public void reloadEffect() {
@@ -46,6 +46,7 @@ public class FXEditor extends Editor {
             this.runtime.root.updatePos(new Vector3f(0.5f, 2, 0.5f));
             hierarchyView.loadFXRuntime(runtime);
             sceneView.loadScene();
+            reloadEffect();
         }
     }
 
