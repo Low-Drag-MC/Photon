@@ -1,6 +1,7 @@
 ## ChangeLog
 
-# v1.1.9
-* Fixed the delay of the Beam Particle doesn't work
-* Fixed the animation time normalization
-* Fixed sub fxs won't be saved
+# v1.1.10
+* Fixed model mode serialization issue
+* Fixed sub emitter serialization issue
+* Fixed Birth event doesn't correct
+* Fixed collision checking issue

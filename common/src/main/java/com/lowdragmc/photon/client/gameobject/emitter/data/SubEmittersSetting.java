@@ -11,6 +11,7 @@ import com.lowdragmc.lowdraglib.gui.editor.configurator.SelectorConfigurator;
 import com.lowdragmc.lowdraglib.gui.editor.runtime.PersistedParser;
 import com.lowdragmc.lowdraglib.gui.editor.ui.Editor;
 import com.lowdragmc.lowdraglib.syncdata.ITagSerializable;
+import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
@@ -123,6 +124,7 @@ public class SubEmittersSetting extends ToggleGroup implements IConfigurable, IT
     }
 
     public static class Emitter implements IConfigurable {
+        @Persisted
         protected String emitter = "";
         @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.event")
         protected Event event = Event.Birth;

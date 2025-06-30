@@ -340,12 +340,12 @@ u     */
             return;
         }
 
-        if (config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
-            config.subEmitters.triggerEvent(fxRuntime.getFx(), this, SubEmittersSetting.Event.Birth);
-        }
-
         // update origin data
         updateOrigin();
+
+        if (this.age == 0 && config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
+            config.subEmitters.triggerEvent(fxRuntime.getFx(), this, SubEmittersSetting.Event.Birth);
+        }
 
         // update life cycle
         if (this.age++ >= this.lifetime && lifetime > 0) {
@@ -422,11 +422,11 @@ u     */
             var bounceChance = config.physics.getBounceChance(this);
             var bounceRate = config.physics.getBounceRate(this);
             var bounceSpreadRate = config.physics.getBounceSpreadRate(this);
-            if (Math.abs(velocity.x) >= 1.0E-5 && Math.abs(moveX) < 1.0E-5) {
+            if (Math.abs(velocity.x) / Math.abs(moveX) > 1.001) {
                 updateCollisionBounce(bounceChance, velocity, bounceRate, bounceSpreadRate, Direction.Axis.X);
-            } else if (Math.abs(velocity.y) >= 1.0E-5 && Math.abs(moveY) < 1.0E-5) {
+            } else if (Math.abs(velocity.y) / Math.abs(moveY) > 1.001) {
                 updateCollisionBounce(bounceChance, velocity, bounceRate, bounceSpreadRate, Direction.Axis.Y);
-            } else if (Math.abs(velocity.z) >= 1.0E-5 && Math.abs(moveZ) < 1.0E-5) {
+            } else if (Math.abs(velocity.z) / Math.abs(moveZ) > 1.001) {
                 updateCollisionBounce(bounceChance, velocity, bounceRate, bounceSpreadRate, Direction.Axis.Z);
             }
         }

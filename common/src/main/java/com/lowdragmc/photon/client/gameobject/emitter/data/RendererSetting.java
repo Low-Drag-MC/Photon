@@ -142,7 +142,10 @@ public class RendererSetting {
         @Override
         public void deserializeNBT(CompoundTag tag) {
             IPersistedSerializable.super.deserializeNBT(tag);
-            if (renderMode == Mode.Model && model != null) {
+            if (renderMode == Mode.Model) {
+                if (model == null) {
+                    model = new IModelRenderer(new ResourceLocation("block/dirt"));
+                }
                 model.deserializeNBT(tag.getCompound("model"));
             }
         }
@@ -150,7 +153,7 @@ public class RendererSetting {
         @Override
         public CompoundTag serializeNBT() {
             var tag = IPersistedSerializable.super.serializeNBT();
-            if (renderMode == Mode.Model) {
+            if (renderMode == Mode.Model && model != null) {
                 tag.put("model", getModel().serializeNBT());
             }
             return tag;
