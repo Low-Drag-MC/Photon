@@ -41,6 +41,7 @@ public class FX implements ITagSerializable<CompoundTag> {
     @Override
     public void deserializeNBT(CompoundTag tag) {
         mainFX.deserializeNBT(tag.getCompound("mainFX"));
+        subFXs.clear();
         var subFXs = tag.getCompound("subFXs");
         for (var key : subFXs.getAllKeys()) {
             var subFX = new FXData();
