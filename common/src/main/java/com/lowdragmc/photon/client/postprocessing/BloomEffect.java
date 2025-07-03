@@ -11,6 +11,7 @@ import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 
 import javax.annotation.Nullable;
@@ -42,6 +43,8 @@ public class BloomEffect {
         if (INPUT == null) {
             INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), true);
             hookDepthBuffer(INPUT, MC.getMainRenderTarget().getDepthTextureId());
+            hookColorBuffer(INPUT, MC.getMainRenderTarget().getColorTextureId(), GL30.GL_COLOR_ATTACHMENT1);
+            GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
         }
         return INPUT;
     }
@@ -64,11 +67,20 @@ public class BloomEffect {
         }
     }
 
+    public static void hookColorBuffer(RenderTarget fbo, int colorBuffer, int colorAttachment) {
+        //Hook ColorBuffer
+        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.frameBufferId);
+        GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, colorAttachment, GL30.GL_TEXTURE_2D, colorBuffer, 0);
+    }
+
     public static void updateScreenSize(int width, int height) {
         if (LAST_WIDTH == width && LAST_HEIGHT == height) return;
 
         INPUT = resize(null, width, height, true);
         hookDepthBuffer(INPUT, MC.getMainRenderTarget().getDepthTextureId());
+        hookColorBuffer(INPUT, MC.getMainRenderTarget().getColorTextureId(), GL30.GL_COLOR_ATTACHMENT1);
+        GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
+
         OUTPUT = resize(OUTPUT, width, height, false);
 
         SWAP2A = resize(SWAP2A, width / 2, height / 2, false);

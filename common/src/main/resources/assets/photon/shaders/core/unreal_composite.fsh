@@ -62,6 +62,6 @@ void main() {
 
     vec4 background = texture(DiffuseSampler, texCoord);
     vec4 highLight = texture(HighLight, texCoord);
-    background.rgb = background.rgb * (1 - highLight.a) + highLight.a * highLight.rgb;
+    //background.rgb = background.rgb * (1 - highLight.a) + highLight.a * highLight.rgb;
     fragColor = vec4(background.rgb + jodieReinhardTonemap(bloom.rgb), 1.);
 }
