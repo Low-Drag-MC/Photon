@@ -44,6 +44,8 @@ public class BloomEffect {
             INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), true);
             hookDepthBuffer(INPUT, MC.getMainRenderTarget().getDepthTextureId());
             hookColorBuffer(INPUT, MC.getMainRenderTarget().getColorTextureId(), GL30.GL_COLOR_ATTACHMENT1);
+
+            //hook main target texture to bloom target attachment1
             GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
         }
         return INPUT;
@@ -79,6 +81,8 @@ public class BloomEffect {
         INPUT = resize(null, width, height, true);
         hookDepthBuffer(INPUT, MC.getMainRenderTarget().getDepthTextureId());
         hookColorBuffer(INPUT, MC.getMainRenderTarget().getColorTextureId(), GL30.GL_COLOR_ATTACHMENT1);
+
+        //hook main target texture to bloom target attachment1
         GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
 
         OUTPUT = resize(OUTPUT, width, height, false);
@@ -165,7 +169,7 @@ public class BloomEffect {
 //        blitShader(SEPARABLE_BLUR, SWAP16B);
 
         UNREAL_COMPOSITE.setSampler("DiffuseSampler", background);
-        UNREAL_COMPOSITE.setSampler("HighLight", input);
+//        UNREAL_COMPOSITE.setSampler("HighLight", input);
         UNREAL_COMPOSITE.setSampler("BlurTexture1", SWAP2B);
         UNREAL_COMPOSITE.setSampler("BlurTexture2", SWAP4B);
         UNREAL_COMPOSITE.setSampler("BlurTexture3", SWAP8B);

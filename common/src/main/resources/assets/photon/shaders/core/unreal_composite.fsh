@@ -1,7 +1,7 @@
 #version 150
 
 uniform sampler2D DiffuseSampler;
-uniform sampler2D HighLight;
+//uniform sampler2D HighLight;
 uniform sampler2D BlurTexture1;
 uniform sampler2D BlurTexture2;
 uniform sampler2D BlurTexture3;
@@ -61,7 +61,7 @@ void main() {
     );
 
     vec4 background = texture(DiffuseSampler, texCoord);
-    vec4 highLight = texture(HighLight, texCoord);
+    //vec4 highLight = texture(HighLight, texCoord);
     //background.rgb = background.rgb * (1 - highLight.a) + highLight.a * highLight.rgb;
     fragColor = vec4(background.rgb + jodieReinhardTonemap(bloom.rgb), 1.);
 }
