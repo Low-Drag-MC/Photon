@@ -1,49 +1,57 @@
 package com.lowdragmc.photon.gui.editor.resource;
 
-import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
 import com.lowdragmc.lowdraglib2.editor.resource.ResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
-import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.photon.PhotonRegistries;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlockTextureSheetMaterial;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.*;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
-
 public class MaterialResource extends Resource<IMaterial> {
-    
-    public MaterialResource() {
-        var builtinResource = new BuiltinResourceProvider<>(this);
-        builtinResource.addResource("circle", new TextureMaterial());
-        addVanillaTextureMaterial(builtinResource, "angry");
-        addVanillaTextureMaterial(builtinResource, "bubble");
-        addVanillaTextureMaterial(builtinResource, "damage");
-        addVanillaTextureMaterial(builtinResource, "flame");
-        addVanillaTextureMaterial(builtinResource, "glow");
-        addVanillaTextureMaterial(builtinResource, "heart");
-        addVanillaTextureMaterial(builtinResource, "lava");
-        addVanillaTextureMaterial(builtinResource, "note");
+    public static final MaterialResource INSTANCE = new MaterialResource();
 
-        addBuiltinTextureMaterial(builtinResource, "kila_tail");
-        addBuiltinTextureMaterial(builtinResource, "laser");
-        addBuiltinTextureMaterial(builtinResource, "smoke");
-        addBuiltinTextureMaterial(builtinResource, "thaumcraft");
-        addBuiltinTextureMaterial(builtinResource, "ring");
+    @Override
+    public void buildBuiltin(BuiltinResourceProvider<IMaterial> provider) {
+        provider.addResource("missing", IMaterial.MISSING);
+        provider.addResource("block_atlas", BlockTextureSheetMaterial.INSTANCE);
 
-        addBuiltinShaderMaterial(builtinResource, "circle");
-        builtinResource.addResource("block_texture_sheet", new BlockTextureSheetMaterial());
-        addResourceProvider(builtinResource);
+        addBuiltinShaderMaterial(provider, "circle");
+        addBuiltinTextureMaterial(provider, "kila_tail");
+        addBuiltinTextureMaterial(provider, "laser");
+        addBuiltinTextureMaterial(provider, "smoke");
+        addBuiltinTextureMaterial(provider, "thaumcraft");
+        addBuiltinTextureMaterial(provider, "ring");
     }
+
+//    public MaterialResource() {
+//        var builtinResource = new BuiltinResourceProvider<>(this);
+//        builtinResource.addResource("circle", new TextureMaterial());
+//        addVanillaTextureMaterial(builtinResource, "angry");
+//        addVanillaTextureMaterial(builtinResource, "bubble");
+//        addVanillaTextureMaterial(builtinResource, "damage");
+//        addVanillaTextureMaterial(builtinResource, "flame");
+//        addVanillaTextureMaterial(builtinResource, "glow");
+//        addVanillaTextureMaterial(builtinResource, "heart");
+//        addVanillaTextureMaterial(builtinResource, "lava");
+//        addVanillaTextureMaterial(builtinResource, "note");
+//
+//        addBuiltinTextureMaterial(builtinResource, "kila_tail");
+//        addBuiltinTextureMaterial(builtinResource, "laser");
+//        addBuiltinTextureMaterial(builtinResource, "smoke");
+//        addBuiltinTextureMaterial(builtinResource, "thaumcraft");
+//        addBuiltinTextureMaterial(builtinResource, "ring");
+//
+//        addBuiltinShaderMaterial(builtinResource, "circle");
+//        builtinResource.addResource("block_texture_sheet", BlockTextureSheetMaterial.INSTANCE);
+//        addResourceProvider(builtinResource);
+//    }
 
     private void addVanillaTextureMaterial(BuiltinResourceProvider<IMaterial> builtin, String name) {
         builtin.addResource(name, new TextureMaterial(ResourceLocation.parse("textures/particle/%s.png".formatted(name))));
@@ -55,11 +63,6 @@ public class MaterialResource extends Resource<IMaterial> {
 
     private void addBuiltinShaderMaterial(BuiltinResourceProvider<IMaterial> builtin, String name) {
         builtin.addResource(name, new CustomShaderMaterial(ResourceLocation.parse("photon:%s".formatted(name))));
-    }
-
-    @Override
-    public void buildDefault() {
-        addResourceProvider(createNewFileResourceProvider(new File(LDLib2.getAssetsDir(), "ldlib2/resources")).setName("global"));
     }
 
     @Override
@@ -96,10 +99,13 @@ public class MaterialResource extends Resource<IMaterial> {
             c.getEditor().inspectorView.inspect(material, configurator -> c.markResourceDirty(path));
         });
 
+        container.setOnDragProvider(UIResourceMaterial::new);
+
         if (provider.supportAdd()) {
             container.setOnMenu((c, m) -> m.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.add_resource", menu -> {
                 for (var holder : PhotonRegistries.MATERIALS) {
                     var name = holder.annotation().name();
+                    if (name.equals("missing") || name.equals("block_atlas") || name.equals("ui_resource_material")) continue;
                     menu.leaf(name, () -> {
                         var material = holder.value().get();
                         c.addNewResource(material);

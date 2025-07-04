@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.gui.editor.resource;
 
-import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
@@ -9,7 +8,7 @@ import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
 import com.lowdragmc.lowdraglib2.editor.resource.ResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
-import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
@@ -24,23 +23,16 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.Nonnull;
 
-import java.io.File;
-
 public class GradientResource extends Resource<GradientResource.Gradients> {
-
-    public GradientResource() {
-        var builtinResource = new BuiltinResourceProvider<>(this);
-        builtinResource.addResource("black white", new Gradients(new GradientColor(0xff000000, 0xffffffff)));
-        builtinResource.addResource("gradient", new Gradients(new GradientColor(0x00ffffff, 0xffffffff, 0x00ffffff)));
-        builtinResource.addResource("rainbow", new Gradients(new GradientColor(0xffff0000, 0xffFFA500, 0xffFFFF00, 0xff00ff00, 0xff007FFF, 0xff0000ff, 0xff8B00FF)));
-
-        builtinResource.addResource("random", new Gradients(new GradientColor(0xffffffff, 0xffffffff), new GradientColor(0xff000000, 0xff000000)));
-        addResourceProvider(builtinResource);
-    }
+    public static final GradientResource INSTANCE = new GradientResource();
 
     @Override
-    public void buildDefault() {
-        addResourceProvider(createNewFileResourceProvider(new File(LDLib2.getAssetsDir(), "ldlib2/resources")).setName("global"));
+    public void buildBuiltin(BuiltinResourceProvider<GradientResource.Gradients> provider) {
+        provider.addResource("black white", new Gradients(new GradientColor(0xff000000, 0xffffffff)));
+        provider.addResource("gradient", new Gradients(new GradientColor(0x00ffffff, 0xffffffff, 0x00ffffff)));
+        provider.addResource("rainbow", new Gradients(new GradientColor(0xffff0000, 0xffFFA500, 0xffFFFF00, 0xff00ff00, 0xff007FFF, 0xff0000ff, 0xff8B00FF)));
+
+        provider.addResource("random", new Gradients(new GradientColor(0xffffffff, 0xffffffff), new GradientColor(0xff000000, 0xff000000)));
     }
 
     @Override

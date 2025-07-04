@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib2.plugin.ILDLibPlugin;
 import com.lowdragmc.lowdraglib2.plugin.LDLibPlugin;
 import com.lowdragmc.lowdraglib2.syncdata.AccessorRegistries;
 import com.lowdragmc.lowdraglib2.syncdata.accessor.direct.CustomDirectAccessor;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.IShape;
@@ -35,6 +36,11 @@ public class PhotonLDLibPlugin implements ILDLibPlugin {
                 .codec(IShape.CODEC)
                 .streamCodec(ByteBufCodecs.fromCodec(IShape.CODEC))
                 .codecMark()
+                .build());
+        AccessorRegistries.registerAccessor(CustomDirectAccessor.builder(IMaterial.class)
+                .codec(IMaterial.CODEC)
+                .streamCodec(ByteBufCodecs.fromCodec(IMaterial.CODEC))
+                .copyMark(IMaterial::copy)
                 .build());
     }
 }

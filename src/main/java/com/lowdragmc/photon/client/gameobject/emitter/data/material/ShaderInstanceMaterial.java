@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.client.shader.management.ShaderManager;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.photon.Photon;
 import com.mojang.blaze3d.platform.GlStateManager;
@@ -110,6 +111,7 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
         @Override
         public void draw(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTicks) {
             //sub area is just different width and height
+            RenderSystem.enableBlend();
             float imageU = 0;
             float imageV = 0;
             float imageWidth = 1;

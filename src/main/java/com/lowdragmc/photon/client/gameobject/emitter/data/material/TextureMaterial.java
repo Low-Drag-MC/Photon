@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.client.shader.Shaders;
+import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
@@ -10,9 +11,7 @@ import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.SpriteTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.Dialog;
-import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
-import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.Photon;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -22,7 +21,6 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
 import org.appliedenergistics.yoga.YogaAlign;
-import org.appliedenergistics.yoga.YogaEdge;
 import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -37,9 +35,8 @@ import java.io.File;
 @ParametersAreNonnullByDefault
 @LDLRegisterClient(name = "texture", registry = "photon:material")
 public class TextureMaterial extends ShaderInstanceMaterial {
-
-    @Configurable
     @Setter
+    @Configurable
     public ResourceLocation texture = ResourceLocation.parse("textures/particle/glow.png");
 
     @Configurable
@@ -87,23 +84,16 @@ public class TextureMaterial extends ShaderInstanceMaterial {
         return DynamicTexture.of(() -> SpriteTexture.of(texture));
     }
 
+
+
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
-        var configurator = new Configurator("ldlib.gui.editor.group.base_image");
+        createPreview(father);
+
+        var configurator = new Configurator();
         father.addConfigurators(configurator
-                .addChildren(
-                        // raw image preview
-                        new UIElement().layout(layout -> {
-                                    layout.setAspectRatio(1.0f);
-                                    layout.setWidthPercent(80);
-                                    layout.setPadding(YogaEdge.ALL, 3);
-                                    layout.setAlignSelf(YogaAlign.CENTER);
-                                }).style(style -> style.backgroundTexture(Sprites.BORDER1_RT1))
-                                .addChild(new UIElement().layout(layout -> {
-                                    layout.setWidthPercent(100);
-                                    layout.setHeightPercent(100);
-                                }).style(style -> style.backgroundTexture(DynamicTexture.of(() -> SpriteTexture.of(texture))))),
-                        // button to select image
+                .addInlineChild(
+                        // button to select an image
                         new Button().setText("ldlib.gui.editor.tips.select_image").setOnClick(e -> {
                             var mui = e.currentElement.getModularUI();
                             if (mui == null) return;
@@ -117,7 +107,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
                             }).show(mui.ui.rootElement);
                         }).layout(layout -> layout.setAlignSelf(YogaAlign.CENTER))
                 ));
-        super.buildConfigurator(father);
+        ConfiguratorParser.createConfigurators(father, this);
     }
 
     public @Nullable ResourceLocation getTextureFromFile(File filePath) {

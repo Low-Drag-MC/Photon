@@ -1,12 +1,11 @@
 package com.lowdragmc.photon.gui.editor.resource;
 
-import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.configurator.EditAction;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
 import com.lowdragmc.lowdraglib2.editor.resource.ResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
-import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
@@ -25,29 +24,23 @@ import oshi.util.tuples.Pair;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.io.File;
 
 public class CurveResource extends Resource<CurveResource.Curves> {
-
-    public CurveResource() {
-        var builtinResource = new BuiltinResourceProvider<>(this);
-        builtinResource.addResource("middle", new Curves(new ECBCurves()));
-        builtinResource.addResource("linear up", new Curves(new ECBCurves(0, 0, 0.1f, 0.3f, 0.9f, 0.7f, 1, 1)));
-        builtinResource.addResource("linear down", new Curves(new ECBCurves(0, 1, 0.1f, 0.7f, 0.9f, 0.3f, 1, 0)));
-        builtinResource.addResource("smooth up", new Curves(new ECBCurves(0, 0, 0.1f, 0, 0.9f, 1f, 1, 1)));
-        builtinResource.addResource("smooth down", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 0f, 1, 0)));
-        builtinResource.addResource("concave", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.4f, 0f, 0.5F, 0, 0.5F, 0, 0.6f, 0, 0.9f, 1f, 1, 1)));
-        builtinResource.addResource("convex", new Curves(new ECBCurves(0, 0, 0.1f, 0, 0.4f, 1, 0.5F, 1, 0.5F, 1, 0.6f, 1, 0.9f, 0, 1, 0)));
-
-        builtinResource.addResource("random full", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 0, 0.1f, 0, 0.9f, 0, 1, 0)));
-        builtinResource.addResource("random up", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 0, 0.1f, 0, 0.9f, 1f, 1, 1)));
-        builtinResource.addResource("random down", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 1, 0.1f, 1, 0.9f, 0f, 1, 0)));
-        addResourceProvider(builtinResource);
-    }
+    public static final CurveResource INSTANCE = new CurveResource();
 
     @Override
-    public void buildDefault() {
-        addResourceProvider(createNewFileResourceProvider(new File(LDLib2.getAssetsDir(), "ldlib2/resources")).setName("global"));
+    public void buildBuiltin(BuiltinResourceProvider<CurveResource.Curves> provider) {
+        provider.addResource("middle", new Curves(new ECBCurves()));
+        provider.addResource("linear up", new Curves(new ECBCurves(0, 0, 0.1f, 0.3f, 0.9f, 0.7f, 1, 1)));
+        provider.addResource("linear down", new Curves(new ECBCurves(0, 1, 0.1f, 0.7f, 0.9f, 0.3f, 1, 0)));
+        provider.addResource("smooth up", new Curves(new ECBCurves(0, 0, 0.1f, 0, 0.9f, 1f, 1, 1)));
+        provider.addResource("smooth down", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 0f, 1, 0)));
+        provider.addResource("concave", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.4f, 0f, 0.5F, 0, 0.5F, 0, 0.6f, 0, 0.9f, 1f, 1, 1)));
+        provider.addResource("convex", new Curves(new ECBCurves(0, 0, 0.1f, 0, 0.4f, 1, 0.5F, 1, 0.5F, 1, 0.6f, 1, 0.9f, 0, 1, 0)));
+
+        provider.addResource("random full", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 0, 0.1f, 0, 0.9f, 0, 1, 0)));
+        provider.addResource("random up", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 0, 0.1f, 0, 0.9f, 1f, 1, 1)));
+        provider.addResource("random down", new Curves(new ECBCurves(0, 1, 0.1f, 1, 0.9f, 1, 1, 1), new ECBCurves(0, 1, 0.1f, 1, 0.9f, 0f, 1, 0)));
     }
 
     @Override

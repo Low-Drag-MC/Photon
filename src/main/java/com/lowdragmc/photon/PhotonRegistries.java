@@ -1,7 +1,10 @@
 package com.lowdragmc.photon;
 
+import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.registry.AutoRegistry;
+import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlockTextureSheetMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.IShape;
@@ -29,6 +32,15 @@ public class PhotonRegistries {
             .create(Photon.id("shape"), IShape.class, AutoRegistry::noArgsCreator);
 
     public static void init() {
-
+        if (LDLib2.isClient()) {
+            MATERIALS.register("missing", AutoRegistry.Holder.of(
+                    IMaterial.MissingMaterial.class.getAnnotation(LDLRegisterClient.class),
+                    IMaterial.MissingMaterial.class,
+                    () -> IMaterial.MISSING));
+            MATERIALS.register("block_atlas", AutoRegistry.Holder.of(
+                    BlockTextureSheetMaterial.class.getAnnotation(LDLRegisterClient.class),
+                    BlockTextureSheetMaterial.class,
+                    () -> BlockTextureSheetMaterial.INSTANCE));
+        }
     }
 }

@@ -1,30 +1,38 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.lowdragmc.lowdraglib2.LDLib2;
+import com.lowdragmc.lowdraglib2.Platform;
+import com.lowdragmc.lowdraglib2.client.shader.LDShaderInstance;
 import com.lowdragmc.lowdraglib2.client.shader.Shaders;
-import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
+import com.lowdragmc.lowdraglib2.configurator.accessors.ResourceLocationAccessor;
+import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.TextTexture;
+import com.lowdragmc.lowdraglib2.gui.ui.Dialog;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import lombok.Getter;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.FloatTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
+import org.appliedenergistics.yoga.YogaAlign;
+import org.jetbrains.annotations.NotNull;
 
+import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
+import java.io.File;
 
 /**
  * @author KilaBash
@@ -35,41 +43,52 @@ import java.util.Map;
 @ParametersAreNonnullByDefault
 @LDLRegisterClient(name = "custom_shader", registry = "photon:material")
 public class CustomShaderMaterial extends ShaderInstanceMaterial {
-    private static final Map<ResourceLocation, ShaderInstance> COMPILED_SHADERS = new HashMap<>();
-
-    @Configurable
-    public ResourceLocation shader = Photon.id("circle");
+    @Getter
     @Persisted
-    protected CompoundTag uniformTag = new CompoundTag();
+    private ResourceLocation shaderLocation = Photon.id("circle");
 
     //runtime
+    @Nullable
+    private ShaderInstance shaderInstance;
+    @Getter
     private String compiledErrorMessage = "";
-    private Runnable uniformCache = null;
 
-    public CustomShaderMaterial() {
-        var uniforms = new CompoundTag();
-        var list = new ListTag();
-        list.add(FloatTag.valueOf(0.3f));
-        uniforms.put("Radius", list);
-        uniformTag.put("uniforms", uniforms);
+    public CustomShaderMaterial() {}
+
+    public CustomShaderMaterial(ResourceLocation shaderLocation) {
+        this.shaderLocation = shaderLocation;
     }
 
-    public CustomShaderMaterial(ResourceLocation shader) {
-        this.shader = shader;
+    public void setShader(ResourceLocation shaderLocation) {
+        this.shaderLocation = shaderLocation;
+        recompile();
     }
 
     @Override
     public IMaterial copy() {
-        var mat = new CustomShaderMaterial(shader);
-        mat.uniformTag = uniformTag.copy();
-        return mat;
+        var copied = new CustomShaderMaterial(shaderLocation);
+        var data = serializeAdditionalNBT(Platform.getFrozenRegistry());
+        copied.deserializeAdditionalNBT(data, Platform.getFrozenRegistry());
+        return copied;
     }
 
     @Override
-    public void beforeDeserialize() {
-        super.beforeDeserialize();
-        uniformCache = null;
-        compiledErrorMessage = "";
+    public Tag serializeAdditionalNBT(HolderLookup.@NotNull Provider provider) {
+        var shaderData = new CompoundTag();
+        if (getShader() instanceof LDShaderInstance ldShaderInstance) {
+            var uniformData = ldShaderInstance.serializeNBT(provider);
+            shaderData.put("uniforms", uniformData);
+        }
+        return shaderData;
+    }
+
+    @Override
+    public void deserializeAdditionalNBT(Tag tag, HolderLookup.@NotNull Provider provider) {
+        if (!(tag instanceof CompoundTag shaderData)) return;
+        recompile();
+        if (getShader() instanceof LDShaderInstance ldShaderInstance) {
+            ldShaderInstance.deserializeNBT(provider, shaderData.getCompound("uniforms"));
+        }
     }
 
     public boolean isCompiledError() {
@@ -77,91 +96,31 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     }
 
     public void recompile() {
-        uniformTag = new CompoundTag();
-        uniformCache = null;
         compiledErrorMessage = "";
-        var removed = COMPILED_SHADERS.remove(this.shader);
-        if (removed != null && removed != Shaders.getParticleShader()) {
-            removed.close();
+
+        if (shaderInstance != null && shaderInstance != Shaders.getParticleShader()) {
+            shaderInstance.close();
+        }
+        try {
+            shaderInstance = new LDShaderInstance(Minecraft.getInstance().getResourceManager(), shaderLocation, DefaultVertexFormat.PARTICLE);
+        } catch (Throwable e) {
+            compiledErrorMessage = e.getMessage();
+            shaderInstance = Shaders.getParticleShader();
         }
     }
 
     @Override
     public ShaderInstance getShader() {
-        return COMPILED_SHADERS.computeIfAbsent(shader, shader -> {
-            try {
-                return new ShaderInstance(Minecraft.getInstance().getResourceManager(), shader, DefaultVertexFormat.PARTICLE);
-            } catch (Throwable e) {
-                compiledErrorMessage = e.getMessage();
-            }
-            return Shaders.getParticleShader();
-        });
-    }
-
-    private Runnable combineRunnable(Runnable a, Runnable b) {
-        return () -> {
-            a.run();
-            b.run();
-        };
+        if (shaderInstance == null) {
+            recompile();
+        }
+        return shaderInstance;
     }
 
     @Override
     public void setupUniform() {
         if (!isCompiledError()) {
-            if (uniformCache != null) {
-                uniformCache.run();
-            } else if (!uniformTag.isEmpty() && getShader() instanceof ShaderInstanceAccessor shaderInstance) {
-                // compile
-                uniformCache = () -> {};
-                if (uniformTag.contains("samplers")) {
-                    var samplers = uniformTag.getCompound("samplers");
-                    var samplerNames = new HashSet<>(shaderInstance.getSamplerNames());
-                    for (String key : samplers.getAllKeys()) {
-                        var index = -1;
-                        ResourceLocation texture = null;
-                        try {
-                            index = Integer.parseInt(key);
-                            texture = ResourceLocation.parse(samplers.getString(key));
-                        } catch (Exception ignored) {}
-                        if (index >= 0 && texture != null && samplerNames.contains("Sampler" + index)) {
-                            final int finalIndex = index;
-                            final ResourceLocation finalTexture = texture;
-                            uniformCache = combineRunnable(uniformCache, () -> RenderSystem.setShaderTexture(finalIndex, finalTexture));
-                        }
-                    }
-                }
-                if (uniformTag.contains("uniforms")) {
-                    var uniforms = uniformTag.getCompound("uniforms");
-                    var uniformMap = shaderInstance.getUniformMap();
-                    for (String key : uniforms.getAllKeys()) {
-                        var data = uniforms.getList(key, Tag.TAG_FLOAT);
-                        if (uniformMap.containsKey(key) && !data.isEmpty()) {
-                            var u = uniformMap.get(key);
-                            if (u.getCount() == data.size()) {
-                                var type = u.getType();
-                                if (type == 4) { // UT_FLOAT1
-                                    final float value = data.getFloat(0);
-                                    uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value));
-                                }
-                                if (type == 5) { // UT_FLOAT2
-                                    final float[] value = new float[] {data.getFloat(0), data.getFloat(1)};
-                                    uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value[0], value[1]));
-                                }
-                                if (type == 6) { // UT_FLOAT3
-                                    final float[] value = new float[] {data.getFloat(0), data.getFloat(1), data.getFloat(2)};
-                                    uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value[0], value[1], value[2]));
-                                }
-                                if (type == 7) { // UT_FLOAT4
-                                    final float[] value = new float[] {data.getFloat(0), data.getFloat(1), data.getFloat(2), data.getFloat(3)};
-                                    uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value[0], value[1], value[2], value[3]));
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                uniformCache = () -> {};
-            }
+
         }
     }
 
@@ -172,179 +131,89 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                 preview);
     }
 
-    //TODO configurator
+    @Override
+    public void buildConfigurator(ConfiguratorGroup father) {
+        ConfiguratorParser.createConfigurators(father, this);
+        createPreview(father);
 
-//    @Override
-//    public void buildConfigurator(ConfiguratorGroup father) {
-//        WidgetGroup preview = new WidgetGroup(0, 0, 100, 120);
-//        WidgetGroup shaderConfigurator = new WidgetGroup(0, 0, 200, 0);
-//        preview.addWidget(new ImageWidget(0, 0, 100, 100, () -> isCompiledError() ? new TextTexture(compiledErrorMessage.isEmpty() ? "error" : compiledErrorMessage, 0xffff0000) : this.preview).setBorder(2, ColorPattern.T_WHITE.color));
-//        preview.addWidget(new ButtonWidget(0, 0, 100, 100, IGuiTexture.EMPTY, cd -> {
-//            if (Editor.INSTANCE == null) return;
-//            File path = new File(Editor.INSTANCE.getWorkSpace(), "assets/ldlib/shaders/core");
-//            DialogWidget.showFileDialog(Editor.INSTANCE, "select a shader config", path, true,
-//                    DialogWidget.suffixFilter(".json"), r -> {
-//                        if (r != null && r.isFile()) {
-//                            shader = new ResourceLocation("ldlib:" + r.getName().substring(0, r.getName().length() - 5));
-//                            uniformTag = new CompoundTag();
-//                            uniformCache= null;
-//                            updateShaderUniformConfigurator(shaderConfigurator);
-//                            father.computeLayout();
-//                        }
-//                    });
-//        }));
-//        preview.addWidget(new ButtonWidget(5, 110, 90, 10, new GuiTextureGroup(ColorPattern.T_GRAY.rectTexture().setRadius(5), new TextTexture("recompile")), cd -> {
-//            recompile();
-//            updateShaderUniformConfigurator(shaderConfigurator);
-//            father.computeLayout();
-//        }));
-//        updateShaderUniformConfigurator(shaderConfigurator);
-//        WrapperConfigurator base = new WrapperConfigurator("ldlib.gui.editor.group.shader", preview);
-//        base.setTips("ldlib.gui.editor.tips.click_select_shader");
-//
-//        // shader configurator
-//        father.addConfigurators(base);
-//        super.buildConfigurator(father);
-//        father.addConfigurators(new WrapperConfigurator("uniform settings", shaderConfigurator));
-//    }
-//
-//    public void updateShaderUniformConfigurator(WidgetGroup group) {
-//        group.clearAllWidgets();
-//        if (isCompiledError()) {
-//            var box = new TextBoxWidget(0, 0, 200, List.of(compiledErrorMessage.isEmpty() ? "error" : compiledErrorMessage)).setFontColor(-1);
-//            group.addWidget(box);
-//            group.setSize(new Size(200, box.getSize().height));
-//        } else {
-//            int height = 5;
-//            if (getShader() instanceof ShaderInstanceAccessor shaderAccessor) {
-//                var samplerNames = shaderAccessor.getSamplerNames();
-//                for (String samplerName : samplerNames) {
-//                    if (samplerName.startsWith("Sampler")) {
-//                        var index = -1;
-//                        try {
-//                            index = Integer.parseInt(samplerName.replaceAll("Sampler", ""));
-//                        } catch (Throwable ignored) {}
-//                        if (index >= 0 && index != 2) {
-//                            WidgetGroup preview = new WidgetGroup(50, height + 10, 100, 100);
-//                            int finalIndex = index;
-//                            preview.addWidget(new ImageWidget(0, 0, 100, 100, () -> {
-//                                if (!uniformTag.getCompound("samplers").contains(String.valueOf(finalIndex))) {
-//                                    return IGuiTexture.EMPTY;
-//                                } else {
-//                                    return SpriteTexture.of(uniformTag.getCompound("samplers").getString(String.valueOf(finalIndex)));
-//                                }
-//                            }).setBorder(2, ColorPattern.T_WHITE.color));
-//                            preview.addWidget(new ButtonWidget(0, 0, 100, 100, IGuiTexture.EMPTY, cd -> {
-//                                if (Editor.INSTANCE == null) return;
-//                                File path = new File(Editor.INSTANCE.getWorkSpace(), "assets/ldlib/textures");
-//                                DialogWidget.showFileDialog(Editor.INSTANCE, "ldlib.gui.editor.tips.select_image", path, true,
-//                                        DialogWidget.suffixFilter(".png"), r -> {
-//                                            if (r != null && r.isFile()) {
-//                                                var texture = "ldlib:" + r.getPath().replace(path.getPath(), "textures").replace('\\', '/');
-//                                                uniformCache = null;
-//                                                var tag = uniformTag.getCompound("samplers");
-//                                                tag.putString(String.valueOf(finalIndex), texture);
-//                                                uniformTag.put("samplers", tag);
-//                                            }
-//                                        });
-//                            }));
-//                            group.addWidget(new LabelWidget(10, height, samplerName));
-//                            group.addWidget(preview);
-//                            height += 115;
-//                        }
-//                    }
-//                }
-//                var uniformMap = shaderAccessor.getUniformMap();
-//                for (var entry : uniformMap.entrySet()) {
-//                    var uniformName = entry.getKey();
-//                    var uniform = entry.getValue();
-//                    var type = uniform.getType();
-//                    if (uniformName.equals("GameTime") ||
-//                            uniformName.equals("FogEnd") ||
-//                            uniformName.equals("ColorModulator") ||
-//                            uniformName.equals("FogStart") ||
-//                            uniformName.equals("FogColor")) continue;
-//                    if (type == 4) {
-//                        height = addUniformConfigurator(uniformName, group, 0, height);
-//                    } else if (type == 5) {
-//                        height = addUniformConfigurator(uniformName+".x", group, 0, height);
-//                        height = addUniformConfigurator(uniformName+".y", group, 1, height);
-//                    } else if (type == 6) {
-//                        height = addUniformConfigurator(uniformName+".x", group, 0, height);
-//                        height = addUniformConfigurator(uniformName+".y", group, 1, height);
-//                        height = addUniformConfigurator(uniformName+".z", group, 2, height);
-//                    } else if (type == 7) {
-//                        if (uniformName.toLowerCase().contains("color")) {
-//                            height = addColorUniformConfigurator(uniformName, group, height);
-//                        } else {
-//                            height = addUniformConfigurator(uniformName+".x", group, 0, height);
-//                            height = addUniformConfigurator(uniformName+".y", group, 1, height);
-//                            height = addUniformConfigurator(uniformName+".z", group, 2, height);
-//                            height = addUniformConfigurator(uniformName+".w", group, 3, height);
-//                        }
-//                    }
-//                    height += 5;
-//                }
-//            }
-//            group.setSize(new Size(200, height == 5 ? 0 : height));
-//
-//        }
-//    }
-//
-//    private int addUniformConfigurator(String uniformName, WidgetGroup group, int index, int height) {
-//        var configurator = new NumberConfigurator(uniformName, () -> {
-//            if (uniformTag.getCompound("uniforms").getList(uniformName, Tag.TAG_FLOAT).size() < index) {
-//                return 0;
-//            } else {
-//                return uniformTag.getCompound("uniforms").getList(uniformName, Tag.TAG_FLOAT).getFloat(index);
-//            }
-//        }, number -> {
-//            var list = uniformTag.getCompound("uniforms").getList(uniformName, Tag.TAG_FLOAT);
-//            while (list.size() < index + 1) {
-//                list.add(FloatTag.valueOf(0));
-//            }
-//            list.set(index, FloatTag.valueOf(number.floatValue()));
-//            var tag = uniformTag.getCompound("uniforms");
-//            tag.put(uniformName, list);
-//            uniformCache = null;
-//            uniformTag.put("uniforms", tag);
-//        }, 0, true);
-//        configurator.setRange(-Float.MAX_VALUE, Float.MAX_VALUE);
-//        configurator.init(200);
-//        configurator.addSelfPosition(0, height);
-//        group.addWidget(configurator);
-//        height += 15;
-//        return height;
-//    }
-//
-//    private int addColorUniformConfigurator(String uniformName, WidgetGroup group, int height) {
-//        var configurator = new ColorConfigurator(uniformName, () -> {
-//            var list = uniformTag.getCompound("uniforms").getList(uniformName, Tag.TAG_FLOAT);
-//            if (list.size() < 3) {
-//                return 0;
-//            } else {
-//                return ColorUtils.color(list.getFloat(3), list.getFloat(0), list.getFloat(1), list.getFloat(2));
-//            }
-//        }, number -> {
-//            var list = uniformTag.getCompound("uniforms").getList(uniformName, Tag.TAG_FLOAT);
-//            while (list.size() < 4) {
-//                list.add(FloatTag.valueOf(0));
-//            }
-//            var color = number.intValue();
-//            list.set(0, FloatTag.valueOf(ColorUtils.red(color)));
-//            list.set(1, FloatTag.valueOf(ColorUtils.green(color)));
-//            list.set(2, FloatTag.valueOf(ColorUtils.blue(color)));
-//            list.set(3, FloatTag.valueOf(ColorUtils.alpha(color)));
-//
-//            var tag = uniformTag.getCompound("uniforms");
-//            tag.put(uniformName, list);
-//            uniformCache = null;
-//            uniformTag.put("uniforms", tag);
-//        }, 0, true);
-//        configurator.init(200);
-//        configurator.addSelfPosition(0, height);
-//        group.addWidget(configurator);
-//        height += 15;
-//        return height;
-//    }
+        var configurator = new Configurator();
+        var shaderConfigurator = new ConfiguratorGroup("photon.shader.settings");
+        shaderConfigurator.setCollapse(false);
+        shaderConfigurator.setCanCollapse(false);
+        var shaderLocationField = new StringConfigurator("photon.shader",
+                () -> shaderLocation.toString(),
+                s -> {
+                    setShader(ResourceLocation.parse(s));
+                    shaderConfigurator.removeAllConfigurators();
+                    if (getShader() instanceof LDShaderInstance ldShaderInstance) {
+                        ldShaderInstance.buildConfigurator(shaderConfigurator);
+                    }
+                    configurator.notifyChanges();
+                },
+                shaderLocation.toString(),
+                true).setResourceLocation(true);
+        configurator.inlineContainer.addChild( // button to select shader
+                new Button().setText("photon.select_shader").setOnClick(e -> {
+                    var mui = e.currentElement.getModularUI();
+                    if (mui == null) return;
+                    Dialog.showFileDialog("photon.select_shader", LDLib2.getAssetsDir(), true, Dialog.suffixFilter(".json"), r -> {
+                        if (r != null && r.isFile()) {
+                            var location = getShaderFromFile(r);
+                            if (location == null) return;
+                            setShader(location);
+                            shaderConfigurator.removeAllConfigurators();
+                            if (getShader() instanceof LDShaderInstance ldShaderInstance) {
+                                ldShaderInstance.buildConfigurator(shaderConfigurator);
+                            }
+                            configurator.notifyChanges();
+                        }
+                    }).show(mui.ui.rootElement);
+                }).layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
+
+        if (getShader() instanceof LDShaderInstance ldShaderInstance) {
+            ldShaderInstance.buildConfigurator(shaderConfigurator);
+        }
+
+        father.addConfigurators(configurator, shaderLocationField, shaderConfigurator);
+    }
+
+    @Nullable
+    public static ResourceLocation getShaderFromFile(File filePath) {
+        String fullPath = filePath.getPath().replace('\\', '/');
+
+        // find the "assets/" directory in the path
+        var assetsIndex = fullPath.indexOf("assets/");
+        if (assetsIndex == -1) {
+            return null;
+        }
+
+        var relativePath = fullPath.substring(assetsIndex + "assets/".length());
+
+        // find mod_id
+        var slashIndex = relativePath.indexOf('/');
+        if (slashIndex == -1) {
+            return null;
+        }
+
+        var modId = relativePath.substring(0, slashIndex);
+        var subPath = relativePath.substring(slashIndex + 1);
+
+        // find shader location
+        var shaderIndex = subPath.indexOf("shaders/core/");
+        if (shaderIndex == -1) {
+            return null;
+        }
+
+        var shaderPath = subPath.substring(shaderIndex + "shaders/core/".length());
+        if (!shaderPath.endsWith(".json")) {
+            return null;
+        }
+
+        var location = modId + ":" + shaderPath.substring(0, shaderPath.length() - 5); // remove ".json" suffix
+
+        if (LDLib2.isValidResourceLocation(location)) {
+            return ResourceLocation.parse(location);
+        }
+        return null;
+    }
 }

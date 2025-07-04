@@ -470,7 +470,6 @@ public class TrailParticle implements IParticle {
         private int size = 0;
         private int capacity = 16;
 
-        // SoA布局
         private float[] posX = new float[capacity];
         private float[] posY = new float[capacity];
         private float[] posZ = new float[capacity];

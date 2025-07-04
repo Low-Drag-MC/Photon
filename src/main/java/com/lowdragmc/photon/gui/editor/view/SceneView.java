@@ -2,7 +2,7 @@ package com.lowdragmc.photon.gui.editor.view;
 
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.SceneEditor;
-import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.gui.editor.FXProjectEffect;

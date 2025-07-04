@@ -2,7 +2,6 @@ package com.lowdragmc.photon.gui.editor;
 
 import com.lowdragmc.lowdraglib2.editor.project.IProject;
 import com.lowdragmc.lowdraglib2.editor.resource.ColorsResource;
-import com.lowdragmc.lowdraglib2.editor.resource.IRendererResource;
 import com.lowdragmc.lowdraglib2.editor.resource.Resources;
 import com.lowdragmc.lowdraglib2.editor.ui.menu.FileMenu;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -25,11 +24,10 @@ public class FXProject implements IProject {
 
     public FXProject() {
         this.resources = Resources.of(
-                new MaterialResource(),
-                new ColorsResource(),
-                new CurveResource(),
-                new GradientResource(),
-                new IRendererResource()
+                MaterialResource.INSTANCE,
+                ColorsResource.INSTANCE,
+                CurveResource.INSTANCE,
+                GradientResource.INSTANCE
         );
     }
 

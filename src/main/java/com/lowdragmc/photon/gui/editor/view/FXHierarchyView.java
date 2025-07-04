@@ -3,10 +3,10 @@ package com.lowdragmc.photon.gui.editor.view;
 import com.lowdragmc.lowdraglib2.configurator.EditAction;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
-import com.lowdragmc.lowdraglib2.editor_outdated.Icons;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
@@ -21,8 +21,6 @@ import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.FXEditor;
-import it.unimi.dsi.fastutil.ints.IntComparator;
-import it.unimi.dsi.fastutil.ints.IntComparators;
 import lombok.Getter;
 import net.minecraft.network.chat.Component;
 import org.appliedenergistics.yoga.YogaFlexDirection;
@@ -31,11 +29,8 @@ import org.appliedenergistics.yoga.YogaOverflow;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 public class FXHierarchyView extends View {
     public record DraggingNode(FXObjectTreeNode draggedNode) {}
@@ -121,7 +116,9 @@ public class FXHierarchyView extends View {
                         if (treeList.getSelected().size() == 1) {
                             if (fxEditor.inspectorView.getInspectedConfigurable() != fxObject) {
                                 fxEditor.inspectorView.inspect(fxObject);
-                                fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(fxObject.transform());
+                                fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(fxObject.transform(), () -> {
+                                    fxEditor.historyView.recordSerializableObject(Component.translatable("photon.transform"), fxObject.transform(), fxObject);
+                                });
                             }
                         } else {
                             fxEditor.inspectorView.clear();

@@ -12,6 +12,10 @@
   "photon.add_fx_object": "add fx object",
   "photon.remove_fx_object": "remove fx object",
   "photon.move_fx_object": "move fx object",
+  "photon.shader": "shader",
+  "photon.select_shader": "Select Shader",
+  "photon.shader.settings": "Shader Settings",
+  "photon.transform": "transform",
 
   "photon.separated axes": "Separated axes",
   "photon.all_in_one": "All in one",

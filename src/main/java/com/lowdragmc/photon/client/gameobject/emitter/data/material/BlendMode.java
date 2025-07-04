@@ -15,8 +15,8 @@ import static com.mojang.blaze3d.platform.GlStateManager.SourceFactor;
 public class BlendMode {
     public enum BlendFuc {
         ADD(32774),
-        sub(32778),
-        REVERSE_sub(32779),
+        SUB(32778),
+        REVERSE_SUB(32779),
         MIN(32775),
         MAX(32776);
         public final int op;
@@ -69,6 +69,11 @@ public class BlendMode {
         RenderSystem.defaultBlendFunc();
         RenderSystem.blendEquation(this.blendFunc.op);
         RenderSystem.blendFuncSeparate(this.srcColorFactor, this.dstColorFactor, this.srcAlphaFactor, this.dstAlphaFactor);
+    }
+
+    public void reset() {
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
     }
 
     public boolean equals(Object object) {
