@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
-import com.lowdragmc.lowdraglib2.client.shader.Shaders;
+import com.lowdragmc.lowdraglib2.client.shader.LDLibShaders;
 import com.lowdragmc.lowdraglib2.client.shader.management.ShaderSSBO;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.PhotonShaders;
@@ -14,7 +14,6 @@ import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -163,9 +162,6 @@ public class TrailParticle implements IParticle {
     }
 
     public int getRealLight(float partialTicks) {
-        if (config.renderer.isBloomEffect()) {
-            return LightTexture.FULL_BRIGHT;
-        }
         if (config.lights.isEnable()) {
             return config.lights.getLight(this, partialTicks);
         }
@@ -309,7 +305,7 @@ public class TrailParticle implements IParticle {
         }
         var minDistance = Math.max(distance, 0.05f);
         var smoothPath = new LinkedList<Tail>();
-        if (config.isCalculateSmoothByShader() && Shaders.supportComputeShader() && Shaders.supportSSBO()) {
+        if (config.isCalculateSmoothByShader() && LDLibShaders.supportComputeShader() && LDLibShaders.supportSSBO()) {
             var program = PhotonShaders.getCatmullRomProgram();
             var VERTEX_SIZE = Float.BYTES * 9; // 3 position, 4 color, 1 lifetime, 1 width
             // create buffers
@@ -419,7 +415,7 @@ public class TrailParticle implements IParticle {
     }
 
     protected void updateLight() {
-        if (config.lights.isEnable() || config.renderer.isBloomEffect()) return;
+        if (config.lights.isEnable()) return;
         light = getLightColor();
     }
 

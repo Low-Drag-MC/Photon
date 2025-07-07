@@ -102,14 +102,11 @@ public class BeamParticle implements IParticle {
     }
 
     protected void updateLight() {
-        if (config.lights.isEnable() || config.renderer.isBloomEffect()) return;
+        if (config.lights.isEnable()) return;
         light = getLightColor();
     }
 
     public int getRealLight(float partialTicks) {
-        if (config.renderer.isBloomEffect()) {
-            return LightTexture.FULL_BRIGHT;
-        }
         if (config.lights.isEnable()) {
             return config.lights.getLight(this, partialTicks);
         }

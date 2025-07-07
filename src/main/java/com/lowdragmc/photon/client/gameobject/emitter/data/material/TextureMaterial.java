@@ -1,8 +1,9 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
-import com.lowdragmc.lowdraglib2.client.shader.Shaders;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigColor;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigHDR;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
@@ -14,6 +15,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.PhotonShaders;
 import com.mojang.blaze3d.systems.RenderSystem;
 import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
@@ -22,6 +24,7 @@ import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
 import org.appliedenergistics.yoga.YogaAlign;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector4f;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
@@ -42,6 +45,9 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     @Configurable
     @ConfigNumber(range = {0, 1})
     public float discardThreshold = 0.01f;
+    @Configurable
+    @ConfigHDR
+    public Vector4f hdr = new Vector4f(0, 0, 0, 1);
 
     public TextureMaterial() {
     }
@@ -59,13 +65,15 @@ public class TextureMaterial extends ShaderInstanceMaterial {
 
     @Override
     public ShaderInstance getShader() {
-        return Shaders.getParticleShader();
+        return PhotonShaders.getHDRParticleShader();
     }
 
     @Override
     public void setupUniform() {
         RenderSystem.setShaderTexture(0, texture);
-        Shaders.getParticleShader().safeGetUniform("DiscardThreshold").set(discardThreshold);
+        var shader = PhotonShaders.getHDRParticleShader();
+        shader.safeGetUniform("DiscardThreshold").set(discardThreshold);
+        shader.safeGetUniform("HDR").set(hdr.x, hdr.y, hdr.z, hdr.w);
     }
 
     @Override
@@ -83,8 +91,6 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     public IGuiTexture preview() {
         return DynamicTexture.of(() -> SpriteTexture.of(texture));
     }
-
-
 
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {

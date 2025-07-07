@@ -147,9 +147,6 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
 
         @Override
         public void prepareStatus(@Nonnull RenderPassPipeline pipeline) {
-            if (renderer.isBloomEffect()) {
-                pipeline.beginBloom();
-            }
             material.pre();
             material.getMaterial().begin(false);
             Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
@@ -164,9 +161,6 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
         public void releaseStatus(@Nonnull RenderPassPipeline pipeline) {
             material.getMaterial().end(false);
             material.post();
-            if (renderer.isBloomEffect()) {
-                pipeline.endBloom();
-            }
         }
 
         @Override

@@ -1,7 +1,6 @@
 #version 150
 
 uniform sampler2D DiffuseSampler;
-uniform sampler2D HighLight;
 uniform sampler2D BlurTexture1;
 uniform sampler2D BlurTexture2;
 uniform sampler2D BlurTexture3;
@@ -18,15 +17,6 @@ out vec4 fragColor;
 float lerpBloomFactor(const in float factor) {
     float mirrorFactor = 1.2 - factor;
     return mix(factor, mirrorFactor, BloomRadius);
-}
-
-vec3 aces(vec3 x) {
-    const float a = 2.51;
-    const float b = 0.03;
-    const float c = 2.43;
-    const float d = 0.59;
-    const float e = 0.14;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
 
 vec3 aces_tonemap(vec3 color){
@@ -53,15 +43,22 @@ vec3 jodieReinhardTonemap(vec3 c){
     return mix(c / (l + 1.0), tc, tc);
 }
 
-void main() {
-    vec4 bloom = BloomIntensive * (lerpBloomFactor(1.) * texture(BlurTexture1, texCoord) +
-    lerpBloomFactor(0.8) * texture(BlurTexture2, texCoord) +
-    lerpBloomFactor(0.6) * texture(BlurTexture3, texCoord)
-//    +lerpBloomFactor(0.4) * texture(BlurTexture4, texCoord)
-    );
+vec3 ACESFilm(vec3 x){
+    const float a=2.51,b=0.03,c=2.43,d=0.59,e=0.14;
+    return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);
+}
 
-    vec4 background = texture(DiffuseSampler, texCoord);
-    vec4 highLight = texture(HighLight, texCoord);
-    background.rgb = background.rgb * (1 - highLight.a) + highLight.a * highLight.rgb;
-    fragColor = vec4(background.rgb + jodieReinhardTonemap(bloom.rgb), 1.);
+void main() {
+    vec3 bloom = BloomIntensive * (
+        lerpBloomFactor(1.) * texture(BlurTexture1, texCoord) +
+        lerpBloomFactor(0.8) * texture(BlurTexture2, texCoord) +
+        lerpBloomFactor(0.6) * texture(BlurTexture3, texCoord)
+//    +lerpBloomFactor(0.4) * texture(BlurTexture4, texCoord)
+    ).rgb;
+
+    vec3 scene = texture(DiffuseSampler, texCoord).rgb;
+
+    vec3 hdr   = scene + bloom;
+//    vec3 ldr   = ACESFilm(hdr);      // Tone-map
+    fragColor  = vec4(hdr, 1.0);
 }

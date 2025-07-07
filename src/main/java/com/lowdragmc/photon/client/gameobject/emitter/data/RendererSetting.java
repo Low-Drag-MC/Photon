@@ -39,9 +39,6 @@ public class RendererSetting {
     @Configurable(tips = "photon.emitter.config.renderer.layer")
     protected Layer layer = Layer.Translucent;
 
-    @Configurable(tips = "photon.emitter.config.renderer.bloomEffect")
-    protected boolean bloomEffect = false;
-
     @Configurable(name = "cull", subConfigurable = true, tips = "photon.emitter.config.renderer.cull")
     protected final Cull cull = new Cull();
 

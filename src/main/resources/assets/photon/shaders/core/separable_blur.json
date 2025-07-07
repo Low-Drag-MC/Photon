@@ -1,9 +1,4 @@
 {
-    "blend": {
-        "func": "add",
-        "srcrgb": "one",
-        "dstrgb": "zero"
-    },
     "vertex": "ldlib2:fast_blit",
     "fragment": "photon:separable_blur",
     "attributes": [ "Position" ],

@@ -3,9 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.client.shader.LDShaderInstance;
-import com.lowdragmc.lowdraglib2.client.shader.Shaders;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
-import com.lowdragmc.lowdraglib2.configurator.accessors.ResourceLocationAccessor;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
@@ -17,9 +15,12 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.PhotonShaders;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -92,20 +93,20 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     }
 
     public boolean isCompiledError() {
-        return getShader() == Shaders.getParticleShader();
+        return getShader() == PhotonShaders.getHDRParticleShader();
     }
 
     public void recompile() {
         compiledErrorMessage = "";
 
-        if (shaderInstance != null && shaderInstance != Shaders.getParticleShader()) {
+        if (shaderInstance != null && !isCompiledError()) {
             shaderInstance.close();
         }
         try {
             shaderInstance = new LDShaderInstance(Minecraft.getInstance().getResourceManager(), shaderLocation, DefaultVertexFormat.PARTICLE);
         } catch (Throwable e) {
             compiledErrorMessage = e.getMessage();
-            shaderInstance = Shaders.getParticleShader();
+            shaderInstance = PhotonShaders.getHDRParticleShader();
         }
     }
 
@@ -120,7 +121,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     @Override
     public void setupUniform() {
         if (!isCompiledError()) {
-
+            RenderSystem.setShaderTexture(0, LDLib2.id("textures/kila_tail.png"));
         }
     }
 

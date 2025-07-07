@@ -1,19 +1,14 @@
 package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 
 import com.google.common.collect.Maps;
-import com.lowdragmc.lowdraglib2.client.shader.Shaders;
-import com.lowdragmc.lowdraglib2.math.PositionedRect;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
-import com.lowdragmc.photon.client.postprocessing.BloomEffect;
-import com.mojang.blaze3d.platform.GlStateManager;
+import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.Camera;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.opengl.GL11;
 import oshi.util.tuples.Pair;
 
 import javax.annotation.Nonnull;
@@ -42,7 +37,6 @@ public class RenderPassPipeline extends BufferBuilder {
     private final Map<PhotonFXRenderPass, Queue<IParticle>> particles = Maps.newTreeMap(makeRenderPassComparator());
     private Camera camera;
     private float partialTicks;
-    private boolean hasBloom = false;
 
     public static Comparator<PhotonFXRenderPass> makeRenderPassComparator() {
         return (passOne, passTwo) -> {
@@ -60,6 +54,8 @@ public class RenderPassPipeline extends BufferBuilder {
 
     @Override
     public @Nullable MeshData build() {
+        if (particles.isEmpty()) return null;
+        beforeRendering();
         RenderSystem.setShader(GameRenderer::getParticleShader);
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
         for (var entry : particles.entrySet()) {
@@ -71,11 +67,17 @@ public class RenderPassPipeline extends BufferBuilder {
                 renderPass.releaseStatus(this);
             }
         }
-        if (hasBloom) {
-            renderBloom();
-        }
         clearRenderingState();
+        afterRendering();
         return null;
+    }
+
+    private void beforeRendering() {
+        PhotonPostProcessing.prepareTarget();
+    }
+
+    private void afterRendering() {
+        PhotonPostProcessing.postTarget();
     }
 
     private void renderParticles(PhotonFXRenderPass renderPass, Queue<IParticle> particleQueue) {
@@ -119,7 +121,6 @@ public class RenderPassPipeline extends BufferBuilder {
     private void clearRenderingState() {
         particles.clear();
         camera = null;
-        hasBloom = false;
     }
 
     public void setupRenderingState(Camera camera, float partialTicks) {
@@ -163,85 +164,6 @@ public class RenderPassPipeline extends BufferBuilder {
                 particleSpliterator.forEachRemaining(p -> p.render(buffer, camera, partialTicks));
                 return List.of(new Pair<>(tesselator, buffer));
             }
-        }
-    }
-
-
-    /// Bloom
-    private void renderBloom() {
-        if (!Photon.isUsingShaderPack()) {
-            // setup view port
-            var lastViewport = PositionedRect.of(GlStateManager.Viewport.x(), GlStateManager.Viewport.y(), GlStateManager.Viewport.width(), GlStateManager.Viewport.height());
-            var input = BloomEffect.getInput();
-            var output = BloomEffect.getOutput();
-            var background = Minecraft.getInstance().getMainRenderTarget();
-            if (lastViewport.position.x != 0 ||
-                    lastViewport.position.y != 0 ||
-                    lastViewport.size.width != background.width ||
-                    lastViewport.size.height != background.height){
-                RenderSystem.viewport(0, 0, background.width, background.height);
-            }
-
-            // render bloom effect
-            BloomEffect.renderBloom(background.width, background.height,
-                    background.getColorTextureId(),
-                    input.getColorTextureId(),
-                    output);
-
-            // clean input
-            input.bindWrite(false);
-            GlStateManager._clearColor(0.0f, 0.0f, 0.0f, 0.0f);
-            int i = GL11.GL_COLOR_BUFFER_BIT;
-            GlStateManager._clear(i, Minecraft.ON_OSX);
-
-            // draw effect back to main target
-            GlStateManager._colorMask(true, true, true, true);
-            GlStateManager._disableDepthTest();
-            GlStateManager._depthMask(false);
-
-            background.bindWrite(false);
-
-            Shaders.getBlitShader().setSampler("DiffuseSampler", output.getColorTextureId());
-
-            Shaders.getBlitShader().apply();
-            GlStateManager._enableBlend();
-            RenderSystem.defaultBlendFunc();
-
-            var tesselator = Tesselator.getInstance();
-            var buffer = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
-            buffer.addVertex(-1, 1, 0);
-            buffer.addVertex(-1, -1, 0);
-            buffer.addVertex(1, -1, 0);
-            buffer.addVertex(1, 1, 0);
-            BufferUploader.draw(buffer.buildOrThrow());
-            Shaders.getBlitShader().clear();
-
-            GlStateManager._depthMask(true);
-            GlStateManager._colorMask(true, true, true, true);
-            GlStateManager._enableDepthTest();
-
-            // restore view port
-            if (lastViewport.position.x != 0 ||
-                    lastViewport.position.y != 0 ||
-                    lastViewport.size.width != background.width ||
-                    lastViewport.size.height != background.height){
-                RenderSystem.viewport(lastViewport.position.x, lastViewport.position.y, lastViewport.size.width, lastViewport.size.height);
-            }
-        }
-    }
-
-    public void beginBloom() {
-        if (!Photon.isUsingShaderPack()) {
-            var input = BloomEffect.getInput();
-            input.bindWrite(false);
-            hasBloom = true;
-        }
-    }
-
-    public void endBloom() {
-        if (!Photon.isUsingShaderPack()) {
-            var background = Minecraft.getInstance().getMainRenderTarget();
-            background.bindWrite(false);
         }
     }
 
