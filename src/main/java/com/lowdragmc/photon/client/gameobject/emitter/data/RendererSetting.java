@@ -125,7 +125,10 @@ public class RendererSetting {
         @Override
         public void deserializeNBT(HolderLookup.@NotNull Provider provider, @NotNull CompoundTag tag) {
             IPersistedSerializable.super.deserializeNBT(provider, tag);
-            if (renderMode == Mode.Model && model != null) {
+            if (renderMode == Mode.Model) {
+                if (model == null) {
+                    model = new IModelRenderer(ResourceLocation.parse("block/dirt"));
+                }
                 model.deserializeNBT(provider, tag.getCompound("model"));
             }
         }
@@ -133,7 +136,7 @@ public class RendererSetting {
         @Override
         public CompoundTag serializeNBT(HolderLookup.@NotNull Provider provider) {
             var tag = IPersistedSerializable.super.serializeNBT(provider);
-            if (renderMode == Mode.Model) {
+            if (renderMode == Mode.Model && model != null) {
                 tag.put("model", getModel().serializeNBT(provider));
             }
             return tag;
