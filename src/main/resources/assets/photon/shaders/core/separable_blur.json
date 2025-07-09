@@ -1,13 +1,11 @@
 {
     "vertex": "ldlib2:fast_blit",
     "fragment": "photon:separable_blur",
-    "attributes": [ "Position" ],
     "samplers": [
-        { "name": "DiffuseSampler" }
+        { "name": "inputSampler" }
     ],
     "uniforms": [
         { "name": "OutSize",     "type": "float",     "count": 2,  "values": [ 1.0, 1.0 ] },
-        { "name": "BlurDir",     "type": "float",     "count": 2,  "values": [ 0.0, 0.0 ] },
-        { "name": "Radius",      "type": "int",     "count": 1,  "values": [ 5 ] }
+        { "name": "BlurDir",     "type": "float",     "count": 2,  "values": [ 0.0, 0.0 ] }
     ]
 }

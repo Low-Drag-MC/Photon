@@ -20,11 +20,17 @@ public class PhotonShaders {
     @Getter
     private static ShaderInstance HDRParticleShader;
     @Getter
+    private static ShaderInstance pixelHDRParticleShader;
+    @Getter
     private static ShaderInstance brightPassShader;
     @Getter
     private static ShaderInstance separableBlurShader;
     @Getter
-    private static ShaderInstance unrealCompositeShader;
+    private static ShaderInstance bloomAddPassShader;
+    @Getter
+    private static ShaderInstance bloomScatterPassShader;
+    @Getter
+    private static ShaderInstance bloomFinalScatterPassShader;
 
     public static void init() {
         if (LDLibShaders.supportComputeShader()) {
@@ -47,14 +53,23 @@ public class PhotonShaders {
                             Photon.id("hdr_particle"), DefaultVertexFormat.PARTICLE),
                     shaderInstance -> HDRParticleShader = shaderInstance);
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("pixel_hdr_particle"), DefaultVertexFormat.PARTICLE),
+                    shaderInstance -> pixelHDRParticleShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
                             Photon.id("bright_pass"), DefaultVertexFormat.POSITION),
                     shaderInstance -> brightPassShader = shaderInstance);
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
                             Photon.id("separable_blur"), DefaultVertexFormat.POSITION),
                     shaderInstance -> separableBlurShader = shaderInstance);
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
-                            Photon.id("unreal_composite"), DefaultVertexFormat.POSITION),
-                    shaderInstance -> unrealCompositeShader = shaderInstance);
+                            Photon.id("bloom_add_pass"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> bloomAddPassShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("bloom_scatter_pass"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> bloomScatterPassShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("bloom_final_scatter_pass"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> bloomFinalScatterPassShader = shaderInstance);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

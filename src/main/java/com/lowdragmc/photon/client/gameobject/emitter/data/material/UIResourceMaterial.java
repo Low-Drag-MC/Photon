@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import lombok.Getter;
 
+import javax.annotation.Nonnull;
 import java.util.Optional;
 
 @LDLRegisterClient(name = "ui_resource_material", registry = "photon:material")
@@ -31,13 +32,13 @@ public final class UIResourceMaterial implements IMaterial {
     }
 
     @Override
-    public void begin(boolean isInstancing) {
-        getInternalTexture().begin(isInstancing);
+    public void begin(@Nonnull MaterialContext context) {
+        getInternalTexture().begin(context);
     }
 
     @Override
-    public void end(boolean isInstancing) {
-        getInternalTexture().end(isInstancing);
+    public void end(@Nonnull MaterialContext context) {
+        getInternalTexture().end(context);
     }
 
     @Override

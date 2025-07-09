@@ -40,12 +40,12 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
     @LDLRegisterClient(name = "missing", registry = "photon:material", manual = true)
     final class MissingMaterial implements IMaterial {
         @Override
-        public void begin(boolean isInstancing) {
+        public void begin(MaterialContext context) {
             RenderSystem.setShaderTexture(0, TextureManager.INTENTIONAL_MISSING_TEXTURE);
         }
 
         @Override
-        public void end(boolean isInstancing) {
+        public void end(MaterialContext context) {
 
         }
 
@@ -70,9 +70,9 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
         return CODEC.parse(NbtOps.INSTANCE, tag).result().orElse(MISSING);
     }
 
-    void begin(boolean isInstancing);
+    void begin(MaterialContext isPreview);
 
-    void end(boolean isInstancing);
+    void end(MaterialContext isInstancing);
 
     IGuiTexture preview();
 

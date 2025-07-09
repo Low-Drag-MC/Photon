@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.gameobject;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.registry.ILDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.LDLibExtraCodecs;
@@ -11,6 +12,7 @@ import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.fx.IEffect;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.gui.editor.view.SceneView;
 import com.mojang.serialization.Codec;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.Particle;
@@ -178,5 +180,10 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
         if (copyParent) {
             transform().parent(fxObject.transform().parent());
         }
+    }
+
+    // information inspection
+    default void inspectSceneInformation(SceneView sceneView, UIElement container) {
+
     }
 }

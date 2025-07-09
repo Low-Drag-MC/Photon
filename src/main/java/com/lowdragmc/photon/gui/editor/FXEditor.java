@@ -18,7 +18,7 @@ import java.io.File;
 public class FXEditor extends Editor {
     public final static SpriteTexture ICON = SpriteTexture.of("photon:textures/icon.png");
     public final FXHierarchyView hierarchyView = new FXHierarchyView(this);
-    public final SceneView sceneView = new SceneView();
+    public final SceneView sceneView = new SceneView(this);
 
     // runtime
     @Nullable

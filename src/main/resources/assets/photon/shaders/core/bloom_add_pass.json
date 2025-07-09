@@ -1,0 +1,11 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:bloom_add_pass",
+    "samplers": [
+        { "name": "inputA" },
+        { "name": "inputB" }
+    ],
+    "uniforms": [
+        { "name": "BloomIntensive",     "type": "float",     "count": 1,  "values": [ 0.5 ] }
+    ]
+}

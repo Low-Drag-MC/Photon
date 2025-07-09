@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.beam;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
@@ -89,7 +90,7 @@ public class BeamConfig {
         @Override
         public void prepareStatus(@Nonnull RenderPassPipeline pipeline) {
             material.pre();
-            material.getMaterial().begin(false);
+            material.getMaterial().begin(MaterialContext.NORMAL);
             Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
         }
 
@@ -100,7 +101,7 @@ public class BeamConfig {
 
         @Override
         public void releaseStatus(@Nonnull RenderPassPipeline pipeline) {
-            material.getMaterial().end(false);
+            material.getMaterial().end(MaterialContext.NORMAL);
             material.post();
         }
     }

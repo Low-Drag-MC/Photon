@@ -592,16 +592,28 @@ public class TrailParticle implements IParticle {
                 tails.add(headTail);
             }
 
+            var isTail = true;
             for (int i = 0; i < size - 1; i++) {
                 // skip dead tails
                 if (lifeTime[i] - partialTicks <= 0 || lifeTime[i + 1] - partialTicks <= 0) {
                     continue;
                 }
 
-                // 基础参数
+                // basic
                 Vector3f tailPos = new Vector3f(posX[i], posY[i], posZ[i]);
-                Vector3f curr = new Vector3f(posX[i], posY[i], posZ[i]);
                 Vector3f next = new Vector3f(posX[i + 1], posY[i + 1], posZ[i + 1]);
+                // apply interpolation for tail
+                if (isTail) {
+                    var lerpDur = lifeTime[i + 1] - lifeTime[i];
+                    if (lerpDur > 0) {
+                        if (lifeTime[i] - partialTicks <= lerpDur) {
+                            tailPos = tailPos.lerp(next, 1 - (lifeTime[i] - partialTicks) / lerpDur);
+                        }
+                    }
+                    isTail = false;
+                }
+
+                Vector3f curr = new Vector3f(tailPos);
                 Vector3f vec = new Vector3f(next).sub(curr);
                 Vector3f toTail = new Vector3f(curr).sub(cameraPos);
                 Vector3f normal = vec.cross(toTail).normalize();

@@ -16,11 +16,9 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonShaders;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -35,11 +33,6 @@ import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
 
-/**
- * @author KilaBash
- * @date 2023/5/29
- * @implNote CustomShaderMaterial
- */
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 @LDLRegisterClient(name = "custom_shader", registry = "photon:material")
@@ -78,7 +71,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         var shaderData = new CompoundTag();
         if (getShader() instanceof LDShaderInstance ldShaderInstance) {
             var uniformData = ldShaderInstance.serializeNBT(provider);
-            shaderData.put("uniforms", uniformData);
+            shaderData.put("shaderData", uniformData);
         }
         return shaderData;
     }
@@ -88,7 +81,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         if (!(tag instanceof CompoundTag shaderData)) return;
         recompile();
         if (getShader() instanceof LDShaderInstance ldShaderInstance) {
-            ldShaderInstance.deserializeNBT(provider, shaderData.getCompound("uniforms"));
+            ldShaderInstance.deserializeNBT(provider, shaderData.getCompound("shaderData"));
         }
     }
 
@@ -119,13 +112,6 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     }
 
     @Override
-    public void setupUniform() {
-        if (!isCompiledError()) {
-            RenderSystem.setShaderTexture(0, LDLib2.id("textures/kila_tail.png"));
-        }
-    }
-
-    @Override
     public IGuiTexture preview() {
         return DynamicTexture.of(() -> isCompiledError() ?
                 new TextTexture(compiledErrorMessage.isEmpty() ? "error" : compiledErrorMessage, 0xffff0000) :
@@ -141,18 +127,30 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         var shaderConfigurator = new ConfiguratorGroup("photon.shader.settings");
         shaderConfigurator.setCollapse(false);
         shaderConfigurator.setCanCollapse(false);
+
         var shaderLocationField = new StringConfigurator("photon.shader",
                 () -> shaderLocation.toString(),
                 s -> {
                     setShader(ResourceLocation.parse(s));
-                    shaderConfigurator.removeAllConfigurators();
-                    if (getShader() instanceof LDShaderInstance ldShaderInstance) {
-                        ldShaderInstance.buildConfigurator(shaderConfigurator);
-                    }
+                    reloadShaderConfigurator(shaderConfigurator);
                     configurator.notifyChanges();
                 },
                 shaderLocation.toString(),
                 true).setResourceLocation(true);
+
+        var reloadButton = new Configurator().addInlineChild(new Button()
+                .setOnClick(event -> {
+                    CompoundTag previousData = null;
+                    if (getShader() instanceof LDShaderInstance ldShaderInstance) {
+                        previousData = ldShaderInstance.serializeNBT(Platform.getFrozenRegistry());
+                    }
+                    recompile();
+                    if (previousData != null && getShader() instanceof LDShaderInstance ldShaderInstance) {
+                        ldShaderInstance.deserializeNBT(Platform.getFrozenRegistry(), previousData);
+                    }
+                    reloadShaderConfigurator(shaderConfigurator);
+                }).setText("photon.reload_shader").layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
+
         configurator.inlineContainer.addChild( // button to select shader
                 new Button().setText("photon.select_shader").setOnClick(e -> {
                     var mui = e.currentElement.getModularUI();
@@ -162,20 +160,27 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                             var location = getShaderFromFile(r);
                             if (location == null) return;
                             setShader(location);
-                            shaderConfigurator.removeAllConfigurators();
-                            if (getShader() instanceof LDShaderInstance ldShaderInstance) {
-                                ldShaderInstance.buildConfigurator(shaderConfigurator);
-                            }
+                            reloadShaderConfigurator(shaderConfigurator);
                             configurator.notifyChanges();
                         }
                     }).show(mui.ui.rootElement);
                 }).layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
 
+        reloadShaderConfigurator(shaderConfigurator);
+
+        father.addConfigurators(
+                configurator,
+                shaderLocationField,
+                reloadButton,
+                shaderConfigurator
+        );
+    }
+
+    private void reloadShaderConfigurator(ConfiguratorGroup shaderConfigurator) {
+        shaderConfigurator.removeAllConfigurators();
         if (getShader() instanceof LDShaderInstance ldShaderInstance) {
             ldShaderInstance.buildConfigurator(shaderConfigurator);
         }
-
-        father.addConfigurators(configurator, shaderLocationField, shaderConfigurator);
     }
 
     @Nullable

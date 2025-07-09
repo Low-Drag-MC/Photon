@@ -13,9 +13,11 @@
   "photon.remove_fx_object": "remove fx object",
   "photon.move_fx_object": "move fx object",
   "photon.shader": "shader",
+  "photon.reload_shader": "reload shader",
   "photon.select_shader": "Select Shader",
   "photon.shader.settings": "Shader Settings",
   "photon.transform": "transform",
+  "photon.scene_information": "Scene Information",
 
   "photon.separated axes": "Separated axes",
   "photon.all_in_one": "All in one",
@@ -157,7 +159,7 @@
 
   "photon.gui.editor.fx_info.restart": "Restart",
   "photon.gui.editor.fx_info.particles": "Particles",
-  "photon.gui.editor.fx_info.time": "Time",
+  "photon.gui.editor.fx_info.age": "Age",
   "photon.gui.editor.fx_info.cpu_time": "CPU Time",
   "photon.gui.editor.fx_info.frame_time": "Frame Time",
   "photon.gui.editor.fx_info.draggable": "Draggable",

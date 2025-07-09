@@ -2,21 +2,19 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
-import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigColor;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigHDR;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
-import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
-import com.lowdragmc.lowdraglib2.gui.texture.SpriteTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonShaders;
+import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
 import com.mojang.blaze3d.systems.RenderSystem;
+import lombok.Getter;
 import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -29,25 +27,40 @@ import org.joml.Vector4f;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
 
-/**
- * @author KilaBash
- * @date 2023/5/29
- * @implNote TextureMaterial
- */
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 @LDLRegisterClient(name = "texture", registry = "photon:material")
+@Setter
+@Getter
 public class TextureMaterial extends ShaderInstanceMaterial {
-    @Setter
-    @Configurable
-    public ResourceLocation texture = ResourceLocation.parse("textures/particle/glow.png");
+    public enum HDRMode {
+        ADDITIVE(0),
+        MULTIPLICATIVE(1);
+        public final int mode;
+
+        HDRMode(int mode) {
+            this.mode = mode;
+        }
+    }
+
+    public static class PixelArt extends ToggleGroup {
+        @Configurable
+        @ConfigNumber(range = {1, Integer.MAX_VALUE})
+        public int bits = 8;
+    }
 
     @Configurable
+    protected ResourceLocation texture = ResourceLocation.parse("textures/particle/glow.png");
+    @Configurable
     @ConfigNumber(range = {0, 1})
-    public float discardThreshold = 0.01f;
+    protected float discardThreshold = 0.01f;
     @Configurable
     @ConfigHDR
-    public Vector4f hdr = new Vector4f(0, 0, 0, 1);
+    protected Vector4f hdr = new Vector4f(0, 0, 0, 1);
+    @Configurable
+    protected HDRMode hdrMode = HDRMode.ADDITIVE;
+    @Configurable(subConfigurable = true)
+    protected final PixelArt pixelArt = new PixelArt();
 
     public TextureMaterial() {
     }
@@ -65,31 +78,35 @@ public class TextureMaterial extends ShaderInstanceMaterial {
 
     @Override
     public ShaderInstance getShader() {
-        return PhotonShaders.getHDRParticleShader();
+        return pixelArt.isEnable() ? PhotonShaders.getPixelHDRParticleShader() : PhotonShaders.getHDRParticleShader();
     }
 
     @Override
-    public void setupUniform() {
+    public void setupUniform(MaterialContext context) {
         RenderSystem.setShaderTexture(0, texture);
-        var shader = PhotonShaders.getHDRParticleShader();
+        var shader = getShader();
         shader.safeGetUniform("DiscardThreshold").set(discardThreshold);
-        shader.safeGetUniform("HDR").set(hdr.x, hdr.y, hdr.z, hdr.w);
+        if (context.isRenderingPreview()) {
+            shader.safeGetUniform("HDR").set(hdr.x, hdr.y, hdr.z, 1);
+            shader.safeGetUniform("HDRMode").set(hdrMode.mode);
+        } else {
+            shader.safeGetUniform("HDR").set(hdr.x, hdr.y, hdr.z, hdr.w);
+            shader.safeGetUniform("HDRMode").set(hdrMode.mode);
+        }
+        if (pixelArt.isEnable()) {
+            shader.safeGetUniform("Bits").set(pixelArt.bits * 1f);
+        }
     }
 
     @Override
-    public void begin(boolean isInstancing) {
+    public void begin(MaterialContext context) {
         // TODO better shader pack support
         if (Photon.isUsingShaderPack()) {
             RenderSystem.setShaderTexture(0, texture);
         } else {
             RenderSystem.setShader(this::getShader);
-            setupUniform();
+            setupUniform(context);
         }
-    }
-
-    @Override
-    public IGuiTexture preview() {
-        return DynamicTexture.of(() -> SpriteTexture.of(texture));
     }
 
     @Override

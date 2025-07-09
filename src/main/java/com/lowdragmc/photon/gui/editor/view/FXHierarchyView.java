@@ -86,6 +86,13 @@ public class FXHierarchyView extends View {
                     });
                     return container.addChildren(icon, label);
                 })
+                .setOnSelectedChanged(selected -> {
+                    if (selected.size() == 1) {
+                        fxEditor.sceneView.fxObjectInfoView.inspect(selected.stream().findFirst().get().getKey());
+                    } else {
+                        fxEditor.sceneView.fxObjectInfoView.clear();
+                    }
+                })
                 .setOnNodeUICreated((node, nodeUI) -> {
                     var eyeButton = new Button().noText().setOnClick(e -> {
                         node.getKey().setSelfVisible(!node.getKey().isSelfVisible());

@@ -1,0 +1,13 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:bloom_final_scatter_pass",
+    "samplers": [
+        { "name": "inputA" },
+        { "name": "inputB" }
+    ],
+    "uniforms": [
+        { "name": "Threshold",     "type": "float",     "count": 1,  "values": [ 1 ] },
+        { "name": "Knee",      "type": "float",     "count": 1,  "values": [ 0.1 ] },
+        { "name": "BloomIntensive",     "type": "float",     "count": 1,  "values": [ 0.7 ] }
+    ]
+}

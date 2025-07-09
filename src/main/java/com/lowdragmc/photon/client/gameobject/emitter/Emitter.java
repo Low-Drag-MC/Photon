@@ -120,7 +120,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
 
     public float getMemRandom(Object object, Function<RandomSource, Float> randomFunc) {
         var value = memRandom.get(object);
-        if (value == null) return memRandom.computeIfAbsent(object, o -> randomFunc.apply(random));
+        if (value == null) return memRandom.computeIfAbsent(object, o -> randomFunc.apply(getRandomSource()));
         return value;
     }
 

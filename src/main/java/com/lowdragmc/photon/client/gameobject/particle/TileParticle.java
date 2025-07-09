@@ -2,7 +2,6 @@ package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
-import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
@@ -17,7 +16,6 @@ import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -338,7 +336,7 @@ u     */
             return;
         }
 
-        if (config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
+        if (config.subEmitters.isEnable()) {
             config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Birth);
         }
 
@@ -348,7 +346,7 @@ u     */
         // update life cycle
         if (this.age++ >= this.lifetime && lifetime > 0) {
             setRemoved(true);
-            if (config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
+            if (config.subEmitters.isEnable()) {
                 config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
             }
         }
@@ -356,7 +354,7 @@ u     */
         // update data
         update();
 
-        if (config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
+        if (config.subEmitters.isEnable()) {
             config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Tick);
         }
 
@@ -465,11 +463,11 @@ u     */
         }
         if (config.physics.isEnable() && config.physics.isRemovedWhenCollided()) {
             this.setRemoved(true);
-            if (config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
+            if (config.subEmitters.isEnable()) {
                 config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
             }
         }
-        if (config.subEmitters.isEnable() && emitter.getScene() instanceof FXRuntime fxRuntime) {
+        if (config.subEmitters.isEnable()) {
             config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Collision);
             if (!isFirstCollision) {
                 isFirstCollision = true;

@@ -1,9 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.client.shader.management.ShaderManager;
-import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
-import com.lowdragmc.photon.Photon;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
@@ -34,13 +32,13 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
 
     abstract public ShaderInstance getShader();
 
-    public void setupUniform() {
+    public void setupUniform(MaterialContext context) {
     }
 
     @Override
-    public void begin(boolean isInstancing) {
+    public void begin(MaterialContext context) {
         // TODO better shader pack support
-        if (Photon.isUsingShaderPack()) {
+        if (context.isUsingShaderPack()) {
             var lastShader = RenderSystem.getShader();
 
             ShaderManager.getTempTarget().clear(false);
@@ -52,7 +50,7 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
             float imageWidth = 1;
             float imageHeight = 1;
             RenderSystem.setShader(this::getShader);
-            setupUniform();
+            setupUniform(context);
 
             RenderSystem.backupProjectionMatrix();
             RenderSystem.setProjectionMatrix(new Matrix4f(), VertexSorting.DISTANCE_TO_ORIGIN);
@@ -88,12 +86,12 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
             RenderSystem.setShader(() -> lastShader);
         } else {
             RenderSystem.setShader(this::getShader);
-            setupUniform();
+            setupUniform(context);
         }
     }
 
     @Override
-    public void end(boolean isInstancing) {
+    public void end(MaterialContext context) {
     }
 
     @Override
@@ -116,7 +114,7 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
             float imageV = 0;
             float imageWidth = 1;
             float imageHeight = 1;
-            begin(false);
+            begin(MaterialContext.PREVIEW);
             var lightTexture = Minecraft.getInstance().gameRenderer.lightTexture();
             lightTexture.turnOnLightLayer();
             var mat = graphics.pose().last().pose();
@@ -127,6 +125,7 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
             buffer.addVertex(mat, x + width, y, 0).setUv(imageU + imageWidth, imageV).setColor(-1).setLight(LightTexture.FULL_BRIGHT);
             buffer.addVertex(mat, x, y, 0).setUv(imageU, imageV).setColor(-1).setLight(LightTexture.FULL_BRIGHT);
             BufferUploader.drawWithShader(buffer.buildOrThrow());
+            end(MaterialContext.PREVIEW);
             lightTexture.turnOffLightLayer();
         }
     }

@@ -8,6 +8,7 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
+import lombok.Getter;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -19,13 +20,33 @@ import org.lwjgl.opengl.GL30;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 @OnlyIn(Dist.CLIENT)
 public class PhotonPostProcessing {
+    public static class Mip {
+        @Getter
+        private HDRTarget swapA, swapB;
+
+        public void updateScreenSize(int width, int height) {
+            swapA = resize(swapA, width, height, false);
+            swapB = resize(swapB, width, height, false);
+        }
+
+        public void clear() {
+            if (swapA != null) {
+                swapA.destroyBuffers();
+            }
+            if (swapB != null) {
+                swapB.destroyBuffers();
+            }
+        }
+    }
     private static final Minecraft MC = Minecraft.getInstance();
     private static int LAST_WIDTH, LAST_HEIGHT;
     private static HDRTarget INPUT, HIGH_LIGHT, OUTPUT;
-    private static HDRTarget SWAP2A, SWAP4A, SWAP8A, SWAP2B, SWAP4B, SWAP8B;
+    private static List<Mip> MIPS = new ArrayList<>();
 
     private static ShaderInstance loadShader(String shaderName) {
         try {
@@ -91,15 +112,23 @@ public class PhotonPostProcessing {
         HIGH_LIGHT = resize(HIGH_LIGHT, width, height, false);
         OUTPUT = resize(OUTPUT, width, height, false);
 
-        SWAP2A = resize(SWAP2A, width / 2, height / 2, false);
-        SWAP4A = resize(SWAP4A, width / 4, height / 4, false);
-        SWAP8A = resize(SWAP8A, width / 8, height / 8, false);
-//        SWAP16A = resize(SWAP16A, width / 16, height / 16, false, GL11.GL_LINEAR);
+        int mips = 5;
 
-        SWAP2B = resize(SWAP2B, width / 2, height / 2, false);
-        SWAP4B = resize(SWAP4B, width / 4, height / 4, false);
-        SWAP8B = resize(SWAP8B, width / 8, height / 8, false);
-//        SWAP16B = resize(SWAP16B, width / 16, height / 16, false, GL11.GL_LINEAR);
+        if (MIPS.size() != mips) {
+            MIPS.forEach(Mip::clear);
+            MIPS.clear();
+            for (int i = 0; i < mips; i++) {
+                MIPS.add(new Mip());
+            }
+        }
+
+        var w = width;
+        var h = height;
+        for (Mip mip : MIPS) {
+            w = w / 2;
+            h = h / 2;
+            mip.updateScreenSize(w, h);
+        }
 
         LAST_WIDTH = width;
         LAST_HEIGHT = height;
@@ -117,72 +146,48 @@ public class PhotonPostProcessing {
     private static void renderBloom() {
         var brightPassShader = PhotonShaders.getBrightPassShader();
         var separableBlur = PhotonShaders.getSeparableBlurShader();
-        var unrealComposite = PhotonShaders.getUnrealCompositeShader();
+        var combinePassShader = PhotonShaders.getBloomScatterPassShader();
+        var finalCombinePassShader = PhotonShaders.getBloomFinalScatterPassShader();
+
         RenderSystem.colorMask(true, true, true, true);
         RenderSystem.disableDepthTest();
         RenderSystem.depthMask(false);
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
 
-        brightPassShader.setSampler("DiffuseSampler", INPUT);
-//        brightPassShader.safeGetUniform("Threshold").set(1f);
+        brightPassShader.setSampler("inputSampler", INPUT);
         blitShader(brightPassShader, HIGH_LIGHT);
 
-        separableBlur.setSampler("DiffuseSampler", HIGH_LIGHT);
-        separableBlur.safeGetUniform("BlurDir").set(1f, 0f);
-        separableBlur.safeGetUniform("Radius").set(3);
-        separableBlur.safeGetUniform("OutSize").set((float)SWAP2A.width, (float)SWAP2A.height);
-        blitShader(separableBlur, SWAP2A);
+        // down-sampling
+        RenderTarget input = HIGH_LIGHT;
+        for (Mip mip : MIPS) {
+            var swapA = mip.swapA;
+            var swapB = mip.swapB;
+            separableBlur.setSampler("inputSampler", input);
+            separableBlur.safeGetUniform("BlurDir").set(1f, 0f);
+            separableBlur.safeGetUniform("OutSize").set((float) swapA.width, (float) swapA.height);
+            blitShader(separableBlur, swapA);
 
-        separableBlur.setSampler("DiffuseSampler", SWAP2A);
-        separableBlur.safeGetUniform("BlurDir").set(0f, 1f);
-        separableBlur.safeGetUniform("Radius").set(3);
-        separableBlur.safeGetUniform("OutSize").set((float)SWAP2B.width, (float)SWAP2B.height);
-        blitShader(separableBlur, SWAP2B);
+            separableBlur.setSampler("inputSampler", swapA);
+            separableBlur.safeGetUniform("BlurDir").set(0f, 1f);
+            separableBlur.safeGetUniform("OutSize").set((float) swapB.width, (float) swapB.height);
+            blitShader(separableBlur, swapB);
+            input = swapB;
+        }
 
-        separableBlur.setSampler("DiffuseSampler", SWAP2B);
-        separableBlur.safeGetUniform("BlurDir").set(1f, 0f);
-        separableBlur.safeGetUniform("Radius").set(5);
-        separableBlur.safeGetUniform("OutSize").set((float)SWAP4A.width, (float)SWAP4A.height);
-        blitShader(separableBlur, SWAP4A);
+        // up-sampling
+        RenderTarget lowRes = MIPS.getLast().swapB;
+        for (int i = MIPS.size() - 2; i >= 0; i--) {
+            var highRes = MIPS.get(i);
+            combinePassShader.setSampler("inputA", lowRes);
+            combinePassShader.setSampler("inputB", highRes.getSwapB());
+            blitShader(combinePassShader, highRes.getSwapA());
+            lowRes = highRes.getSwapA();
+        }
 
-        separableBlur.setSampler("DiffuseSampler", SWAP4A);
-        separableBlur.safeGetUniform("BlurDir").set(0f, 1f);
-        separableBlur.safeGetUniform("Radius").set(5);
-        separableBlur.safeGetUniform("OutSize").set((float)SWAP4B.width, (float)SWAP4B.height);
-        blitShader(separableBlur, SWAP4B);
-
-        separableBlur.setSampler("DiffuseSampler", SWAP4B);
-        separableBlur.safeGetUniform("BlurDir").set(1f, 0f);
-        separableBlur.safeGetUniform("Radius").set(7);
-        separableBlur.safeGetUniform("OutSize").set((float)SWAP8A.width, (float)SWAP8A.height);
-        blitShader(separableBlur, SWAP8A);
-
-        separableBlur.setSampler("DiffuseSampler", SWAP8A);
-        separableBlur.safeGetUniform("BlurDir").set(0f, 1f);
-        separableBlur.safeGetUniform("Radius").set(7);
-        separableBlur.safeGetUniform("OutSize").set((float)SWAP8B.width, (float)SWAP8B.height);
-        blitShader(separableBlur, SWAP8B);
-
-//        separableBlur.setSampler("DiffuseSampler", SWAP8B);
-//        separableBlur.safeGetUniform("BlurDir").set(1f, 0f);
-//        separableBlur.safeGetUniform("Radius").set(9);
-//        separableBlur.safeGetUniform("OutSize").set((float)SWAP16A.width, (float)SWAP16A.height);
-//        blitShader(separableBlur, SWAP16A);
-//
-//        separableBlur.setSampler("DiffuseSampler", SWAP16A);
-//        separableBlur.safeGetUniform("BlurDir").set(0f, 1f);
-//        separableBlur.safeGetUniform("Radius").set(9);
-//        separableBlur.safeGetUniform("OutSize").set((float)SWAP16B.width, (float)SWAP16B.height);
-//        blitShader(separableBlur, SWAP16B);
-
-        unrealComposite.setSampler("DiffuseSampler", INPUT);
-        unrealComposite.setSampler("BlurTexture1", SWAP2B);
-        unrealComposite.setSampler("BlurTexture2", SWAP4B);
-        unrealComposite.setSampler("BlurTexture3", SWAP8B);
-//        unrealComposite.setSampler("BlurTexture4", SWAP16B);
-        unrealComposite.safeGetUniform("BloomRadius").set(1f);
-        blitShader(unrealComposite, OUTPUT);
+        finalCombinePassShader.setSampler("inputA", lowRes);
+        finalCombinePassShader.setSampler("inputB", INPUT);
+        blitShader(finalCombinePassShader, OUTPUT);
 
         RenderSystem.depthMask(true);
         RenderSystem.enableDepthTest();

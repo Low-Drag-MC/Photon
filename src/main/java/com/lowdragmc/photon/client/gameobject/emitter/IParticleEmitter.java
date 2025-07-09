@@ -1,8 +1,14 @@
 package com.lowdragmc.photon.client.gameobject.emitter;
 
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.ProgressBar;
+import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.photon.gui.editor.FXProjectEffect;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
+import com.lowdragmc.photon.gui.editor.view.SceneView;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.core.BlockPos;
@@ -66,8 +72,34 @@ public interface IParticleEmitter extends IFXObject, IConfigurable {
 
     float getMemRandom(Object object, Function<RandomSource, Float> randomFunc);
 
-    RandomSource getRandomSource();
-
     int getLightColor(BlockPos pos);
 
+    default RandomSource getRandomSource() {
+        getEffect()
+    }
+
+    @Override
+    default void inspectSceneInformation(SceneView sceneView, UIElement container) {
+        container.addChildren(
+                sceneView.fxObjectInfoView.createInformation(
+                        Component.translatable("photon.gui.editor.fx_info.particles"),
+                        () -> Component.literal(getParticleAmount() + "")),
+                sceneView.fxObjectInfoView.createInformation(
+                        Component.translatable("photon.gui.editor.fx_info.age"),
+                        () -> Component.literal("%.2f s".formatted(getAge() / 20f))),
+                new ProgressBar() {
+                    @Override
+                    public void drawBackgroundAdditional(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+                        super.drawBackgroundAdditional(graphics, mouseX, mouseY, partialTicks);
+                        if (isAlive()) {
+                            this.setValue(getT(partialTicks));
+                        } else {
+                            this.setValue(1f);
+                        }
+                    }
+                }.label(label -> label.setText("")).progressBarStyle(style -> style.interpolate(false)).layout(layout -> {
+                    layout.setWidthPercent(100);
+                })
+        );
+    }
 }
