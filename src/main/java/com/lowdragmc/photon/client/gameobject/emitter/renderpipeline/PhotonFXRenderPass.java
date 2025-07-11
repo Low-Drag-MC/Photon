@@ -36,6 +36,6 @@ public abstract class PhotonFXRenderPass {
     }
 
     public int layerOrder() {
-        return 1;
+        return 0;
     }
 }

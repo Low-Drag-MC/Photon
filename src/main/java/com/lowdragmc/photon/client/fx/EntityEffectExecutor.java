@@ -17,18 +17,18 @@ import java.util.*;
  * @implNote EntityEffect
  */
 @OnlyIn(Dist.CLIENT)
-public class EntityEffect extends FXEffect {
+public class EntityEffectExecutor extends FXEffectExecutor {
     public enum AutoRotate {
         NONE,
         FORWARD,
         LOOK,
         XROT,
     }
-    public static Map<Entity, List<EntityEffect>> CACHE = new HashMap<>();
+    public static Map<Entity, List<EntityEffectExecutor>> CACHE = new HashMap<>();
     public final Entity entity;
     public final AutoRotate autoRotate;
 
-    public EntityEffect(FX fx, Level level, Entity entity, AutoRotate autoRotate) {
+    public EntityEffectExecutor(FX fx, Level level, Entity entity, AutoRotate autoRotate) {
         super(fx, level);
         this.entity = entity;
         this.autoRotate = autoRotate;

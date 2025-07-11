@@ -27,7 +27,7 @@ public interface IParticle {
 
     float getMemRandom(Object object, Function<RandomSource, Float> randomFunc);
 
-    void tick();
+    void updateTick();
 
     void render(VertexConsumer buffer, Camera camera, float pPartialTicks);
 

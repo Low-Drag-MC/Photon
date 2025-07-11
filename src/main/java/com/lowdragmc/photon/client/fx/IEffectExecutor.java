@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.photon.client.gameobject.IFXObject;
+import net.minecraft.util.RandomSource;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.world.level.Level;
@@ -11,7 +12,7 @@ import net.minecraft.world.level.Level;
  * @implNote IEffect
  */
 @OnlyIn(Dist.CLIENT)
-public interface IEffect {
+public interface IEffectExecutor {
 
     Level getLevel();
 
@@ -35,4 +36,7 @@ public interface IEffect {
 
     }
 
+    default RandomSource getRandomSource() {
+        return getLevel().random;
+    }
 }

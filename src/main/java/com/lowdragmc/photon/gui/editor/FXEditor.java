@@ -33,8 +33,8 @@ public class FXEditor extends Editor {
 
     public void reloadEffect() {
         if (runtime != null) {
-            sceneView.clearParticles();
-            runtime.emmit(sceneView.effect);
+            sceneView.reset();
+            sceneView.play();
         }
     }
 

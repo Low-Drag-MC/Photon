@@ -42,6 +42,9 @@ public class RendererSetting {
     @Configurable(name = "cull", subConfigurable = true, tips = "photon.emitter.config.renderer.cull")
     protected final Cull cull = new Cull();
 
+    @Configurable(name = "photon.emitter.config.renderer.orderInLayer", subConfigurable = true, tips = "photon.emitter.config.renderer.orderInLayer.tips")
+    protected final int orderInLayer = 0;
+
     public static class Cull extends ToggleGroup {
         @Setter
         @Getter

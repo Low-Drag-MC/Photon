@@ -139,5 +139,10 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
             return isParallelRendering();
         }
 
+        @Override
+        public int layerOrder() {
+            return renderer.getOrderInLayer();
+        }
+
     }
 }

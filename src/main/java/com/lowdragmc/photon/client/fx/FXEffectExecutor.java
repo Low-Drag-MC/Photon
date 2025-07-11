@@ -13,7 +13,7 @@ import javax.annotation.Nullable;
  * @date 2023/7/19
  * @implNote FXEffect
  */
-public abstract class FXEffect implements IFXEffect {
+public abstract class FXEffectExecutor implements IFXEffectExecutor {
     @Getter
     public final FX fx;
     @Getter
@@ -36,7 +36,7 @@ public abstract class FXEffect implements IFXEffect {
     @Nullable
     protected FXRuntime runtime;
 
-    protected FXEffect(FX fx, Level level) {
+    protected FXEffectExecutor(FX fx, Level level) {
         this.fx = fx;
         this.level = level;
     }

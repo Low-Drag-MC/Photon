@@ -78,6 +78,7 @@ public class RenderPassPipeline extends BufferBuilder {
 
     private void afterRendering() {
         PhotonPostProcessing.postTarget();
+        RenderSystem.setShader(GameRenderer::getParticleShader);
     }
 
     private void renderParticles(PhotonFXRenderPass renderPass, Queue<IParticle> particleQueue) {

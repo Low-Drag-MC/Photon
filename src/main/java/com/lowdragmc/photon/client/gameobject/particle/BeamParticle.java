@@ -10,7 +10,6 @@ import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -52,10 +51,10 @@ public class BeamParticle implements IParticle {
     @Getter
     public RandomSource randomSource;
 
-    public BeamParticle(IParticleEmitter emitter, BeamConfig config, RandomSource randomSource) {
+    public BeamParticle(IParticleEmitter emitter, BeamConfig config) {
         this.emitter = emitter;
         this.config = config;
-        this.randomSource = randomSource;
+        this.randomSource = RandomSource.create(emitter.getRandomSource().nextLong());
         this.setup();
     }
 
@@ -66,14 +65,13 @@ public class BeamParticle implements IParticle {
     }
 
     @Override
-    public void tick() {
+    public void updateTick() {
         if (delay > 0) {
             delay--;
             return;
         }
 
         updateOrigin();
-
         update();
     }
 
@@ -149,7 +147,7 @@ public class BeamParticle implements IParticle {
     }
 
     public void render(@Nonnull VertexConsumer pBuffer, @Nonnull Camera camera, float partialTicks) {
-        if (delay <= 0 && this.emitter.isVisible()) {
+        if (delay <= 0) {
             var cameraPos = camera.getPosition().toVector3f();
             var from = getWorldPos();
             var end = new Vector3f(from).add(emitter.transform().localToWorldMatrix().transformDirection(config.getEnd(), new Vector3f()));

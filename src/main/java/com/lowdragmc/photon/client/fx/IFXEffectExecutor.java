@@ -2,7 +2,6 @@ package com.lowdragmc.photon.client.fx;
 
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.util.Mth;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -12,7 +11,7 @@ import org.joml.Vector3f;
  * @implNote IFXEffect
  */
 @OnlyIn(Dist.CLIENT)
-public interface IFXEffect extends IEffect {
+public interface IFXEffectExecutor extends IEffectExecutor {
     /**
      * get all emitters included in this effect.
      */

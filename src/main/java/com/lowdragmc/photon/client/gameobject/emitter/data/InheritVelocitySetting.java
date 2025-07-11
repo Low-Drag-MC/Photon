@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -36,7 +37,7 @@ public class InheritVelocitySetting extends ToggleGroup {
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1f, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction multiply = NumberFunction.constant(1);
 
-    public Vector3f getVelocity(Emitter emitter) {
+    public Vector3f getVelocity(IParticleEmitter emitter) {
         return emitter.getVelocity().mul(multiply.get(emitter.getT(), () -> emitter.getMemRandom(this)).floatValue());
     }
 

@@ -15,24 +15,26 @@ import java.util.*;
  */
 @Getter
 public class FXRuntime implements IScene {
+    public final static UUID ROOT_UUID = new UUID(0, 0);
     public final FXData fxData;
     public final Map<UUID, IFXObject> objects = new LinkedHashMap<>();
     public final IFXObject root;
 
     public FXRuntime(FXData fxData) {
         this.fxData = fxData;
-        addSceneObject(root = new EmptyFXObject());
+        this.root = new EmptyFXObject();
+        this.root.transform()._setInternalID(ROOT_UUID);
+        addSceneObject(root);
         root.setName("root");
         initRuntime();
     }
 
     private void initRuntime() {
         for (var fxObject : fxData.objects()) {
-            fxObject.setScene(this);
             addSceneObjectInternal(fxObject);
         }
         for (var fxObject : fxData.objects()) {
-            fxObject.awake();
+            fxObject.setScene(this);
         }
         for (var fxObject : fxData.objects()) {
             if (fxObject.transform().parent() == null) {
@@ -77,9 +79,8 @@ public class FXRuntime implements IScene {
         }
     }
 
-    public void emmit(IEffect effect) {
+    public void emmit(IEffectExecutor effect) {
         for (var fxObject : objects.values()) {
-            fxObject.reset();
             fxObject.emmit(effect);
         }
     }

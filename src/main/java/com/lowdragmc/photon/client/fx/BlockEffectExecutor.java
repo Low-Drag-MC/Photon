@@ -17,15 +17,15 @@ import java.util.*;
  * @implNote BlockEffect
  */
 @OnlyIn(Dist.CLIENT)
-public class BlockEffect extends FXEffect {
-    public static Map<BlockPos, List<BlockEffect>> CACHE = new HashMap<>();
+public class BlockEffectExecutor extends FXEffectExecutor {
+    public static Map<BlockPos, List<BlockEffectExecutor>> CACHE = new HashMap<>();
     public final BlockPos pos;
     @Setter
     private boolean checkState;
     // runtime
     private BlockState lastState;
 
-    public BlockEffect(FX fx, Level level, BlockPos pos) {
+    public BlockEffectExecutor(FX fx, Level level, BlockPos pos) {
         super(fx, level);
         this.pos = pos;
     }

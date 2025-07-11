@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor.view;
 
+import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.SceneEditor;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
@@ -14,13 +15,14 @@ import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.FXEditor;
-import com.lowdragmc.photon.gui.editor.FXProjectEffect;
+import com.lowdragmc.photon.gui.editor.FXProjectEffectExecutor;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.Blocks;
 import org.appliedenergistics.yoga.*;
+import org.joml.Random;
 import org.joml.Vector2f;
 
 import javax.annotation.Nullable;
@@ -31,7 +33,7 @@ public class SceneView extends View {
     public final SceneEditor sceneEditor = new SceneEditor();
     public final TrackedDummyWorld level = new TrackedDummyWorld();
     public final PhotonParticleManager particleManager = new PhotonParticleManager();
-    public final FXProjectEffect effect = new FXProjectEffect(level);
+    public final FXProjectEffectExecutor effect = new FXProjectEffectExecutor(level);
     public final FXObjectInfoView fxObjectInfoView = new FXObjectInfoView();
 
     public SceneView(FXEditor fxEditor) {
@@ -55,12 +57,41 @@ public class SceneView extends View {
 
     public void clearScene() {
         level.clear();
-        clearParticles();
+        reset();
         fxObjectInfoView.clear();
     }
 
-    public void clearParticles() {
-        particleManager.clearAllParticles();
+    public void reset() {
+        particleManager.clear();
+        effect.reset();
+    }
+
+    public void play() {
+        if (fxEditor.runtime != null) {
+            fxEditor.runtime.emmit(effect);
+            particleManager.play();
+        }
+    }
+
+    public void simulateTo(long time) {
+        var curTime = particleManager.getTime();
+        if (time > curTime) {
+            var iter = Math.min(time - curTime, 500 * 20);
+            for (int i = 0; i < iter; i++) {
+                particleManager.tickInternal();
+            }
+            particleManager.setTime(time);
+        } else {
+            reset();
+            if (fxEditor.runtime != null) {
+                fxEditor.runtime.emmit(effect);
+                var iter = Math.min(time, 500 * 20);
+                for (int i = 0; i < iter; i++) {
+                    particleManager.tickInternal();
+                }
+                particleManager.setTime(time);
+            }
+        }
     }
 
     public void loadScene() {
@@ -89,7 +120,7 @@ public class SceneView extends View {
 
         public FXObjectInfoView() {
             getLayout().setPositionType(YogaPositionType.ABSOLUTE);
-            getLayout().setWidth(200);
+            getLayout().setWidth(150);
             getLayout().setPositionPercent(YogaEdge.LEFT, 100);
             getLayout().setPositionPercent(YogaEdge.TOP, 100);
 
@@ -162,11 +193,63 @@ public class SceneView extends View {
 
         private void initBasicInfo() {
             contentContainer.addChildren(
-                    new Button().setText("photon.gui.editor.fx_info.restart").setOnClick(e -> {
-                        fxEditor.reloadEffect();
-                    }).layout(layout -> {
+                    // buttons
+                    new UIElement().layout(layout -> {
                         layout.setWidthPercent(100);
-                    }),
+                        layout.setFlexDirection(YogaFlexDirection.ROW);
+                        layout.setGap(YogaGutter.ALL, 2);
+                    }).addChildren(
+                            new Button().setText("photon.gui.editor.fx_info.restart").setOnClick(e -> {
+                                fxEditor.reloadEffect();
+                            }).layout(layout -> {
+                                layout.setHeight(12);
+                                layout.setFlex(1);
+                            }),
+                            new Button().setText("photon.gui.editor.fx_info.pause").setOnClick(e -> {
+                                if (particleManager.isPlaying()) {
+                                    particleManager.pause();
+                                } else if (fxEditor.runtime != null){
+                                    particleManager.play();
+                                }
+                            }).layout(layout -> {
+                                layout.setHeight(12);
+                                layout.setFlex(1);
+                            }).addEventListener(UIEvents.TICK, event -> ((Button) event.currentElement).text
+                                    .setText(Component.translatable(particleManager.isPlaying() ?
+                                            "photon.gui.editor.fx_info.pause" :
+                                            "photon.gui.editor.fx_info.play")))
+                    ),
+                    // playback
+                    new NumberConfigurator("photon.gui.editor.fx_info.playback_time",
+                            particleManager::getTime,
+                            time -> simulateTo(time.longValue()), 0, false) {
+                        @Override
+                        public void screenTick() {
+                            if (!textField.isFocused()) {
+                                onValueUpdatePassively(supplier.get());
+                            }
+                        }
+                    }.setRange(0, 500 * 20).layout(layout -> layout.setWidthPercent(100)),
+                    new UIElement().layout(layout -> {
+                        layout.setWidthPercent(100);
+                        layout.setFlexDirection(YogaFlexDirection.ROW);
+                        layout.setGap(YogaGutter.ALL, 2);
+                    }).addChildren(
+                            new NumberConfigurator("photon.gui.editor.fx_info.seed",
+                                    effect::getSeed,
+                                    seed -> {
+                                        var curTime = particleManager.getTime();
+                                        effect.setSeed(seed.longValue());
+                                        simulateTo(curTime);
+                                    }, effect.getSeed(), true)
+                                    .layout(layout -> layout.setFlex(1)),
+
+                            new Button().setText("random").setOnClick(e -> {
+                                var curTime = particleManager.getTime();
+                                effect.setSeed(Random.newSeed());
+                                simulateTo(curTime);
+                            })
+                    ),
                     // cpu time
                     createInformation(
                             Component.translatable("photon.gui.editor.fx_info.cpu_time"),
@@ -201,15 +284,7 @@ public class SceneView extends View {
                             .textAlignVertical(Vertical.CENTER)
                             .textAlignHorizontal(Horizontal.RIGHT)).layout(layout -> {
                                 layout.setFlex(1);
-                    }).addEventListener(UIEvents.TICK, event -> {
-                        if (event.currentElement instanceof Label label) {
-                            var cur = label.getText();
-                            var latest = info.get();
-                            if (!cur.equals(latest)) {
-                                label.setText(latest);
-                            }
-                        }
-                    })
+                    }).addEventListener(UIEvents.TICK, event -> ((Label) event.currentElement).setText(info.get()))
             );
         }
 

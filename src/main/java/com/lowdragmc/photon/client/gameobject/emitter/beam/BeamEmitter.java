@@ -4,7 +4,6 @@ import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
-import com.lowdragmc.lowdraglib2.gui.texture.SpriteTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
@@ -48,11 +47,6 @@ public class BeamEmitter extends Emitter {
 
     public BeamEmitter(BeamConfig config) {
         this.config = config;
-        init();
-    }
-
-    public void init() {
-        beamParticle = new BeamParticle(this, config, getThreadSafeRandomSource());
     }
 
     @Override
@@ -110,7 +104,7 @@ public class BeamEmitter extends Emitter {
     @Override
     protected void update() {
         if (beamParticle.isAlive()) {
-            beamParticle.tick();
+            beamParticle.updateTick();
         } else {
             remove();
         }
@@ -121,11 +115,11 @@ public class BeamEmitter extends Emitter {
     @Override
     public void reset() {
         super.reset();
-        init();
+        beamParticle = new BeamParticle(this, config);
     }
 
     public void prepareRenderPass(RenderPassPipeline buffer) {
-        if (delay <= 0 && isVisible()) {
+        if (isVisible()) {
             buffer.pipeQueue(beamParticle.getRenderType(), Collections.singleton(beamParticle));
         }
     }

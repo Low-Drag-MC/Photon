@@ -95,10 +95,10 @@ public class TileParticle implements IParticle {
     @Getter
     public RandomSource randomSource;
 
-    public TileParticle(IParticleEmitter emitter, ParticleConfig config, RandomSource randomSource) {
+    public TileParticle(IParticleEmitter emitter, ParticleConfig config) {
         this.emitter = emitter;
         this.config = config;
-        this.randomSource = randomSource;
+        this.randomSource = RandomSource.create(emitter.getRandomSource().nextLong());
         setup();
     }
 
@@ -118,7 +118,7 @@ public class TileParticle implements IParticle {
 
         config.shape.setupParticle(this, emitter);
         if (config.inheritVelocity.isEnable() && config.inheritVelocity.getMode() == InheritVelocitySetting.Mode.INITIAL) {
-            addInternalVelocity(getSpaceTransformInverse().transformDirection(emitter.getVelocity()));
+            addInternalVelocity(getSpaceTransformInverse().transformDirection(config.inheritVelocity.getVelocity(emitter)));
         }
         mulInternalVelocity(config.getStartSpeed().get(randomSource, emitterT).floatValue());
         this.initialSize = config.getStartSize().get(randomSource, emitterT);
@@ -330,7 +330,7 @@ u     */
     /**
      * should always be called per tick
      */
-    public void tick() {
+    public void updateTick() {
         if (delay > 0) {
             delay--;
             return;
@@ -349,6 +349,7 @@ u     */
             if (config.subEmitters.isEnable()) {
                 config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
             }
+            return;
         }
 
         // update data
@@ -500,7 +501,7 @@ u     */
             velocity.add(config.forceOverLifetime.getForce(this));
         }
         if (config.inheritVelocity.isEnable() && config.inheritVelocity.getMode() == InheritVelocitySetting.Mode.CURRENT) {
-            velocity.add(emitter.getVelocity());
+            velocity.add(config.inheritVelocity.getVelocity(emitter));
         }
         if (config.velocityOverLifetime.isEnable()) {
             var velocityMultiplier = config.velocityOverLifetime.getVelocityMultiplier(this);
@@ -571,7 +572,7 @@ u     */
     }
 
     public void render(@Nonnull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
-        if (delay <= 0 && this.emitter.isVisible()) {
+        if (delay <= 0) {
             renderInternal(pBuffer, pRenderInfo, pPartialTicks);
         }
     }

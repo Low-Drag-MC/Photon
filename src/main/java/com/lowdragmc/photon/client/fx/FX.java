@@ -20,6 +20,7 @@ import javax.annotation.ParametersAreNonnullByDefault;
 @MethodsReturnNonnullByDefault
 @ParametersAreNonnullByDefault
 public class FX implements INBTSerializable<CompoundTag> {
+    public static final String SUFFIX = ".fx";
     @Nullable
     @Setter
     private ResourceLocation fxLocation;
@@ -63,12 +64,6 @@ public class FX implements INBTSerializable<CompoundTag> {
      */
     public FXRuntime createInternalRuntime() {
         return new FXRuntime(fxData);
-    }
-
-    @Nullable
-    @Deprecated
-    public FXRuntime createSubFXRuntime(String name) {
-        return null;
     }
 
 }

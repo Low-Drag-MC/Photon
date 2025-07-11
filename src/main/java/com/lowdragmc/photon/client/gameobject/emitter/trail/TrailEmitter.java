@@ -45,12 +45,8 @@ public class TrailEmitter extends Emitter {
 
     public TrailEmitter(TrailConfig config) {
         this.config = config;
-        init();
     }
 
-    public void init() {
-        trailParticle = new TrailParticle(this, config, getThreadSafeRandomSource());
-    }
 
     @Override
     public IGuiTexture getIcon() {
@@ -103,7 +99,7 @@ public class TrailEmitter extends Emitter {
     @Override
     protected void update() {
         if (trailParticle.isAlive()) {
-            trailParticle.tick();
+            trailParticle.updateTick();
         } else {
             remove();
         }
@@ -114,7 +110,7 @@ public class TrailEmitter extends Emitter {
     @Override
     public void reset() {
         super.reset();
-        init();
+        trailParticle = new TrailParticle(this, config);
     }
 
     @Override
@@ -123,7 +119,7 @@ public class TrailEmitter extends Emitter {
     }
 
     public void prepareRenderPass(RenderPassPipeline buffer) {
-        if (delay <= 0 && isVisible()) {
+        if (isVisible()) {
             buffer.pipeQueue(trailParticle.getRenderType(), Collections.singleton(trailParticle));
         }
     }

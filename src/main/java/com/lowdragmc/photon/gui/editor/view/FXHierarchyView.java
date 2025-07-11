@@ -77,10 +77,7 @@ public class FXHierarchyView extends View {
                         layout.setHeightPercent(100.0F);
                         layout.setFlex(1.0F);
                     }).setOverflow(YogaOverflow.HIDDEN).addEventListener(UIEvents.TICK, e -> {
-                        var name = Component.literal(node.getKey().getName());
-                        if (!label.getText().equals(name)) {
-                            label.setText(name);
-                        }
+                        label.setText(Component.literal(node.getKey().getName()));
                     }).addEventListener(UIEvents.TICK, e -> {
                         label.getTextStyle().textColor(node.getKey().isVisible() ? ColorPattern.WHITE.color : ColorPattern.LIGHT_GRAY.color);
                     });
@@ -363,6 +360,7 @@ public class FXHierarchyView extends View {
         if (fxEditor.inspectorView.getInspectedConfigurable() == fxObject) {
             fxEditor.inspectorView.clear();
         }
+        fxEditor.sceneView.fxObjectInfoView.clear();
         runtime.fxData.objects().remove(fxObject);
         runtime.removeSceneObject(fxObject);
     }

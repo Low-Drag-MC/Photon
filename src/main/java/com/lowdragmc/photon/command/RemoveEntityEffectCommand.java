@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.command;
 
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.fx.EntityEffect;
+import com.lowdragmc.photon.client.fx.EntityEffectExecutor;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -99,7 +99,7 @@ public class RemoveEntityEffectCommand implements CustomPacketPayload {
         for (var id : packet.ids) {
             var entity = context.player().level().getEntity(id);
             if (entity != null) {
-                var effects = EntityEffect.CACHE.get(entity);
+                var effects = EntityEffectExecutor.CACHE.get(entity);
                 if (effects == null) return;
                 var iter = effects.iterator();
                 while (iter.hasNext()) {
@@ -113,7 +113,7 @@ public class RemoveEntityEffectCommand implements CustomPacketPayload {
                     }
                 }
                 if (effects.isEmpty()) {
-                    EntityEffect.CACHE.remove(entity);
+                    EntityEffectExecutor.CACHE.remove(entity);
                 }
             }
         }

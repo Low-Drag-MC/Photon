@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.command;
 
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.fx.EntityEffect;
+import com.lowdragmc.photon.client.fx.EntityEffectExecutor;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.StringReader;
@@ -51,7 +51,7 @@ public class EntityEffectCommand extends EffectCommand {
     // client
     private int[] ids = new int[0];
     @Setter
-    private EntityEffect.AutoRotate autoRotate = EntityEffect.AutoRotate.NONE;
+    private EntityEffectExecutor.AutoRotate autoRotate = EntityEffectExecutor.AutoRotate.NONE;
 
     @Override
     @Nonnull
@@ -59,19 +59,19 @@ public class EntityEffectCommand extends EffectCommand {
         return TYPE;
     }
 
-    public static class AutoRotateType implements ArgumentType<EntityEffect.AutoRotate> {
+    public static class AutoRotateType implements ArgumentType<EntityEffectExecutor.AutoRotate> {
         private static final Collection<String> EXAMPLES = Arrays.asList("none", "forward", "look", "xrot");
 
         public AutoRotateType() {
         }
 
-        public static EntityEffect.AutoRotate getValue(final CommandContext<?> context, final String name) {
-            return context.getArgument(name, EntityEffect.AutoRotate.class);
+        public static EntityEffectExecutor.AutoRotate getValue(final CommandContext<?> context, final String name) {
+            return context.getArgument(name, EntityEffectExecutor.AutoRotate.class);
         }
 
         @Override
-        public EntityEffect.AutoRotate parse(final StringReader reader) throws CommandSyntaxException {
-            return EntityEffect.AutoRotate.valueOf(reader.readString().toUpperCase());
+        public EntityEffectExecutor.AutoRotate parse(final StringReader reader) throws CommandSyntaxException {
+            return EntityEffectExecutor.AutoRotate.valueOf(reader.readString().toUpperCase());
         }
 
         @Override
@@ -174,7 +174,7 @@ public class EntityEffectCommand extends EffectCommand {
     @Override
     public void decode(RegistryFriendlyByteBuf buf) {
         super.decode(buf);
-        autoRotate = buf.readEnum(EntityEffect.AutoRotate.class);
+        autoRotate = buf.readEnum(EntityEffectExecutor.AutoRotate.class);
         ids = new int[buf.readVarInt()];
         for (int i = 0; i < ids.length; i++) {
             ids[i] = buf.readVarInt();
@@ -196,7 +196,7 @@ public class EntityEffectCommand extends EffectCommand {
                 for (var id : packet.ids) {
                     var entity = level.getEntity(id);
                     if (entity != null) {
-                        var effect = new EntityEffect(fx, level, entity, packet.autoRotate);
+                        var effect = new EntityEffectExecutor(fx, level, entity, packet.autoRotate);
                         var offset = packet.offset;
                         var rotation = packet.rotation;
                         var scale = packet.scale;

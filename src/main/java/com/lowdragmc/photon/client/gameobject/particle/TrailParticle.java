@@ -93,10 +93,10 @@ public class TrailParticle implements IParticle {
     @Getter
     public RandomSource randomSource;
 
-    public TrailParticle(IParticleEmitter emitter, TrailConfig config, RandomSource randomSource) {
+    public TrailParticle(IParticleEmitter emitter, TrailConfig config) {
         this.emitter = emitter;
         this.config = config;
-        this.randomSource = randomSource;
+        this.randomSource = RandomSource.create(emitter.getRandomSource().nextLong());
         this.headPositionSupplier = (t) -> emitter.transform().position();
         this.setup();
     }
@@ -183,14 +183,13 @@ public class TrailParticle implements IParticle {
     }
 
     @Override
-    public void tick() {
+    public void updateTick() {
         if (delay > 0) {
             delay--;
             return;
         }
 
         updateOrigin();
-
         update();
     }
 
@@ -420,7 +419,7 @@ public class TrailParticle implements IParticle {
     }
 
     public void render(@Nonnull VertexConsumer pBuffer, Camera pRenderInfo, float partialTicks) {
-        if (delay <= 0 && this.emitter.isVisible()) {
+        if (delay <= 0) {
             tails.renderInternal(pBuffer, partialTicks, pRenderInfo.getPosition().toVector3f(), getRealColor(partialTicks), getRealLight(partialTicks));
         }
     }

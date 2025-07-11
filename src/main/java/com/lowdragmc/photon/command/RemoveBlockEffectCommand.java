@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.command;
 
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.fx.BlockEffect;
+import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -89,7 +89,7 @@ public class RemoveBlockEffectCommand implements CustomPacketPayload {
     }
 
     public static void execute(RemoveBlockEffectCommand packet, IPayloadContext context) {
-        var effects = BlockEffect.CACHE.get(packet.pos);
+        var effects = BlockEffectExecutor.CACHE.get(packet.pos);
         if (effects == null) return;
         var iter = effects.iterator();
         while (iter.hasNext()) {

@@ -104,5 +104,10 @@ public class BeamConfig {
             material.getMaterial().end(MaterialContext.NORMAL);
             material.post();
         }
+
+        @Override
+        public int layerOrder() {
+            return renderer.getOrderInLayer();
+        }
     }
 }

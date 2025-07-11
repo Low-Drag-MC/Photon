@@ -1,8 +1,10 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
+import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.vertex.PoseStack;
-import lombok.val;
+import lombok.Getter;
+import lombok.Setter;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -13,7 +15,11 @@ import java.util.function.Predicate;
 
 @OnlyIn(Dist.CLIENT)
 public class PhotonParticleManager extends ParticleManager {
-
+    // runtime
+    @Getter @Setter
+    private long time = 0;
+    @Getter
+    private boolean isPlaying;
     private final long[] lastCPUTimes = new long[60];
     private int tickIndex = 0;
 
@@ -22,18 +28,30 @@ public class PhotonParticleManager extends ParticleManager {
 
     @Override
     public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks, Predicate<ParticleRenderType> renderTypeFilter) {
-        val startTime = System.nanoTime();
-        super.render(pMatrixStack, pActiveRenderInfo, pPartialTicks, renderTypeFilter);
+        var startTime = System.nanoTime();
+        GlStateManager._disableScissorTest();
+        super.render(pMatrixStack, pActiveRenderInfo, isPlaying ? pPartialTicks : 0, renderTypeFilter);
+        GlStateManager._enableScissorTest();
         lastFrameTimes[frameIndex] = System.nanoTime() - startTime;
         frameIndex = (frameIndex + 1) % lastFrameTimes.length;
     }
 
     @Override
     public void tick() {
-        val startTime = System.nanoTime();
-        super.tick();
+        if (!isPlaying) {
+            lastCPUTimes[tickIndex] = 0;
+            tickIndex = (tickIndex + 1) % lastCPUTimes.length;
+            return;
+        }
+        var startTime = System.nanoTime();
+        tickInternal();
         lastCPUTimes[tickIndex] = System.nanoTime() - startTime;
         tickIndex = (tickIndex + 1) % lastCPUTimes.length;
+    }
+
+    public void tickInternal() {
+        super.tick();
+        time++;
     }
 
     public long getCPUTime() {
@@ -42,6 +60,21 @@ public class PhotonParticleManager extends ParticleManager {
 
     public long getFrameTime() {
         return (long) Arrays.stream(lastFrameTimes).average().orElse(0) / 1000;
+    }
+
+    public void play() {
+        if (isPlaying) return;
+        isPlaying = true;
+    }
+
+    public void pause() {
+        if (!isPlaying) return;
+        isPlaying = false;
+    }
+
+    public void clear() {
+        clearAllParticles();
+        time = 0;
     }
 
 }

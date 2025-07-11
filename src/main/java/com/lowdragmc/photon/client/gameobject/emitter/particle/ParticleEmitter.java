@@ -74,7 +74,7 @@ public class ParticleEmitter extends Emitter {
     }
 
     protected TileParticle createNewParticle() {
-        return new TileParticle(this, config, getThreadSafeRandomSource());
+        return new TileParticle(this, config);
     }
 
     @Override
@@ -99,7 +99,7 @@ public class ParticleEmitter extends Emitter {
         for (var queue : particles.values()) {
             if (config.parallelUpdate && (!config.physics.isEnable() || !config.physics.isHasCollision())) { // parallel stream for particles tick.
                 queue.removeIf(p -> !p.isAlive());
-                queue.parallelStream().forEach(IParticle::tick);
+                queue.parallelStream().forEach(IParticle::updateTick);
             } else {
                 var iter = queue.iterator();
                 while (iter.hasNext()) {
@@ -107,7 +107,7 @@ public class ParticleEmitter extends Emitter {
                     if (!particle.isAlive()) {
                         iter.remove();
                     } else {
-                        particle.tick();
+                        particle.updateTick();
                     }
                 }
             }
@@ -148,7 +148,7 @@ public class ParticleEmitter extends Emitter {
     }
 
     public void prepareRenderPass(RenderPassPipeline buffer) {
-        if (delay <= 0 && isVisible()) {
+        if (isVisible()) {
             for(var entry : this.particles.entrySet()) {
                 var pass = entry.getKey();
                 var queue = entry.getValue();

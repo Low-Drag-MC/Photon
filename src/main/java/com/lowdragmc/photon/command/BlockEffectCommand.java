@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.command;
 
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.fx.BlockEffect;
+import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.BoolArgumentType;
@@ -142,7 +142,7 @@ public class BlockEffectCommand extends EffectCommand {
         if (level != null && level.isLoaded(packet.pos)) {
             var fx = FXHelper.getFX(packet.location);
             if (fx != null) {
-                var effect = new BlockEffect(fx, level, packet.pos);
+                var effect = new BlockEffectExecutor(fx, level, packet.pos);
                 var offset = packet.offset;
                 var rotation = packet.rotation;
                 var scale = packet.scale;

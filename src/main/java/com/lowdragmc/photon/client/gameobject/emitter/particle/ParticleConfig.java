@@ -168,6 +168,11 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
         public boolean isParallel() {
             return isParallelRendering();
         }
+
+        @Override
+        public int layerOrder() {
+            return renderer.getOrderInLayer();
+        }
     }
 
 }

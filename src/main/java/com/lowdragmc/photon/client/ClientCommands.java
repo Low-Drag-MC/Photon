@@ -6,9 +6,10 @@ import com.lowdragmc.lowdraglib2.gui.ui.ModularUIContainerMenu;
 import com.lowdragmc.lowdraglib2.gui.ui.ModularUIContainerScreen;
 import com.lowdragmc.lowdraglib2.gui.ui.UI;
 import com.lowdragmc.photon.client.gameobject.FXObject;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
-import com.lowdragmc.photon.client.fx.BlockEffect;
-import com.lowdragmc.photon.client.fx.EntityEffect;
+import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
+import com.lowdragmc.photon.client.fx.EntityEffectExecutor;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.core.mixins.accessor.ParticleEngineAccessor;
 import com.lowdragmc.photon.gui.editor.FXEditor;
@@ -48,11 +49,11 @@ public class ClientCommands {
                                 .executes(context -> {
                                     if (Minecraft.getInstance().particleEngine instanceof ParticleEngineAccessor accessor) {
                                         accessor.getParticles().entrySet().removeIf(entry ->
-                                                entry.getKey() instanceof PhotonFXRenderPass ||
+                                                entry.getKey() instanceof ParticleQueueRenderType ||
                                                 entry.getKey() == FXObject.NO_RENDER_RENDER_TYPE);
                                     }
-                                    EntityEffect.CACHE.clear();
-                                    BlockEffect.CACHE.clear();
+                                    EntityEffectExecutor.CACHE.clear();
+                                    BlockEffectExecutor.CACHE.clear();
                                     return 1;
                                 }))
                         .then(createLiteral("clear_client_fx_cache")

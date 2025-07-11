@@ -81,7 +81,7 @@ public class TrailsSetting extends ToggleGroup {
     public void setup(ParticleEmitter emitter, TileParticle particle) {
         var random = emitter.getRandomSource();
         if (random.nextFloat() < ratio) { // has tail
-            var trail = new TrailParticle(emitter, config, emitter.getThreadSafeRandomSource());
+            var trail = new TrailParticle(emitter, config);
             trail.setDelay(particle.getDelay() + trail.getDelay());
             trail.setHeadPositionSupplier(particle::getWorldPos);
             trail.setDieWhenAllTailsRemoved(!dieWithParticles);

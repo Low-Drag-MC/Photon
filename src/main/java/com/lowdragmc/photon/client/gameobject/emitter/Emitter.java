@@ -4,7 +4,6 @@ import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQueueRenderType;
 import lombok.Getter;
-import lombok.Setter;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.world.phys.AABB;
 import net.neoforged.api.distmarker.Dist;
@@ -25,16 +24,11 @@ import java.util.function.Function;
 @ParametersAreNonnullByDefault
 public abstract class Emitter extends FXObject implements IParticleEmitter {
     // runtime
-    @Setter
-    @Getter
-    protected int delay;
     @Nullable
     protected Vector3f previousPosition;
     protected Vector3f velocity = new Vector3f();
     @Getter
     protected float t;
-    @Getter
-    private final RandomSource threadSafeRandomSource = RandomSource.createThreadSafe();
     @Getter
     protected ConcurrentHashMap<Object, Float> memRandom = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<BlockPos, Integer> lightCache = new ConcurrentHashMap<>();
@@ -51,11 +45,6 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     public final void tick() {
         super.tick();
         if (!isAlive()) {
-            return;
-        }
-
-        if (delay > 0) {
-            delay--;
             return;
         }
 
@@ -82,10 +71,10 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     }
 
     protected void update() {
+        this.age++;
         if (this.age >= getLifetime() && !isLooping()) {
             this.remove(false);
         }
-        this.age++;
         if (getLifetime() > 0) {
             t = (this.age % getLifetime()) * 1f / getLifetime();
         }
@@ -101,7 +90,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     protected int getLightColor(float partialTick) {
         BlockPos blockPos = new BlockPos((int) this.x, (int) this.y, (int) this.z);
         var level = getLevel();
-        if (level != null && (level.hasChunkAt(blockPos) || level instanceof DummyWorld)) {
+        if (level != null && (level.isLoaded(blockPos) || level instanceof DummyWorld)) {
             return LevelRenderer.getLightColor(level, blockPos);
         }
         return 0;
@@ -153,7 +142,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     public int getLightColor(BlockPos pos) {
         return lightCache.computeIfAbsent(pos, p -> {
             var level = getLevel();
-            if (level != null && (level.hasChunkAt(p) || level instanceof DummyWorld)) {
+            if (level != null && (level.isLoaded(p) || level instanceof DummyWorld)) {
                 return LevelRenderer.getLightColor(level, p);
             }
             return 0;

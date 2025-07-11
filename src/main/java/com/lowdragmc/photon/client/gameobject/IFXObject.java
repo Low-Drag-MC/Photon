@@ -10,7 +10,7 @@ import com.lowdragmc.lowdraglib2.utils.LDLibExtraCodecs;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.PhotonRegistries;
-import com.lowdragmc.photon.client.fx.IEffect;
+import com.lowdragmc.photon.client.fx.IEffectExecutor;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.gui.editor.view.SceneView;
 import com.mojang.serialization.Codec;
@@ -23,6 +23,7 @@ import net.minecraft.world.level.Level;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.function.Supplier;
 
@@ -92,9 +93,10 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
      */
     boolean isSelfVisible();
 
-    void setEffect(IEffect effect);
+    void setEffect(IEffectExecutor effect);
 
-    IEffect getEffect();
+    @Nullable
+    IEffectExecutor getEffectExecutor();
 
     /**
      * force - remove without waiting.
@@ -129,12 +131,13 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
     /**
      * emit to a given level.
      */
-    default void emmit(IEffect effect) {
+    default void emmit(@Nonnull IEffectExecutor effect) {
         emmit(effect, null, null, null);
     }
 
-    default void emmit(IEffect effect, @Nullable Vector3f position, @Nullable Quaternionf rotation, @Nullable Vector3f scale) {
+    default void emmit(@Nonnull IEffectExecutor effect, @Nullable Vector3f position, @Nullable Quaternionf rotation, @Nullable Vector3f scale) {
         setEffect(effect);
+        reset();
         if (position != null) {
             updatePos(position);
         }
@@ -175,10 +178,12 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
         copyTransformFrom(fxObject, true, true);
     }
 
-    default void copyTransformFrom(IFXObject fxObject, boolean local, boolean copyParent) {
+    default void copyTransformFrom(IFXObject fxObject, boolean local, boolean copyHierarchy) {
         transform().set(fxObject.transform(), local);
-        if (copyParent) {
+        if (copyHierarchy) {
             transform().parent(fxObject.transform().parent());
+            transform()._setInternalParentID(fxObject.transform()._getInternalParentID());
+            transform()._setInternalChildID(fxObject.transform()._getInternalChildID());
         }
     }
 

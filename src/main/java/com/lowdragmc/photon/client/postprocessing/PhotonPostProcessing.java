@@ -1,22 +1,31 @@
 package com.lowdragmc.photon.client.postprocessing;
 
+import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.client.shader.HDRTarget;
+import com.lowdragmc.lowdraglib2.client.shader.LDLibShaders;
 import com.lowdragmc.lowdraglib2.client.utils.ShaderUtils;
 import com.lowdragmc.lowdraglib2.math.PositionedRect;
+import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.PhotonShaders;
+import com.lowdragmc.photon.core.mixins.iris.ExtendedShaderAccessor;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
+import net.irisshaders.iris.gl.blending.DepthColorStorage;
+import net.irisshaders.iris.gl.framebuffer.GlFramebuffer;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
-import net.neoforged.neoforge.common.NeoForgeConfig;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL46;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
@@ -56,23 +65,53 @@ public class PhotonPostProcessing {
         }
     }
 
-    public static void hookDepthBuffer(RenderTarget fbo, int depthBuffer) {
-        //Hook DepthBuffer
-        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.frameBufferId);
-        if (!fbo.isStencilEnabled())
-            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, depthBuffer, 0);
-        else if (NeoForgeConfig.CLIENT.useCombinedDepthStencilAttachment.get()) {
-            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_STENCIL_ATTACHMENT, GL30.GL_TEXTURE_2D, depthBuffer, 0);
-        } else {
-            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, depthBuffer, 0);
-            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_STENCIL_ATTACHMENT, GL30.GL_TEXTURE_2D, depthBuffer, 0);
-        }
-    }
-
     public static void prepareTarget() {
         var mainTarget = MC.getMainRenderTarget();
-        updateScreenSize(mainTarget.width, mainTarget.height);
-        INPUT.copyColorFrom(mainTarget);
+        checkTargetValid(mainTarget.width, mainTarget.height);
+        // we will copy the color texture and share the depth texture of the main target.
+        if (Photon.isShaderModInstalled() && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
+            // iris has its own separated fbo. we should use it instead
+            GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
+                    extendedShader.getWritingToBeforeTranslucent() :
+                    extendedShader.getWritingToAfterTranslucent();
+            INPUT.copyColorFrom(fbo.getId(), INPUT.width, INPUT.height);
+            if (fbo.hasDepthAttachment()) {
+                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.getId());
+                boolean useStencil = false;
+                int objType = GL30.glGetFramebufferAttachmentParameteri(
+                        GL30.GL_FRAMEBUFFER,
+                        GL30.GL_DEPTH_ATTACHMENT,
+                        GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+                int depthTexture = GL30.glGetFramebufferAttachmentParameteri(
+                        GL30.GL_FRAMEBUFFER,
+                        GL30.GL_DEPTH_ATTACHMENT,
+                        GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+                if (objType == GL30.GL_NONE) {
+                    objType = GL30.glGetFramebufferAttachmentParameteri(
+                            GL30.GL_FRAMEBUFFER,
+                            GL30.GL_DEPTH_STENCIL_ATTACHMENT,
+                            GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+
+                    depthTexture = GL30.glGetFramebufferAttachmentParameteri(
+                            GL30.GL_FRAMEBUFFER,
+                            GL30.GL_DEPTH_STENCIL_ATTACHMENT,
+                            GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+                    if (objType != GL30.GL_NONE) {
+                        useStencil = true;
+                    }
+                }
+                if (objType != GL30.GL_NONE) {
+                    if (!INPUT.hasOtherAttachedDepthTexture() || INPUT.getAttachedDepthTexture() != depthTexture) {
+                        INPUT.attachDepthBufferInternal(depthTexture, useStencil, true);
+                    }
+                }
+            }
+        } else {
+            INPUT.copyColorFrom(mainTarget);
+            if (!INPUT.hasOtherAttachedDepthTexture() || INPUT.getAttachedDepthTexture() != mainTarget.getDepthTextureId()) {
+                INPUT.attachDepthBuffer(MC.getMainRenderTarget());
+            }
+        }
         INPUT.bindWrite(false);
     }
 
@@ -87,13 +126,46 @@ public class PhotonPostProcessing {
                 lastViewport.size.height != background.height){
             RenderSystem.viewport(0, 0, background.width, background.height);
         }
-        GlStateManager._disableScissorTest();
 
+        var doBloom = PhotonConfig.INSTANCE.enableBloom.get() && (!Photon.isUsingShaderPack() || PhotonConfig.INSTANCE.enableBloomWithIrisShader.get());
+        // TODO do bloom
         renderBloom();
 
-        GlStateManager._enableScissorTest();
+        // we need it because extended shaders only work while the main target bound.
+        mainTarget.bindWrite(false);
+        if (Photon.isShaderModInstalled() && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
+            // We want to blit our result back to iris's fbo
+            GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
+                    extendedShader.getWritingToBeforeTranslucent() :
+                    extendedShader.getWritingToAfterTranslucent();
+            RenderSystem.assertOnRenderThread();
+            GlStateManager._disableDepthTest();
 
-        ShaderUtils.fastBlit(OUTPUT, mainTarget);
+            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.getId());
+            LDLibShaders.getBlitShader().setSampler("DiffuseSampler", OUTPUT.getColorTextureId());
+
+            LDLibShaders.getBlitShader().apply();
+
+            // unlock depth color from iris manager
+            DepthColorStorage.unlockDepthColor();
+            GlStateManager._depthMask(false);
+            GlStateManager._colorMask(true, true, true, true);
+
+            Tesselator tesselator = RenderSystem.renderThreadTesselator();
+            BufferBuilder bufferbuilder = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
+            bufferbuilder.addVertex(-1, 1, 0);
+            bufferbuilder.addVertex(-1, -1, 0);
+            bufferbuilder.addVertex(1, -1, 0);
+            bufferbuilder.addVertex(1, 1, 0);
+            BufferUploader.draw(bufferbuilder.buildOrThrow());
+            LDLibShaders.getBlitShader().clear();
+
+            GlStateManager._depthMask(true);
+            GlStateManager._enableDepthTest();
+            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainTarget.frameBufferId);
+        } else {
+            ShaderUtils.fastBlit(OUTPUT, mainTarget);
+        }
 
         // restore view port
         if (lastViewport.position.x != 0 ||
@@ -104,22 +176,18 @@ public class PhotonPostProcessing {
         }
     }
 
-    public static void updateScreenSize(int width, int height) {
-        if (LAST_WIDTH == width && LAST_HEIGHT == height) return;
+    public static void checkTargetValid(int width, int height) {
+        int mipLevel = PhotonConfig.INSTANCE.bloomMipLevel.get();
+        if (LAST_WIDTH == width && LAST_HEIGHT == height && MIPS.size() == mipLevel) return;
 
         INPUT = resize(INPUT, width, height, true);
-        hookDepthBuffer(INPUT, MC.getMainRenderTarget().getDepthTextureId());
         HIGH_LIGHT = resize(HIGH_LIGHT, width, height, false);
         OUTPUT = resize(OUTPUT, width, height, false);
 
-        int mips = 5;
-
-        if (MIPS.size() != mips) {
-            MIPS.forEach(Mip::clear);
-            MIPS.clear();
-            for (int i = 0; i < mips; i++) {
-                MIPS.add(new Mip());
-            }
+        MIPS.forEach(Mip::clear);
+        MIPS.clear();
+        for (int i = 0; i < mipLevel; i++) {
+            MIPS.add(new Mip());
         }
 
         var w = width;
@@ -144,9 +212,14 @@ public class PhotonPostProcessing {
     }
 
     private static void renderBloom() {
+        if (Platform.isDevEnv() && GL.getCapabilities().GL_KHR_debug) {
+            GL46.glPushDebugGroup(GL46.GL_DEBUG_SOURCE_APPLICATION, 0, "photon_bloom");
+        }
+
         var brightPassShader = PhotonShaders.getBrightPassShader();
         var separableBlur = PhotonShaders.getSeparableBlurShader();
-        var combinePassShader = PhotonShaders.getBloomScatterPassShader();
+        var combinePassShader = PhotonConfig.INSTANCE.bloomMode.get() == PhotonConfig.BloomMode.ADD ?
+                PhotonShaders.getBloomAddPassShader() : PhotonShaders.getBloomScatterPassShader();
         var finalCombinePassShader = PhotonShaders.getBloomFinalScatterPassShader();
 
         RenderSystem.colorMask(true, true, true, true);
@@ -156,6 +229,7 @@ public class PhotonPostProcessing {
         RenderSystem.defaultBlendFunc();
 
         brightPassShader.setSampler("inputSampler", INPUT);
+        brightPassShader.safeGetUniform("Threshold").set(PhotonConfig.INSTANCE.bloomThreshold.get().floatValue());
         blitShader(brightPassShader, HIGH_LIGHT);
 
         // down-sampling
@@ -177,6 +251,8 @@ public class PhotonPostProcessing {
 
         // up-sampling
         RenderTarget lowRes = MIPS.getLast().swapB;
+        var bloomIntensity = PhotonConfig.INSTANCE.bloomIntensity.get().floatValue();
+        combinePassShader.safeGetUniform("BloomIntensive").set(bloomIntensity);
         for (int i = MIPS.size() - 2; i >= 0; i--) {
             var highRes = MIPS.get(i);
             combinePassShader.setSampler("inputA", lowRes);
@@ -187,10 +263,15 @@ public class PhotonPostProcessing {
 
         finalCombinePassShader.setSampler("inputA", lowRes);
         finalCombinePassShader.setSampler("inputB", INPUT);
+        finalCombinePassShader.safeGetUniform("BloomIntensive").set(bloomIntensity);
         blitShader(finalCombinePassShader, OUTPUT);
 
         RenderSystem.depthMask(true);
         RenderSystem.enableDepthTest();
+
+        if (Platform.isDevEnv() && GL.getCapabilities().GL_KHR_debug) {
+            GL46.glPopDebugGroup();
+        }
     }
 
     public static void blitShader(ShaderInstance shaderInstance, RenderTarget dist) {

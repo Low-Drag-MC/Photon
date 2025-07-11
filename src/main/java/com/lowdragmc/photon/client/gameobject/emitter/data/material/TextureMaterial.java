@@ -101,7 +101,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     @Override
     public void begin(MaterialContext context) {
         // TODO better shader pack support
-        if (Photon.isUsingShaderPack()) {
+        if (false) {
             RenderSystem.setShaderTexture(0, texture);
         } else {
             RenderSystem.setShader(this::getShader);

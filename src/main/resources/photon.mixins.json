@@ -3,10 +3,11 @@
   "minVersion": "0.8",
   "package": "com.lowdragmc.photon.core.mixins",
   "compatibilityLevel": "JAVA_21",
+  "plugin": "com.lowdragmc.photon.core.mixins.PhotonMixinPlugin",
   "client": [
     "ParticleEngineMixin",
     "accessor.ParticleEngineAccessor",
-    "accessor.ShaderInstanceAccessor"
+    "iris.ExtendedShaderAccessor"
   ],
   "mixins": [
   ],

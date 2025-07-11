@@ -144,7 +144,7 @@ public class SubEmittersSetting extends ToggleGroup {
                         }
                     }
                 }
-                runtime.emmit(father.getEmitter().getEffect());
+                runtime.emmit(father.getEmitter().getEffectExecutor());
             }
         }
 

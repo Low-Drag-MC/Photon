@@ -4,7 +4,6 @@ import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.ProgressBar;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.photon.gui.editor.FXProjectEffect;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.view.SceneView;
 import net.minecraft.client.gui.GuiGraphics;
@@ -17,6 +16,7 @@ import net.minecraft.world.phys.AABB;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.function.Function;
 
@@ -50,10 +50,6 @@ public interface IParticleEmitter extends IFXObject, IConfigurable {
         return null;
     }
 
-    default boolean isDev() {
-        return getEffect() instanceof FXProjectEffect;
-    }
-
     int getAge();
 
     void setAge(int age);
@@ -74,12 +70,26 @@ public interface IParticleEmitter extends IFXObject, IConfigurable {
 
     int getLightColor(BlockPos pos);
 
-    default RandomSource getRandomSource() {
-        getEffect()
-    }
+    RandomSource getRandomSource();
 
     @Override
     default void inspectSceneInformation(SceneView sceneView, UIElement container) {
+        var progress = new ProgressBar() {
+            @Override
+            public void drawBackgroundAdditional(@Nonnull GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+                super.drawBackgroundAdditional(graphics, mouseX, mouseY, partialTicks);
+                if (isAlive()) {
+                    this.setValue(getT(sceneView.particleManager.isPlaying() ? partialTicks : 0));
+                } else {
+                    this.setValue(1f);
+                }
+            }
+        };
+        progress.label(label -> label.setText(""))
+                .progressBarStyle(style -> style.interpolate(false))
+                .layout(layout -> {
+                    layout.setWidthPercent(100);
+                });
         container.addChildren(
                 sceneView.fxObjectInfoView.createInformation(
                         Component.translatable("photon.gui.editor.fx_info.particles"),
@@ -87,19 +97,7 @@ public interface IParticleEmitter extends IFXObject, IConfigurable {
                 sceneView.fxObjectInfoView.createInformation(
                         Component.translatable("photon.gui.editor.fx_info.age"),
                         () -> Component.literal("%.2f s".formatted(getAge() / 20f))),
-                new ProgressBar() {
-                    @Override
-                    public void drawBackgroundAdditional(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
-                        super.drawBackgroundAdditional(graphics, mouseX, mouseY, partialTicks);
-                        if (isAlive()) {
-                            this.setValue(getT(partialTicks));
-                        } else {
-                            this.setValue(1f);
-                        }
-                    }
-                }.label(label -> label.setText("")).progressBarStyle(style -> style.interpolate(false)).layout(layout -> {
-                    layout.setWidthPercent(100);
-                })
+                progress
         );
     }
 }

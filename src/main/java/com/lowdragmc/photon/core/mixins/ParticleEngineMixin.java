@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.core.mixins;
 
-import com.lowdragmc.photon.client.fx.BlockEffect;
-import com.lowdragmc.photon.client.fx.EntityEffect;
+import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
+import com.lowdragmc.photon.client.fx.EntityEffectExecutor;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.ParticleEngine;
 import org.spongepowered.asm.mixin.Mixin;
@@ -24,8 +24,8 @@ public abstract class ParticleEngineMixin {
     @Inject(method = "setLevel",
             at = @At(value = "RETURN"))
     private void injectSetLevel(ClientLevel level, CallbackInfo ci) {
-        EntityEffect.CACHE.clear();
-        BlockEffect.CACHE.clear();
+        EntityEffectExecutor.CACHE.clear();
+        BlockEffectExecutor.CACHE.clear();
     }
 }
 

@@ -45,18 +45,12 @@ public class FXHelper {
 
     @Nullable
     private static FX loadFX(ResourceLocation fxLocation) {
-        ResourceLocation resourceLocation = ResourceLocation.fromNamespaceAndPath(fxLocation.getNamespace(), FX_PATH + fxLocation.getPath() + ".fx");
+        ResourceLocation resourceLocation = ResourceLocation.fromNamespaceAndPath(fxLocation.getNamespace(), FX_PATH + fxLocation.getPath() + FX.SUFFIX);
         try (var inputStream = Minecraft.getInstance().getResourceManager().open(resourceLocation);) {
             var tag = NbtIo.readCompressed(inputStream, NbtAccounter.unlimitedHeap());
-            var version = tag.contains("_version") ? tag.getInt("_version") : 0;
             var fx = new FX();
             fx.setFxLocation(fxLocation);
-            fx.deserializeNBT(Platform.getFrozenRegistry(), tag.getCompound("fx"));
-            if (version < 1) {
-                var emitters = new CompoundTag();
-                emitters.put("fxObjects", tag.getList("emitters", Tag.TAG_COMPOUND));
-                fx.getFxData().deserializeNBT(Platform.getFrozenRegistry(), emitters);
-            }
+            fx.deserializeNBT(Platform.getFrozenRegistry(), tag);
             return fx;
         } catch (Exception ignored) {
             return null;

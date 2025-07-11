@@ -4,7 +4,7 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.IScene;
 import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.fx.IEffect;
+import com.lowdragmc.photon.client.fx.IEffectExecutor;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.Tesselator;
@@ -45,8 +45,8 @@ public class FXObject extends Particle implements IFXObject {
     @Setter
     protected boolean selfVisible = true;
     @Nullable
-    @Getter @Setter
-    protected IEffect effect;
+    @Getter
+    protected IEffectExecutor effectExecutor;
 
     protected FXObject() {
         super(null, 0, 0, 0);
@@ -62,6 +62,12 @@ public class FXObject extends Particle implements IFXObject {
             copied.copyTransformFrom(this);
         }
         return copied;
+    }
+
+    @Override
+    public void setEffect(IEffectExecutor effectExecutor) {
+        this.effectExecutor = effectExecutor;
+        random.setSeed(effectExecutor.getRandomSource().nextLong());
     }
 
     @Override
@@ -101,7 +107,7 @@ public class FXObject extends Particle implements IFXObject {
         }
         var pos = transform.position();
         BlockPos blockPos = BlockPos.containing(pos.x, pos.y, pos.z);
-        return this.realLevel.hasChunkAt(blockPos) ? LevelRenderer.getLightColor(this.realLevel, blockPos) : 0;
+        return this.realLevel.isLoaded(blockPos) ? LevelRenderer.getLightColor(this.realLevel, blockPos) : 0;
     }
 
     @Override
@@ -117,8 +123,8 @@ public class FXObject extends Particle implements IFXObject {
 
     @Override
     public void updateTick() {
-        if (effect != null) {
-            effect.updateFXObjectTick(this);
+        if (effectExecutor != null) {
+            effectExecutor.updateFXObjectTick(this);
         }
     }
 
@@ -140,8 +146,8 @@ public class FXObject extends Particle implements IFXObject {
 
     @Override
     public void updateFrame(float partialTicks) {
-        if (effect != null) {
-            effect.updateFXObjectFrame(this, partialTicks);
+        if (effectExecutor != null) {
+            effectExecutor.updateFXObjectFrame(this, partialTicks);
         }
     }
 

@@ -38,7 +38,7 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
     @Override
     public void begin(MaterialContext context) {
         // TODO better shader pack support
-        if (context.isUsingShaderPack()) {
+        if (false) {
             var lastShader = RenderSystem.getShader();
 
             ShaderManager.getTempTarget().clear(false);

@@ -9,7 +9,10 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.client.gui.ConfigurationScreen;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,6 +25,8 @@ public class Photon {
     public Photon(IEventBus eventBus, ModContainer modContainer) {
         Photon.init();
         if (FMLEnvironment.dist == Dist.CLIENT) {
+            modContainer.registerConfig(ModConfig.Type.CLIENT, PhotonConfig.CONFIG_SPEC);
+            modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
             new PhotonClientProxy(eventBus);
         } else {
             new PhotonCommonProxy(eventBus);
