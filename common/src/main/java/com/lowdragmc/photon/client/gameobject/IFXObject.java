@@ -151,13 +151,7 @@ public interface IFXObject extends ISceneObject, IAutoPersistedSerializable, ICo
     }
 
     default void copyTransformFrom(IFXObject fxObject) {
-        copyTransformFrom(fxObject, true, true);
-    }
-
-    default void copyTransformFrom(IFXObject fxObject, boolean local, boolean copyParent) {
-        transform().set(fxObject.transform(), local);
-        if (copyParent) {
-            transform().parent(fxObject.transform().parent());
-        }
+        transform().copyTransformFrom(fxObject.transform(), true, true);
+        transform()._setInternalID(fxObject.transform().id());
     }
 }

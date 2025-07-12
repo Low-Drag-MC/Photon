@@ -47,8 +47,8 @@ loom {
     if (isJetBrainsRuntime()) {
         runs {
             client {
-                vmArgs '-XX:+AllowEnhancedClassRedefinition'
-                vmArgs '-XX:HotswapAgent=fatjar'
+//                vmArgs '-XX:+AllowEnhancedClassRedefinition'
+//                vmArgs '-XX:HotswapAgent=fatjar'
             }
         }
     }
