@@ -1,5 +1,9 @@
 ## ChangeLogs
 
+# v1.1.11
+* Fixed transform hierarchy serialization
+* Fixed occlusion of the bloom (thanks to @RogoShum)
+
 # v1.1.10
 * Fixed model mode serialization issue
 * Fixed sub emitter serialization issue
