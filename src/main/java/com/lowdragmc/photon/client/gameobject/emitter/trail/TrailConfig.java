@@ -125,7 +125,7 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
 
         @Override
         public BufferBuilder begin(@Nonnull Tesselator tesselator) {
-            return tesselator.begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.PARTICLE);
+            return tesselator.begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.BLOCK);
         }
 
         @Override

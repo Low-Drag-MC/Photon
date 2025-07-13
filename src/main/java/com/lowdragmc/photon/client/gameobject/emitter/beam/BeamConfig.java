@@ -96,7 +96,7 @@ public class BeamConfig {
 
         @Override
         public BufferBuilder begin(@Nonnull Tesselator tesselator) {
-            return tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
+            return tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
         }
 
         @Override

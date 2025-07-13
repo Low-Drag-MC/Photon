@@ -171,16 +171,17 @@ public class BeamParticle implements IParticle {
 
             var toO = new Vector3f(from).sub(cameraPos);
             Vector3f n = new Vector3f(toO).cross(direction).normalize().mul(beamHeight);
+            Vector3f normal = new Vector3f(direction).cross(n).normalize();
 
             var p0 = new Vector3f(from).add(n).sub(cameraPos);
             var p1 = new Vector3f(from).add(n.mul(-1)).sub(cameraPos);
             var p3 = new Vector3f(end).add(n).sub(cameraPos);
             var p4 = new Vector3f(end).add(n.mul(-1)).sub(cameraPos);
 
-            pBuffer.addVertex(p1.x, p1.y, p1.z).setUv(u0, v0).setColor(r, g, b, a).setLight(light);
-            pBuffer.addVertex(p0.x, p0.y, p0.z).setUv(u0, v1).setColor(r, g, b, a).setLight(light);
-            pBuffer.addVertex(p4.x, p4.y, p4.z).setUv(u1, v1).setColor(r, g, b, a).setLight(light);
-            pBuffer.addVertex(p3.x, p3.y, p3.z).setUv(u1, v0).setColor(r, g, b, a).setLight(light);
+            pBuffer.addVertex(p1.x, p1.y, p1.z).setUv(u0, v0).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
+            pBuffer.addVertex(p0.x, p0.y, p0.z).setUv(u0, v1).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
+            pBuffer.addVertex(p4.x, p4.y, p4.z).setUv(u1, v1).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
+            pBuffer.addVertex(p3.x, p3.y, p3.z).setUv(u1, v0).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
         }
     }
 

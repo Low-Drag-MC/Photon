@@ -31,7 +31,7 @@ public class PhotonConfig {
         enableBloom = builder.define("enable_bloom", true);
         bloomMipLevel = builder.defineInRange("bloom_mip_level", 5, 2, 10);
         bloomMode = builder.defineEnum("bloom_mode", BloomMode.SCATTER, BloomMode.values());
-        bloomThreshold = builder.defineInRange("bloom_threshold", 1, 1, Double.MAX_VALUE);
+        bloomThreshold = builder.defineInRange("bloom_threshold", 1, 1, 10d);
         bloomIntensity = builder.defineInRange("bloom_intensity", 0.7, 0, 1);
 
         enableBloomWithIrisShader = builder.define("enable_bloom_with_iris_shader", true);

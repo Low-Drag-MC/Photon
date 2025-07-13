@@ -6,8 +6,10 @@ import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
+import lombok.Getter;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.GameRenderer;
+import org.checkerframework.checker.units.qual.N;
 import org.jetbrains.annotations.Nullable;
 import oshi.util.tuples.Pair;
 
@@ -34,8 +36,13 @@ public class RenderPassPipeline extends BufferBuilder {
     private static final BufferBuilderPool BUILDER_POOL = new BufferBuilderPool();
 
     // runtime
+    @Nullable
+    @Getter
+    private static RenderPassPipeline current = null;
     private final Map<PhotonFXRenderPass, Queue<IParticle>> particles = Maps.newTreeMap(makeRenderPassComparator());
+    @Getter
     private Camera camera;
+    @Getter
     private float partialTicks;
 
     public static Comparator<PhotonFXRenderPass> makeRenderPassComparator() {
@@ -73,12 +80,14 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     private void beforeRendering() {
+        current = this;
         PhotonPostProcessing.prepareTarget();
     }
 
     private void afterRendering() {
         PhotonPostProcessing.postTarget();
         RenderSystem.setShader(GameRenderer::getParticleShader);
+        current = null;
     }
 
     private void renderParticles(PhotonFXRenderPass renderPass, Queue<IParticle> particleQueue) {

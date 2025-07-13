@@ -50,10 +50,10 @@ public class PhotonShaders {
         var resourceProvider = registerShadersEvent.getResourceProvider();
         try {
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
-                            Photon.id("hdr_particle"), DefaultVertexFormat.PARTICLE),
+                            Photon.id("hdr_particle"), DefaultVertexFormat.BLOCK),
                     shaderInstance -> HDRParticleShader = shaderInstance);
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
-                            Photon.id("pixel_hdr_particle"), DefaultVertexFormat.PARTICLE),
+                            Photon.id("pixel_hdr_particle"), DefaultVertexFormat.BLOCK),
                     shaderInstance -> pixelHDRParticleShader = shaderInstance);
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
                             Photon.id("bright_pass"), DefaultVertexFormat.POSITION),

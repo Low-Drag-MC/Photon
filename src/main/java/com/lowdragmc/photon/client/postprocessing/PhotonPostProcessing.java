@@ -17,7 +17,6 @@ import lombok.Getter;
 import net.irisshaders.iris.gl.blending.DepthColorStorage;
 import net.irisshaders.iris.gl.framebuffer.GlFramebuffer;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Minecraft;
@@ -28,7 +27,6 @@ import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL46;
 
 import javax.annotation.Nullable;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -55,15 +53,7 @@ public class PhotonPostProcessing {
     private static final Minecraft MC = Minecraft.getInstance();
     private static int LAST_WIDTH, LAST_HEIGHT;
     private static HDRTarget INPUT, HIGH_LIGHT, OUTPUT;
-    private static List<Mip> MIPS = new ArrayList<>();
-
-    private static ShaderInstance loadShader(String shaderName) {
-        try {
-            return new ShaderInstance(Minecraft.getInstance().getResourceManager(), ResourceLocation.parse(shaderName), DefaultVertexFormat.POSITION);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
+    private static final List<Mip> MIPS = new ArrayList<>();
 
     public static void prepareTarget() {
         var mainTarget = MC.getMainRenderTarget();
@@ -119,59 +109,60 @@ public class PhotonPostProcessing {
         var mainTarget = MC.getMainRenderTarget();
         var lastViewport = PositionedRect.of(GlStateManager.Viewport.x(), GlStateManager.Viewport.y(), GlStateManager.Viewport.width(), GlStateManager.Viewport.height());
         var background = Minecraft.getInstance().getMainRenderTarget();
-        // setup view port
-        if (lastViewport.position.x != 0 ||
+        var hasDifferentViewPort = lastViewport.position.x != 0 ||
                 lastViewport.position.y != 0 ||
                 lastViewport.size.width != background.width ||
-                lastViewport.size.height != background.height){
+                lastViewport.size.height != background.height;
+        // setup view port
+        if (hasDifferentViewPort) {
             RenderSystem.viewport(0, 0, background.width, background.height);
         }
 
         var doBloom = PhotonConfig.INSTANCE.enableBloom.get() && (!Photon.isUsingShaderPack() || PhotonConfig.INSTANCE.enableBloomWithIrisShader.get());
-        // TODO do bloom
-        renderBloom();
 
-        // we need it because extended shaders only work while the main target bound.
-        mainTarget.bindWrite(false);
-        if (Photon.isShaderModInstalled() && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
-            // We want to blit our result back to iris's fbo
-            GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
-                    extendedShader.getWritingToBeforeTranslucent() :
-                    extendedShader.getWritingToAfterTranslucent();
-            RenderSystem.assertOnRenderThread();
-            GlStateManager._disableDepthTest();
+        if (doBloom) {
+            renderBloom();
+            // we need it because extended shaders only work while the main target bound.
+            mainTarget.bindWrite(false);
+            if (Photon.isShaderModInstalled() && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
+                // We want to blit our result back to iris's fbo
+                GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
+                        extendedShader.getWritingToBeforeTranslucent() :
+                        extendedShader.getWritingToAfterTranslucent();
+                RenderSystem.assertOnRenderThread();
+                GlStateManager._disableDepthTest();
 
-            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.getId());
-            LDLibShaders.getBlitShader().setSampler("DiffuseSampler", OUTPUT.getColorTextureId());
+                GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.getId());
+                LDLibShaders.getBlitShader().setSampler("DiffuseSampler", OUTPUT.getColorTextureId());
 
-            LDLibShaders.getBlitShader().apply();
+                LDLibShaders.getBlitShader().apply();
 
-            // unlock depth color from iris manager
-            DepthColorStorage.unlockDepthColor();
-            GlStateManager._depthMask(false);
-            GlStateManager._colorMask(true, true, true, true);
+                // unlock depth color from iris manager
+                DepthColorStorage.unlockDepthColor();
+                GlStateManager._depthMask(false);
+                GlStateManager._colorMask(true, true, true, true);
 
-            Tesselator tesselator = RenderSystem.renderThreadTesselator();
-            BufferBuilder bufferbuilder = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
-            bufferbuilder.addVertex(-1, 1, 0);
-            bufferbuilder.addVertex(-1, -1, 0);
-            bufferbuilder.addVertex(1, -1, 0);
-            bufferbuilder.addVertex(1, 1, 0);
-            BufferUploader.draw(bufferbuilder.buildOrThrow());
-            LDLibShaders.getBlitShader().clear();
+                Tesselator tesselator = RenderSystem.renderThreadTesselator();
+                BufferBuilder bufferbuilder = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
+                bufferbuilder.addVertex(-1, 1, 0);
+                bufferbuilder.addVertex(-1, -1, 0);
+                bufferbuilder.addVertex(1, -1, 0);
+                bufferbuilder.addVertex(1, 1, 0);
+                BufferUploader.draw(bufferbuilder.buildOrThrow());
+                LDLibShaders.getBlitShader().clear();
 
-            GlStateManager._depthMask(true);
-            GlStateManager._enableDepthTest();
-            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainTarget.frameBufferId);
+                GlStateManager._depthMask(true);
+                GlStateManager._enableDepthTest();
+                GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainTarget.frameBufferId);
+            } else {
+                ShaderUtils.fastBlit(OUTPUT, mainTarget);
+            }
         } else {
-            ShaderUtils.fastBlit(OUTPUT, mainTarget);
+            ShaderUtils.fastBlit(INPUT, mainTarget);
         }
 
         // restore view port
-        if (lastViewport.position.x != 0 ||
-                lastViewport.position.y != 0 ||
-                lastViewport.size.width != background.width ||
-                lastViewport.size.height != background.height){
+        if (hasDifferentViewPort){
             RenderSystem.viewport(lastViewport.position.x, lastViewport.position.y, lastViewport.size.width, lastViewport.size.height);
         }
     }

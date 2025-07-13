@@ -175,16 +175,8 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
     }
 
     default void copyTransformFrom(IFXObject fxObject) {
-        copyTransformFrom(fxObject, true, true);
-    }
-
-    default void copyTransformFrom(IFXObject fxObject, boolean local, boolean copyHierarchy) {
-        transform().set(fxObject.transform(), local);
-        if (copyHierarchy) {
-            transform().parent(fxObject.transform().parent());
-            transform()._setInternalParentID(fxObject.transform()._getInternalParentID());
-            transform()._setInternalChildID(fxObject.transform()._getInternalChildID());
-        }
+        transform().copyTransformFrom(fxObject.transform(), true, true);
+        transform()._setInternalID(fxObject.transform().id());
     }
 
     // information inspection

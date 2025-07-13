@@ -13,6 +13,8 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.core.Vec3i;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Camera;
@@ -24,15 +26,15 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.client.model.IQuadTransformer;
 import net.neoforged.neoforge.client.model.data.ModelData;
-import org.joml.Matrix4f;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
-import org.joml.Vector4f;
+import net.neoforged.neoforge.client.model.obj.ObjModel;
+import org.joml.*;
 import org.lwjgl.system.MemoryStack;
 
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.lang.Math;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -597,7 +599,7 @@ u     */
         var renderMode = config.renderer.getRenderMode();
         var quaternion = renderMode.quaternion.apply(this, camera, partialTicks);
         if (!Vector3fHelper.isZero(rotation)) {
-            quaternion = new Quaternionf(quaternion).rotateXYZ(rotation.x, rotation.y, rotation.z);
+            quaternion = quaternion.rotateXYZ(rotation.x, rotation.y, rotation.z);
         }
 
         var size = getRealSize(partialTicks);
@@ -633,14 +635,18 @@ u     */
                     new Vector3f(-1.0F, 1.0F, 0.0F),
                     new Vector3f(-1.0F, -1.0F, 0.0F),
             };
-
+            var normal = new Vector3f(0, 0, 1);
+            var spaceScale = getSpaceScale();
             for (var i = 0; i < 4; ++i) {
                 var vertex = rawVertexes[i];
                 vertex.mul(size.x, size.y, size.z);
                 vertex = quaternion.transform(vertex);
-                vertex.mul(getSpaceScale());
+                vertex.mul(spaceScale);
                 vertex.add(x, y, z);
             }
+
+            quaternion.transform(normal);
+            normal.div(size.x * spaceScale.x, size.y * spaceScale.y, size.z * spaceScale.z).normalize();
 
             var uvs = getRealUVs(partialTicks);
             var u0 = uvs.x();
@@ -648,10 +654,10 @@ u     */
             var u1 = uvs.z();
             var v1 = uvs.w();
 
-            buffer.addVertex(rawVertexes[0].x(), rawVertexes[0].y(), rawVertexes[0].z()).setUv(u1, v1).setColor(r, g, b, a).setLight(light);
-            buffer.addVertex(rawVertexes[1].x(), rawVertexes[1].y(), rawVertexes[1].z()).setUv(u1, v0).setColor(r, g, b, a).setLight(light);
-            buffer.addVertex(rawVertexes[2].x(), rawVertexes[2].y(), rawVertexes[2].z()).setUv(u0, v0).setColor(r, g, b, a).setLight(light);
-            buffer.addVertex(rawVertexes[3].x(), rawVertexes[3].y(), rawVertexes[3].z()).setUv(u0, v1).setColor(r, g, b, a).setLight(light);
+            buffer.addVertex(rawVertexes[0].x(), rawVertexes[0].y(), rawVertexes[0].z()).setUv(u1, v1).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
+            buffer.addVertex(rawVertexes[1].x(), rawVertexes[1].y(), rawVertexes[1].z()).setUv(u1, v0).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
+            buffer.addVertex(rawVertexes[2].x(), rawVertexes[2].y(), rawVertexes[2].z()).setUv(u0, v0).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
+            buffer.addVertex(rawVertexes[3].x(), rawVertexes[3].y(), rawVertexes[3].z()).setUv(u0, v1).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
         }
     }
 
@@ -666,19 +672,29 @@ u     */
             for (int k = 0; k < points; ++k) {
                 intBuffer.clear();
                 intBuffer.put(vertices, k * 8, 8);
-                var x = byteBuffer.getFloat(0);
-                var y = byteBuffer.getFloat(4);
-                var z = byteBuffer.getFloat(8);
-                var u = byteBuffer.getFloat(16);
-                var v = byteBuffer.getFloat(20);
+                var x = byteBuffer.getFloat(0); // 0
+                var y = byteBuffer.getFloat(4); // 1
+                var z = byteBuffer.getFloat(8); // 2
+                var u = byteBuffer.getFloat(16); // 4 u
+                var v = byteBuffer.getFloat(20); // 5 v
+                var normalData = byteBuffer.getInt(IQuadTransformer.NORMAL * 4);
+                float nX = ((byte) normalData      ) / 127.0f;
+                float nY = ((byte)(normalData>>8 )) / 127.0f;
+                float nZ = ((byte)(normalData>>16)) / 127.0f;
+
                 if (!config.renderer.isUseBlockUV()) {
                     u = (k == 0 || k == 3) ? uvs.x : uvs.z;
                     v = (k == 0 || k == 1) ? uvs.y : uvs.w;
                 }
                 var pos = transform.transform(new Vector4f(x, y, z, 1.0F));
-                buffer.addVertex(pos.x, pos.y, pos.z).setUv(u, v)
-                        .setColor(red * brightness, green * brightness, blue * brightness, alpha)
-                        .setLight(light);
+                var normalMat = transform.normal(new Matrix3f());
+                var normal = new Vector3f(nX, nY, nZ).mul(normalMat).normalize();
+
+                buffer.addVertex(pos.x, pos.y, pos.z);
+                buffer.setColor(red * brightness, green * brightness, blue * brightness, alpha);
+                buffer.setUv(u, v);
+                buffer.setLight(light);
+                buffer.setNormal(normal.x, normal.y, normal.z);
             }
         }
 

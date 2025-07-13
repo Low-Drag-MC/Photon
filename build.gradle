@@ -77,6 +77,7 @@ runs {
         // You can set various levels here.
         // Please read: https://stackoverflow.com/questions/2031163/when-to-use-the-different-log-levels
         systemProperty 'forge.logging.console.level', 'debug'
+//        systemProperty 'mixin.debug', 'true'
 
         modSource project.sourceSets.main
 

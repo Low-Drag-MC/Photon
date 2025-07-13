@@ -572,6 +572,7 @@ public class TrailParticle implements IParticle {
 
         public void renderInternal(VertexConsumer buffer, float partialTicks, Vector3f cameraPos, Vector4f color, int light) {
             Vector3f lastNormal = null;
+            Vector3f lastFaceNormal = null;
             Vector3f lastUp = null;
 
             Vector3f headPos = getHeadPosition(partialTicks);
@@ -615,13 +616,14 @@ public class TrailParticle implements IParticle {
                 Vector3f curr = new Vector3f(tailPos);
                 Vector3f vec = new Vector3f(next).sub(curr);
                 Vector3f toTail = new Vector3f(curr).sub(cameraPos);
-                Vector3f normal = vec.cross(toTail).normalize();
+                Vector3f normal = new Vector3f(vec).cross(toTail).normalize();
 
                 if (lastNormal == null) lastNormal = normal;
 
                 Vector3f avgNormal = new Vector3f(lastNormal).add(normal).div(2);
                 Vector3f up = new Vector3f(tailPos).add(new Vector3f(avgNormal).mul(width[i])).sub(cameraPos);
                 Vector3f down = new Vector3f(tailPos).add(new Vector3f(avgNormal).mul(-width[i])).sub(cameraPos);
+                Vector3f faceNormal = new Vector3f(avgNormal).cross(vec).normalize();
 
                 float ta = color.w() * colorA[i];
                 float tr = color.x() * colorR[i];
@@ -633,17 +635,18 @@ public class TrailParticle implements IParticle {
 
                 // 1. push first strip segment
                 if (lastUp == null) {
-                    pushVertex(buffer, light, up, tr, tg, tb, ta, u0, v0);
-                    pushVertex(buffer, light, up, tr, tg, tb, ta, u0, v0);
+                    pushVertex(buffer, light, up, faceNormal, tr, tg, tb, ta, u0, v0);
+                    pushVertex(buffer, light, up, faceNormal, tr, tg, tb, ta, u0, v0);
                 }
 
                 // 2. push next segment
-                pushVertex(buffer, light, up, tr, tg, tb, ta, u0, v0);
-                pushVertex(buffer, light, down, tr, tg, tb, ta, u0, v1);
+                pushVertex(buffer, light, up, faceNormal, tr, tg, tb, ta, u0, v0);
+                pushVertex(buffer, light, down, faceNormal, tr, tg, tb, ta, u0, v1);
 
                 // 保留 last
                 lastUp = up;
                 lastNormal = normal;
+                lastFaceNormal = faceNormal;
             }
 
             // handle head segment
@@ -666,16 +669,16 @@ public class TrailParticle implements IParticle {
                 float u0 = uvs.x(), u1 = uvs.z(), v0 = uvs.y(), v1 = uvs.w();
 
                 // 继续用之前的 u1、v0、v1
-                pushVertex(buffer, light, up, tr, tg, tb, ta, u1, v0);
-                pushVertex(buffer, light, down, tr, tg, tb, ta, u1, v1);
+                pushVertex(buffer, light, up, lastFaceNormal, tr, tg, tb, ta, u1, v0);
+                pushVertex(buffer, light, down, lastFaceNormal, tr, tg, tb, ta, u1, v1);
                 lastUp = up;
             }
 
 
             // 3. **Degenerate triangle 插入**
             if (lastUp != null) {
-                pushVertex(buffer, light, lastUp, 0, 0, 0, 0, 0, 0); // 重复点1
-                pushVertex(buffer, light, lastUp, 0, 0, 0, 0, 0, 0); // 重复点2
+                pushVertex(buffer, light, lastUp, lastFaceNormal, 0, 0, 0, 0, 0, 0); // 重复点1
+                pushVertex(buffer, light, lastUp, lastFaceNormal, 0, 0, 0, 0, 0, 0); // 重复点2
             }
 
             if (pushHead) {
@@ -683,8 +686,8 @@ public class TrailParticle implements IParticle {
             }
         }
 
-        private void pushVertex(VertexConsumer buffer, int light, Vector3f pos, float r, float g, float b, float a, float u, float v) {
-            buffer.addVertex(pos.x, pos.y, pos.z).setUv(u, v).setColor(r, g, b, a).setLight(light);
+        private void pushVertex(VertexConsumer buffer, int light, Vector3f pos, Vector3f normal, float r, float g, float b, float a, float u, float v) {
+            buffer.addVertex(pos.x, pos.y, pos.z).setUv(u, v).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
         }
 
     }

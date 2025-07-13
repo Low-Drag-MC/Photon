@@ -16,12 +16,15 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonShaders;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.inventory.InventoryMenu;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.renderer.ShaderInstance;
@@ -96,10 +99,27 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             shaderInstance.close();
         }
         try {
-            shaderInstance = new LDShaderInstance(Minecraft.getInstance().getResourceManager(), shaderLocation, DefaultVertexFormat.PARTICLE);
+            var shader = new LDShaderInstance(Minecraft.getInstance().getResourceManager(), shaderLocation, DefaultVertexFormat.BLOCK);
+            if (shader.getShaderInstanceAccessor().getSamplerNames().contains("SamplerBlockAtlas")) {
+                var texture = Minecraft.getInstance().getTextureManager().getTexture(InventoryMenu.BLOCK_ATLAS);
+                shader.setSampler("SamplerBlockAtlas", texture);
+            }
+            this.shaderInstance = shader;
         } catch (Throwable e) {
             compiledErrorMessage = e.getMessage();
             shaderInstance = PhotonShaders.getHDRParticleShader();
+        }
+    }
+
+    @Override
+    public void setupUniform(MaterialContext context) {
+        super.setupUniform(context);
+        if (getShader() instanceof LDShaderInstance ldShaderInstance) {
+            if (ldShaderInstance.getShaderInstanceAccessor().getUniformMap().containsKey("CameraPos")
+                    && RenderPassPipeline.getCurrent() != null) {
+                var camera = RenderPassPipeline.getCurrent().getCamera();
+                ldShaderInstance.safeGetUniform("CameraPos").set(camera.getPosition().toVector3f());
+            }
         }
     }
 

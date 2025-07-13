@@ -1,5 +1,5 @@
 {
-    "vertex": "ldlib2:particle",
+    "vertex": "photon:particle",
     "fragment": "photon:circle",
     "attributes": [
         "Position",

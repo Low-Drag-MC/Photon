@@ -10,7 +10,6 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.gui.ui.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
-import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonShaders;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -53,7 +52,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     protected ResourceLocation texture = ResourceLocation.parse("textures/particle/glow.png");
     @Configurable
     @ConfigNumber(range = {0, 1})
-    protected float discardThreshold = 0.01f;
+    protected float discardThreshold = 0.1f;
     @Configurable
     @ConfigHDR
     protected Vector4f hdr = new Vector4f(0, 0, 0, 1);
@@ -95,17 +94,6 @@ public class TextureMaterial extends ShaderInstanceMaterial {
         }
         if (pixelArt.isEnable()) {
             shader.safeGetUniform("Bits").set(pixelArt.bits * 1f);
-        }
-    }
-
-    @Override
-    public void begin(MaterialContext context) {
-        // TODO better shader pack support
-        if (false) {
-            RenderSystem.setShaderTexture(0, texture);
-        } else {
-            RenderSystem.setShader(this::getShader);
-            setupUniform(context);
         }
     }
 
