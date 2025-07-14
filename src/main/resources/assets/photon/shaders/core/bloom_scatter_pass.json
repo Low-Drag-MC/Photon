@@ -6,6 +6,7 @@
         { "name": "inputB" }
     ],
     "uniforms": [
-        { "name": "BloomIntensive",     "type": "float",     "count": 1,  "values": [ 0.7 ] }
+        { "name": "BloomIntensive",     "type": "float",     "count": 1,  "values": [ 1.0 ] },
+        { "name": "BloomScatter",     "type": "float",     "count": 1,  "values": [ 0.7 ] }
     ]
 }

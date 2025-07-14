@@ -34,6 +34,14 @@ const float GAUSS[KERNEL_SIZE] = float[KERNEL_SIZE](
 0.19459459, 0.12162162, 0.05405405, 0.01621622
 );
 
+//const int   KERNEL_SIZE = 13;                       // 先把常量改成 13
+//const float GAUSS[KERNEL_SIZE] = float[KERNEL_SIZE](
+//0.00639131, 0.01292399, 0.03115845, 0.06401294, 0.11206570,
+//0.16718238, 0.21253046,                              // ← 中心
+//0.16718238, 0.11206570, 0.06401294, 0.03115845,
+//0.01292399, 0.00639131
+//);
+
 void main() {
     vec2 texelStep = BlurDir / OutSize;
     vec4 result = vec4(0.0);

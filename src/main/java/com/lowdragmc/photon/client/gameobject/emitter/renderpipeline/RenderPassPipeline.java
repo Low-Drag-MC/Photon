@@ -1,16 +1,28 @@
 package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 
 import com.google.common.collect.Maps;
+import com.lowdragmc.lowdraglib2.client.shader.HDRTarget;
+import com.lowdragmc.lowdraglib2.client.shader.LDLibShaders;
+import com.lowdragmc.lowdraglib2.client.utils.ShaderUtils;
+import com.lowdragmc.lowdraglib2.math.PositionedRect;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
+import com.lowdragmc.photon.core.mixins.iris.ExtendedShaderAccessor;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
+import net.irisshaders.iris.gl.blending.DepthColorStorage;
+import net.irisshaders.iris.gl.framebuffer.GlFramebuffer;
 import net.minecraft.client.Camera;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
-import org.checkerframework.checker.units.qual.N;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 import oshi.util.tuples.Pair;
 
 import javax.annotation.Nonnull;
@@ -44,6 +56,8 @@ public class RenderPassPipeline extends BufferBuilder {
     private Camera camera;
     @Getter
     private float partialTicks;
+    @Getter
+    private HDRTarget drawTarget;
 
     public static Comparator<PhotonFXRenderPass> makeRenderPassComparator() {
         return (passOne, passTwo) -> {
@@ -81,11 +95,133 @@ public class RenderPassPipeline extends BufferBuilder {
 
     private void beforeRendering() {
         current = this;
-        PhotonPostProcessing.prepareTarget();
+        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        prepareTarget(mainTarget.width, mainTarget.height);
+        PhotonPostProcessing.prepareTarget(mainTarget.width, mainTarget.height);
+    }
+
+    public static HDRTarget resize(@Nullable HDRTarget target, int width, int height, boolean useDepth) {
+        if (target == null) {
+            target = new HDRTarget(width, height, GL11.GL_LINEAR, useDepth);
+            target.setClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        } else if (target.width != width || target.height != height) {
+            target.resize(width, height, Minecraft.ON_OSX);
+        }
+        return target;
+    }
+
+    private void prepareTarget(int width, int height) {
+        drawTarget = resize(drawTarget, width, height, true);
+        // we will copy the color texture and share the depth texture of the main target.
+        if (Photon.isShaderModInstalled() && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
+            // iris has its own separated fbo. we should use it instead
+            GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
+                    extendedShader.getWritingToBeforeTranslucent() :
+                    extendedShader.getWritingToAfterTranslucent();
+            drawTarget.copyColorFrom(fbo.getId(), width, height);
+            if (fbo.hasDepthAttachment()) {
+                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.getId());
+                boolean useStencil = false;
+                int objType = GL30.glGetFramebufferAttachmentParameteri(
+                        GL30.GL_FRAMEBUFFER,
+                        GL30.GL_DEPTH_ATTACHMENT,
+                        GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+                int depthTexture = GL30.glGetFramebufferAttachmentParameteri(
+                        GL30.GL_FRAMEBUFFER,
+                        GL30.GL_DEPTH_ATTACHMENT,
+                        GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+                if (objType == GL30.GL_NONE) {
+                    objType = GL30.glGetFramebufferAttachmentParameteri(
+                            GL30.GL_FRAMEBUFFER,
+                            GL30.GL_DEPTH_STENCIL_ATTACHMENT,
+                            GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+
+                    depthTexture = GL30.glGetFramebufferAttachmentParameteri(
+                            GL30.GL_FRAMEBUFFER,
+                            GL30.GL_DEPTH_STENCIL_ATTACHMENT,
+                            GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+                    if (objType != GL30.GL_NONE) {
+                        useStencil = true;
+                    }
+                }
+                if (objType != GL30.GL_NONE) {
+                    if (!drawTarget.hasOtherAttachedDepthTexture() || drawTarget.getAttachedDepthTexture() != depthTexture) {
+                        drawTarget.attachDepthBufferInternal(depthTexture, useStencil, true);
+                    }
+                }
+            }
+        } else {
+            var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+            drawTarget.copyColorFrom(mainTarget);
+            if (!drawTarget.hasOtherAttachedDepthTexture() || drawTarget.getAttachedDepthTexture() != mainTarget.getDepthTextureId()) {
+                drawTarget.attachDepthBuffer(mainTarget);
+            }
+        }
+        drawTarget.bindWrite(false);
     }
 
     private void afterRendering() {
-        PhotonPostProcessing.postTarget();
+        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var lastViewport = PositionedRect.of(GlStateManager.Viewport.x(), GlStateManager.Viewport.y(), GlStateManager.Viewport.width(), GlStateManager.Viewport.height());
+        var background = Minecraft.getInstance().getMainRenderTarget();
+        var hasDifferentViewPort = lastViewport.position.x != 0 ||
+                lastViewport.position.y != 0 ||
+                lastViewport.size.width != background.width ||
+                lastViewport.size.height != background.height;
+        // setup view port
+        if (hasDifferentViewPort) {
+            RenderSystem.viewport(0, 0, background.width, background.height);
+        }
+
+        var doBloom = PhotonConfig.INSTANCE.enableBloom.get() && (!Photon.isUsingShaderPack() || PhotonConfig.INSTANCE.enableBloomWithIrisShader.get());
+        RenderTarget outputTarget;
+        if (doBloom) {
+            outputTarget = PhotonPostProcessing.postTarget(drawTarget);
+        } else {
+            outputTarget = drawTarget;
+        }
+
+        // we need it because extended shaders only work while the main target bound.
+        mainTarget.bindWrite(false);
+        if (Photon.isShaderModInstalled() && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
+            // We want to blit our result back to iris's fbo
+            GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
+                    extendedShader.getWritingToBeforeTranslucent() :
+                    extendedShader.getWritingToAfterTranslucent();
+            RenderSystem.assertOnRenderThread();
+            GlStateManager._disableDepthTest();
+
+            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.getId());
+            LDLibShaders.getBlitShader().setSampler("DiffuseSampler", outputTarget.getColorTextureId());
+
+            LDLibShaders.getBlitShader().apply();
+
+            // unlock depth color from iris manager
+            DepthColorStorage.unlockDepthColor();
+            GlStateManager._depthMask(false);
+            GlStateManager._colorMask(true, true, true, true);
+
+            Tesselator tesselator = RenderSystem.renderThreadTesselator();
+            BufferBuilder bufferbuilder = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
+            bufferbuilder.addVertex(-1, 1, 0);
+            bufferbuilder.addVertex(-1, -1, 0);
+            bufferbuilder.addVertex(1, -1, 0);
+            bufferbuilder.addVertex(1, 1, 0);
+            BufferUploader.draw(bufferbuilder.buildOrThrow());
+            LDLibShaders.getBlitShader().clear();
+
+            GlStateManager._depthMask(true);
+            GlStateManager._enableDepthTest();
+            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainTarget.frameBufferId);
+        } else {
+            ShaderUtils.fastBlit(outputTarget, mainTarget);
+        }
+
+        // restore view port
+        if (hasDifferentViewPort){
+            RenderSystem.viewport(lastViewport.position.x, lastViewport.position.y, lastViewport.size.width, lastViewport.size.height);
+        }
+
         RenderSystem.setShader(GameRenderer::getParticleShader);
         current = null;
     }
