@@ -7,6 +7,7 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import lombok.Getter;
+import net.minecraft.client.renderer.ShaderInstance;
 
 import javax.annotation.Nonnull;
 import java.util.Optional;
@@ -32,8 +33,8 @@ public final class UIResourceMaterial implements IMaterial {
     }
 
     @Override
-    public void begin(@Nonnull MaterialContext context) {
-        getInternalTexture().begin(context);
+    public ShaderInstance begin(@Nonnull MaterialContext context) {
+        return getInternalTexture().begin(context);
     }
 
     @Override

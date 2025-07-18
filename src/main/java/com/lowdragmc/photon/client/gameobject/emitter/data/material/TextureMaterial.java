@@ -1,6 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
+import com.lowdragmc.lowdraglib2.client.shader.LDProgramDefineManager;
+import com.lowdragmc.lowdraglib2.client.shader.LDShaderInstance;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigHDR;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
@@ -10,9 +12,12 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.gui.ui.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonShaders;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
+import com.mojang.blaze3d.shaders.Program;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import lombok.Getter;
 import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
@@ -25,6 +30,8 @@ import org.joml.Vector4f;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
 
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
@@ -60,6 +67,9 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     protected HDRMode hdrMode = HDRMode.ADDITIVE;
     @Configurable(subConfigurable = true)
     protected final PixelArt pixelArt = new PixelArt();
+    // runtime
+    private static final Map<String, ShaderInstance> hdrParticleShaders = new HashMap<>();
+    private static final Map<String, ShaderInstance> pixelHDRParticleShaders = new HashMap<>();
 
     public TextureMaterial() {
     }
@@ -76,14 +86,38 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     }
 
     @Override
-    public ShaderInstance getShader() {
-        return pixelArt.isEnable() ? PhotonShaders.getPixelHDRParticleShader() : PhotonShaders.getHDRParticleShader();
+    public ShaderInstance getShader(MaterialContext context) {
+        if (context.getShaderDefine().isEmpty()) {
+            return pixelArt.isEnable() ? PhotonShaders.getPixelHDRParticleShader() : PhotonShaders.getHDRParticleShader();
+        } else {
+            if (pixelArt.isEnable()) {
+                return pixelHDRParticleShaders.computeIfAbsent(context.getShaderDefine(), define -> {
+                    // remove cache
+                    Program.Type.FRAGMENT.getPrograms().remove(PhotonShaders.getPixelHDRParticleShader().getFragmentProgram().getName());
+                    Program.Type.VERTEX.getPrograms().remove(PhotonShaders.getPixelHDRParticleShader().getVertexProgram().getName());
+                    LDProgramDefineManager.addProgramDefine(define);
+                    var shader = LDShaderInstance.create(Photon.id("pixel_hdr_particle"), DefaultVertexFormat.BLOCK);
+                    LDProgramDefineManager.removeProgramDefine(define);
+                    return shader;
+                });
+            } else {
+                return hdrParticleShaders.computeIfAbsent(context.getShaderDefine(), define -> {
+                    // remove cache
+                    Program.Type.FRAGMENT.getPrograms().remove(PhotonShaders.getHDRParticleShader().getFragmentProgram().getName());
+                    Program.Type.VERTEX.getPrograms().remove(PhotonShaders.getHDRParticleShader().getVertexProgram().getName());
+                    LDProgramDefineManager.addProgramDefine(define);
+                    var shader = LDShaderInstance.create(Photon.id("hdr_particle"), DefaultVertexFormat.BLOCK);
+                    LDProgramDefineManager.removeProgramDefine(define);
+                    return shader;
+                });
+            }
+        }
     }
 
     @Override
     public void setupUniform(MaterialContext context) {
         RenderSystem.setShaderTexture(0, texture);
-        var shader = getShader();
+        var shader = getShader(context);
         shader.safeGetUniform("DiscardThreshold").set(discardThreshold);
         if (context.isRenderingPreview()) {
             shader.safeGetUniform("HDR").set(hdr.x, hdr.y, hdr.z, 1);

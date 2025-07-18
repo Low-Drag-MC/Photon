@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.Tesselator;
 import lombok.Getter;
 import net.minecraft.MethodsReturnNonnullByDefault;
@@ -22,7 +23,7 @@ public class ParticleQueueRenderType implements ParticleRenderType {
     public static final ParticleQueueRenderType OPAQUE_QUEUE = new ParticleQueueRenderType(false);
     public static final ParticleQueueRenderType TRANSLUCENT_QUEUE = new ParticleQueueRenderType(true);
 
-    public final RenderPassPipeline pipeline = new RenderPassPipeline();
+    public final RenderPassPipeline pipeline = new RenderPassPipeline(new ByteBufferBuilder(1536));
 
     @Getter
     public final boolean isTranslucent;

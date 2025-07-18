@@ -1,12 +1,7 @@
-#version 150
+#version 330 core
 
 #moj_import <fog.glsl>
-
-in vec3 Position;
-in vec4 Color;
-in vec2 UV0;
-in ivec2 UV2;
-in vec3 Normal;
+#moj_import <photon:particle.glsl>
 
 uniform sampler2D Sampler2;
 
@@ -19,9 +14,11 @@ out vec2 texCoord0;
 out vec4 vertexColor;
 
 void main() {
-    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);
+    ParticleData data = getParticleData();
 
-    vertexDistance = fog_distance(Position, FogShape);
-    texCoord0 = UV0;
-    vertexColor = Color * texelFetch(Sampler2, UV2 / 16, 0);
+    gl_Position = ProjMat * ModelViewMat * vec4(data.Position, 1.0);
+
+    vertexDistance = fog_distance(data.Position, FogShape);
+    texCoord0 = data.UV;
+    vertexColor = data.Color * texelFetch(Sampler2, data.LightUV / 16, 0);
 }

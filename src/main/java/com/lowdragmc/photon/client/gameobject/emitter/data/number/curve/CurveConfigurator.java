@@ -8,15 +8,19 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import net.minecraft.util.Mth;
+import org.appliedenergistics.yoga.YogaDisplay;
 import org.appliedenergistics.yoga.YogaEdge;
 import org.appliedenergistics.yoga.YogaFlexDirection;
 import org.appliedenergistics.yoga.YogaPositionType;
+import oshi.hardware.Display;
 
 import javax.annotation.Nonnull;
+import java.awt.*;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class CurveConfigurator extends ValueConfigurator<Curve> {
+    public final UIElement boundContainer = new UIElement();
     public final TextField upperBound = new TextField();
     public final TextField lowerBound = new TextField();
     public final UIElement dialog = new UIElement();
@@ -72,7 +76,7 @@ public class CurveConfigurator extends ValueConfigurator<Curve> {
             layout.setHeight(100);
             layout.setPadding(YogaEdge.ALL, 4);
             layout.setFlexDirection(YogaFlexDirection.ROW);
-        }).addChildren(new UIElement().layout(layout -> {
+        }).addChildren(boundContainer.layout(layout -> {
             layout.setHeightPercent(100);
             layout.setWidth(40);
             layout.setMargin(YogaEdge.RIGHT, 2);
@@ -83,6 +87,11 @@ public class CurveConfigurator extends ValueConfigurator<Curve> {
         this.dialog.setFocusable(true);
         this.dialog.setEnforceFocus(e -> hide());
         this.dialog.addEventListener(UIEvents.LAYOUT_CHANGED, e -> dialog.adaptPositionToScreen());
+    }
+
+    public CurveConfigurator disableBoundField() {
+        boundContainer.setDisplay(YogaDisplay.NONE);
+        return this;
     }
 
     @Override

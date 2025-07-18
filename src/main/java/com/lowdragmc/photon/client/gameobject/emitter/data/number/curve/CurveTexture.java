@@ -43,6 +43,7 @@ public class CurveTexture extends TransformTexture {
             float coordX = i * 1f / width;
             points.add(new Vector2f(coordX, curves.getCurveY(coordX)));
         }
+        if (points.size() < 2) return;
         points.add(new Vector2f(1, curves.getCurveY(1)));
         DrawerHelper.drawLines(
                 graphics,

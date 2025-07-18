@@ -7,6 +7,7 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
@@ -164,7 +165,7 @@ public class FXObject extends Particle implements IFXObject {
     }
 
     public static ParticleRenderType NO_RENDER_RENDER_TYPE = new ParticleRenderType() {
-        public final RenderPassPipeline pipeline = new RenderPassPipeline();
+        public final RenderPassPipeline pipeline = new RenderPassPipeline(new ByteBufferBuilder(1));
 
         @Override
         public BufferBuilder begin(Tesselator tesselator, TextureManager textureManager) {

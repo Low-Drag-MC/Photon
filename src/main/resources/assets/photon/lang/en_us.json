@@ -96,6 +96,8 @@
   "photon.emitter.config.renderer.cull": "Cull particles that are out of view.",
   "photon.emitter.config.renderer.orderInLayer": "Order In Layer",
   "photon.emitter.config.renderer.orderInLayer.tips": "Emitter's layer within a sorted layer",
+  "photon.emitter.config.renderer.vertexSortingMode": "Vertex Sorting Mode",
+  "photon.emitter.config.renderer.vertexSortingMode.tips": "Whether sorting the vertex before rendering. Useful for translucent quad",
   "photon.emitter.config.rotation.roll": "The roll of particles. (degree)",
   "photon.emitter.config.rotation.pitch": "The pitch of particles. (degree)",
   "photon.emitter.config.rotation.yaw": "The yaw of particles. (degree)",
@@ -154,6 +156,8 @@
   "photon.emitter.config.sub_emitters.emitter.inherit_duration": "Inherit duration from the parent particle.",
   "photon.emitter.config.sub_emitters.emitter.emit_probability": "Determines the proportion of sub-emitter spawn events that successfully triggers the associated sub-emitter.",
 
+  "photon.emitter.config.additional_gpu_data": "To use it, you have to enable gpu instance, which allows to send particle's data to shader.",
+
   "photon.emitter.beam.config.end": "Beam end offset.",
   "photon.emitter.beam.config.width": "Controls the width during its lifetime.",
   "photon.emitter.beam.config.emitRate": "Controls the emit rate during its lifetime.",
@@ -191,6 +195,20 @@
   "curves": "Curves",
   "gradients": "Gradients",
   "material": "Material",
-  "mesh": "Mesh"
+  "mesh": "Mesh",
 
+  "addition_gpu_data.type.float": "Type: §efloat§r",
+  "addition_gpu_data.type.int": "Type: §eint§r",
+  "addition_gpu_data.type.vec3": "Type: §evec3§r",
+
+  "addition_gpu_data.t": "T",
+  "addition_gpu_data.t.tips": "T value = age / lifetime",
+  "addition_gpu_data.age": "Age",
+  "addition_gpu_data.lifetime": "Lifetime",
+  "addition_gpu_data.velocity": "velocity",
+  "addition_gpu_data.isCollided": "Is Collided",
+  "addition_gpu_data.isCollided.tips": "1 - is collided, 0 - not collided yet",
+  "addition_gpu_data.emitter_t": "Emitter T",
+  "addition_gpu_data.emitter_age": "Emitter Age",
+  "addition_gpu_data.emitter_velocity": "Emitter Velocity"
 }

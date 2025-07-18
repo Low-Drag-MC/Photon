@@ -1,0 +1,10 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:up_sampling",
+    "samplers": [
+        { "name": "inputSampler" }
+    ],
+    "uniforms": [
+        { "name": "filterRadius",     "type": "float",     "count": 1,  "values": [ 1.0 ] }
+    ]
+}

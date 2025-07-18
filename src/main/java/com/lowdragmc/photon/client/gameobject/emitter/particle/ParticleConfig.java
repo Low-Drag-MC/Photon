@@ -16,15 +16,14 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.lowdragmc.photon.client.gameobject.particle.IParticle;
+import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.client.Minecraft;
+import net.minecraft.client.Camera;
 
-import javax.annotation.Nonnull;
+import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.Collection;
 
 /**
  * @author KilaBash
@@ -99,7 +98,7 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     @Configurable(name = "Material", subConfigurable = true, tips = "photon.emitter.config.material")
     public final MaterialSetting material = new MaterialSetting();
     @Configurable(name = "Renderer", subConfigurable = true, tips = "photon.emitter.config.renderer")
-    public final RendererSetting.Particle renderer = new RendererSetting.Particle();
+    public final ParticleRendererSetting renderer = new ParticleRendererSetting(this);
     @Configurable(name = "Physics", subConfigurable = true, tips = "photon.emitter.config.physics")
     public final PhysicsSetting physics = new PhysicsSetting();
     @Configurable(name = "Fixed Light", subConfigurable = true, tips = "photon.emitter.config.lights")
@@ -132,9 +131,11 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     public final TrailsSetting trails = new TrailsSetting();
     @Configurable(name = "Sub Emitters", subConfigurable = true, tips = "photon.emitter.config.sub_emitters")
     public final SubEmittersSetting subEmitters = new SubEmittersSetting();
+    @Configurable(name = "Additional GPU Data", subConfigurable = true, tips = "photon.emitter.config.additional_gpu_data")
+    public final ParticleAdditionalGPUDataSetting additionalGPUDataSetting = new ParticleAdditionalGPUDataSetting(this);
 
     // runtime
-    public final PhotonFXRenderPass particleRenderType = new RenderPass();
+    public final RenderPass particleRenderType = new RenderPass();
 
     public enum Space {
         Local,
@@ -144,24 +145,35 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     public ParticleConfig() {
     }
 
-    private class RenderPass extends PhotonFXRenderPass {
+    @ParametersAreNonnullByDefault
+    public class RenderPass extends PhotonFXRenderPass {
+        private final ParticleInstanceRenderer instanceRenderer = new ParticleInstanceRenderer(ParticleConfig.this);
+        private final MaterialContext context = MaterialContext.of();
 
-        @Override
-        public void prepareStatus(@Nonnull RenderPassPipeline pipeline) {
-            material.pre();
-            material.getMaterial().begin(MaterialContext.NORMAL);
-            Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
+        public RenderPass() {
+            super(renderer, material);
+        }
+
+        public void clearInstance() {
+            instanceRenderer.dispose();
         }
 
         @Override
-        public BufferBuilder begin(@Nonnull Tesselator tesselator) {
+        public BufferBuilder begin(Tesselator tesselator) {
             return tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
         }
 
-        @Override
-        public void releaseStatus(@Nonnull RenderPassPipeline pipeline) {
-            material.getMaterial().end(MaterialContext.NORMAL);
-            material.post();
+        public void drawParticles(RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+            if (renderer.isUseGPUInstance()) {
+                context.setShaderDefine(renderer.getRenderMode() == ParticleRendererSetting.Mode.Model ?
+                        "PARTICLE_MODEL_INSTANCE" :"PARTICLE_INSTANCE");
+                var material = materialSetting.getMaterial();
+                var shader = material.begin(context);
+                instanceRenderer.render(shader, (Collection) particles, camera, partialTicks);
+                material.end(context);
+            } else {
+                super.drawParticles(pipeline, particles, camera, partialTicks);
+            }
         }
 
         @Override
@@ -169,10 +181,6 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
             return isParallelRendering();
         }
 
-        @Override
-        public int layerOrder() {
-            return renderer.getOrderInLayer();
-        }
     }
 
 }

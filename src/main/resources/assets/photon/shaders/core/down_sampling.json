@@ -1,0 +1,10 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:down_sampling",
+    "samplers": [
+        { "name": "inputSampler" }
+    ],
+    "uniforms": [
+        { "name": "inputResolution",     "type": "float",     "count": 2,  "values": [ 1.0, 1.0 ] }
+    ]
+}

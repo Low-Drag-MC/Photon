@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.lowdragmc.lowdraglib2.client.shader.LDShaderInstance;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
@@ -12,9 +13,12 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.PhotonRegistries;
+import com.lowdragmc.photon.client.PhotonShaders;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
@@ -40,13 +44,9 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
     @LDLRegisterClient(name = "missing", registry = "photon:material", manual = true)
     final class MissingMaterial implements IMaterial {
         @Override
-        public void begin(MaterialContext context) {
+        public ShaderInstance begin(MaterialContext context) {
             RenderSystem.setShaderTexture(0, TextureManager.INTENTIONAL_MISSING_TEXTURE);
-        }
-
-        @Override
-        public void end(MaterialContext context) {
-
+            return GameRenderer.getRendertypeSolidShader();
         }
 
         @Override
@@ -70,11 +70,13 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
         return CODEC.parse(NbtOps.INSTANCE, tag).result().orElse(MISSING);
     }
 
-    void begin(MaterialContext isPreview);
-
-    void end(MaterialContext isInstancing);
+    ShaderInstance begin(MaterialContext context);
 
     IGuiTexture preview();
+
+    default void end(MaterialContext context) {
+
+    }
 
     default IMaterial copy() {
         return CODEC.encodeStart(NbtOps.INSTANCE, this).result()

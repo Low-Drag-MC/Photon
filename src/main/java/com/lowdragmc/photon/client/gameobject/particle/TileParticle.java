@@ -3,9 +3,9 @@ package com.lowdragmc.photon.client.gameobject.particle;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
-import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
@@ -13,8 +13,6 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.core.Vec3i;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Camera;
@@ -28,7 +26,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.model.IQuadTransformer;
 import net.neoforged.neoforge.client.model.data.ModelData;
-import net.neoforged.neoforge.client.model.obj.ObjModel;
 import org.joml.*;
 import org.lwjgl.system.MemoryStack;
 
@@ -89,6 +86,7 @@ public class TileParticle implements IParticle {
     protected Vector3f initialRotation;
     protected Vector4f initialColor;
     protected boolean isFirstCollision;
+    @Getter
     protected ParticleConfig config;
     @Getter
     protected IParticleEmitter emitter;
@@ -145,7 +143,7 @@ public class TileParticle implements IParticle {
 
     @Override
     public float getT(float partialTicks) {
-        return t + partialTicks / getLifetime();
+        return Mth.clamp(t + partialTicks / getLifetime(), 0, 1);
     }
 
     @Override
@@ -287,6 +285,12 @@ u     */
         return config.getSimulationSpace() == ParticleConfig.Space.Local ?
                 emitter.transform().scale() :
                 initialScale;
+    }
+
+    public Quaternionf getSpaceRotation() {
+        return config.getSimulationSpace() == ParticleConfig.Space.Local ?
+                emitter.transform().rotation() :
+                new Quaternionf();
     }
 
     public Vector3f getWorldPos(float partialTicks) {
@@ -597,21 +601,16 @@ u     */
 
         var rotation = getRealRotation(partialTicks);
         var renderMode = config.renderer.getRenderMode();
-        var quaternion = renderMode.quaternion.apply(this, camera, partialTicks);
-        if (!Vector3fHelper.isZero(rotation)) {
-            quaternion = quaternion.rotateXYZ(rotation.x, rotation.y, rotation.z);
-        }
 
         var size = getRealSize(partialTicks);
 
-        if (renderMode == RendererSetting.Particle.Mode.Model) {
+        if (renderMode == ParticleRendererSetting.Mode.Model) {
             var transform = new Matrix4f().translate(x, y ,z)
-                    .rotate(new Quaternionf().rotateXYZ(rotation.x, rotation.y, rotation.z))
-                    .scale(size)
+                    .rotate(new Quaternionf().rotateXYZ(rotation.x, rotation.y, rotation.z).mul(getSpaceRotation()))
+                    .scale(size.mul(getSpaceScale()))
                     .translate(-0.5f, -0.5f, -0.5f);
             // draw 3d model
             var model = config.renderer.getModel();
-            var uvs = getRealUVs(partialTicks);
             for (var side : MODEL_SIDES) {
                 var brightness = (side != null && config.renderer.isShade()) ? switch (side) {
                     case DOWN, UP:
@@ -625,10 +624,14 @@ u     */
                 } : 1f;
                 var quads = model.renderModel(null, null, null, side, randomSource, ModelData.EMPTY, null);
                 for (var quad : quads) {
-                    putBulkData(transform, buffer, quad, brightness, uvs, r, g, b, a, light);
+                    putBulkData(transform, buffer, quad, brightness, r, g, b, a, light);
                 }
             }
         } else {
+            var quaternion = renderMode.quaternion.apply(this, camera, partialTicks);
+            if (!Vector3fHelper.isZero(rotation)) {
+                quaternion = quaternion.rotateXYZ(rotation.x, rotation.y, rotation.z);
+            }
             var rawVertexes = new Vector3f[]{
                     new Vector3f(1.0F, -1.0F, 0.0F),
                     new Vector3f(1.0F, 1.0F, 0.0F),
@@ -645,8 +648,7 @@ u     */
                 vertex.add(x, y, z);
             }
 
-            quaternion.transform(normal);
-            normal.div(size.x * spaceScale.x, size.y * spaceScale.y, size.z * spaceScale.z).normalize();
+            normal = quaternion.transform(normal);
 
             var uvs = getRealUVs(partialTicks);
             var u0 = uvs.x();
@@ -661,13 +663,20 @@ u     */
         }
     }
 
-    public void putBulkData(Matrix4f transform, VertexConsumer buffer, BakedQuad quad, float brightness, Vector4f uvs, float red, float green, float blue, float alpha, int light) {
+    public void putBulkData(Matrix4f transform, VertexConsumer buffer, BakedQuad quad, float brightness, float red, float green, float blue, float alpha, int light) {
         int[] vertices = quad.getVertices();
         int points = vertices.length / 8;
 
         try (MemoryStack memoryStack = MemoryStack.stackPush()) {
             var byteBuffer = memoryStack.malloc(DefaultVertexFormat.BLOCK.getVertexSize());
             var intBuffer = byteBuffer.asIntBuffer();
+
+            var u0 = quad.getSprite().getU0();
+            var v0 = quad.getSprite().getV0();
+            var u1 = quad.getSprite().getU1();
+            var v1 = quad.getSprite().getV1();
+            var uw = u1 - u0;
+            var vh = v1 - v0;
 
             for (int k = 0; k < points; ++k) {
                 intBuffer.clear();
@@ -681,10 +690,9 @@ u     */
                 float nX = ((byte) normalData      ) / 127.0f;
                 float nY = ((byte)(normalData>>8 )) / 127.0f;
                 float nZ = ((byte)(normalData>>16)) / 127.0f;
-
                 if (!config.renderer.isUseBlockUV()) {
-                    u = (k == 0 || k == 3) ? uvs.x : uvs.z;
-                    v = (k == 0 || k == 1) ? uvs.y : uvs.w;
+                    u =  (u - u0) / uw;
+                    v =  (v - v0) / vh;
                 }
                 var pos = transform.transform(new Vector4f(x, y, z, 1.0F));
                 var normalMat = transform.normal(new Matrix3f());

@@ -2,7 +2,6 @@ package com.lowdragmc.photon.client.gameobject.emitter.beam;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
@@ -19,14 +18,9 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.client.Minecraft;
 import org.joml.Vector3f;
 
 import javax.annotation.Nonnull;
@@ -87,11 +81,8 @@ public class BeamConfig {
 
     private class RenderPass extends PhotonFXRenderPass {
 
-        @Override
-        public void prepareStatus(@Nonnull RenderPassPipeline pipeline) {
-            material.pre();
-            material.getMaterial().begin(MaterialContext.NORMAL);
-            Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
+        public RenderPass() {
+            super(renderer, material);
         }
 
         @Override
@@ -99,15 +90,5 @@ public class BeamConfig {
             return tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
         }
 
-        @Override
-        public void releaseStatus(@Nonnull RenderPassPipeline pipeline) {
-            material.getMaterial().end(MaterialContext.NORMAL);
-            material.post();
-        }
-
-        @Override
-        public int layerOrder() {
-            return renderer.getOrderInLayer();
-        }
     }
 }

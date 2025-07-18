@@ -47,6 +47,9 @@ public class RenderPassPipeline extends BufferBuilder {
     private static final int MINIMUM_TASK_SIZE = 64;
     private static final BufferBuilderPool BUILDER_POOL = new BufferBuilderPool();
 
+    @Getter
+    private final ByteBufferBuilder sortingBuffer;
+
     // runtime
     @Nullable
     @Getter
@@ -69,8 +72,9 @@ public class RenderPassPipeline extends BufferBuilder {
         };
     }
 
-    public RenderPassPipeline() {
-        super(new ByteBufferBuilder(1), VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
+    public RenderPassPipeline(ByteBufferBuilder sortingBuffer) {
+        super(sortingBuffer, VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
+        this.sortingBuffer = sortingBuffer;
     }
 
     @Override
@@ -227,41 +231,29 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     private void renderParticles(PhotonFXRenderPass renderPass, Queue<IParticle> particleQueue) {
-        if (renderPass.isParallel()) {
-            renderParticlesParallel(renderPass, particleQueue);
-        } else {
+//        if (renderPass.isParallel()) {
+//            renderParticlesParallel(renderPass, particleQueue);
+//        } else {
             renderParticlesSequential(renderPass, particleQueue);
-        }
+//        }
     }
 
-    private void renderParticlesParallel(PhotonFXRenderPass renderPass, Queue<IParticle> particleQueue) {
-        try (var forkJoinPool = ForkJoinPool.commonPool()) {
-            var maxThreads = ForkJoinPool.getCommonPoolParallelism() + 1;
-            var task = new ParallelRenderingTask(Math.max(particleQueue.size() / maxThreads, MINIMUM_TASK_SIZE), renderPass, particleQueue.spliterator());
-            for (var pair : forkJoinPool.submit(task).get()) {
-                var data = pair.getB().build();
-                if (data != null) {
-                    BufferUploader.drawWithShader(data);
-                }
-                BUILDER_POOL.release(pair.getA());
-            }
-        } catch (Throwable throwable) {
-            Photon.LOGGER.error("Error rendering particles in parallel", throwable);
-        }
-    }
+//    private void renderParticlesParallel(PhotonFXRenderPass renderPass, Queue<IParticle> particleQueue) {
+//        try (var forkJoinPool = ForkJoinPool.commonPool()) {
+//            var maxThreads = ForkJoinPool.getCommonPoolParallelism() + 1;
+//            var task = new ParallelRenderingTask(Math.max(particleQueue.size() / maxThreads, MINIMUM_TASK_SIZE), renderPass, particleQueue.spliterator());
+//            var sorting = renderPass.getSorting();
+//            for (var pair : forkJoinPool.submit(task).get()) {
+//                uploadMeshData(pair.getB(), sorting);
+//                BUILDER_POOL.release(pair.getA());
+//            }
+//        } catch (Throwable throwable) {
+//            Photon.LOGGER.error("Error rendering particles in parallel", throwable);
+//        }
+//    }
 
     private void renderParticlesSequential(PhotonFXRenderPass renderPass, Queue<IParticle> particleQueue) {
-        var tesselator = Tesselator.getInstance();
-        var buffer = renderPass.begin(tesselator);
-
-        for (var particle : particleQueue) {
-            particle.render(buffer, camera, partialTicks);
-        }
-
-        var data = buffer.build();
-        if (data != null) {
-            BufferUploader.drawWithShader(data);
-        }
+        renderPass.drawParticles(this, particleQueue, camera, partialTicks);
     }
 
     private void clearRenderingState() {
@@ -279,38 +271,38 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     /// Push data parallel
-    class ParallelRenderingTask extends RecursiveTask<List<Pair<Tesselator, BufferBuilder>>> {
-        private final int threshold;
-        private final PhotonFXRenderPass renderPass;
-        private final Spliterator<IParticle> particleSpliterator;
-
-        public ParallelRenderingTask(int threshold, PhotonFXRenderPass renderPass, Spliterator<IParticle> particleSpliterator) {
-            this.renderPass = renderPass;
-            this.particleSpliterator = particleSpliterator;
-            this.threshold = threshold;
-        }
-
-        @Override
-        protected List<Pair<Tesselator, BufferBuilder>> compute() {
-            if (particleSpliterator.estimateSize() > threshold) {
-                var split = particleSpliterator.trySplit();
-                var firstTask = new ParallelRenderingTask(threshold, renderPass, particleSpliterator).fork();
-
-                List<Pair<Tesselator, BufferBuilder>> result = new ArrayList<>();
-                if (split != null) {
-                    result.addAll(new ParallelRenderingTask(threshold, renderPass, split).compute());
-                }
-                result.addAll(firstTask.join());
-
-                return result;
-            } else {
-                var tesselator = BUILDER_POOL.acquire();
-                var buffer = renderPass.begin(tesselator);
-
-                particleSpliterator.forEachRemaining(p -> p.render(buffer, camera, partialTicks));
-                return List.of(new Pair<>(tesselator, buffer));
-            }
-        }
-    }
+//    class ParallelRenderingTask extends RecursiveTask<List<Pair<Tesselator, BufferBuilder>>> {
+//        private final int threshold;
+//        private final PhotonFXRenderPass renderPass;
+//        private final Spliterator<IParticle> particleSpliterator;
+//
+//        public ParallelRenderingTask(int threshold, PhotonFXRenderPass renderPass, Spliterator<IParticle> particleSpliterator) {
+//            this.renderPass = renderPass;
+//            this.particleSpliterator = particleSpliterator;
+//            this.threshold = threshold;
+//        }
+//
+//        @Override
+//        protected List<Pair<Tesselator, BufferBuilder>> compute() {
+//            if (particleSpliterator.estimateSize() > threshold) {
+//                var split = particleSpliterator.trySplit();
+//                var firstTask = new ParallelRenderingTask(threshold, renderPass, particleSpliterator).fork();
+//
+//                List<Pair<Tesselator, BufferBuilder>> result = new ArrayList<>();
+//                if (split != null) {
+//                    result.addAll(new ParallelRenderingTask(threshold, renderPass, split).compute());
+//                }
+//                result.addAll(firstTask.join());
+//
+//                return result;
+//            } else {
+//                var tesselator = BUILDER_POOL.acquire();
+//                var buffer = renderPass.begin(tesselator);
+//
+//                particleSpliterator.forEachRemaining(p -> p.render(buffer, camera, partialTicks));
+//                return List.of(new Pair<>(tesselator, buffer));
+//            }
+//        }
+//    }
 
 }

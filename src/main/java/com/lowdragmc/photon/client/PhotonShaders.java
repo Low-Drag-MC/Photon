@@ -24,11 +24,15 @@ public class PhotonShaders {
     @Getter
     private static ShaderInstance brightPassShader;
     @Getter
-    private static ShaderInstance separableBlurShader;
+    private static ShaderInstance downSamplingShader;
     @Getter
-    private static ShaderInstance bloomAddPassShader;
-    @Getter
-    private static ShaderInstance bloomScatterPassShader;
+    private static ShaderInstance upSamplingShader;
+//    @Getter
+//    private static ShaderInstance separableBlurShader;
+//    @Getter
+//    private static ShaderInstance bloomAddPassShader;
+//    @Getter
+//    private static ShaderInstance bloomScatterPassShader;
     @Getter
     private static ShaderInstance bloomFinalScatterPassShader;
 
@@ -59,14 +63,20 @@ public class PhotonShaders {
                             Photon.id("bright_pass"), DefaultVertexFormat.POSITION),
                     shaderInstance -> brightPassShader = shaderInstance);
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
-                            Photon.id("separable_blur"), DefaultVertexFormat.POSITION),
-                    shaderInstance -> separableBlurShader = shaderInstance);
+                            Photon.id("down_sampling"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> downSamplingShader = shaderInstance);
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
-                            Photon.id("bloom_add_pass"), DefaultVertexFormat.POSITION),
-                    shaderInstance -> bloomAddPassShader = shaderInstance);
-            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
-                            Photon.id("bloom_scatter_pass"), DefaultVertexFormat.POSITION),
-                    shaderInstance -> bloomScatterPassShader = shaderInstance);
+                            Photon.id("up_sampling"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> upSamplingShader = shaderInstance);
+//            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+//                            Photon.id("separable_blur"), DefaultVertexFormat.POSITION),
+//                    shaderInstance -> separableBlurShader = shaderInstance);
+//            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+//                            Photon.id("bloom_add_pass"), DefaultVertexFormat.POSITION),
+//                    shaderInstance -> bloomAddPassShader = shaderInstance);
+//            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+//                            Photon.id("bloom_scatter_pass"), DefaultVertexFormat.POSITION),
+//                    shaderInstance -> bloomScatterPassShader = shaderInstance);
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
                             Photon.id("bloom_final_scatter_pass"), DefaultVertexFormat.POSITION),
                     shaderInstance -> bloomFinalScatterPassShader = shaderInstance);
