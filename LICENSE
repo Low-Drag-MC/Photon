@@ -1,4 +1,4 @@
-Copyright (c) 2025 [Photon-2.x]
+Copyright (c) 2025 Photon by KilaBash
 
 This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
 
@@ -16,13 +16,38 @@ Under the following terms:
 
 4. **No additional restrictions** — You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.
 
+---
+
 ## Special Notes for Minecraft Mod Distributors:
 
 - You are allowed to include this mod in modpacks, provided the modpack itself is distributed non-commercially.
-- Any commercial distribution (including monetized modpacks or servers) requires the author's written permission.
+- You are allowed to include this mod in your mod (via "jar-in-jar"), provided the mod itself is not sold separately or monetized directly.
+- Any commercial distribution of this mod (outside of modpack use) requires the author's written permission.
 - Forks and modified versions must retain this license and credit the original author.
+
+---
+
+## Content Created Using This Mod:
+
+Any in-game or external content created using the tools, Addons, APIs, or functionalities provided by this mod (such as data packs, custom recipes, configurations, scripts, structures, etc.) is **not considered part of this mod** and is **not covered** by this license.
+
+Creators of such content are free to distribute, license, or use their creations under any terms they choose, including for commercial purposes, as long as the original mod itself is not redistributed in violation of this license.
+
+This clause does not grant permission to redistribute, modify, or commercialize the original mod code or assets beyond the scope of fair use or explicit permissions described above.
+
+---
+
+## Clarification on Derivative Works:
+
+This license applies only to the original mod source code and assets provided in this repository.
+
+You are free to create derivative works (e.g., other mods, add-ons, maps, videos, or tools inspired by or using this mod), and these derivative products are not required to adopt this license. You may choose any license for your derivative creations, as long as the original mod code/assets are not directly reused beyond what this license allows.
+
+However, direct modifications or forks of this mod must continue to comply with the CC BY-NC-SA 4.0 license and must provide attribution.
+
+---
 
 Full license text: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode  
 Human-readable summary: https://creativecommons.org/licenses/by-nc-sa/4.0/
 
-For commercial licensing inquiries, contact: [yefancy@foxmail.com]
+For commercial licensing inquiries, contact: yefancy@foxmail.com
