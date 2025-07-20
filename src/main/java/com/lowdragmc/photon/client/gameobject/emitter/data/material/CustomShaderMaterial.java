@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
+import com.lowdragmc.lowdraglib2.client.shader.LDLibShaders;
 import com.lowdragmc.lowdraglib2.client.shader.LDProgramDefineManager;
 import com.lowdragmc.lowdraglib2.client.shader.LDShaderInstance;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
@@ -18,6 +19,7 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonShaders;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.mojang.blaze3d.shaders.Program;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import lombok.Getter;
@@ -38,6 +40,7 @@ import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
@@ -52,13 +55,14 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     private ResourceLocation shaderLocation = Photon.id("circle");
     @Configurable(subConfigurable = true)
     public final CurveTexture curveTexture = new CurveTexture(MAX_SAMPLING, MAX_SAMPLER);
+    @Configurable(subConfigurable = true)
+    public final GradientTexture gradientTexture = new GradientTexture(MAX_SAMPLING, MAX_SAMPLER);
     //runtime
     private final Map<String, LDShaderInstance> shaders = new HashMap<>();
     @Nullable
     private LDShaderInstance shaderInstance;
     @Getter
     private String compiledErrorMessage = "";
-    private boolean requireCurveTexture = false;
 
     public CustomShaderMaterial() {}
 
@@ -69,17 +73,6 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public void setShader(ResourceLocation shaderLocation) {
         this.shaderLocation = shaderLocation;
         recompile();
-    }
-
-    @Override
-    public void setupUniform(MaterialContext context) {
-        super.setupUniform(context);
-        if (requireCurveTexture && getShader(context) instanceof LDShaderInstance shader) {
-            var texture = curveTexture.getCurveTexture();
-            if (shader.getShaderInstanceAccessor().getSamplerMap().get("SamplerCurve") != texture) {
-                shader.setSampler("SamplerCurve", texture);
-            }
-        }
     }
 
     @Override
@@ -105,6 +98,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         recompile();
         if (shaderInstance != null) {
             shaderInstance.deserializeNBT(provider, shaderData.getCompound("shaderData"));
+            attachDynamicSamplers(shaderInstance);
         }
     }
 
@@ -114,7 +108,6 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     public void recompile() {
         compiledErrorMessage = "";
-        requireCurveTexture = false;
 
         if (shaderInstance != null && !isCompiledError()) {
             shaderInstance.close();
@@ -123,10 +116,6 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         shaders.clear();
         try {
             this.shaderInstance = loadShaderInstance(shaderLocation, null);
-            var samplerNames = shaderInstance.getShaderInstanceAccessor().getSamplerNames();
-            if (samplerNames.contains("SamplerCurve")) {
-                requireCurveTexture = true;
-            }
         } catch (Throwable e) {
             Photon.LOGGER.error("Failed to recompile shader", e);
             compiledErrorMessage = e.getMessage();
@@ -144,10 +133,29 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             var texture = Minecraft.getInstance().getTextureManager().getTexture(InventoryMenu.BLOCK_ATLAS);
             shader.setSampler("SamplerBlockAtlas", texture);
         }
+        attachDynamicSamplers(shader);
         if (define != null) {
             LDProgramDefineManager.removeProgramDefine(define);
         }
         return shader;
+    }
+
+    private void attachDynamicSamplers(LDShaderInstance shader) {
+        var samplerNames = shader.getShaderInstanceAccessor().getSamplerNames();
+        if (samplerNames.contains("SamplerCurve")) {
+            shader.addDynamicSampler("SamplerCurve", curveTexture::getCurveTexture);
+        }
+        if (samplerNames.contains("SamplerGradient")) {
+            shader.addDynamicSampler("SamplerGradient", gradientTexture::getGradientTexture);
+        }
+        if (samplerNames.contains("SamplerSceneColor")) {
+            shader.addDynamicSampler("SamplerSceneColor", () -> Optional.ofNullable(RenderPassPipeline.getCurrent())
+                    .map(pipeline -> pipeline.getSceneSampler().getColorTextureId()).orElse(-1));
+        }
+        if (samplerNames.contains("SamplerSceneDepth")) {
+            shader.addDynamicSampler("SamplerSceneDepth", () -> Optional.ofNullable(RenderPassPipeline.getCurrent())
+                    .map(pipeline -> pipeline.getSceneSampler().getDepthTextureId()).orElse(-1));
+        }
     }
 
     @Override
@@ -168,10 +176,12 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             // remove cache
             Program.Type.FRAGMENT.getPrograms().remove(shaderInstance.getFragmentProgram().getName());
             Program.Type.VERTEX.getPrograms().remove(shaderInstance.getVertexProgram().getName());
+            LDLibShaders.GEOMETRY_TYPE.getPrograms().remove(shaderInstance.getVertexProgram().getName());
             var data = shaderInstance.serializeNBT(Platform.getFrozenRegistry());
             try {
                 var defineShader = loadShaderInstance(shaderLocation, define);
                 defineShader.deserializeNBT(Platform.getFrozenRegistry(), data);
+                attachDynamicSamplers(defineShader);
                 return defineShader;
             } catch (Throwable e) {
                 Photon.LOGGER.error("Failed to recompile shader", e);
@@ -219,6 +229,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                     recompile();
                     if (previousData != null && shaderInstance != null) {
                         shaderInstance.deserializeNBT(Platform.getFrozenRegistry(), previousData);
+                        attachDynamicSamplers(shaderInstance);
                     }
                     reloadShaderConfigurator(shaderConfigurator);
                 }).setText("photon.reload_shader").layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));

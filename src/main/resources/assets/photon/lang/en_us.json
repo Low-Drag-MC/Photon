@@ -61,6 +61,7 @@
   "photon.emitter.config.colorBySpeed.speedRange": "Remaps speed in the defined range to a color.",
   "photon.emitter.config.colorOverLifetime.color": "Controls the color during its lifetime.",
   "photon.emitter.config.emission.emissionRate": "The number of particles emitted per tick. The decimal part calculates the probability.",
+  "photon.emitter.config.emission.distanceRate": "The rate of particles emitted per meter. The decimal part calculates the probability.",
   "photon.emitter.config.emission.emissionMode": "The emission mode of the decimal part, fixed interval emission or random emission.",
   "photon.emitter.config.emission.bursts": "Emission of extra particles at specific times during the duration of the system.",
   "photon.emitter.config.emission.bursts.time": "When the burst will trigger. (tick)",

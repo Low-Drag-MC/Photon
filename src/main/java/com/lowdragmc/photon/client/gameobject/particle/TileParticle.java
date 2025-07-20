@@ -630,7 +630,7 @@ u     */
         } else {
             var quaternion = renderMode.quaternion.apply(this, camera, partialTicks);
             if (!Vector3fHelper.isZero(rotation)) {
-                quaternion = quaternion.rotateXYZ(rotation.x, rotation.y, rotation.z);
+                quaternion = new Quaternionf(quaternion).rotateXYZ(rotation.x, rotation.y, rotation.z);
             }
             var rawVertexes = new Vector3f[]{
                     new Vector3f(1.0F, -1.0F, 0.0F),

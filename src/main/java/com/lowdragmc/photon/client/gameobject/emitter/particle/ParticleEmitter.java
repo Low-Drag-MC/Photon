@@ -14,6 +14,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassP
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import lombok.Getter;
+import lombok.Setter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.phys.AABB;
@@ -38,6 +39,8 @@ public class ParticleEmitter extends Emitter {
     public final ParticleConfig config;
 
     // runtime
+    @Getter @Setter
+    protected float accumulatedDistance = 0;
     @Getter
     protected final Map<PhotonFXRenderPass, Queue<IParticle>> particles = new LinkedHashMap<>();
     public final Queue<IParticle> waitToAdded = Queues.newArrayDeque();
@@ -79,10 +82,12 @@ public class ParticleEmitter extends Emitter {
 
     @Override
     public void update() {
+        // calculate distance
+        accumulatedDistance += getVelocity().length();
         // emit new particle
         var available = config.maxParticles - getParticleAmount();
         if (!removed && getParticleAmount() < config.maxParticles) {
-            available = Math.min(config.emission.getEmissionCount(this.age, t, getRandomSource()), available);
+            available = Math.min(config.emission.getEmissionCount(this, getRandomSource()), available);
             for (int i = 0; i < available; i++) {
                 emitParticle(createNewParticle());
             }

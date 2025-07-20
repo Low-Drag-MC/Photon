@@ -6,6 +6,7 @@ uniform vec4 ColorModulator;
 uniform float FogStart;
 uniform float FogEnd;
 uniform vec4 FogColor;
+uniform vec4 HDR;
 uniform float DiscardThreshold;
 uniform float Radius;
 
@@ -22,5 +23,6 @@ void main() {
     if (color.a < DiscardThreshold) {
         discard;
     }
+    color.rgb += HDR.rgb * HDR.a;
     fragColor = linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
 }

@@ -16,6 +16,8 @@ import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+
 @Mod(Photon.MOD_ID)
 public class Photon {
     public static final String MOD_ID = "photon";
@@ -30,6 +32,9 @@ public class Photon {
             new PhotonClientProxy(eventBus);
         } else {
             new PhotonCommonProxy(eventBus);
+        }
+        if (new File(Platform.getGamePath().toFile(), "assets/photon").mkdirs()) {
+            LOGGER.info("Created photon config folder");
         }
     }
 

@@ -15,6 +15,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.nbt.IntTag;
@@ -47,6 +48,10 @@ public class EmissionSetting implements IConfigurable, IPersistedSerializable {
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 0.5f, curveConfig = @CurveConfig(bound = {0, 5}, xAxis = "duration", yAxis = "emission rate"))
     protected NumberFunction emissionRate = NumberFunction.constant(0.5f);
 
+    @Configurable(tips = "photon.emitter.config.emission.distanceRate")
+    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 0.5f, curveConfig = @CurveConfig(bound = {0, 5}, xAxis = "duration", yAxis = "emission rate"))
+    protected NumberFunction distanceRate = NumberFunction.constant(0);
+
     @Configurable(tips = "photon.emitter.config.emission.emissionMode")
     protected Mode emissionMode = Mode.Exacting;
 
@@ -55,10 +60,13 @@ public class EmissionSetting implements IConfigurable, IPersistedSerializable {
     @ReadOnlyManaged(serializeMethod = "burstsSerialize", deserializeMethod = "burstsDeserialize")
     protected List<Burst> bursts = new ArrayList<>();
 
-    public int getEmissionCount(int emitterAge, float t, RandomSource randomSource) {
-        var result = emissionRate.get(randomSource, t);
-        var number = result.intValue();
-        var decimals = result.floatValue() - result.intValue();
+    public int getEmissionCount(ParticleEmitter particleEmitter, RandomSource randomSource) {
+        var emitterAge = particleEmitter.getAge();
+        var t = particleEmitter.getT();
+        var timeValue = emissionRate.get(randomSource, t);
+        var distanceValue = distanceRate.get(randomSource, t).floatValue();
+        var number = timeValue.intValue();
+        var decimals = timeValue.floatValue() - timeValue.intValue();
         if (emissionMode == Mode.Exacting) {
             if (decimals > 0 && emitterAge % ((int) (1 / decimals)) == 0) {
                 number += 1;
@@ -68,6 +76,12 @@ public class EmissionSetting implements IConfigurable, IPersistedSerializable {
                 number += 1;
             }
         }
+        if (distanceValue > 0) {
+            var emitDistance = (int) (particleEmitter.getAccumulatedDistance() / distanceValue);
+            number += emitDistance;
+            particleEmitter.setAccumulatedDistance(particleEmitter.getAccumulatedDistance() - emitDistance * distanceValue);
+        }
+
         for (var bust : bursts) {
             var realAge = emitterAge - bust.time;
             if (realAge >= 0) {

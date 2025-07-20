@@ -402,7 +402,7 @@ public class ParticleInstanceRenderer {
                 var uvs = p.getRealUVs(partialTicks);
                 var quaternion = renderMode.quaternion.apply(p, camera, partialTicks);
                 if (!Vector3fHelper.isZero(rotation)) {
-                    quaternion = quaternion.rotateXYZ(rotation.x, rotation.y, rotation.z);
+                    quaternion = new Quaternionf(quaternion).rotateXYZ(rotation.x, rotation.y, rotation.z);
                 }
 
                 // pos vec3

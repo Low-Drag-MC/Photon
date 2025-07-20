@@ -154,7 +154,7 @@ public class SubEmittersSetting extends ToggleGroup {
             candidates.add("");
             Minecraft.getInstance().getResourceManager()
                     .listResources("fx", arg -> arg.getPath().endsWith(".fx"))
-                    .keySet().forEach(fx -> candidates.add(fx.toString()));
+                    .keySet().forEach(fx -> candidates.add(fx.toString().replace(":fx/", ":").replace(".fx", "")));
             father.addConfigurators(new SelectorConfigurator<>("fx",
                     () -> fxLocation == null ? "" : fxLocation.toString(),
                     v -> fxLocation = v.isEmpty() ? null : ResourceLocation.parse(v),

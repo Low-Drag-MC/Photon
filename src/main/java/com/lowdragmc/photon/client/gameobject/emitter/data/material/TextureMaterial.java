@@ -56,7 +56,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     }
 
     @Configurable
-    protected ResourceLocation texture = ResourceLocation.parse("textures/particle/glow.png");
+    protected ResourceLocation texture = Photon.id("textures/particle/circle.png");
     @Configurable
     @ConfigNumber(range = {0, 1})
     protected float discardThreshold = 0.1f;

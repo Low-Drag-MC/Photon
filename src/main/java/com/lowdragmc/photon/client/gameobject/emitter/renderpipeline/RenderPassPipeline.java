@@ -23,13 +23,10 @@ import net.minecraft.client.renderer.GameRenderer;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
-import oshi.util.tuples.Pair;
 
 import javax.annotation.Nonnull;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.RecursiveTask;
 
 public class RenderPassPipeline extends BufferBuilder {
     public static class BufferBuilderPool {
@@ -61,6 +58,9 @@ public class RenderPassPipeline extends BufferBuilder {
     private float partialTicks;
     @Getter
     private HDRTarget drawTarget;
+    private boolean isSceneSamplerDirty = true;
+    @Nullable
+    private HDRTarget sceneSampler;
 
     public static Comparator<PhotonFXRenderPass> makeRenderPassComparator() {
         return (passOne, passTwo) -> {
@@ -91,6 +91,7 @@ public class RenderPassPipeline extends BufferBuilder {
                 renderParticles(renderPass, particleQueue);
                 renderPass.releaseStatus(this);
             }
+            markSceneSamplerDirty();
         }
         clearRenderingState();
         afterRendering();
@@ -157,9 +158,10 @@ public class RenderPassPipeline extends BufferBuilder {
         } else {
             var mainTarget = Minecraft.getInstance().getMainRenderTarget();
             drawTarget.copyColorFrom(mainTarget);
-            if (!drawTarget.hasOtherAttachedDepthTexture() || drawTarget.getAttachedDepthTexture() != mainTarget.getDepthTextureId()) {
-                drawTarget.attachDepthBuffer(mainTarget);
-            }
+//            if (!drawTarget.hasOtherAttachedDepthTexture() || drawTarget.getAttachedDepthTexture() != mainTarget.getDepthTextureId()) {
+//                drawTarget.attachDepthBuffer(mainTarget);
+//            }
+            drawTarget.attachDepthBuffer(mainTarget);
         }
         drawTarget.bindWrite(false);
     }
@@ -305,4 +307,21 @@ public class RenderPassPipeline extends BufferBuilder {
 //        }
 //    }
 
+    ///  Scene Sampler
+    public @Nonnull HDRTarget getSceneSampler() {
+        if (sceneSampler != null && !isSceneSamplerDirty) return sceneSampler;
+        updateSceneSampler();
+        drawTarget.bindWrite(false);
+        return sceneSampler;
+    }
+
+    public void markSceneSamplerDirty() {
+        isSceneSamplerDirty = true;
+    }
+
+    private void updateSceneSampler() {
+        sceneSampler = resize(sceneSampler, drawTarget.width, drawTarget.height, true);
+        sceneSampler.copyDepthAndColorFrom(drawTarget);
+        isSceneSamplerDirty = false;
+    }
 }

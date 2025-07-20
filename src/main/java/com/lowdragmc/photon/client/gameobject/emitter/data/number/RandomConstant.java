@@ -1,11 +1,16 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number;
 
+import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.configurator.NumberFunctionConfigurator;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
+import org.appliedenergistics.yoga.YogaEdge;
+import org.appliedenergistics.yoga.YogaFlexDirection;
+import org.appliedenergistics.yoga.YogaGutter;
+import org.appliedenergistics.yoga.YogaWrap;
 
 import java.util.function.Supplier;
 
@@ -66,39 +71,43 @@ public class RandomConstant implements NumberFunction {
 
     @Override
     public void createConfigurator(NumberFunctionConfigurator configurator) {
-//        var size = group.getSize();
-//        int width;
-//        WidgetGroup aGroup, bGroup;
-//        if (size.width > 60) {
-//            width = size.width / 2;
-//            aGroup = new WidgetGroup(0, 0, width, size.height);
-//            bGroup = new WidgetGroup(width, 0, width, size.height);
-//        } else {
-//            width = size.width;
-//            aGroup = new WidgetGroup(0, 0, width, size.height);
-//            bGroup = new WidgetGroup(0, 15, width, size.height);
-//            group.setSize(new Size(size.width, size.height + 15));
-//        }
-//
-//        group.addWidget(aGroup);
-//        group.addWidget(bGroup);
-//        setupNumberConfigurator(configurator, width, aGroup, new NumberConfigurator("", () -> isDecimals ? a.floatValue() : a.intValue(), number -> {
-//            setA(number);
-//            configurator.updateValue(this);
-//        }, a, true));
-//        setupNumberConfigurator(configurator, width, bGroup, new NumberConfigurator("", () -> isDecimals ? b.floatValue() : b.intValue(), number -> {
-//            setB(number);
-//            configurator.updateValue(this);
-//        }, b, true));
+        NumberConfigurator x, y;
 
+        configurator.inlineContainer.addChildren(
+                x = new NumberConfigurator("a", () -> a,
+                        value -> {
+                            setA(value.floatValue());
+                            configurator.updateValue(this);
+                        },
+                        a, true)
+                        .setRange(configurator.getConfig().min(), configurator.getConfig().max())
+                        .setWheel(configurator.getConfig().wheelDur())
+                        .setType(configurator.getConfig().numberType()),
+                y = new NumberConfigurator("b", () -> b,
+                        value -> {
+                            setB(value.floatValue());
+                            configurator.updateValue(this);
+                        },
+                        b, true)
+                        .setRange(configurator.getConfig().min(), configurator.getConfig().max())
+                        .setWheel(configurator.getConfig().wheelDur())
+                        .setType(configurator.getConfig().numberType())
+        ).layout(layout -> {
+            layout.setGap(YogaGutter.ALL, 2);
+            layout.setMargin(YogaEdge.LEFT, 2);
+            layout.setFlexDirection(YogaFlexDirection.ROW);
+            layout.setWrap(YogaWrap.WRAP);
+        });
+        x.layout(layout -> {
+            layout.setFlex(1);
+            layout.setMinWidth(40);
+            layout.setHeight(14);
+        });
+        y.layout(layout -> {
+            layout.setFlex(1);
+            layout.setMinWidth(40);
+            layout.setHeight(14);
+        });
     }
-
-//    private void setupNumberConfigurator(NumberFunctionConfigurator configurator, int width, WidgetGroup group, NumberConfigurator widget) {
-//        group.addWidget(widget
-//                .setRange(configurator.getConfig().min(), configurator.getConfig().max())
-//                .setWheel(configurator.getConfig().isDecimals() ? configurator.getConfig().wheelDur() : Math.max(1, (int) configurator.getConfig().wheelDur())));
-//        widget.setConfiguratorContainer(configurator.getConfiguratorContainer());
-//        widget.init(width);
-//    }
 
 }

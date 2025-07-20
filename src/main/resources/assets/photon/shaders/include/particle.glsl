@@ -56,27 +56,35 @@ struct ParticleData {
 
 ParticleData getParticleData() {
     ParticleData data;
-    #ifdef PARTICLE_INSTANCE
+
+#ifdef PARTICLE_INSTANCE
+
     mat3 rotMat = quatToMat(iRot);
     data.Position = (rotMat * vec3(aPos.xy * iSize, aPos.z)) * iScale + iPos;
     data.Color = iColor;
     data.UV = mix(iUV.xy, iUV.zw, aPos.xy * 0.5 + 0.5);
     data.LightUV = ivec2((iLight >> 16) & 0xFFFF, iLight & 0xFFFF);
     data.Normal = normalize(rotMat * vec3(0, 0, 1));
-    #elif defined(PARTICLE_MODEL_INSTANCE)
+
+#elif defined(PARTICLE_MODEL_INSTANCE)
+
     mat3 rotMat = quatToMat(iRot);
     vec3 centeredPos = aPos - vec3(0.5);   // centered
     data.Position = (rotMat * (centeredPos * iScale)) + iPos;
-    data.Color = iColor * aBrightness;
+    data.Color = vec4(iColor.rgb * aBrightness, iColor.a);
     data.UV = aUV;
     data.LightUV = ivec2((iLight >> 16) & 0xFFFF, iLight & 0xFFFF);
     data.Normal = normalize(rotMat * aNormal);
-    #else
+
+#else
+
     data.Position = Position;
     data.Color = Color;
     data.UV = UV0;
     data.LightUV = UV2;
     data.Normal = Normal;
-    #endif
+
+#endif
+
     return data;
 }
