@@ -11,6 +11,7 @@
   "editor.edit_curve": "edit curve",
   "photon.add_fx_object": "add fx object",
   "photon.remove_fx_object": "remove fx object",
+  "photon.copy_fx_object": "copy fx object",
   "photon.move_fx_object": "move fx object",
   "photon.shader": "shader",
   "photon.reload_shader": "reload shader",

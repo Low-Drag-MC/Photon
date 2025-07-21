@@ -29,8 +29,7 @@ import org.appliedenergistics.yoga.YogaOverflow;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.Comparator;
-import java.util.Set;
+import java.util.*;
 
 public class FXHierarchyView extends View {
     public record DraggingNode(FXObjectTreeNode draggedNode) {}
@@ -342,8 +341,42 @@ public class FXHierarchyView extends View {
                 ));
 
             });
+            menu.leaf(Icons.COPY, "ldlib.gui.editor.menu.copy", () -> {
+                var nodes = treeList.getSelected();
+                if (!isSelectedNodeValid(nodes)) return;
+                var copied = nodes.stream().map(FXObjectTreeNode::getKey).map(this::copySceneObject).flatMap(Collection::stream).toList();
+                fxEditor.historyView.pushHistory(Component.translatable("photon.copy_fx_object"), EditAction.of(
+                        () -> {
+                            for (var copiedFXObject : copied) {
+                                addSceneObject(copiedFXObject);
+                            }
+                            fxEditor.reloadEffect();
+                        },
+                        () -> {
+                            for (var copiedFXObject : copied) {
+                                removeSceneObject(copiedFXObject);
+                            }
+                            fxEditor.reloadEffect();
+                        }
+                ));
+            });
         }
         return menu;
+    }
+
+    private List<IFXObject> copySceneObject(IFXObject toCopied) {
+        List<IFXObject> result = new ArrayList<>();
+        var copied = toCopied.deepCopy();
+        result.add(copied);
+        copied.transform()._refreshInternalID();
+        for (var child : toCopied.children()) {
+            if (child instanceof IFXObject childFXObject) {
+                var copiedChildren = copySceneObject(childFXObject);
+                copiedChildren.getFirst().transform().parent(copied.transform(), false);
+                result.addAll(copiedChildren);
+            }
+        }
+        return result;
     }
 
     public void addSceneObject(IFXObject fxObject) {
