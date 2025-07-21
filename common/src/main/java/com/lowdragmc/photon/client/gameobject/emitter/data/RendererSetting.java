@@ -10,6 +10,12 @@ import com.lowdragmc.lowdraglib.gui.editor.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Color;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Gradient;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomColor;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGradient;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import lombok.Getter;
 import lombok.Setter;
@@ -46,6 +52,12 @@ public class RendererSetting {
 
     @Configurable(tips = "photon.emitter.config.renderer.bloomEffect")
     protected boolean bloomEffect = false;
+
+    @Setter
+    @Getter
+    @Configurable(tips = "photon.emitter.config.renderer.bloomColor")
+    @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
+    protected NumberFunction bloomColor = NumberFunction.color(-1);
 
     @Configurable(name = "cull", subConfigurable = true, tips = "photon.emitter.config.renderer.cull")
     protected final Cull cull = new Cull();

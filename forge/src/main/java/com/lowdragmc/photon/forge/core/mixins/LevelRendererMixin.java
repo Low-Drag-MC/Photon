@@ -43,9 +43,7 @@ public class LevelRendererMixin {
     )
     private void prepareForParticleRendering(PoseStack poseStack, float partialTick, long finishNanoTime, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f projectionMatrix, CallbackInfo ci) {
         PhotonParticleRenderType.prepareForParticleRendering(cullingFrustum);
-        if (!Photon.isShaderModInstalled()) { // if we install shader mod, it will help to do it.
-            MultiBufferSource.BufferSource bufferSource = this.renderBuffers.bufferSource();
-            this.minecraft.particleEngine.render(poseStack, bufferSource, lightTexture, camera, partialTick, cullingFrustum);
-        }
+        MultiBufferSource.BufferSource bufferSource = this.renderBuffers.bufferSource();
+        this.minecraft.particleEngine.render(poseStack, bufferSource, lightTexture, camera, partialTick, cullingFrustum);
     }
 }

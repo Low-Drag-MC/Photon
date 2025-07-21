@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
-import com.lowdragmc.lowdraglib.client.shader.Shaders;
 import com.lowdragmc.lowdraglib.gui.editor.ColorPattern;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ColorConfigurator;
@@ -15,6 +14,7 @@ import com.lowdragmc.lowdraglib.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib.gui.widget.*;
 import com.lowdragmc.lowdraglib.utils.ColorUtils;
 import com.lowdragmc.lowdraglib.utils.Size;
+import com.lowdragmc.photon.client.postprocessing.BloomEffect;
 import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -89,7 +89,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     }
 
     public boolean isCompiledError() {
-        return getShader() == Shaders.getParticleShader();
+        return getShader() == BloomEffect.getBloomShader();
     }
 
     public void recompile() {
@@ -97,7 +97,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         uniformCache = null;
         compiledErrorMessage = "";
         var removed = COMPILED_SHADERS.remove(this.shader);
-        if (removed != null && removed != Shaders.getParticleShader()) {
+        if (removed != null && removed != BloomEffect.getBloomShader()) {
             removed.close();
         }
     }
@@ -110,7 +110,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             } catch (Throwable e) {
                 compiledErrorMessage = e.getMessage();
             }
-            return Shaders.getParticleShader();
+            return BloomEffect.getBloomShader();
         });
     }
 
@@ -128,7 +128,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                 uniformCache.run();
             } else if (!uniformTag.isEmpty() && getShader() instanceof ShaderInstanceAccessor shaderInstance) {
                 // compile
-                uniformCache = () -> {};
+                uniformCache = () -> {
+                };
                 if (uniformTag.contains("samplers")) {
                     var samplers = uniformTag.getCompound("samplers");
                     var samplerNames = new HashSet<>(shaderInstance.getSamplerNames());
@@ -138,7 +139,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                         try {
                             index = Integer.parseInt(key);
                             texture = new ResourceLocation(samplers.getString(key));
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                         if (index >= 0 && texture != null && samplerNames.contains("Sampler" + index)) {
                             final int finalIndex = index;
                             final ResourceLocation finalTexture = texture;
@@ -160,15 +162,15 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                                     uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value));
                                 }
                                 if (type == 5) { // UT_FLOAT2
-                                    final float[] value = new float[] {data.getFloat(0), data.getFloat(1)};
+                                    final float[] value = new float[]{data.getFloat(0), data.getFloat(1)};
                                     uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value[0], value[1]));
                                 }
                                 if (type == 6) { // UT_FLOAT3
-                                    final float[] value = new float[] {data.getFloat(0), data.getFloat(1), data.getFloat(2)};
+                                    final float[] value = new float[]{data.getFloat(0), data.getFloat(1), data.getFloat(2)};
                                     uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value[0], value[1], value[2]));
                                 }
                                 if (type == 7) { // UT_FLOAT4
-                                    final float[] value = new float[] {data.getFloat(0), data.getFloat(1), data.getFloat(2), data.getFloat(3)};
+                                    final float[] value = new float[]{data.getFloat(0), data.getFloat(1), data.getFloat(2), data.getFloat(3)};
                                     uniformCache = combineRunnable(uniformCache, () -> getShader().safeGetUniform(key).set(value[0], value[1], value[2], value[3]));
                                 }
                             }
@@ -176,7 +178,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                     }
                 }
             } else {
-                uniformCache = () -> {};
+                uniformCache = () -> {
+                };
             }
         }
     }
@@ -199,7 +202,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                         if (r != null && r.isFile()) {
                             shader = new ResourceLocation("ldlib:" + r.getName().substring(0, r.getName().length() - 5));
                             uniformTag = new CompoundTag();
-                            uniformCache= null;
+                            uniformCache = null;
                             updateShaderUniformConfigurator(shaderConfigurator);
                             father.computeLayout();
                         }
@@ -235,7 +238,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                         var index = -1;
                         try {
                             index = Integer.parseInt(samplerName.replaceAll("Sampler", ""));
-                        } catch (Throwable ignored) {}
+                        } catch (Throwable ignored) {
+                        }
                         if (index >= 0 && index != 2) {
                             WidgetGroup preview = new WidgetGroup(50, height + 10, 100, 100);
                             int finalIndex = index;
@@ -279,20 +283,20 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                     if (type == 4) {
                         height = addUniformConfigurator(uniformName, group, 0, height);
                     } else if (type == 5) {
-                        height = addUniformConfigurator(uniformName+".x", group, 0, height);
-                        height = addUniformConfigurator(uniformName+".y", group, 1, height);
+                        height = addUniformConfigurator(uniformName + ".x", group, 0, height);
+                        height = addUniformConfigurator(uniformName + ".y", group, 1, height);
                     } else if (type == 6) {
-                        height = addUniformConfigurator(uniformName+".x", group, 0, height);
-                        height = addUniformConfigurator(uniformName+".y", group, 1, height);
-                        height = addUniformConfigurator(uniformName+".z", group, 2, height);
+                        height = addUniformConfigurator(uniformName + ".x", group, 0, height);
+                        height = addUniformConfigurator(uniformName + ".y", group, 1, height);
+                        height = addUniformConfigurator(uniformName + ".z", group, 2, height);
                     } else if (type == 7) {
                         if (uniformName.toLowerCase().contains("color")) {
                             height = addColorUniformConfigurator(uniformName, group, height);
                         } else {
-                            height = addUniformConfigurator(uniformName+".x", group, 0, height);
-                            height = addUniformConfigurator(uniformName+".y", group, 1, height);
-                            height = addUniformConfigurator(uniformName+".z", group, 2, height);
-                            height = addUniformConfigurator(uniformName+".w", group, 3, height);
+                            height = addUniformConfigurator(uniformName + ".x", group, 0, height);
+                            height = addUniformConfigurator(uniformName + ".y", group, 1, height);
+                            height = addUniformConfigurator(uniformName + ".z", group, 2, height);
+                            height = addUniformConfigurator(uniformName + ".w", group, 3, height);
                         }
                     }
                     height += 5;
