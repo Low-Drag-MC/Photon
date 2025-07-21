@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter;
 
 import com.lowdragmc.lowdraglib.client.shader.Shaders;
 import com.lowdragmc.lowdraglib.utils.PositionedRect;
+import com.lowdragmc.photon.IrisFramebufferUtils;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.postprocessing.BloomEffect;
@@ -13,9 +14,11 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.world.phys.AABB;
+import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
@@ -44,7 +47,7 @@ public abstract class PhotonParticleRenderType implements ParticleRenderType {
     public static boolean bloomMark = false;
 
     public static void renderBloom() {
-        if (LAYER == RendererSetting.Layer.Translucent && bloomMark) {
+        if (bloomMark) {
             // setup view port
             var lastViewport = new PositionedRect(GlStateManager.Viewport.x(), GlStateManager.Viewport.y(), GlStateManager.Viewport.width(), GlStateManager.Viewport.height());
             var input = BloomEffect.getInput();
@@ -114,7 +117,10 @@ public abstract class PhotonParticleRenderType implements ParticleRenderType {
     }
 
     public static void finishRender() {
-        renderBloom();
+        if (LAYER == RendererSetting.Layer.Opaque || IrisFramebufferUtils.isRenderingGUIScreen()) {
+            renderBloom();
+        }
+
         if (LAYER == RendererSetting.Layer.Opaque) {
             LAYER = RendererSetting.Layer.Translucent;
         }
@@ -124,9 +130,17 @@ public abstract class PhotonParticleRenderType implements ParticleRenderType {
         var input = BloomEffect.getInput();
         input.bindWrite(false);
         bloomMark = true;
+        BloomEffect.bindBloomShader();
     }
 
-    public void endBloom() {
+    public void beginDefault() {
+        RenderSystem.setShader(GameRenderer::getParticleShader);
+        var input = BloomEffect.getInput();
+        input.bindWrite(false);
+    }
+
+    public void endParticle() {
+        BloomEffect.setBloomColor(new Vector4f(0.0f));
         var background = Minecraft.getInstance().getMainRenderTarget();
         background.bindWrite(false);
     }

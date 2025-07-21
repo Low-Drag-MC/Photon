@@ -3,6 +3,7 @@
 #moj_import <fog.glsl>
 
 uniform vec4 ColorModulator;
+uniform vec4 BloomColor;
 uniform float FogStart;
 uniform float FogEnd;
 uniform vec4 FogColor;
@@ -13,7 +14,7 @@ in float vertexDistance;
 in vec2 texCoord0;
 in vec4 vertexColor;
 
-out vec4 fragColor;
+out vec4 fragData[2];
 
 void main() {
     float dist = distance(vec2(0.5, 0.5), texCoord0);
@@ -22,5 +23,9 @@ void main() {
     if (color.a < DiscardThreshold) {
         discard;
     }
-    fragColor = linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
+
+    color = linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
+
+    fragData[0] = color * BloomColor;
+    fragData[1] = color;
 }

@@ -46,4 +46,17 @@ public class LevelRendererMixin {
         MultiBufferSource.BufferSource bufferSource = this.renderBuffers.bufferSource();
         this.minecraft.particleEngine.render(poseStack, bufferSource, lightTexture, camera, partialTick);
     }
+
+    /**
+     * inject particle being rendered
+     */
+    @Inject(
+            method = {"renderLevel"},
+            at = {@At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/Options;getCloudsType()Lnet/minecraft/client/CloudStatus;")}
+    )
+    private void prepareForParticleBloom(PoseStack poseStack, float partialTick, long finishNanoTime, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f projectionMatrix, CallbackInfo ci) {
+        PhotonParticleRenderType.renderBloom();
+    }
 }

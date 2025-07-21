@@ -137,6 +137,8 @@ public class TrailConfig implements IPersistedSerializable {
         public void prepareStatus() {
             if (renderer.isBloomEffect()) {
                 beginBloom();
+            } else {
+                beginDefault();
             }
             material.pre();
             material.getMaterial().begin(false);
@@ -160,9 +162,7 @@ public class TrailConfig implements IPersistedSerializable {
                 lastBlend.apply();
                 lastBlend = null;
             }
-            if (renderer.isBloomEffect()) {
-                endBloom();
-            }
+            endParticle();
         }
 
         @Override

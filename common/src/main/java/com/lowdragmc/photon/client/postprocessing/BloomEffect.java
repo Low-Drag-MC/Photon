@@ -12,6 +12,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.fabricmc.loader.impl.launch.knot.Knot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import org.joml.Vector4f;
@@ -92,7 +93,9 @@ public class BloomEffect {
     }
 
     public static void setBloomColor(Vector4f color) {
-        PARTICLE.safeGetUniform("BloomColor").set(color);
+        if (RenderSystem.getShader() != null) {
+            RenderSystem.getShader().safeGetUniform("BloomColor").set(color);
+        }
     }
 
     public static RenderTarget getOutput() {

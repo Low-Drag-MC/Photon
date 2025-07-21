@@ -2,6 +2,7 @@ package com.lowdragmc.photon.forge.core.mixins;
 
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.client.postprocessing.BloomEffect;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
@@ -45,5 +46,18 @@ public class LevelRendererMixin {
         PhotonParticleRenderType.prepareForParticleRendering(cullingFrustum);
         MultiBufferSource.BufferSource bufferSource = this.renderBuffers.bufferSource();
         this.minecraft.particleEngine.render(poseStack, bufferSource, lightTexture, camera, partialTick, cullingFrustum);
+    }
+
+    /**
+     * inject particle being rendered
+     */
+    @Inject(
+            method = {"renderLevel"},
+            at = {@At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/Options;getCloudsType()Lnet/minecraft/client/CloudStatus;")}
+    )
+    private void prepareForParticleBloom(PoseStack poseStack, float partialTick, long finishNanoTime, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f projectionMatrix, CallbackInfo ci) {
+        PhotonParticleRenderType.renderBloom();
     }
 }

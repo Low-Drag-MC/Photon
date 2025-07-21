@@ -13,7 +13,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.postprocessing.BloomEffect;
 import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
 import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
 import com.mojang.blaze3d.shaders.BlendMode;
@@ -24,9 +23,7 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.nbt.CompoundTag;
-import org.joml.Vector4f;
 
 import javax.annotation.Nonnull;
 
@@ -167,12 +164,8 @@ public class ParticleConfig implements IPersistedSerializable {
         public void prepareStatus() {
             if (renderer.isBloomEffect()) {
                 beginBloom();
-                BloomEffect.bindBloomShader();
             } else {
-                RenderSystem.setShader(GameRenderer::getParticleShader);
-                BloomEffect.setBloomColor(new Vector4f(0.0f));
-                var input = BloomEffect.getInput();
-                input.bindWrite(false);
+                beginDefault();
             }
             material.pre();
             material.getMaterial().begin(false);
@@ -196,9 +189,7 @@ public class ParticleConfig implements IPersistedSerializable {
                 lastBlend.apply();
                 lastBlend = null;
             }
-            if (renderer.isBloomEffect()) {
-                endBloom();
-            }
+            endParticle();
         }
 
         @Override

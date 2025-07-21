@@ -93,6 +93,8 @@ public class BeamConfig {
         public void prepareStatus() {
             if (renderer.isBloomEffect()) {
                 beginBloom();
+            } else {
+                beginDefault();
             }
             material.pre();
             material.getMaterial().begin(false);
@@ -116,9 +118,7 @@ public class BeamConfig {
                 lastBlend.apply();
                 lastBlend = null;
             }
-            if (renderer.isBloomEffect()) {
-                endBloom();
-            }
+            endParticle();
         }
     }
 }
