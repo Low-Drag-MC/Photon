@@ -97,7 +97,7 @@ public class BloomEffect {
         GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
     }
 
-    public static ShaderInstance getShaderShader() {
+    public static ShaderInstance getParticleShader() {
         return PARTICLE;
     }
 

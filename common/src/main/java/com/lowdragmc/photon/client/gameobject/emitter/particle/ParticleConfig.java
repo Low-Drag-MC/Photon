@@ -13,6 +13,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.postprocessing.BloomEffect;
 import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
 import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
 import com.mojang.blaze3d.shaders.BlendMode;
@@ -23,6 +24,7 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.nbt.CompoundTag;
 
 import javax.annotation.Nonnull;
@@ -162,6 +164,12 @@ public class ParticleConfig implements IPersistedSerializable {
 
         @Override
         public void prepareStatus() {
+            if (renderer.isBloomEffect()) {
+                beginBloom();
+            } else {
+                RenderSystem.setShader(GameRenderer::getParticleShader);
+            }
+
             material.pre();
             material.getMaterial().begin(false);
             if (RenderSystem.getShader() instanceof ShaderInstanceAccessor shader) {
@@ -170,11 +178,8 @@ public class ParticleConfig implements IPersistedSerializable {
             }
 
             //bind MRT after material rendered
-            if (renderer.isBloomEffect()) {
-                beginBloom();
-            } else {
-                beginDefault();
-            }
+            var input = BloomEffect.getInput();
+            input.bindWrite(false);
 
             Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
         }

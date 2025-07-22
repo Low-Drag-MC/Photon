@@ -129,22 +129,11 @@ public abstract class PhotonParticleRenderType implements ParticleRenderType {
     }
 
     /**
-     * bind bloom target
+     * apply bloom shader
      */
     public void beginBloom() {
-        var input = BloomEffect.getInput();
-        input.bindWrite(false);
-        bloomMark = true;
         BloomEffect.bindBloomShader();
-    }
-
-    /**
-     * still MRT but make bloom color as alpha zero
-     */
-    public void beginDefault() {
-        RenderSystem.setShader(GameRenderer::getParticleShader);
-        var input = BloomEffect.getInput();
-        input.bindWrite(false);
+        bloomMark = true;
     }
 
     /**

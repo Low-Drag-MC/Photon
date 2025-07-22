@@ -69,13 +69,13 @@ public class TextureMaterial extends ShaderInstanceMaterial {
 
     @Override
     public ShaderInstance getShader() {
-        return BloomEffect.getShaderShader();
+        return BloomEffect.getParticleShader();
     }
 
     @Override
     public void setupUniform() {
         RenderSystem.setShaderTexture(0, texture);
-        BloomEffect.getShaderShader().safeGetUniform("DiscardThreshold").set(discardThreshold);
+        BloomEffect.getParticleShader().safeGetUniform("DiscardThreshold").set(discardThreshold);
     }
 
     @Override
