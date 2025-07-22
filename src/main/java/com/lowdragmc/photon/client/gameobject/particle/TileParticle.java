@@ -664,6 +664,7 @@ u     */
     }
 
     public void putBulkData(Matrix4f transform, VertexConsumer buffer, BakedQuad quad, float brightness, float red, float green, float blue, float alpha, int light) {
+        // TODO cache maybe
         int[] vertices = quad.getVertices();
         int points = vertices.length / 8;
 
@@ -677,13 +678,14 @@ u     */
             var v1 = quad.getSprite().getV1();
             var uw = u1 - u0;
             var vh = v1 - v0;
+            var pivotPoint = config.renderer.getModelPivot();
 
             for (int k = 0; k < points; ++k) {
                 intBuffer.clear();
                 intBuffer.put(vertices, k * 8, 8);
-                var x = byteBuffer.getFloat(0); // 0
-                var y = byteBuffer.getFloat(4); // 1
-                var z = byteBuffer.getFloat(8); // 2
+                var x = byteBuffer.getFloat(0) + pivotPoint.x; // 0
+                var y = byteBuffer.getFloat(4) + pivotPoint.y; // 1
+                var z = byteBuffer.getFloat(8) + pivotPoint.z; // 2
                 var u = byteBuffer.getFloat(16); // 4 u
                 var v = byteBuffer.getFloat(20); // 5 v
                 var normalData = byteBuffer.getInt(IQuadTransformer.NORMAL * 4);
@@ -694,6 +696,7 @@ u     */
                     u =  (u - u0) / uw;
                     v =  (v - v0) / vh;
                 }
+
                 var pos = transform.transform(new Vector4f(x, y, z, 1.0F));
                 var normalMat = transform.normal(new Matrix3f());
                 var normal = new Vector3f(nX, nY, nZ).mul(normalMat).normalize();

@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
 import com.lowdragmc.lowdraglib2.client.renderer.impl.IModelRenderer;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.configurator.accessors.Vector3fAccessor;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
@@ -9,6 +10,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import lombok.Getter;
@@ -21,6 +23,9 @@ import org.apache.commons.lang3.function.TriFunction;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
+
+import java.lang.reflect.Field;
 
 @Getter
 @Setter
@@ -65,6 +70,8 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     protected boolean shade = true;
     @Persisted
     protected boolean useBlockUV = true;
+    @Persisted
+    protected Vector3f modelPivot = new Vector3f();
     @Configurable
     private boolean useGPUInstance = false;
 
@@ -79,7 +86,20 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
                     new BooleanConfigurator("shade", this::isShade, this::setShade, true, true)
                             .setTips("photon.emitter.config.renderer.renderMode.model.shade"),
                     new BooleanConfigurator("useBlockUV", this::isUseBlockUV, this::setUseBlockUV, true, true)
-                            .setTips("photon.emitter.config.renderer.renderMode.model.useBlockUV"));
+                            .setTips("photon.emitter.config.renderer.renderMode.model.useBlockUV"),
+                    new Vector3fAccessor().create("modelPivot", this::getModelPivot, this::setModelPivot,
+                            true, getModelPivotField(), this)
+                            .setTips("photon.emitter.config.renderer.renderMode.model.modelPivot")
+                    );
+        }
+    }
+
+    private Field getModelPivotField() {
+        try {
+            return getClass().getDeclaredField("modelPivot");
+        } catch (Exception e) {
+            Photon.LOGGER.error("Error getting modelPivot field", e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -111,6 +131,12 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     @ConfigSetter(field = "useBlockUV")
     public void setUseBlockUV(boolean useBlockUV) {
         this.useBlockUV = useBlockUV;
+        config.particleRenderType.clearInstance();
+    }
+
+    @ConfigSetter(field = "modelPivot")
+    public void setModelPivot(Vector3f modelPivot) {
+        this.modelPivot = modelPivot;
         config.particleRenderType.clearInstance();
     }
 

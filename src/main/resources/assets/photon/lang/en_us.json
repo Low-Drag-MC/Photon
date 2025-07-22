@@ -93,6 +93,7 @@
   "photon.emitter.config.renderer.renderMode": "Defines the render mode of the particle renderer.",
   "photon.emitter.config.renderer.renderMode.model.shade": "If enabled, the model will be rendered with shade for each side",
   "photon.emitter.config.renderer.renderMode.model.useBlockUV": "If enabled, use uv according to the model, otherwise use the particle uv.",
+  "photon.emitter.config.renderer.renderMode.model.modelPivot": "Model pivot offset",
   "photon.emitter.config.renderer.layer": "Defines the render layer of the particle renderer.",
   "photon.emitter.config.renderer.bloomEffect": "Render particles with the bloom effect.",
   "photon.emitter.config.renderer.cull": "Cull particles that are out of view.",

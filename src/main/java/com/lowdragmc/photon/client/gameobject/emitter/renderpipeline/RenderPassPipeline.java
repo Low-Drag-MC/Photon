@@ -149,13 +149,16 @@ public class RenderPassPipeline extends BufferBuilder {
                         useStencil = true;
                     }
                 }
+                // TODO fix
                 if (objType != GL30.GL_NONE) {
-                    if (!drawTarget.hasOtherAttachedDepthTexture() || drawTarget.getAttachedDepthTexture() != depthTexture) {
-                        drawTarget.attachDepthBufferInternal(depthTexture, useStencil, true);
-                    }
+//                    if (!drawTarget.hasOtherAttachedDepthTexture() || drawTarget.getAttachedDepthTexture() != depthTexture) {
+//                        drawTarget.attachDepthBufferInternal(depthTexture, useStencil, true);
+//                    }
+                    drawTarget.attachDepthBufferInternal(depthTexture, useStencil, true);
                 }
             }
         } else {
+            // TODO fix
             var mainTarget = Minecraft.getInstance().getMainRenderTarget();
             drawTarget.copyColorFrom(mainTarget);
 //            if (!drawTarget.hasOtherAttachedDepthTexture() || drawTarget.getAttachedDepthTexture() != mainTarget.getDepthTextureId()) {

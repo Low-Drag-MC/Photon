@@ -15,6 +15,7 @@ import net.neoforged.neoforge.client.model.IQuadTransformer;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.apache.commons.lang3.tuple.Pair;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.system.MemoryStack;
 
@@ -91,6 +92,7 @@ public class ParticleInstanceRenderer {
             var vertexBuffer = BufferUtils.createFloatBuffer(quads.size() * 4 * floatsPerVertex);
             var indexBuffer = BufferUtils.createIntBuffer(quads.size() * 6);
             var vertexBase = 0;
+            var pivotPoint = config.renderer.getModelPivot();
 
             for (Pair<BakedQuad, Float> pair : quads) {
                 var brightness = pair.getRight();
@@ -113,9 +115,9 @@ public class ParticleInstanceRenderer {
                     for (int k = 0; k < points; ++k) {
                         intBuffer.clear();
                         intBuffer.put(vertices, k * 8, 8);
-                        var x = byteBuffer.getFloat(0); // 0
-                        var y = byteBuffer.getFloat(4); // 1
-                        var z = byteBuffer.getFloat(8); // 2
+                        var x = byteBuffer.getFloat(0) + pivotPoint.x; // 0
+                        var y = byteBuffer.getFloat(4) + pivotPoint.y; // 1
+                        var z = byteBuffer.getFloat(8) + pivotPoint.z; // 2
                         var u = byteBuffer.getFloat(16); // 4 u
                         var v = byteBuffer.getFloat(20); // 5 v
                         var normalData = byteBuffer.getInt(IQuadTransformer.NORMAL * 4);
