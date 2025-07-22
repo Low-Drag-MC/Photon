@@ -31,7 +31,7 @@ public class ClientEventListener {
     }
 
     @SubscribeEvent
-    public void onRenderGui(RenderLevelStageEvent event) {
+    public static void onRenderGui(RenderLevelStageEvent event) {
         if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_LEVEL) {
             IrisFramebufferUtils.setRenderingGUIScreen(true);
         }

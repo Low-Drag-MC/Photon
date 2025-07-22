@@ -12,7 +12,6 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.fabricmc.loader.impl.launch.knot.Knot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import org.joml.Vector4f;
@@ -35,6 +34,7 @@ public class BloomEffect {
     private static int LAST_WIDTH, LAST_HEIGHT;
     private static RenderTarget INPUT, TRANSLUCENT_INPUT, GUI_INPUT, OUTPUT;
     private static RenderTarget SWAP2A, SWAP4A, SWAP8A, SWAP2B, SWAP4B, SWAP8B;
+    //Add a standalone photon particle shader and generate bloom using MRT
     private static final ShaderInstance PARTICLE = loadShader("photon:particle");
     private static final ShaderInstance SEPARABLE_BLUR = loadShader("photon:separable_blur");
     private static final ShaderInstance UNREAL_COMPOSITE = loadShader("photon:unreal_composite");
@@ -50,31 +50,12 @@ public class BloomEffect {
 
     public static RenderTarget getInput() {
         if (GUI_INPUT == null) {
-            GUI_INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), true);
-            hookDepthBuffer(GUI_INPUT, Minecraft.getInstance().getMainRenderTarget().getDepthTextureId());
-            hookColorBuffer(GUI_INPUT, Minecraft.getInstance().getMainRenderTarget().getColorTextureId(), GL30.GL_COLOR_ATTACHMENT1);
-
-            //hook main target texture to bloom target attachment1
-            GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
+            resetGuiTarget();
         }
 
         if (INPUT == null || IrisFramebufferUtils.getFboCachedField() != lastFramebuffer) {
             lastFramebuffer = IrisFramebufferUtils.getFboCachedField();
-            INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), true);
-            hookDepthBuffer(INPUT, Photon.getDepthTextureID());
-            hookColorBuffer(INPUT, Photon.getSolidTextureID(), GL30.GL_COLOR_ATTACHMENT1);
-
-            //hook main target texture to bloom target attachment1
-            GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
-
-            TRANSLUCENT_INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), true);
-            hookDepthBuffer(TRANSLUCENT_INPUT, Photon.getDepthTextureID());
-            ((BloomTarget)TRANSLUCENT_INPUT).resetColorTexture(INPUT.getColorTextureId());
-            hookColorBuffer(TRANSLUCENT_INPUT, INPUT.getColorTextureId(), GL30.GL_COLOR_ATTACHMENT0);
-            hookColorBuffer(TRANSLUCENT_INPUT, Photon.getTranslucentTextureID(), GL30.GL_COLOR_ATTACHMENT1);
-
-            //hook main target texture to bloom target attachment1
-            GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
+            resetBloomTarget();
         }
 
         if (!Photon.isUsingShaderPack() || IrisFramebufferUtils.isRenderingGUIScreen()) {
@@ -84,7 +65,39 @@ public class BloomEffect {
         return PhotonParticleRenderType.checkLayer(RendererSetting.Layer.Translucent) ? TRANSLUCENT_INPUT : INPUT;
     }
 
-    public static ShaderInstance getBloomShader() {
+    private static void resetBloomTarget() {
+        INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), true);
+        hookDepthBuffer(INPUT, Photon.getDepthTextureID());
+        //hook main target texture to attachment0
+        hookColorBuffer(INPUT, Photon.getSolidTextureID(), GL30.GL_COLOR_ATTACHMENT0);
+        //hook bloom target texture to attachment1
+        hookColorBuffer(INPUT, INPUT.getColorTextureId(), GL30.GL_COLOR_ATTACHMENT1);
+
+        GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
+
+        TRANSLUCENT_INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), true);
+        hookDepthBuffer(TRANSLUCENT_INPUT, Photon.getDepthTextureID());
+        //make translucent bloom texture same as solid target
+        ((BloomTarget)TRANSLUCENT_INPUT).resetColorTexture(INPUT.getColorTextureId());
+        hookColorBuffer(TRANSLUCENT_INPUT, Photon.getTranslucentTextureID(false), GL30.GL_COLOR_ATTACHMENT0);
+        hookColorBuffer(TRANSLUCENT_INPUT, INPUT.getColorTextureId(), GL30.GL_COLOR_ATTACHMENT1);
+
+        GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
+    }
+
+    /**
+     * separate the world rendering target and GUI rendering target to avoid binding the wrong framebuffer
+     */
+    private static void resetGuiTarget() {
+        GUI_INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), true);
+        hookDepthBuffer(GUI_INPUT, Minecraft.getInstance().getMainRenderTarget().getDepthTextureId());
+        hookColorBuffer(GUI_INPUT, Minecraft.getInstance().getMainRenderTarget().getColorTextureId(), GL30.GL_COLOR_ATTACHMENT0);
+        hookColorBuffer(GUI_INPUT, GUI_INPUT.getColorTextureId(), GL30.GL_COLOR_ATTACHMENT1);
+
+        GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
+    }
+
+    public static ShaderInstance getShaderShader() {
         return PARTICLE;
     }
 
@@ -125,28 +138,8 @@ public class BloomEffect {
     public static void updateScreenSize(int width, int height) {
         if (LAST_WIDTH == width && LAST_HEIGHT == height) return;
 
-        INPUT = resize(null, width, height, true);
-        hookDepthBuffer(INPUT, Photon.getDepthTextureID());
-        hookColorBuffer(INPUT, Photon.getSolidTextureID(), GL30.GL_COLOR_ATTACHMENT1);
-
-        //hook main target texture to bloom target attachment1
-        GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
-
-        TRANSLUCENT_INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), true);
-        hookDepthBuffer(TRANSLUCENT_INPUT, Photon.getDepthTextureID());
-        ((BloomTarget)TRANSLUCENT_INPUT).resetColorTexture(INPUT.getColorTextureId());
-        hookColorBuffer(TRANSLUCENT_INPUT, INPUT.getColorTextureId(), GL30.GL_COLOR_ATTACHMENT0);
-        hookColorBuffer(TRANSLUCENT_INPUT, Photon.getTranslucentTextureID(), GL30.GL_COLOR_ATTACHMENT1);
-
-        //hook main target texture to bloom target attachment1
-        GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
-
-        GUI_INPUT = resize(null, MC.getWindow().getWidth(), MC.getWindow().getHeight(), true);
-        hookDepthBuffer(GUI_INPUT, Minecraft.getInstance().getMainRenderTarget().getDepthTextureId());
-        hookColorBuffer(GUI_INPUT, Minecraft.getInstance().getMainRenderTarget().getColorTextureId(), GL30.GL_COLOR_ATTACHMENT1);
-
-        //hook main target texture to bloom target attachment1
-        GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0, GL30.GL_COLOR_ATTACHMENT1});
+        resetBloomTarget();
+        resetGuiTarget();
 
         OUTPUT = resize(OUTPUT, width, height, false);
 
@@ -271,6 +264,10 @@ public class BloomEffect {
                 TextureUtil.releaseTextureId(this.colorTextureId);
             }
 
+            this.colorTextureId = textureId;
+        }
+
+        public void setColorTexture(int textureId) {
             this.colorTextureId = textureId;
         }
     }

@@ -154,6 +154,8 @@ public class BeamParticle implements IParticle {
 
     public void render(@Nonnull VertexConsumer pBuffer, @Nonnull Camera camera, float partialTicks) {
         if (delay <= 0 && this.emitter.isVisible()) {
+
+            // set bloom color
             if (config.renderer.isBloomEffect()) {
                 int bloomColor = config.renderer.getBloomColor().get(emitter.getRandomSource(), emitter.getT(partialTicks)).intValue();
                 float r = ColorUtils.red(bloomColor);

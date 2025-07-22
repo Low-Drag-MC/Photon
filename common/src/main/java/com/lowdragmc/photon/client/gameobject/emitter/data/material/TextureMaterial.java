@@ -12,6 +12,7 @@ import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget;
 import com.lowdragmc.lowdraglib.gui.widget.DialogWidget;
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.postprocessing.BloomEffect;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.api.EnvType;
@@ -68,19 +69,23 @@ public class TextureMaterial extends ShaderInstanceMaterial {
 
     @Override
     public ShaderInstance getShader() {
-        return BloomEffect.getBloomShader();
+        return BloomEffect.getShaderShader();
     }
 
     @Override
     public void setupUniform() {
         RenderSystem.setShaderTexture(0, texture);
-        BloomEffect.getBloomShader().safeGetUniform("DiscardThreshold").set(discardThreshold);
+        BloomEffect.getShaderShader().safeGetUniform("DiscardThreshold").set(discardThreshold);
     }
 
     @Override
     public void begin(boolean isInstancing) {
-        RenderSystem.setShader(this::getShader);
-        setupUniform();
+        if (Photon.isUsingShaderPack() && Editor.INSTANCE == null) {
+            RenderSystem.setShaderTexture(0, texture);
+        } else {
+            RenderSystem.setShader(this::getShader);
+            setupUniform();
+        }
     }
 
     @Override

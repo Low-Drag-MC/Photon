@@ -62,13 +62,14 @@ public abstract class PhotonParticleRenderType implements ParticleRenderType {
 
             // render bloom effect
             BloomEffect.renderBloom(background.width, background.height,
-                    LAYER == RendererSetting.Layer.Opaque ? Photon.getSolidTextureID() : Photon.getTranslucentTextureID(),
+                    LAYER == RendererSetting.Layer.Opaque ? Photon.getSolidTextureID() : Photon.getTranslucentTextureID(true),
                     input.getColorTextureId(),
                     output);
 
             // clean input
             input.bindWrite(false);
-            GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT0});
+            // only clear bloom color attachment
+            GL20.glDrawBuffers(new int[]{GL30.GL_COLOR_ATTACHMENT1});
             GlStateManager._clearColor(0.0f, 0.0f, 0.0f, 0.0f);
             int i = GL11.GL_COLOR_BUFFER_BIT;
             GlStateManager._clear(i, Minecraft.ON_OSX);
@@ -117,6 +118,7 @@ public abstract class PhotonParticleRenderType implements ParticleRenderType {
     }
 
     public static void finishRender() {
+        // render after opaque objects with depth test enabled, otherwise apply bloom effect in front of entities.
         if (LAYER == RendererSetting.Layer.Opaque || IrisFramebufferUtils.isRenderingGUIScreen()) {
             renderBloom();
         }
@@ -126,6 +128,9 @@ public abstract class PhotonParticleRenderType implements ParticleRenderType {
         }
     }
 
+    /**
+     * bind bloom target
+     */
     public void beginBloom() {
         var input = BloomEffect.getInput();
         input.bindWrite(false);
@@ -133,12 +138,18 @@ public abstract class PhotonParticleRenderType implements ParticleRenderType {
         BloomEffect.bindBloomShader();
     }
 
+    /**
+     * still MRT but make bloom color as alpha zero
+     */
     public void beginDefault() {
         RenderSystem.setShader(GameRenderer::getParticleShader);
         var input = BloomEffect.getInput();
         input.bindWrite(false);
     }
 
+    /**
+     * reset render target and bloom color
+     */
     public void endParticle() {
         BloomEffect.setBloomColor(new Vector4f(0.0f));
         var background = Minecraft.getInstance().getMainRenderTarget();

@@ -135,17 +135,20 @@ public class TrailConfig implements IPersistedSerializable {
 
         @Override
         public void prepareStatus() {
-            if (renderer.isBloomEffect()) {
-                beginBloom();
-            } else {
-                beginDefault();
-            }
             material.pre();
             material.getMaterial().begin(false);
             if (RenderSystem.getShader() instanceof ShaderInstanceAccessor shader) {
                 lastBlend = BlendModeAccessor.getLastApplied();
                 BlendModeAccessor.setLastApplied(shader.getBlend());
             }
+
+            //bind MRT after material rendered
+            if (renderer.isBloomEffect()) {
+                beginBloom();
+            } else {
+                beginDefault();
+            }
+
             Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
         }
 

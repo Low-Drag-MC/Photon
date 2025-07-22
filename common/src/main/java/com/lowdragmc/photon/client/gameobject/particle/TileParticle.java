@@ -582,19 +582,21 @@ public class TileParticle implements IParticle {
 
     public void render(@Nonnull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
         if (delay <= 0 && this.emitter.isVisible()) {
-            if (config.renderer.isBloomEffect()) {
-                int bloomColor = config.renderer.getBloomColor().get(emitter.getRandomSource(), emitter.getT(pPartialTicks)).intValue();
-                float r = ColorUtils.red(bloomColor);
-                float g = ColorUtils.green(bloomColor);
-                float b = ColorUtils.blue(bloomColor);
-                float a = ColorUtils.alpha(bloomColor);
-                BloomEffect.setBloomColor(new Vector4f(r, g, b, a));
-            }
             renderInternal(pBuffer, pRenderInfo, pPartialTicks);
         }
     }
 
     public void renderInternal(@Nonnull VertexConsumer buffer, Camera camera, float partialTicks) {
+        // set bloom color
+        if (config.renderer.isBloomEffect()) {
+            int bloomColor = config.renderer.getBloomColor().get(emitter.getRandomSource(), emitter.getT(partialTicks)).intValue();
+            float r = ColorUtils.red(bloomColor);
+            float g = ColorUtils.green(bloomColor);
+            float b = ColorUtils.blue(bloomColor);
+            float a = ColorUtils.alpha(bloomColor);
+            BloomEffect.setBloomColor(new Vector4f(r, g, b, a));
+        }
+
         var vec3 = camera.getPosition();
 
         var localPos = getLocalPos(partialTicks).mulPosition(getSpaceTransform());

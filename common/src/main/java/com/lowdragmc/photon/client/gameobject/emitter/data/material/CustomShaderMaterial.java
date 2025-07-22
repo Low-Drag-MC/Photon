@@ -89,7 +89,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     }
 
     public boolean isCompiledError() {
-        return getShader() == BloomEffect.getBloomShader();
+        return getShader() == BloomEffect.getShaderShader();
     }
 
     public void recompile() {
@@ -97,7 +97,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         uniformCache = null;
         compiledErrorMessage = "";
         var removed = COMPILED_SHADERS.remove(this.shader);
-        if (removed != null && removed != BloomEffect.getBloomShader()) {
+        if (removed != null && removed != BloomEffect.getShaderShader()) {
             removed.close();
         }
     }
@@ -110,7 +110,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             } catch (Throwable e) {
                 compiledErrorMessage = e.getMessage();
             }
-            return BloomEffect.getBloomShader();
+            return BloomEffect.getShaderShader();
         });
     }
 

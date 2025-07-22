@@ -9,6 +9,7 @@ import net.irisshaders.iris.gl.framebuffer.GlFramebuffer;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.pipeline.SodiumTerrainPipeline;
 import net.irisshaders.iris.pipeline.WorldRenderingPipeline;
+import net.irisshaders.iris.shaderpack.properties.ParticleRenderingSettings;
 import net.minecraft.client.Minecraft;
 
 import java.lang.reflect.Field;
@@ -95,7 +96,11 @@ public class IrisFramebufferUtils {
         );
     }
 
-    public static int getIrisTranslucentTextureId() {
+    public static int getIrisTranslucentTextureId(boolean writeBuffer) {
+        if (!writeBuffer && beforeEntitiesRendering()) {
+            return getIrisSolidTextureId();
+        }
+
         return getTextureIdFromFramebuffer(
                 getIrisTranslucentFboId(),
                 GL_COLOR_ATTACHMENT0,
@@ -161,5 +166,9 @@ public class IrisFramebufferUtils {
 
     public static void setRenderingGUIScreen(boolean renderingGUIScreen) {
         IrisFramebufferUtils.renderingGUIScreen = renderingGUIScreen;
+    }
+
+    private static boolean beforeEntitiesRendering() {
+        return Iris.getPipelineManager().getPipeline().map(WorldRenderingPipeline::getParticleRenderingSettings).orElse(ParticleRenderingSettings.MIXED) == ParticleRenderingSettings.BEFORE;
     }
 }

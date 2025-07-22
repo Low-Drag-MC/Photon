@@ -26,6 +26,9 @@ void main() {
 
     color = linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
 
-    fragData[0] = color * BloomColor;
-    fragData[1] = color;
+    //main target
+    fragData[0] = color;
+
+    //bloom target
+    fragData[1] = color * BloomColor;
 }

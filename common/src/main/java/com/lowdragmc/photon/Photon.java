@@ -72,9 +72,9 @@ public class Photon {
         return Minecraft.getInstance().getMainRenderTarget().getColorTextureId();
     }
 
-    public static int getTranslucentTextureID() {
+    public static int getTranslucentTextureID(boolean writeBuffer) {
         if (IrisFramebufferUtils.isUsingShaderPack()) {
-            return IrisFramebufferUtils.getIrisTranslucentTextureId();
+            return IrisFramebufferUtils.getIrisTranslucentTextureId(writeBuffer);
         }
 
         return Minecraft.getInstance().getMainRenderTarget().getColorTextureId();
