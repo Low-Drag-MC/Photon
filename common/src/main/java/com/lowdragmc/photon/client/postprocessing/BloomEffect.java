@@ -105,6 +105,7 @@ public class BloomEffect {
         RenderSystem.setShader(() -> PARTICLE);
     }
 
+    //TODO not sure when to set
     public static void setBloomColor(Vector4f color) {
         if (RenderSystem.getShader() != null) {
             RenderSystem.getShader().safeGetUniform("BloomColor").set(color);
