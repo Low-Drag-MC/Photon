@@ -117,14 +117,13 @@ public class RendererSetting {
                     false, this::getRenderMode, this::setRenderMode, Mode.Billboard, true,
                     Arrays.stream(Mode.values()).toList(), Mode::name, (mode, container) -> {
                 if (mode == Mode.Model) {
-                    model.buildConfigurator(container);
+                    getModel().buildConfigurator(container);
                     var shadeConfigurator = new BooleanConfigurator("shade", this::isShade, this::setShade, true, true);
                     shadeConfigurator.setTips("photon.emitter.config.renderer.renderMode.model.shade");
                     container.addConfigurators(shadeConfigurator);
                     var useBlockUVConfigurator = new BooleanConfigurator("useBlockUV", this::isUseBlockUV, this::setUseBlockUV, true, true);
                     shadeConfigurator.setTips("photon.emitter.config.renderer.renderMode.model.useBlockUV");
                     container.addConfigurators(useBlockUVConfigurator);
-
                 }
             });
             configurator.setTips("photon.emitter.config.renderer.renderMode");
