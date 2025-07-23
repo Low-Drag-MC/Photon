@@ -1,5 +1,9 @@
 ## ChangeLogs
 
+# v1.1.12
+* Fixed model renderer mode crash
+* Fixed Bloom rendering (thanks to @RogoShum)
+
 # v1.1.11
 * Fixed transform hierarchy serialization
 * Fixed occlusion of the bloom (thanks to @RogoShum)
