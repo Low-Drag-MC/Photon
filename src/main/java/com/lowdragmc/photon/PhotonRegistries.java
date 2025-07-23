@@ -16,23 +16,34 @@ import java.util.function.Supplier;
 public class PhotonRegistries {
 
     @OnlyIn(Dist.CLIENT)
-    public final static AutoRegistry.LDLibRegisterClient<IFXObject, Supplier<IFXObject>> FX_OBJECTS = AutoRegistry.LDLibRegisterClient
-            .create(Photon.id("fx_object"), IFXObject.class, AutoRegistry::noArgsCreator);
+    public static AutoRegistry.LDLibRegisterClient<IFXObject, Supplier<IFXObject>> FX_OBJECTS;
 
     @OnlyIn(Dist.CLIENT)
-    public final static AutoRegistry.LDLibRegisterClient<IMaterial, Supplier<IMaterial>> MATERIALS = AutoRegistry.LDLibRegisterClient
-            .create(Photon.id("material"), IMaterial.class, AutoRegistry::noArgsCreator);
+    public static AutoRegistry.LDLibRegisterClient<IMaterial, Supplier<IMaterial>> MATERIALS;
 
     @OnlyIn(Dist.CLIENT)
-    public final static AutoRegistry.LDLibRegisterClient<NumberFunction, Supplier<NumberFunction>> NUMBER_FUNCTIONS = AutoRegistry.LDLibRegisterClient
-            .create(Photon.id("number_function"), NumberFunction.class, AutoRegistry::noArgsCreator);
+    public static AutoRegistry.LDLibRegisterClient<NumberFunction, Supplier<NumberFunction>> NUMBER_FUNCTIONS;
 
     @OnlyIn(Dist.CLIENT)
-    public final static AutoRegistry.LDLibRegisterClient<IShape, Supplier<IShape>> SHAPES = AutoRegistry.LDLibRegisterClient
-            .create(Photon.id("shape"), IShape.class, AutoRegistry::noArgsCreator);
+    public static AutoRegistry.LDLibRegisterClient<IShape, Supplier<IShape>> SHAPES;
 
     public static void init() {
         if (LDLib2.isClient()) {
+            Client.load();
+        }
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    private static class Client {
+        public static void load() {
+            FX_OBJECTS = AutoRegistry.LDLibRegisterClient
+                    .create(Photon.id("fx_object"), IFXObject.class, AutoRegistry::noArgsCreator);
+            MATERIALS = AutoRegistry.LDLibRegisterClient
+                    .create(Photon.id("material"), IMaterial.class, AutoRegistry::noArgsCreator);
+            NUMBER_FUNCTIONS = AutoRegistry.LDLibRegisterClient
+                    .create(Photon.id("number_function"), NumberFunction.class, AutoRegistry::noArgsCreator);
+            SHAPES = AutoRegistry.LDLibRegisterClient
+                    .create(Photon.id("shape"), IShape.class, AutoRegistry::noArgsCreator);
             MATERIALS.register("missing", AutoRegistry.Holder.of(
                     IMaterial.MissingMaterial.class.getAnnotation(LDLRegisterClient.class),
                     IMaterial.MissingMaterial.class,

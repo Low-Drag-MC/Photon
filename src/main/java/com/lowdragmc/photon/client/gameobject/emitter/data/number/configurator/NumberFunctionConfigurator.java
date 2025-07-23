@@ -12,8 +12,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
 import lombok.Getter;
 import net.minecraft.MethodsReturnNonnullByDefault;
-import org.appliedenergistics.yoga.YogaDisplay;
-import org.appliedenergistics.yoga.YogaEdge;
+import org.appliedenergistics.yoga.*;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -56,7 +55,7 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
                             var newValue = holder.value().get();
                             newValue.loadConfig(config);
                             updateValue(newValue);
-                            inlineContainer.clearAllChildren();
+                            clearInlineContainer();
                             value.createConfigurator(this);
                         });
                     }
@@ -93,8 +92,18 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
         if (newValue == null) newValue = defaultValue;
         if (newValue == value || NumberFunction.isEqual(newValue, value)) return;
         super.onValueUpdatePassively(newValue);
-        inlineContainer.clearAllChildren();
+        clearInlineContainer();
         newValue.createConfigurator(this);
+    }
+
+    private void clearInlineContainer() {
+        inlineContainer.clearAllChildren();
+        inlineContainer.layout(layout -> {
+            layout.setGap(YogaGutter.ALL, 0);
+            layout.setMargin(YogaEdge.LEFT, 0);
+            layout.setFlexDirection(YogaFlexDirection.COLUMN);
+            layout.setWrap(YogaWrap.NO_WRAP);
+        });
     }
 
     @Override

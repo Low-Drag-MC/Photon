@@ -3,12 +3,12 @@ package com.lowdragmc.photon.gui.editor.view;
 import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.SceneEditor;
+import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Horizontal;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.*;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
@@ -17,24 +17,46 @@ import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.FXProjectEffectExecutor;
 import lombok.Getter;
+import lombok.Setter;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.Blocks;
 import org.appliedenergistics.yoga.*;
 import org.joml.Random;
 import org.joml.Vector2f;
 
 import javax.annotation.Nullable;
+import java.util.List;
 import java.util.function.Supplier;
 
 public class SceneView extends View {
+    public enum SceneMode {
+        PLATFORM("scene_mode.platform"),
+        REAL_WORLD("scene_mode.real_world");
+
+        public final String translateKey;
+
+        SceneMode(String translateKey) {
+            this.translateKey = translateKey;
+        }
+    }
     public final FXEditor fxEditor;
-    public final SceneEditor sceneEditor = new SceneEditor();
+    public final ParticleSceneEditor sceneEditor;
     public final TrackedDummyWorld level = new TrackedDummyWorld();
     public final PhotonParticleManager particleManager = new PhotonParticleManager();
     public final FXProjectEffectExecutor effect = new FXProjectEffectExecutor(level);
     public final FXObjectInfoView fxObjectInfoView = new FXObjectInfoView();
+    @Getter @Setter
+    private boolean isShapeVisible = true;
+    @Getter
+    private SceneMode sceneMode = SceneMode.PLATFORM;
+    @Getter
+    private int sceneRange = 6;
+    // runtime
+    private boolean isSceneLoaded = false;
 
     public SceneView(FXEditor fxEditor) {
         super("editor.scene", Icons.CAMERA);
@@ -43,6 +65,7 @@ public class SceneView extends View {
         this.fxEditor = fxEditor;
         level.setParticleManager(particleManager);
 
+        sceneEditor = new ParticleSceneEditor();
         sceneEditor.layout(layout -> {
             layout.setWidthPercent(100);
             layout.setFlex(1);
@@ -59,6 +82,7 @@ public class SceneView extends View {
         level.clear();
         reset();
         fxObjectInfoView.clear();
+        isSceneLoaded = false;
     }
 
     public void reset() {
@@ -96,15 +120,131 @@ public class SceneView extends View {
 
     public void loadScene() {
         clearScene();
-        var i = 0;
-        for (int x = -5; x < 6; x++) {
-            for (int z = -5; z < 6; z++) {
-                var blockState = (i % 2 == 0 ? Blocks.GRAY_CONCRETE : Blocks.LIGHT_GRAY_CONCRETE).defaultBlockState();
-                level.setBlockAndUpdate(new BlockPos(x, 0, z), blockState);
-                i++;
+        if (sceneMode == SceneMode.PLATFORM) {
+            var i = 0;
+            for (int x = -sceneRange + 1; x < sceneRange; x++) {
+                for (int z = -sceneRange + 1; z < sceneRange; z++) {
+                    var blockState = (i % 2 == 0 ? Blocks.GRAY_CONCRETE : Blocks.LIGHT_GRAY_CONCRETE).defaultBlockState();
+                    level.setBlockAndUpdate(new BlockPos(x, 0, z), blockState);
+                    i++;
+                }
+            }
+        } else {
+            var player = Minecraft.getInstance().player;
+            if (player == null) return;
+            var standPos = player.blockPosition();
+            for (int x = -sceneRange + 1; x < sceneRange; x++) {
+                for (int z = -sceneRange + 1; z < sceneRange; z++) {
+                    for (int y = -3; y < 5; y++) {
+                        var blockState = player.level().getBlockState(standPos.offset(x, y, z));
+                        level.setBlockAndUpdate(new BlockPos(x, y, z), blockState);
+                    }
+                }
             }
         }
         sceneEditor.scene.setRenderedCore(level.getFilledBlocks().longStream().mapToObj(BlockPos::of).toList());
+        isSceneLoaded = true;
+    }
+
+    public void setSceneMode(SceneMode sceneMode) {
+        if (this.sceneMode == sceneMode) return;
+        this.sceneMode = sceneMode;
+        if (isSceneLoaded) loadScene();
+        fxEditor.reloadEffect();
+    }
+
+    public void setSceneRange(int sceneRange) {
+        if (this.sceneRange == sceneRange) return;
+        this.sceneRange = sceneRange;
+        if (isSceneLoaded) loadScene();
+        fxEditor.reloadEffect();
+    }
+
+    public class ParticleSceneEditor extends SceneEditor {
+
+        public SceneView sceneView() {
+            return SceneView.this;
+        }
+
+        @Override
+        protected void renderAfterWorld(MultiBufferSource bufferSource, float partialTicks) {
+            if (fxObjectInfoView.inspected != null) {
+                fxObjectInfoView.inspected.drawEditorAfterWorld(this, bufferSource, partialTicks);
+            }
+            super.renderAfterWorld(bufferSource, partialTicks);
+        }
+
+        @Override
+        public void initTopBar() {
+            super.initTopBar();
+            var sceneRangeScroller = new Scroller.Horizontal();
+            sceneRangeScroller.headButton.setDisplay(YogaDisplay.NONE);
+            sceneRangeScroller.tailButton.setDisplay(YogaDisplay.NONE);
+            var sceneSettings = new UIElement().layout(layout -> {
+                layout.setHeightPercent(100);
+                layout.setFlexDirection(YogaFlexDirection.ROW);
+                layout.setGap(YogaGutter.ALL, 1);
+                layout.setFlex(1);
+            }).addChildren(
+                    new Selector<SceneMode>()
+                            .setCandidates(List.of(SceneMode.values()))
+                            .setValue(getSceneMode(), false)
+                            .setOnValueChanged(SceneView.this::setSceneMode)
+                            .setCandidateUIProvider(candidate -> new Label()
+                                    .textStyle(style -> style
+                                            .textAlignHorizontal(Horizontal.LEFT)
+                                            .textAlignVertical(Vertical.CENTER))
+                                    .setText(candidate == null ? "---" : candidate.translateKey))
+                            .layout(layout -> {
+                                layout.setHeightPercent(100);
+                                layout.setFlex(1);
+                            })
+                            .style(style -> style.setTooltips("editor.scene_mode"))
+                            .addEventListener(UIEvents.TICK, event -> {
+                                if (event.currentElement instanceof Selector selector) {
+                                    if (selector.getValue() != getSceneMode()) {
+                                        selector.setValue(getSceneMode(), false);
+                                    }
+                                }
+                            }),
+                    sceneRangeScroller.setRange(1, 10).setValue((float) getSceneRange(), false)
+                            .setScrollBarSize(10).setOnValueChanged(value -> setSceneRange(Mth.clamp((int) value, 1, 10))).layout(layout -> {
+                        layout.setHeightPercent(100);
+                        layout.setFlex(1);
+                    })
+            );
+            var leftMost = new UIElement().layout(layout -> {
+                layout.setHeightPercent(100);
+                layout.setFlexDirection(YogaFlexDirection.ROW_REVERSE);
+                layout.setGap(YogaGutter.ALL, 1);
+            });
+            leftMost.addChildren(new Toggle()
+                    .setText("")
+                    .setOn(isShapeVisible(), false)
+                    .toggleButton(button -> button.layout(layout -> {
+                        layout.setWidthPercent(100);
+                        layout.setHeightPercent(100);
+                    }))
+                    .setOnToggleChanged(SceneView.this::setShapeVisible)
+                    .toggleStyle(style -> {
+                        style.baseTexture(Sprites.BORDER1_RT1_DARK);
+                        style.hoverTexture(Sprites.BORDER1_RT1);
+                        style.unmarkTexture(Icons.LINK.copy().setColor(ColorPattern.GRAY.color).scale(0.6f));
+                        style.markTexture(Icons.LINK.copy().scale(0.6f));
+                    })
+                    .layout(layout -> {
+                        layout.setPadding(YogaEdge.ALL, 0);
+                        layout.setHeightPercent(100);
+                        layout.setAspectRatio(1f);
+                    }).addEventListener(UIEvents.TICK, event -> {
+                        if (event.currentElement instanceof Toggle toggle) {
+                            if (toggle.getValue() != isShapeVisible()) {
+                                toggle.setValue(isShapeVisible(), false);
+                            }
+                        }
+                    }).style(style -> style.setTooltips("photon.is_shape_visible")));
+            topBar.addChildren(sceneSettings, leftMost);
+        }
     }
 
     public class FXObjectInfoView extends UIElement {

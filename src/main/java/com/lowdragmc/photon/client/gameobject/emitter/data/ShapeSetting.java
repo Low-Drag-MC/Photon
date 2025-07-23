@@ -15,6 +15,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.Cone;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.IShape;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.util.Mth;
 import org.joml.Vector3f;
 import lombok.Getter;
@@ -62,5 +64,15 @@ public class ShapeSetting implements IConfigurable, IPersistedSerializable {
                 "Shape", () -> shape.name(), name -> shape = PhotonRegistries.SHAPES.get(name).value().get(),
                 "Sphere", true, PhotonRegistries.SHAPES.keys().stream().toList(),
                 s -> s, (shapeName, group) -> shape.buildConfigurator(group)));
+    }
+
+    public void drawGuideLines(MultiBufferSource bufferSource, float partialTicks, IParticleEmitter emitter) {
+        var poseStack = new PoseStack();
+        poseStack.mulPose(emitter.transform().localToWorldMatrix());
+        var t = emitter.getT(partialTicks);
+        shape.drawGuideLines(poseStack, bufferSource, partialTicks, emitter,
+                position.get(t, () -> emitter.getMemRandom("shape_position")),
+                new Vector3f(rotation.get(t, () -> emitter.getMemRandom("shape_rotation")).mul(Mth.TWO_PI / 360)),
+                new Vector3f(scale.get(t, () -> emitter.getMemRandom("shape_scale"))));
     }
 }

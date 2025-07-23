@@ -30,29 +30,6 @@ public class MaterialResource extends Resource<IMaterial> {
         addBuiltinTextureMaterial(provider, "ring");
     }
 
-//    public MaterialResource() {
-//        var builtinResource = new BuiltinResourceProvider<>(this);
-//        builtinResource.addResource("circle", new TextureMaterial());
-//        addVanillaTextureMaterial(builtinResource, "angry");
-//        addVanillaTextureMaterial(builtinResource, "bubble");
-//        addVanillaTextureMaterial(builtinResource, "damage");
-//        addVanillaTextureMaterial(builtinResource, "flame");
-//        addVanillaTextureMaterial(builtinResource, "glow");
-//        addVanillaTextureMaterial(builtinResource, "heart");
-//        addVanillaTextureMaterial(builtinResource, "lava");
-//        addVanillaTextureMaterial(builtinResource, "note");
-//
-//        addBuiltinTextureMaterial(builtinResource, "kila_tail");
-//        addBuiltinTextureMaterial(builtinResource, "laser");
-//        addBuiltinTextureMaterial(builtinResource, "smoke");
-//        addBuiltinTextureMaterial(builtinResource, "thaumcraft");
-//        addBuiltinTextureMaterial(builtinResource, "ring");
-//
-//        addBuiltinShaderMaterial(builtinResource, "circle");
-//        builtinResource.addResource("block_texture_sheet", BlockTextureSheetMaterial.INSTANCE);
-//        addResourceProvider(builtinResource);
-//    }
-
     private void addVanillaTextureMaterial(BuiltinResourceProvider<IMaterial> builtin, String name) {
         builtin.addResource(name, new TextureMaterial(ResourceLocation.parse("textures/particle/%s.png".formatted(name))));
     }

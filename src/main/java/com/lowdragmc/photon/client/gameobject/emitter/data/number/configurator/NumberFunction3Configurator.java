@@ -68,17 +68,14 @@ public class NumberFunction3Configurator extends ValueConfigurator<NumberFunctio
         x.layout(layout -> {
             layout.setFlex(1);
             layout.setMinWidth(40);
-            layout.setHeight(14);
         });
         y.layout(layout -> {
             layout.setFlex(1);
             layout.setMinWidth(40);
-            layout.setHeight(14);
         });
         z.layout(layout -> {
             layout.setFlex(1);
             layout.setMinWidth(40);
-            layout.setHeight(14);
         });
     }
 

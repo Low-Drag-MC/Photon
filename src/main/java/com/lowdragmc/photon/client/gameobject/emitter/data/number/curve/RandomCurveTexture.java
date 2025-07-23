@@ -47,6 +47,7 @@ public class RandomCurveTexture extends TransformTexture {
         var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         var matrix = graphics.pose().last().pose();
         Function<Vector2f, Vector2f> getPointPosition = coord -> new Vector2f(x + width * coord.x, y + height * (1 - coord.y));
+        if (width < 2) return;
         for (int i = 0; i < width; i++) {
             float x0 = i * 1f / width;
             float x1 = (i + 1) * 1f / width;

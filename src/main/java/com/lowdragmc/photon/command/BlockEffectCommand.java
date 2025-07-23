@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.command;
 
+import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
 import com.lowdragmc.photon.client.fx.FXHelper;
@@ -22,6 +23,8 @@ import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.core.BlockPos;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -138,22 +141,31 @@ public class BlockEffectCommand extends EffectCommand {
     }
 
     public static void execute(BlockEffectCommand packet, IPayloadContext context) {
-        var level = Minecraft.getInstance().level;
-        if (level != null && level.isLoaded(packet.pos)) {
-            var fx = FXHelper.getFX(packet.location);
-            if (fx != null) {
-                var effect = new BlockEffectExecutor(fx, level, packet.pos);
-                var offset = packet.offset;
-                var rotation = packet.rotation;
-                var scale = packet.scale;
-                effect.setOffset(offset.x, offset.y, offset.z);
-                effect.setRotation(rotation.x, rotation.y, rotation.z);
-                effect.setScale(scale.x, scale.y, scale.z);
-                effect.setDelay(packet.delay);
-                effect.setForcedDeath(packet.forcedDeath);
-                effect.setAllowMulti(packet.allowMulti);
-                effect.setCheckState(packet.checkState);
-                effect.start();
+        if (LDLib2.isClient()) {
+            Client.execute(packet, context);
+        }
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    private static class Client {
+        public static void execute(BlockEffectCommand packet, IPayloadContext context) {
+            var level = Minecraft.getInstance().level;
+            if (level != null && level.isLoaded(packet.pos)) {
+                var fx = FXHelper.getFX(packet.location);
+                if (fx != null) {
+                    var effect = new BlockEffectExecutor(fx, level, packet.pos);
+                    var offset = packet.offset;
+                    var rotation = packet.rotation;
+                    var scale = packet.scale;
+                    effect.setOffset(offset.x, offset.y, offset.z);
+                    effect.setRotation(rotation.x, rotation.y, rotation.z);
+                    effect.setScale(scale.x, scale.y, scale.z);
+                    effect.setDelay(packet.delay);
+                    effect.setForcedDeath(packet.forcedDeath);
+                    effect.setAllowMulti(packet.allowMulti);
+                    effect.setCheckState(packet.checkState);
+                    effect.start();
+                }
             }
         }
     }

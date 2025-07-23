@@ -19,6 +19,11 @@
   "photon.shader.settings": "Shader Settings",
   "photon.transform": "transform",
   "photon.scene_information": "Scene Information",
+  "photon.reload_mesh": "reload mesh",
+  "photon.is_shape_visible": "is shape outline visible",
+  "editor.scene_mode": "scene mode",
+  "scene_mode.platform": "platform",
+  "scene_mode.real_world": "real world",
 
   "photon.separated axes": "Separated axes",
   "photon.all_in_one": "All in one",

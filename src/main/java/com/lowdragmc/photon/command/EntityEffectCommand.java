@@ -1,6 +1,8 @@
 package com.lowdragmc.photon.command;
 
+import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
 import com.lowdragmc.photon.client.fx.EntityEffectExecutor;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.mojang.brigadier.Command;
@@ -26,6 +28,8 @@ import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.world.entity.Entity;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -187,26 +191,34 @@ public class EntityEffectCommand extends EffectCommand {
         return packet;
     }
 
-
     public static void execute(EntityEffectCommand packet, IPayloadContext context) {
-        var level = Minecraft.getInstance().level;
-        if (level != null) {
-            var fx = FXHelper.getFX(packet.location);
-            if (fx != null) {
-                for (var id : packet.ids) {
-                    var entity = level.getEntity(id);
-                    if (entity != null) {
-                        var effect = new EntityEffectExecutor(fx, level, entity, packet.autoRotate);
-                        var offset = packet.offset;
-                        var rotation = packet.rotation;
-                        var scale = packet.scale;
-                        effect.setOffset(offset.x, offset.y, offset.z);
-                        effect.setRotation(rotation.x, rotation.y, rotation.z);
-                        effect.setScale(scale.x, scale.y, scale.z);
-                        effect.setDelay(packet.delay);
-                        effect.setForcedDeath(packet.forcedDeath);
-                        effect.setAllowMulti(packet.allowMulti);
-                        effect.start();
+        if (LDLib2.isClient()) {
+            Client.execute(packet, context);
+        }
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    private static class Client {
+        public static void execute(EntityEffectCommand packet, IPayloadContext context) {
+            var level = Minecraft.getInstance().level;
+            if (level != null) {
+                var fx = FXHelper.getFX(packet.location);
+                if (fx != null) {
+                    for (var id : packet.ids) {
+                        var entity = level.getEntity(id);
+                        if (entity != null) {
+                            var effect = new EntityEffectExecutor(fx, level, entity, packet.autoRotate);
+                            var offset = packet.offset;
+                            var rotation = packet.rotation;
+                            var scale = packet.scale;
+                            effect.setOffset(offset.x, offset.y, offset.z);
+                            effect.setRotation(rotation.x, rotation.y, rotation.z);
+                            effect.setScale(scale.x, scale.y, scale.z);
+                            effect.setDelay(packet.delay);
+                            effect.setForcedDeath(packet.forcedDeath);
+                            effect.setAllowMulti(packet.allowMulti);
+                            effect.start();
+                        }
                     }
                 }
             }

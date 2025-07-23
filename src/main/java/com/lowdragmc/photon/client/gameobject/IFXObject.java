@@ -16,6 +16,7 @@ import com.lowdragmc.photon.gui.editor.view.SceneView;
 import com.mojang.serialization.Codec;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.Particle;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
@@ -181,6 +182,11 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
 
     // information inspection
     default void inspectSceneInformation(SceneView sceneView, UIElement container) {
+
+    }
+
+    // editor rendering
+    default void drawEditorAfterWorld(SceneView.ParticleSceneEditor scene, MultiBufferSource bufferSource, float partialTicks) {
 
     }
 }

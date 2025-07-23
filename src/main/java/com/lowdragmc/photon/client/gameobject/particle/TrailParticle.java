@@ -1,9 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
-import com.lowdragmc.lowdraglib2.client.shader.LDLibShaders;
-import com.lowdragmc.lowdraglib2.client.shader.management.ShaderSSBO;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
-import com.lowdragmc.photon.client.PhotonShaders;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailConfig;
@@ -19,14 +16,9 @@ import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL43;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.nio.FloatBuffer;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -38,13 +30,6 @@ import java.util.function.Supplier;
  */
 @OnlyIn(Dist.CLIENT)
 public class TrailParticle implements IParticle {
-    @Nullable
-    private static FloatBuffer inputBuffer;
-    @Nullable
-    private static ShaderSSBO inputSSBO;
-    @Nullable
-    private static ShaderSSBO outputSSBO;
-    private static Integer atomicCounterBuffer;
     public enum UVMode {
         Stretch,
         Tile
@@ -208,20 +193,17 @@ public class TrailParticle implements IParticle {
     }
 
     protected void updateChanges() {
-        var changed = updateTails();
-        if (changed) {
-            updateRawTailsProperties();
-            if (config.isSmoothInterpolation()) {
-                this.tails = generateSmoothPath(rawTails, config.getMinVertexDistance());
-            } else {
-                this.tails = rawTails;
-            }
+        updateTails();
+        updateRawTailsProperties();
+        if (config.isSmoothInterpolation()) {
+            this.tails = generateSmoothPath(rawTails, this.tails, config.getMinVertexDistance());
+        } else {
+            this.tails = rawTails;
         }
         this.updateLight();
     }
 
-    protected boolean updateTails() {
-        var tailChanged = false;
+    protected void updateTails() {
 
         for (int i = 0; i < rawTails.size(); i++) {
             rawTails.lifeTime[i] -= 1;
@@ -229,10 +211,8 @@ public class TrailParticle implements IParticle {
 
         TailArray newRawTails = new TailArray();
         for (int i = 0; i < rawTails.size(); i++) {
-            if (rawTails.lifeTime[i] > 0) {
+            if (rawTails.lifeTime[i] >= 0) {
                 rawTails.copyTailTo(newRawTails, i);
-            } else {
-                tailChanged = true;
             }
         }
         rawTails = newRawTails;
@@ -247,15 +227,18 @@ public class TrailParticle implements IParticle {
                 }
             }
             if (shouldAdd) {
-                Tail newTail = new Tail(headPos, lifetimeSupplier.get());
+                Tail newTail = new Tail(headPos, lifetimeSupplier.get(), new Vector4f(1, 1, 1, 1), 0.2f);
                 rawTails.add(newTail);
-                tailChanged = true;
+            } else if (rawTails.size() == 1) {
+                rawTails.posX[0] = headPos.x;
+                rawTails.posY[0] = headPos.y;
+                rawTails.posZ[0] = headPos.z;
+                rawTails.lifeTime[0] = lifetimeSupplier.get();
             }
         }
-        return tailChanged;
     }
 
-    public TailArray generateSmoothPath(TailArray vertices, float distance) {
+    public TailArray generateSmoothPath(TailArray vertices, TailArray lastSmooth, float distance) {
         if (vertices.size() <= 2) {
             return vertices;
         }
@@ -265,9 +248,9 @@ public class TrailParticle implements IParticle {
         Vector3f prevDir = null;
 
         for (int i = 0; i < vertices.size() - 1; i++) {
-            Vector3f curr = vertices.getPosition(i);
-            Vector3f next = vertices.getPosition(i + 1);
-            Vector3f dir = new Vector3f(next).sub(curr).normalize();
+            var curr = vertices.getPosition(i);
+            var next = vertices.getPosition(i + 1);
+            var dir = new Vector3f(next).sub(curr).normalize();
             smoothPath.add(vertices.copyAsTail(i));
 
             if (prevDir != null && dir.dot(prevDir) > 0.99f) {
@@ -286,94 +269,17 @@ public class TrailParticle implements IParticle {
                             curr, next,
                             vertices.getPosition(Math.min(i + 2, vertices.size() - 1)), t);
                     // build interpolated tail
-                    var interp = new Tail(interpPos, vertices.lifeTime[i]);
-                    interp.color = vertices.getColor(i);
-                    interp.width = vertices.getWidth(i);
-                    smoothPath.add(interp);
+                    smoothPath.add(new Tail(
+                            interpPos,
+                            Mth.lerp(t, vertices.lifeTime[i], vertices.lifeTime[i + 1]),
+                            new Vector4f(vertices.getColor(i)).lerp(vertices.getColor(i + 1), t),
+                            Mth.lerp(t, vertices.width[i], vertices.width[i + 1])
+                    ));
                 }
             }
             prevDir = dir;
         }
         smoothPath.add(vertices.copyAsTail(vertices.size() - 1));
-        return smoothPath;
-    }
-
-    public LinkedList<Tail> generateSmoothPathFromShader(LinkedList<Tail> vertices, float distance) {
-        if (vertices.size() <= 2) {
-            return vertices;
-        }
-        var minDistance = Math.max(distance, 0.05f);
-        var smoothPath = new LinkedList<Tail>();
-        if (config.isCalculateSmoothByShader() && LDLibShaders.supportComputeShader() && LDLibShaders.supportSSBO()) {
-            var program = PhotonShaders.getCatmullRomProgram();
-            var VERTEX_SIZE = Float.BYTES * 9; // 3 position, 4 color, 1 lifetime, 1 width
-            // create buffers
-            if (inputSSBO == null) {
-                inputSSBO = new ShaderSSBO();
-                inputSSBO.createBufferData(VERTEX_SIZE * 512, GL43.GL_STATIC_DRAW);
-                int inputBlockIndex = GL43.glGetProgramResourceIndex(program.programId, GL43.GL_SHADER_STORAGE_BLOCK, "InputVertices");
-                inputSSBO.bindToShader(program.programId, inputBlockIndex, 0);
-                inputSSBO.bindIndex(0);
-            }
-            if (inputBuffer == null) {
-                inputBuffer = BufferUtils.createFloatBuffer(VERTEX_SIZE * 512);
-            }
-            if (outputSSBO == null) {
-                outputSSBO = new ShaderSSBO();
-                outputSSBO.createBufferData(VERTEX_SIZE * 1024, GL43.GL_DYNAMIC_COPY);
-                int outputBlockIndex = GL43.glGetProgramResourceIndex(program.programId, GL43.GL_SHADER_STORAGE_BLOCK, "OutputVertices");
-                outputSSBO.bindToShader(program.programId, outputBlockIndex, 1);
-                outputSSBO.bindIndex(1);
-            }
-            if (atomicCounterBuffer == null) {
-                atomicCounterBuffer = GL43.glGenBuffers();
-                GL43.glBindBuffer(GL43.GL_ATOMIC_COUNTER_BUFFER, atomicCounterBuffer);
-                GL43.glBufferData(GL43.GL_ATOMIC_COUNTER_BUFFER, Integer.BYTES, GL43.GL_DYNAMIC_COPY);
-                GL43.glBindBufferBase(GL43.GL_ATOMIC_COUNTER_BUFFER, 2, atomicCounterBuffer);
-            }
-
-            // write data
-            program.use(uniform -> {
-                uniform.glUniform1F("minDistance", minDistance);
-                uniform.glUniform1I("inputCount", vertices.size());
-            });
-            for (Tail vertex : vertices) {
-                inputBuffer.put(vertex.position.x).put(vertex.position.y).put(vertex.position.z);
-                inputBuffer.put(vertex.color.x).put(vertex.color.y).put(vertex.color.z).put(vertex.color.w);
-                inputBuffer.put(vertex.lifeTime).put(vertex.width);
-            }
-            inputSSBO.bufferSubData(0, inputBuffer);
-
-            // run compute shader
-            int numGroups = (int) Math.ceil(vertices.size() / 256f);
-            GL43.glDispatchCompute(numGroups, 1, 1);
-
-            // make sure the compute shader is done
-            GL43.glMemoryBarrier(GL43.GL_SHADER_STORAGE_BARRIER_BIT | GL43.GL_ATOMIC_COUNTER_BARRIER_BIT);
-
-            // read data
-            GL43.glBindBuffer(GL43.GL_ATOMIC_COUNTER_BUFFER, atomicCounterBuffer);
-            var outputCountBuffer = GL43.glMapBuffer(GL43.GL_ATOMIC_COUNTER_BUFFER, GL43.GL_READ_ONLY).asIntBuffer();
-            var outputCount = outputCountBuffer.get();
-            GL43.glUnmapBuffer(GL43.GL_ATOMIC_COUNTER_BUFFER);
-
-            outputSSBO.bindBuffer();
-            var smoothVertexBuffer = GL43.glMapBuffer(GL43.GL_SHADER_STORAGE_BUFFER, GL43.GL_READ_ONLY).asFloatBuffer();
-
-            // handle data
-            for (int i = 0; i < outputCount; i++) {
-                var pos = new Vector3f(smoothVertexBuffer.get(), smoothVertexBuffer.get(), smoothVertexBuffer.get());
-                var color = new Vector4f(smoothVertexBuffer.get(), smoothVertexBuffer.get(), smoothVertexBuffer.get(), smoothVertexBuffer.get());
-                var lifeTime = smoothVertexBuffer.get();
-                var width = smoothVertexBuffer.get();
-                var tail = new Tail(pos, lifeTime);
-                tail.color = color;
-                tail.width = width;
-                smoothPath.add(tail);
-            }
-            GL43.glUnmapBuffer(GL43.GL_SHADER_STORAGE_BUFFER);
-            return smoothPath;
-        }
         return smoothPath;
     }
 
@@ -564,10 +470,7 @@ public class TrailParticle implements IParticle {
 
         private Tail copyAsTail(int index) {
             Vector3f pos = getPosition(index);
-            Tail tail = new Tail(pos, lifeTime[index]);
-            tail.color = getColor(index);
-            tail.width = width[index];
-            return tail;
+            return new Tail(pos, lifeTime[index], getColor(index), getWidth(index));
         }
 
         public void renderInternal(VertexConsumer buffer, float partialTicks, Vector3f cameraPos, Vector4f color, int light) {
@@ -586,31 +489,33 @@ public class TrailParticle implements IParticle {
             }
 
             if (pushHead) {
-                Tail headTail = new Tail(headPos, 100);
-                headTail.previous = tailSize > 1 ? copyAsTail(tailSize - 1) : null;
-                headTail.updateData();
+                Tail headTail = new Tail(headPos, 100, getColor(0), getWidth(0));
                 tails.add(headTail);
             }
 
-            var isTail = true;
+            var lerpDur = 0f;
+            var t = 0f;
+            if (rawTails.size() > 1) {
+                lerpDur = rawTails.lifeTime[1] - rawTails.lifeTime[0];
+                t = 1 - (rawTails.lifeTime[0] + 1 - partialTicks) / lerpDur;
+            }
             for (int i = 0; i < size - 1; i++) {
                 // skip dead tails
-                if (lifeTime[i] - partialTicks <= 0 || lifeTime[i + 1] - partialTicks <= 0) {
+                if ((lifeTime[i] - partialTicks < 0f && lifeTime[i + 1] - partialTicks < 0)) {
                     continue;
                 }
+                var currT = lifeTime[i] / lerpDur;
+                var nextT = lifeTime[i + 1] / lerpDur;
+                if (nextT < t) continue;
 
                 // basic
                 Vector3f tailPos = new Vector3f(posX[i], posY[i], posZ[i]);
                 Vector3f next = new Vector3f(posX[i + 1], posY[i + 1], posZ[i + 1]);
                 // apply interpolation for tail
-                if (isTail) {
-                    var lerpDur = lifeTime[i + 1] - lifeTime[i];
-                    if (lerpDur > 0) {
-                        if (lifeTime[i] - partialTicks <= lerpDur) {
-                            tailPos = tailPos.lerp(next, 1 - (lifeTime[i] - partialTicks) / lerpDur);
-                        }
+                if (lerpDur > 0) {
+                    if (currT <= t && t <= nextT) {
+                        tailPos = tailPos.lerp(next, (t - currT) / (nextT - currT));
                     }
-                    isTail = false;
                 }
 
                 Vector3f curr = new Vector3f(tailPos);
@@ -693,46 +598,16 @@ public class TrailParticle implements IParticle {
     }
 
     public static class Tail {
-        public float lifeTime;
-        public Vector3f position;
-        public Vector4f color;
-        public float width;
-        public Tail previous;
-        public Tail next;
-        public float t;
+        public final float lifeTime;
+        public final Vector3f position;
+        public final Vector4f color;
+        public final float width;
 
-        public Tail(Vector3f position, float lifeTime) {
+        public Tail(Vector3f position, float lifeTime, Vector4f color, float width) {
             this.position = position;
             this.lifeTime = lifeTime;
-            this.color = new Vector4f(1, 1, 1, 1);
-            this.width = 0.2f;
-        }
-
-        public Tail(Vector3f position, Tail previous, Tail next, float t) {
-            this.position = position;
-            this.previous = previous;
-            this.next = next;
-            this.t = t;
-            updateData();
-        }
-
-        public void updateData() {
-            if (previous == null) {
-                return;
-            }
-            if (next == null ) {
-                this.color = new Vector4f(previous.color);
-                this.width = previous.width;
-                this.lifeTime = previous.lifeTime;
-            } else {
-                this.color = new Vector4f(previous.color).lerp(next.color, t);
-                this.width = Mth.lerp(t, previous.width, next.width);
-                this.lifeTime = Mth.lerp(t, previous.lifeTime, next.lifeTime);
-            }
-        }
-
-        public float distanceSquared(Tail next) {
-            return position.distanceSquared(next.position);
+            this.color = color;
+            this.width = width;
         }
     }
 }

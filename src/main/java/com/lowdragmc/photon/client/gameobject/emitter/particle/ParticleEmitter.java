@@ -13,8 +13,11 @@ import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
+import com.lowdragmc.photon.gui.editor.view.SceneView;
+import com.mojang.blaze3d.vertex.PoseStack;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.phys.AABB;
@@ -180,6 +183,13 @@ public class ParticleEmitter extends Emitter {
         super.remove(force);
         if (force) {
             particles.clear();
+        }
+    }
+
+    @Override
+    public void drawEditorAfterWorld(SceneView.ParticleSceneEditor scene, MultiBufferSource bufferSource, float partialTicks) {
+        if(scene.sceneView().isShapeVisible()) {
+            config.shape.drawGuideLines(bufferSource, partialTicks, this);
         }
     }
 }

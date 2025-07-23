@@ -15,6 +15,7 @@ import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.gui.editor.resource.CurveResource;
 import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
+import com.lowdragmc.photon.gui.editor.resource.MeshResource;
 import lombok.Getter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -40,7 +41,8 @@ public class FXProject implements IProject {
                 MaterialResource.INSTANCE,
                 ColorsResource.INSTANCE,
                 CurveResource.INSTANCE,
-                GradientResource.INSTANCE
+                GradientResource.INSTANCE,
+                MeshResource.INSTANCE
         );
     }
 

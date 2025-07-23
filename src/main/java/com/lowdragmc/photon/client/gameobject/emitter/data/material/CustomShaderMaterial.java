@@ -21,6 +21,7 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonShaders;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.mojang.blaze3d.shaders.Program;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
@@ -34,6 +35,7 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.resources.ResourceLocation;
 import org.appliedenergistics.yoga.YogaAlign;
 import org.jetbrains.annotations.NotNull;
+import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -76,6 +78,12 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     }
 
     @Override
+    public void setupUniform(MaterialContext context) {
+        super.setupUniform(context);
+
+    }
+
+    @Override
     public IMaterial copy() {
         var copied = new CustomShaderMaterial(shaderLocation);
         var data = serializeAdditionalNBT(Platform.getFrozenRegistry());
@@ -99,6 +107,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         if (shaderInstance != null) {
             shaderInstance.deserializeNBT(provider, shaderData.getCompound("shaderData"));
             attachDynamicSamplers(shaderInstance);
+            attachDynamicUniforms(shaderInstance);
         }
     }
 
@@ -134,6 +143,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             shader.setSampler("SamplerBlockAtlas", texture);
         }
         attachDynamicSamplers(shader);
+        attachDynamicUniforms(shader);
         if (define != null) {
             LDProgramDefineManager.removeProgramDefine(define);
         }
@@ -155,6 +165,31 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         if (samplerNames.contains("SamplerSceneDepth")) {
             shader.addDynamicSampler("SamplerSceneDepth", () -> Optional.ofNullable(RenderPassPipeline.getCurrent())
                     .map(pipeline -> pipeline.getSceneSampler().getDepthTextureId()).orElse(-1));
+        }
+    }
+
+    private void attachDynamicUniforms(LDShaderInstance shader) {
+        var uniformNames = shader.getShaderInstanceAccessor().getUniformMap().keySet();
+        if (uniformNames.contains("U_CameraPosition")) {
+            shader.addDynamicUniform("U_CameraPosition", uniform -> {
+                if (RenderPassPipeline.getCurrent() != null) {
+                    var camera = RenderPassPipeline.getCurrent().getCamera();
+                    if (camera != null) {
+                        var pos = camera.getPosition();
+                        uniform.set((float) pos.x, (float) pos.y, (float) pos.z);
+                    }
+                }
+            });
+        }
+        if (uniformNames.contains("U_InverseProjectionMatrix")) {
+            shader.addDynamicUniform("U_InverseProjectionMatrix", uniform -> {
+                uniform.set(RenderSystem.getProjectionMatrix().invert(new Matrix4f()));
+            });
+        }
+        if (uniformNames.contains("U_InverseViewMatrix")) {
+            shader.addDynamicUniform("U_InverseViewMatrix", uniform -> {
+                uniform.set(RenderSystem.getModelViewMatrix().invert(new Matrix4f()));
+            });
         }
     }
 
@@ -182,6 +217,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                 var defineShader = loadShaderInstance(shaderLocation, define);
                 defineShader.deserializeNBT(Platform.getFrozenRegistry(), data);
                 attachDynamicSamplers(defineShader);
+                attachDynamicUniforms(defineShader);
                 return defineShader;
             } catch (Throwable e) {
                 Photon.LOGGER.error("Failed to recompile shader", e);
@@ -230,6 +266,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                     if (previousData != null && shaderInstance != null) {
                         shaderInstance.deserializeNBT(Platform.getFrozenRegistry(), previousData);
                         attachDynamicSamplers(shaderInstance);
+                        attachDynamicUniforms(shaderInstance);
                     }
                     reloadShaderConfigurator(shaderConfigurator);
                 }).setText("photon.reload_shader").layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
