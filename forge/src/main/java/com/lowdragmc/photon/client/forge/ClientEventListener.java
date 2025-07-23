@@ -2,11 +2,13 @@ package com.lowdragmc.photon.client.forge;
 
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.ClientCommands;
+import com.lowdragmc.photon.IrisFramebufferUtils;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.RegisterClientCommandsEvent;
+import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -28,4 +30,14 @@ public class ClientEventListener {
         commands.forEach(dispatcher::register);
     }
 
+    @SubscribeEvent
+    public static void onRenderGui(RenderLevelStageEvent event) {
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_LEVEL) {
+            IrisFramebufferUtils.setRenderingGUIScreen(true);
+        }
+
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_SKY) {
+            IrisFramebufferUtils.setRenderingGUIScreen(false);
+        }
+    }
 }

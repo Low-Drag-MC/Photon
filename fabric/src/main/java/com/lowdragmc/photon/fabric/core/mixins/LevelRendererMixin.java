@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.fabric.core.mixins;
 
-import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
+import com.lowdragmc.photon.command.BlockEffectCommand;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
@@ -43,10 +43,21 @@ public class LevelRendererMixin {
     )
     private void prepareForParticleRendering(PoseStack poseStack, float partialTick, long finishNanoTime, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f projectionMatrix, CallbackInfo ci) {
         PhotonParticleRenderType.prepareForParticleRendering(cullingFrustum);
-        if (!Photon.isShaderModInstalled()) { // if we install shader mod, it will help to do it.
-            MultiBufferSource.BufferSource bufferSource = this.renderBuffers.bufferSource();
-            this.minecraft.particleEngine.render(poseStack, bufferSource, lightTexture, camera, partialTick);
+        MultiBufferSource.BufferSource bufferSource = this.renderBuffers.bufferSource();
+        this.minecraft.particleEngine.render(poseStack, bufferSource, lightTexture, camera, partialTick);
+    }
 
-        }
+    /**
+     * inject particle being rendered
+     */
+    @Inject(
+            method = {"renderLevel"},
+            at = {@At(
+                    value = "INVOKE",
+                    shift = At.Shift.AFTER,
+                    target = "Lnet/minecraft/client/particle/ParticleEngine;render(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;F)V")}
+    )
+    private void prepareForParticleBloom(PoseStack poseStack, float partialTick, long finishNanoTime, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f projectionMatrix, CallbackInfo ci) {
+        PhotonParticleRenderType.renderBloom();
     }
 }

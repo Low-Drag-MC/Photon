@@ -4,7 +4,7 @@ import com.lowdragmc.lowdraglib.LDLib;
 import com.lowdragmc.lowdraglib.Platform;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import dev.architectury.injectables.annotations.ExpectPlatform;
-import net.irisshaders.iris.api.v0.IrisApi;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,10 +37,46 @@ public class Photon {
     }
 
     public static boolean isUsingShaderPack() {
-        if (isShaderModInstalled()) {
-            return IrisApi.getInstance().isShaderPackInUse();
+        return IrisFramebufferUtils.isUsingShaderPack();
+    }
+
+    public static int getSolidFrameBufferID() {
+        if (IrisFramebufferUtils.isUsingShaderPack()) {
+            return IrisFramebufferUtils.getIrisSolidFboId();
         }
-        return false;
+
+        return Minecraft.getInstance().getMainRenderTarget().frameBufferId;
+    }
+
+    public static int getTranslucentFrameBufferID() {
+        if (IrisFramebufferUtils.isUsingShaderPack()) {
+            return IrisFramebufferUtils.getIrisTranslucentFboId();
+        }
+
+        return Minecraft.getInstance().getMainRenderTarget().frameBufferId;
+    }
+
+    public static int getDepthTextureID() {
+        if (IrisFramebufferUtils.isUsingShaderPack()) {
+            return IrisFramebufferUtils.getIrisDepthTextureId();
+        }
+
+        return Minecraft.getInstance().getMainRenderTarget().getDepthTextureId();
+    }
+
+    public static int getSolidTextureID() {
+        if (IrisFramebufferUtils.isUsingShaderPack()) {
+            return IrisFramebufferUtils.getIrisSolidTextureId();
+        }
+
+        return Minecraft.getInstance().getMainRenderTarget().getColorTextureId();
+    }
+
+    public static int getTranslucentTextureID(boolean writeBuffer) {
+        if (IrisFramebufferUtils.isUsingShaderPack()) {
+            return IrisFramebufferUtils.getIrisTranslucentTextureId(writeBuffer);
+        }
+
+        return Minecraft.getInstance().getMainRenderTarget().getColorTextureId();
     }
 }
-

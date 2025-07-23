@@ -7,6 +7,7 @@ import com.lowdragmc.photon.client.PhotonShaders;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailConfig;
+import com.lowdragmc.photon.client.postprocessing.BloomEffect;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.floats.Float2ObjectFunction;
 import lombok.Getter;
@@ -577,6 +578,16 @@ public class TrailParticle implements IParticle {
         }
 
         public void renderInternal(VertexConsumer buffer, float partialTicks, Vector3f cameraPos, Vector4f color, int light) {
+            // set bloom color
+            if (config.renderer.isBloomEffect()) {
+                int bloomColor = config.renderer.getBloomColor().get(emitter.getRandomSource(), emitter.getT(partialTicks)).intValue();
+                float r = ColorUtils.red(bloomColor);
+                float g = ColorUtils.green(bloomColor);
+                float b = ColorUtils.blue(bloomColor);
+                float a = ColorUtils.alpha(bloomColor);
+                BloomEffect.setBloomColor(new Vector4f(r, g, b, a));
+            }
+
             Vector3f lastNormal = null;
             Vector3f lastUp = null;
 

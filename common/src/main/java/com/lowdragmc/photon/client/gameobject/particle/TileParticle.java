@@ -10,6 +10,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
+import com.lowdragmc.photon.client.postprocessing.BloomEffect;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
@@ -63,18 +64,23 @@ public class TileParticle implements IParticle {
     /**
      * Physics
      */
-    @Setter @Getter
+    @Setter
+    @Getter
     protected boolean collided;
     /**
      * Life cycle
      */
-    @Setter @Getter
+    @Setter
+    @Getter
     protected int delay;
-    @Setter @Getter
+    @Setter
+    @Getter
     protected int age;
-    @Setter @Getter
+    @Setter
+    @Getter
     protected int lifetime;
-    @Setter @Getter
+    @Setter
+    @Getter
     protected boolean isRemoved;
 
     // runtime
@@ -275,7 +281,7 @@ public class TileParticle implements IParticle {
 
     /**
      * from world to local
-u     */
+     */
     public Matrix4f getSpaceTransformInverse() {
         return config.getSimulationSpace() == ParticleConfig.Space.Local ?
                 emitter.transform().worldToLocalMatrix() :
@@ -581,6 +587,16 @@ u     */
     }
 
     public void renderInternal(@Nonnull VertexConsumer buffer, Camera camera, float partialTicks) {
+        // set bloom color
+        if (config.renderer.isBloomEffect()) {
+            int bloomColor = config.renderer.getBloomColor().get(emitter.getRandomSource(), emitter.getT(partialTicks)).intValue();
+            float r = ColorUtils.red(bloomColor);
+            float g = ColorUtils.green(bloomColor);
+            float b = ColorUtils.blue(bloomColor);
+            float a = ColorUtils.alpha(bloomColor);
+            BloomEffect.setBloomColor(new Vector4f(r, g, b, a));
+        }
+
         var vec3 = camera.getPosition();
 
         var localPos = getLocalPos(partialTicks).mulPosition(getSpaceTransform());
@@ -606,7 +622,7 @@ u     */
         var size = getRealSize(partialTicks);
 
         if (renderMode == RendererSetting.Particle.Mode.Model) {
-            var transform = new Matrix4f().translate(x, y ,z)
+            var transform = new Matrix4f().translate(x, y, z)
                     .rotate(new Quaternionf().rotateXYZ(rotation.x, rotation.y, rotation.z))
                     .scale(size)
                     .translate(-0.5f, -0.5f, -0.5f);
@@ -668,7 +684,7 @@ u     */
             var byteBuffer = memoryStack.malloc(DefaultVertexFormat.BLOCK.getVertexSize());
             var intBuffer = byteBuffer.asIntBuffer();
 
-            for(int k = 0; k < points; ++k) {
+            for (int k = 0; k < points; ++k) {
                 intBuffer.clear();
                 intBuffer.put(vertices, k * 8, 8);
                 var x = byteBuffer.getFloat(0);

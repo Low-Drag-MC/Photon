@@ -18,6 +18,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.postprocessing.BloomEffect;
 import com.lowdragmc.photon.core.mixins.accessor.BlendModeAccessor;
 import com.lowdragmc.photon.core.mixins.accessor.ShaderInstanceAccessor;
 import com.mojang.blaze3d.shaders.BlendMode;
@@ -28,6 +29,7 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.GameRenderer;
 import org.joml.Vector3f;
 
 import javax.annotation.Nonnull;
@@ -93,13 +95,21 @@ public class BeamConfig {
         public void prepareStatus() {
             if (renderer.isBloomEffect()) {
                 beginBloom();
+            } else {
+                RenderSystem.setShader(GameRenderer::getParticleShader);
             }
+
             material.pre();
             material.getMaterial().begin(false);
             if (RenderSystem.getShader() instanceof ShaderInstanceAccessor shader) {
                 lastBlend = BlendModeAccessor.getLastApplied();
                 BlendModeAccessor.setLastApplied(shader.getBlend());
             }
+
+            //bind MRT after material rendered
+            var input = BloomEffect.getInput();
+            input.bindWrite(false);
+
             Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
         }
 
@@ -116,9 +126,7 @@ public class BeamConfig {
                 lastBlend.apply();
                 lastBlend = null;
             }
-            if (renderer.isBloomEffect()) {
-                endBloom();
-            }
+            endParticle();
         }
     }
 }

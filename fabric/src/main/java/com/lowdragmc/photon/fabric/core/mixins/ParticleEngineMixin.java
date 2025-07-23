@@ -70,44 +70,42 @@ public abstract class ParticleEngineMixin {
         PhotonParticleRenderType.finishRender();
     }
 
-    /**
-     * fine, if you install shader mod, we have to render our custom particles ourselves.
-     */
-    @Inject(method = "render",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lcom/mojang/blaze3d/vertex/PoseStack;popPose()V",
-                    shift = At.Shift.BEFORE,
-                    by = 1
-            ))
-    private void injectAfterRender(PoseStack poseStack, MultiBufferSource.BufferSource bufferSource, LightTexture lightTexture, Camera camera, float partialTicks, CallbackInfo ci) {
-        if (PhotonParticleRenderType.getLAYER() == RendererSetting.Layer.Opaque && Photon.isShaderModInstalled()) {
-            for (var type : particles.keySet()) {
-                if (type instanceof PhotonParticleRenderType) {
-                    var iterable = this.particles.get(type);
-                    if (iterable == null) continue;
-                    RenderSystem.setShader(GameRenderer::getParticleShader);
-                    RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
-                    Tesselator tesselator = Tesselator.getInstance();
-                    BufferBuilder bufferBuilder = tesselator.getBuilder();
-                    type.begin(bufferBuilder, textureManager);
-                    for (Particle particle : iterable) {
-                        try {
-                            particle.render(bufferBuilder, camera, partialTicks);
-                        }
-                        catch (Throwable throwable) {
-                            CrashReport crashReport = CrashReport.forThrowable(throwable, "Rendering Particle");
-                            CrashReportCategory crashReportCategory = crashReport.addCategory("Particle being rendered");
-                            crashReportCategory.setDetail("Particle", particle::toString);
-                            crashReportCategory.setDetail("Particle Type", type::toString);
-                            throw new ReportedException(crashReport);
-                        }
-                    }
-                    type.end(tesselator);
-                }
-            }
-        }
-    }
+//    /**
+//     * fine, if you install shader mod, we have to render our custom particles ourselves.
+//     */
+//    @Inject(method = "render",
+//            at = @At(
+//                    value = "INVOKE",
+//                    target = "Lcom/mojang/blaze3d/vertex/PoseStack;popPose()V",
+//                    shift = At.Shift.BEFORE,
+//                    by = 1
+//            ))
+//    private void injectAfterRender(PoseStack poseStack, MultiBufferSource.BufferSource bufferSource, LightTexture lightTexture, Camera camera, float partialTicks, CallbackInfo ci) {
+//        for (var type : particles.keySet()) {
+//            if (type instanceof PhotonParticleRenderType) {
+//                var iterable = this.particles.get(type);
+//                if (iterable == null) continue;
+//                RenderSystem.setShader(GameRenderer::getParticleShader);
+//                RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+//                Tesselator tesselator = Tesselator.getInstance();
+//                BufferBuilder bufferBuilder = tesselator.getBuilder();
+//                type.begin(bufferBuilder, textureManager);
+//                for (Particle particle : iterable) {
+//                    try {
+//                        particle.render(bufferBuilder, camera, partialTicks);
+//                    }
+//                    catch (Throwable throwable) {
+//                        CrashReport crashReport = CrashReport.forThrowable(throwable, "Rendering Particle");
+//                        CrashReportCategory crashReportCategory = crashReport.addCategory("Particle being rendered");
+//                        crashReportCategory.setDetail("Particle", particle::toString);
+//                        crashReportCategory.setDetail("Particle Type", type::toString);
+//                        throw new ReportedException(crashReport);
+//                    }
+//                }
+//                type.end(tesselator);
+//            }
+//        }
+//    }
 
     /**
      * clear effect cache while level changes.
