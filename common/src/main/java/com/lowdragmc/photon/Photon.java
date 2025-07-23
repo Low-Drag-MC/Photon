@@ -37,11 +37,11 @@ public class Photon {
     }
 
     public static boolean isUsingShaderPack() {
-        return IrisFramebufferUtils.isUsingShaderPack();
+        return isShaderModInstalled() && IrisFramebufferUtils.isUsingShaderPack();
     }
 
     public static int getSolidFrameBufferID() {
-        if (IrisFramebufferUtils.isUsingShaderPack()) {
+        if (isUsingShaderPack()) {
             return IrisFramebufferUtils.getIrisSolidFboId();
         }
 
@@ -49,7 +49,7 @@ public class Photon {
     }
 
     public static int getTranslucentFrameBufferID() {
-        if (IrisFramebufferUtils.isUsingShaderPack()) {
+        if (isUsingShaderPack()) {
             return IrisFramebufferUtils.getIrisTranslucentFboId();
         }
 
@@ -57,7 +57,7 @@ public class Photon {
     }
 
     public static int getDepthTextureID() {
-        if (IrisFramebufferUtils.isUsingShaderPack()) {
+        if (isUsingShaderPack()) {
             return IrisFramebufferUtils.getIrisDepthTextureId();
         }
 
@@ -65,7 +65,7 @@ public class Photon {
     }
 
     public static int getSolidTextureID() {
-        if (IrisFramebufferUtils.isUsingShaderPack()) {
+        if (isUsingShaderPack()) {
             return IrisFramebufferUtils.getIrisSolidTextureId();
         }
 
@@ -73,7 +73,7 @@ public class Photon {
     }
 
     public static int getTranslucentTextureID(boolean writeBuffer) {
-        if (IrisFramebufferUtils.isUsingShaderPack()) {
+        if (isUsingShaderPack()) {
             return IrisFramebufferUtils.getIrisTranslucentTextureId(writeBuffer);
         }
 
