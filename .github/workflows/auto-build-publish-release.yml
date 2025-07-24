@@ -222,8 +222,8 @@ jobs:
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
 
           files: |
-            forge/build/libs/!(*-@(all|sources|javadoc|dev-shadow)).jar
-            forge/build/libs/*-@(all|sources|javadoc|dev-shadow).jar
+            build/libs/!(*-@(all|sources|javadoc|dev-shadow)).jar
+            build/libs/*-@(all|sources|javadoc|dev-shadow).jar
 
           name: Photon2-${{ needs.validate.outputs.version }}-neoforge
           version: mc1.21.1-${{ needs.validate.outputs.version }}-neoforge
