@@ -226,7 +226,7 @@ jobs:
             forge/build/libs/*-@(all|sources|javadoc|dev-shadow).jar
 
           name: Photon2-${{ needs.validate.outputs.version }}-neoforge
-          version: mc${{ needs.validate.outputs.version }}-neoforge
+          version: mc1.21.1-${{ needs.validate.outputs.version }}-neoforge
           version-type: ${{ inputs.versionType }}
           changelog-file: CHANGELOG.*
 
