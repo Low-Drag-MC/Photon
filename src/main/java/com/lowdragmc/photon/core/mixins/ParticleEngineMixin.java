@@ -23,7 +23,7 @@ public abstract class ParticleEngineMixin {
      */
     @Inject(method = "setLevel",
             at = @At(value = "RETURN"))
-    private void injectSetLevel(ClientLevel level, CallbackInfo ci) {
+    private void photon$injectSetLevel(ClientLevel level, CallbackInfo ci) {
         EntityEffectExecutor.CACHE.clear();
         BlockEffectExecutor.CACHE.clear();
     }

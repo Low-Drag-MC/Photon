@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_21",
   "plugin": "com.lowdragmc.photon.core.mixins.PhotonMixinPlugin",
   "client": [
+    "MinecraftMixin",
     "ParticleEngineMixin",
     "accessor.ParticleEngineAccessor",
     "iris.ExtendedShaderAccessor"

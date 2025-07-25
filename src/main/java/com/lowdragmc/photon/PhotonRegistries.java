@@ -27,10 +27,13 @@ public class PhotonRegistries {
     @OnlyIn(Dist.CLIENT)
     public static AutoRegistry.LDLibRegisterClient<IShape, Supplier<IShape>> SHAPES;
 
-    public static void init() {
+    static {
         if (LDLib2.isClient()) {
             Client.load();
         }
+    }
+
+    public static void init() {
     }
 
     @OnlyIn(Dist.CLIENT)

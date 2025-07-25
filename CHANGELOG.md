@@ -1,3 +1,5 @@
 ## ChangeLog
 
-# v2.0.0
+# v2.0.1
+* Cache draw target depth texture
+* Fix Registries loading

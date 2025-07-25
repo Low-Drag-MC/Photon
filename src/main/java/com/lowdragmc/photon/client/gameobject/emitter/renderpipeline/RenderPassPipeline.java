@@ -57,10 +57,11 @@ public class RenderPassPipeline extends BufferBuilder {
     @Getter
     private float partialTicks;
     @Getter
-    private HDRTarget drawTarget;
-    private boolean isSceneSamplerDirty = true;
+    private static HDRTarget DRAW_TARGET;
+    private static boolean IS_DRAW_TARGET_DIRTY = true;
     @Nullable
-    private HDRTarget sceneSampler;
+    private static HDRTarget SCENE_SAMPLER;
+    private static boolean IS_SCENE_SAMPLER_DIRTY = true;
 
     public static Comparator<PhotonFXRenderPass> makeRenderPassComparator() {
         return (passOne, passTwo) -> {
@@ -106,24 +107,33 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     public static HDRTarget resize(@Nullable HDRTarget target, int width, int height, boolean useDepth) {
+        return resize(target, width, height, useDepth, false);
+    }
+
+    public static HDRTarget resize(@Nullable HDRTarget target, int width, int height, boolean useDepth, boolean forceResize) {
         if (target == null) {
             target = new HDRTarget(width, height, GL11.GL_LINEAR, useDepth);
             target.setClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-        } else if (target.width != width || target.height != height) {
+        } else if (forceResize || target.width != width || target.height != height) {
             target.resize(width, height, Minecraft.ON_OSX);
         }
         return target;
     }
 
+    public static void markDrawTargetDirty() {
+        IS_DRAW_TARGET_DIRTY = true;
+    }
+
     private void prepareTarget(int width, int height) {
-        drawTarget = resize(drawTarget, width, height, true);
+        DRAW_TARGET = resize(DRAW_TARGET, width, height, true, IS_DRAW_TARGET_DIRTY);
+        IS_DRAW_TARGET_DIRTY = false;
         // we will copy the color texture and share the depth texture of the main target.
         if (Photon.isShaderModInstalled() && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
             // iris has its own separated fbo. we should use it instead
             GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
                     extendedShader.getWritingToBeforeTranslucent() :
                     extendedShader.getWritingToAfterTranslucent();
-            drawTarget.copyColorFrom(fbo.getId(), width, height);
+            DRAW_TARGET.copyColorFrom(fbo.getId(), width, height);
             if (fbo.hasDepthAttachment()) {
                 GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.getId());
                 boolean useStencil = false;
@@ -149,24 +159,20 @@ public class RenderPassPipeline extends BufferBuilder {
                         useStencil = true;
                     }
                 }
-                // TODO fix
                 if (objType != GL30.GL_NONE) {
-//                    if (!drawTarget.hasOtherAttachedDepthTexture() || drawTarget.getAttachedDepthTexture() != depthTexture) {
-//                        drawTarget.attachDepthBufferInternal(depthTexture, useStencil, true);
-//                    }
-                    drawTarget.attachDepthBufferInternal(depthTexture, useStencil, true);
+                    if (!DRAW_TARGET.hasOtherAttachedDepthTexture() || DRAW_TARGET.getAttachedDepthTexture() != depthTexture) {
+                        DRAW_TARGET.attachDepthBufferInternal(depthTexture, useStencil, true);
+                    }
                 }
             }
         } else {
-            // TODO fix
             var mainTarget = Minecraft.getInstance().getMainRenderTarget();
-            drawTarget.copyColorFrom(mainTarget);
-//            if (!drawTarget.hasOtherAttachedDepthTexture() || drawTarget.getAttachedDepthTexture() != mainTarget.getDepthTextureId()) {
-//                drawTarget.attachDepthBuffer(mainTarget);
-//            }
-            drawTarget.attachDepthBuffer(mainTarget);
+            DRAW_TARGET.copyColorFrom(mainTarget);
+            if (!DRAW_TARGET.hasOtherAttachedDepthTexture() || DRAW_TARGET.getAttachedDepthTexture() != mainTarget.getDepthTextureId()) {
+                DRAW_TARGET.attachDepthBuffer(mainTarget);
+            }
         }
-        drawTarget.bindWrite(false);
+        DRAW_TARGET.bindWrite(false);
     }
 
     private void afterRendering() {
@@ -185,9 +191,9 @@ public class RenderPassPipeline extends BufferBuilder {
         var doBloom = PhotonConfig.INSTANCE.enableBloom.get() && (!Photon.isUsingShaderPack() || PhotonConfig.INSTANCE.enableBloomWithIrisShader.get());
         RenderTarget outputTarget;
         if (doBloom) {
-            outputTarget = PhotonPostProcessing.postTarget(drawTarget);
+            outputTarget = PhotonPostProcessing.postTarget(DRAW_TARGET);
         } else {
-            outputTarget = drawTarget;
+            outputTarget = DRAW_TARGET;
         }
 
         // we need it because extended shaders only work while the main target bound.
@@ -312,19 +318,19 @@ public class RenderPassPipeline extends BufferBuilder {
 
     ///  Scene Sampler
     public @Nonnull HDRTarget getSceneSampler() {
-        if (sceneSampler != null && !isSceneSamplerDirty) return sceneSampler;
+        if (SCENE_SAMPLER != null && !IS_SCENE_SAMPLER_DIRTY) return SCENE_SAMPLER;
         updateSceneSampler();
-        drawTarget.bindWrite(false);
-        return sceneSampler;
+        DRAW_TARGET.bindWrite(false);
+        return SCENE_SAMPLER;
     }
 
     public void markSceneSamplerDirty() {
-        isSceneSamplerDirty = true;
+        IS_SCENE_SAMPLER_DIRTY = true;
     }
 
     private void updateSceneSampler() {
-        sceneSampler = resize(sceneSampler, drawTarget.width, drawTarget.height, true);
-        sceneSampler.copyDepthAndColorFrom(drawTarget);
-        isSceneSamplerDirty = false;
+        SCENE_SAMPLER = resize(SCENE_SAMPLER, DRAW_TARGET.width, DRAW_TARGET.height, true);
+        SCENE_SAMPLER.copyDepthAndColorFrom(DRAW_TARGET);
+        IS_SCENE_SAMPLER_DIRTY = false;
     }
 }

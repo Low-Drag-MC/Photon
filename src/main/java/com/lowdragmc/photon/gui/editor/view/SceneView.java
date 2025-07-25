@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor.view;
 
+import com.lowdragmc.lowdraglib2.client.utils.RenderBufferUtils;
 import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.SceneEditor;
@@ -13,20 +14,26 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.lowdragmc.photon.client.PhotonParticleManager;
+import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.FXProjectEffectExecutor;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.AABB;
 import org.appliedenergistics.yoga.*;
 import org.joml.Random;
 import org.joml.Vector2f;
+import org.lwjgl.opengl.GL11;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -51,6 +58,8 @@ public class SceneView extends View {
     public final FXObjectInfoView fxObjectInfoView = new FXObjectInfoView();
     @Getter @Setter
     private boolean isShapeVisible = true;
+    @Getter @Setter
+    private boolean isCullBoxVisible = true;
     @Getter
     private SceneMode sceneMode = SceneMode.PLATFORM;
     @Getter
@@ -170,6 +179,28 @@ public class SceneView extends View {
         protected void renderAfterWorld(MultiBufferSource bufferSource, float partialTicks) {
             if (fxObjectInfoView.inspected != null) {
                 fxObjectInfoView.inspected.drawEditorAfterWorld(this, bufferSource, partialTicks);
+                if (isCullBoxVisible && fxObjectInfoView.inspected instanceof FXObject fxObject) {
+                    var cullBox = fxObject.getRenderBoundingBox(partialTicks);
+                    if (cullBox != AABB.INFINITE) {
+                        RenderSystem.enableBlend();
+                        RenderSystem.disableDepthTest();
+                        RenderSystem.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+
+                        RenderSystem.disableCull();
+                        RenderSystem.setShader(GameRenderer::getRendertypeLinesShader);
+                        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
+                        RenderSystem.lineWidth(3);
+
+                        RenderBufferUtils.drawCubeFrame(new PoseStack(), buffer,
+                                (float) cullBox.minX, (float) cullBox.minY, (float) cullBox.minZ,
+                                (float) cullBox.maxX, (float) cullBox.maxY, (float) cullBox.maxZ,
+                                1, 0.5f, 0.5f, 1);
+
+                        BufferUploader.drawWithShader(buffer.buildOrThrow());
+                        RenderSystem.enableDepthTest();
+                        RenderSystem.enableCull();
+                    }
+                }
             }
             super.renderAfterWorld(bufferSource, partialTicks);
         }
@@ -218,7 +249,7 @@ public class SceneView extends View {
                 layout.setFlexDirection(YogaFlexDirection.ROW_REVERSE);
                 layout.setGap(YogaGutter.ALL, 1);
             });
-            leftMost.addChildren(new Toggle()
+            var shapeVisibleToggle = new Toggle()
                     .setText("")
                     .setOn(isShapeVisible(), false)
                     .toggleButton(button -> button.layout(layout -> {
@@ -242,7 +273,35 @@ public class SceneView extends View {
                                 toggle.setValue(isShapeVisible(), false);
                             }
                         }
-                    }).style(style -> style.setTooltips("photon.is_shape_visible")));
+                    }).style(style -> style.setTooltips("photon.is_shape_visible"));
+            var cullVisibleToggle = new Toggle()
+                    .setText("")
+                    .setOn(isCullBoxVisible(), false)
+                    .toggleButton(button -> button.layout(layout -> {
+                        layout.setWidthPercent(100);
+                        layout.setHeightPercent(100);
+                    }))
+                    .setOnToggleChanged(SceneView.this::setCullBoxVisible)
+                    .toggleStyle(style -> {
+                        style.baseTexture(Sprites.BORDER1_RT1_DARK);
+                        style.hoverTexture(Sprites.BORDER1_RT1);
+                        style.unmarkTexture(Icons.MODEL.copy().setColor(ColorPattern.GRAY.color).scale(0.6f));
+                        style.markTexture(Icons.MODEL.copy().scale(0.6f));
+                    })
+                    .layout(layout -> {
+                        layout.setPadding(YogaEdge.ALL, 0);
+                        layout.setHeightPercent(100);
+                        layout.setAspectRatio(1f);
+                    }).addEventListener(UIEvents.TICK, event -> {
+                        if (event.currentElement instanceof Toggle toggle) {
+                            if (toggle.getValue() != isCullBoxVisible()) {
+                                toggle.setValue(isCullBoxVisible(), false);
+                            }
+                        }
+                    }).style(style -> style.setTooltips("photon.is_cull_visible"));
+            leftMost.addChildren(
+                    shapeVisibleToggle, cullVisibleToggle
+            );
             topBar.addChildren(sceneSettings, leftMost);
         }
     }

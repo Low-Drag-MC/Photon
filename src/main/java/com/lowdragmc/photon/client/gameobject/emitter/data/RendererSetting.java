@@ -10,7 +10,6 @@ import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.world.phys.AABB;
-import org.joml.Vector3f;
 
 import java.util.function.Supplier;
 
@@ -55,18 +54,16 @@ public class RendererSetting {
         @Setter
         @Getter
         @Configurable
-        @ConfigNumber(range = {-10000, 10000})
-        protected Vector3f from = new Vector3f(-0.5f, -0.5f, -0.5f);
-
-        @Setter
-        @Getter
-        @Configurable
-        @ConfigNumber(range = {-10000, 10000})
-        protected Vector3f to = new Vector3f(0.5f, 0.5f, 0.5f);
+        @ConfigNumber(range = {-Float.MAX_VALUE, Float.MAX_VALUE})
+        protected AABB cullBox = new AABB(-0.5, -0.5, -0.5, 0.5, 0.5, 0.5);
 
         public AABB getCullAABB(Emitter particle, float partialTicks) {
-            var pos = particle.transform().position();
-            return new AABB(from.x, from.y, from.z, to.x, to.y, to.z).move(pos.x, pos.y, pos.z);
+            var transform = particle.transform();
+            var scale = transform.scale();
+            var pos = transform.position();
+            return new AABB(cullBox.minX * scale.x, cullBox.minY * scale.y, cullBox.minZ * scale.z,
+                    cullBox.maxX * scale.x, cullBox.maxY * scale.y, cullBox.maxZ * scale.z)
+                    .move(pos.x, pos.y, pos.z);
         }
     }
 

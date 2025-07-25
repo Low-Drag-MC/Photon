@@ -21,6 +21,7 @@
   "photon.scene_information": "Scene Information",
   "photon.reload_mesh": "reload mesh",
   "photon.is_shape_visible": "is shape outline visible",
+  "photon.is_cull_visible": "is cull box visible",
   "editor.scene_mode": "scene mode",
   "scene_mode.platform": "platform",
   "scene_mode.real_world": "real world",
