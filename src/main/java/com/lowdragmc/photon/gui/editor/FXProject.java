@@ -12,6 +12,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.Dialog;
 import com.lowdragmc.lowdraglib2.syncdata.ISubscription;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.FX;
+import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.gui.editor.resource.CurveResource;
 import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
@@ -86,6 +87,7 @@ public class FXProject implements IProject {
                                             try {
                                                 var fileData = fx.serializeNBT(Platform.getFrozenRegistry());
                                                 NbtIo.writeCompressed(fileData, file.toPath());
+                                                FXHelper.clearCache();
                                             } catch (Exception ignored) {}
                                         }
                                     }).show(editor);

@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.SceneEditor;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
+import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Horizontal;
@@ -13,6 +14,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.*;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
@@ -170,6 +172,8 @@ public class SceneView extends View {
     }
 
     public class ParticleSceneEditor extends SceneEditor {
+        public static final IGuiTexture SHAPE_OUTLINE = Icons.icon(Photon.MOD_ID, "shape_outline");
+        public static final IGuiTexture CULL_BOX = Icons.icon(Photon.MOD_ID, "cull_box");
 
         public SceneView sceneView() {
             return SceneView.this;
@@ -260,8 +264,8 @@ public class SceneView extends View {
                     .toggleStyle(style -> {
                         style.baseTexture(Sprites.BORDER1_RT1_DARK);
                         style.hoverTexture(Sprites.BORDER1_RT1);
-                        style.unmarkTexture(Icons.LINK.copy().setColor(ColorPattern.GRAY.color).scale(0.6f));
-                        style.markTexture(Icons.LINK.copy().scale(0.6f));
+                        style.unmarkTexture(SHAPE_OUTLINE.copy().setColor(ColorPattern.GRAY.color).scale(0.6f));
+                        style.markTexture(SHAPE_OUTLINE.copy().scale(0.6f));
                     })
                     .layout(layout -> {
                         layout.setPadding(YogaEdge.ALL, 0);
@@ -285,8 +289,8 @@ public class SceneView extends View {
                     .toggleStyle(style -> {
                         style.baseTexture(Sprites.BORDER1_RT1_DARK);
                         style.hoverTexture(Sprites.BORDER1_RT1);
-                        style.unmarkTexture(Icons.MODEL.copy().setColor(ColorPattern.GRAY.color).scale(0.6f));
-                        style.markTexture(Icons.MODEL.copy().scale(0.6f));
+                        style.unmarkTexture(CULL_BOX.copy().setColor(ColorPattern.GRAY.color).scale(0.6f));
+                        style.markTexture(CULL_BOX.copy().scale(0.6f));
                     })
                     .layout(layout -> {
                         layout.setPadding(YogaEdge.ALL, 0);
@@ -439,13 +443,16 @@ public class SceneView extends View {
                                     seed -> {
                                         var curTime = particleManager.getTime();
                                         effect.setSeed(seed.longValue());
+                                        particleManager.setTimeOffset(Math.abs(seed.longValue()));
                                         simulateTo(curTime);
                                     }, effect.getSeed(), true)
                                     .layout(layout -> layout.setFlex(1)),
 
                             new Button().setText("random").setOnClick(e -> {
                                 var curTime = particleManager.getTime();
-                                effect.setSeed(Random.newSeed());
+                                var newSeed = Random.newSeed();
+                                particleManager.setTimeOffset(Math.abs(newSeed));
+                                effect.setSeed(newSeed);
                                 simulateTo(curTime);
                             })
                     ),
