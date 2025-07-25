@@ -4,3 +4,4 @@
 * Cache draw target depth texture
 * Fixed Registries loading
 * Added Game Time Control
+* Fixed resource releasing

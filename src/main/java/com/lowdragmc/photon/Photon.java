@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.lang.ref.Cleaner;
 
 @Mod(Photon.MOD_ID)
 public class Photon {

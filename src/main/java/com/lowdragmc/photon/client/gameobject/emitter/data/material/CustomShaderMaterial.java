@@ -18,6 +18,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.lowdragmc.photon.client.PhotonShaders;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.mojang.blaze3d.shaders.Program;
@@ -40,6 +41,7 @@ import org.joml.Matrix4f;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
+import java.lang.ref.Cleaner;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -48,7 +50,6 @@ import java.util.Optional;
 @ParametersAreNonnullByDefault
 @LDLRegisterClient(name = "custom_shader", registry = "photon:material")
 public class CustomShaderMaterial extends ShaderInstanceMaterial {
-    // TODO cleaner
     public final static int MAX_SAMPLER = 128;
     public final static int MAX_SAMPLING = 128;
 
@@ -61,12 +62,15 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public final GradientTexture gradientTexture = new GradientTexture(MAX_SAMPLING, MAX_SAMPLER);
     //runtime
     private final Map<String, LDShaderInstance> shaders = new HashMap<>();
+    private final Map<String, Cleaner.Cleanable> shadersCleanable = new HashMap<>();
     @Nullable
     private LDShaderInstance shaderInstance;
+    private Cleaner.Cleanable shaderCleanable;
     @Getter
     private String compiledErrorMessage = "";
 
-    public CustomShaderMaterial() {}
+    public CustomShaderMaterial() {
+    }
 
     public CustomShaderMaterial(ResourceLocation shaderLocation) {
         this.shaderLocation = shaderLocation;
@@ -118,17 +122,25 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public void recompile() {
         compiledErrorMessage = "";
 
-        if (shaderInstance != null && !isCompiledError()) {
-            shaderInstance.close();
+        if (shaderCleanable != null) {
+            shaderCleanable.clean();
+            shaderCleanable = null;
         }
-        shaders.values().forEach(LDShaderInstance::close);
+        if (shaderInstance != null) {
+            this.shaderInstance = null;
+        }
+
+        shadersCleanable.values().forEach(Cleaner.Cleanable::clean);
+        shadersCleanable.clear();
         shaders.clear();
         try {
             this.shaderInstance = loadShaderInstance(shaderLocation, null);
+            this.shaderCleanable = AutoCloseCleaner.registerRenderThread(this, this.shaderInstance);
         } catch (Throwable e) {
             Photon.LOGGER.error("Failed to recompile shader", e);
-            compiledErrorMessage = e.getMessage();
-            shaderInstance = null;
+            this.compiledErrorMessage = e.getMessage();
+            this.shaderInstance = null;
+            this.shaderCleanable = null;
         }
     }
 
@@ -218,6 +230,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                 defineShader.deserializeNBT(Platform.getFrozenRegistry(), data);
                 attachDynamicSamplers(defineShader);
                 attachDynamicUniforms(defineShader);
+                shadersCleanable.put(define, AutoCloseCleaner.registerRenderThread(this, defineShader));
                 return defineShader;
             } catch (Throwable e) {
                 Photon.LOGGER.error("Failed to recompile shader", e);
@@ -242,7 +255,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         shaderConfigurator.setCollapse(false);
         shaderConfigurator.setCanCollapse(false);
         shaderConfigurator.addEventListener(Configurator.CHANGE_EVENT, e -> {
-            shaders.values().forEach(LDShaderInstance::close);
+            shadersCleanable.values().forEach(Cleaner.Cleanable::clean);
+            shadersCleanable.clear();
             shaders.clear();
         });
 

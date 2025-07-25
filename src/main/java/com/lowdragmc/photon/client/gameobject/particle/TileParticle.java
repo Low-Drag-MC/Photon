@@ -664,7 +664,6 @@ u     */
     }
 
     public void putBulkData(Matrix4f transform, VertexConsumer buffer, BakedQuad quad, float brightness, float red, float green, float blue, float alpha, int light) {
-        // TODO cache maybe
         int[] vertices = quad.getVertices();
         int points = vertices.length / 8;
 

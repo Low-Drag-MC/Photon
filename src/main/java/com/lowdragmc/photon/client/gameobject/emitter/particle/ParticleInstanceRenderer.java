@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
+import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -15,11 +16,11 @@ import net.neoforged.neoforge.client.model.IQuadTransformer;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.apache.commons.lang3.tuple.Pair;
 import org.joml.Quaternionf;
-import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.system.MemoryStack;
 
 import javax.annotation.Nullable;
+import java.lang.ref.Cleaner;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -29,19 +30,49 @@ import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.opengl.GL33.*;
 
 public class ParticleInstanceRenderer {
-    // TODO cleaner
+    private static class InstanceResource implements AutoCloseable {
+        protected int vao = -1;
+        protected int modelVbo = -1;
+        protected int modelEbo = -1;
+        protected int instanceVbo = -1;
+
+        @Override
+        public void close() {
+            if (vao != -1) {
+                glDeleteVertexArrays(vao);
+                vao = -1;
+            }
+
+            if (modelVbo != -1) {
+                glDeleteBuffers(modelVbo);
+                modelVbo = -1;
+            }
+
+            if (instanceVbo != -1) {
+                glDeleteBuffers(instanceVbo);
+                instanceVbo = -1;
+            }
+
+            if (modelEbo != -1) {
+                glDeleteBuffers(modelEbo);
+                modelEbo = -1;
+            }
+        }
+    }
     private final ParticleConfig config;
     @Getter
     private boolean initialized = false;
-    private int vao = -1;
-    private int modelVbo = -1;
-    private int modelEbo = -1;
+
+    @Nullable
+    private InstanceResource resource;
+    @Nullable
+    private Cleaner.Cleanable cleanable;
+
     private int modelEboSize = 0;
-    private int instanceVbo = -1;
     private int instanceDataSize = 0; // number of bytes
     private int maxInstancesSize = 0;
     @Nullable
-    private FloatBuffer instanceDataBuffer = null;
+    private static FloatBuffer instanceDataBuffer = null;
 
     public ParticleInstanceRenderer(ParticleConfig config) {
         this.config = config;
@@ -55,11 +86,15 @@ public class ParticleInstanceRenderer {
 
     public void resize(int size) {
         dispose();
+        if (resource == null) {
+            resource = new InstanceResource();
+            cleanable = AutoCloseCleaner.registerRenderThread(this, resource);
+        }
 
         RenderSystem.assertOnRenderThread();
 
-        vao = glGenVertexArrays();
-        glBindVertexArray(vao);
+        resource.vao = glGenVertexArrays();
+        glBindVertexArray(resource.vao);
 
         createStaticData();
         createInstanceData(size);
@@ -68,7 +103,7 @@ public class ParticleInstanceRenderer {
     }
 
     private void createStaticData() {
-        if (initialized) return;
+        if (initialized || resource == null) return;
 
         if (config.renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
             var model = config.renderer.getModel();
@@ -145,8 +180,8 @@ public class ParticleInstanceRenderer {
             vertexBuffer.flip();
             indexBuffer.flip();
 
-            modelVbo = glGenBuffers();
-            glBindBuffer(GL_ARRAY_BUFFER, modelVbo);
+            resource.modelVbo = glGenBuffers();
+            glBindBuffer(GL_ARRAY_BUFFER, resource.modelVbo);
             glBufferData(GL_ARRAY_BUFFER, vertexBuffer, GL_DYNAMIC_DRAW);
             int stride = floatsPerVertex * Float.BYTES;
             int offset = 0;
@@ -167,8 +202,8 @@ public class ParticleInstanceRenderer {
             glEnableVertexAttribArray(3);
             offset += Float.BYTES;
 
-            modelEbo = glGenBuffers();
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, modelEbo);
+            resource.modelEbo = glGenBuffers();
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, resource.modelEbo);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL_DYNAMIC_DRAW);
             modelEboSize = 6 * quads.size();
 
@@ -186,24 +221,24 @@ public class ParticleInstanceRenderer {
             };
 
             // bind vertex data
-            modelVbo = glGenBuffers();
-            glBindBuffer(GL_ARRAY_BUFFER, modelVbo);
+            resource.modelVbo = glGenBuffers();
+            glBindBuffer(GL_ARRAY_BUFFER, resource.modelVbo);
             glBufferData(GL_ARRAY_BUFFER, quadVertices, GL_STATIC_DRAW);
             glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
             glEnableVertexAttribArray(0);
 
             // create ebo
-            modelEbo = glGenBuffers();
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, modelEbo);
+            resource.modelEbo = glGenBuffers();
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, resource.modelEbo);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, quadIndices, GL_STATIC_DRAW);
             modelEboSize = 6;
         }
     }
 
     private void createInstanceData(int maxSize) {
-        if (initialized) return;
+        if (initialized || resource == null) return;
         // create the instance buffer
-        instanceVbo = glGenBuffers();
+        resource.instanceVbo = glGenBuffers();
         instanceDataSize = config.additionalGPUDataSetting.isEnable() ? config.additionalGPUDataSetting.getCustomDataSize() : 0;
 
         int attribIndex;
@@ -214,7 +249,7 @@ public class ParticleInstanceRenderer {
             instanceDataSize += 3 + 3 + 4 + 4 + 1; // pos scale rotation color light
 
             maxInstancesSize = maxSize;
-            glBindBuffer(GL_ARRAY_BUFFER, instanceVbo);
+            glBindBuffer(GL_ARRAY_BUFFER, resource.instanceVbo);
             glBufferData(GL_ARRAY_BUFFER, ((long) maxInstancesSize) * instanceDataSize * Float.BYTES, GL_STREAM_DRAW);
 
             attribIndex = 4;
@@ -258,12 +293,12 @@ public class ParticleInstanceRenderer {
 
         } else {
             // create the instance buffer
-            instanceVbo = glGenBuffers();
+            resource.instanceVbo = glGenBuffers();
 
             instanceDataSize += 3 + 2 + 3 + 4 + 4 + 4 + 1; // pos size scale rotation color uv light
 
             maxInstancesSize = maxSize;
-            glBindBuffer(GL_ARRAY_BUFFER, instanceVbo);
+            glBindBuffer(GL_ARRAY_BUFFER, resource.instanceVbo);
             glBufferData(GL_ARRAY_BUFFER, ((long) maxInstancesSize) * instanceDataSize * Float.BYTES, GL_STREAM_DRAW);
 
             attribIndex = 1;
@@ -330,47 +365,44 @@ public class ParticleInstanceRenderer {
     public void dispose() {
         if (!initialized) return;
 
-        if (vao != -1) {
-            glDeleteVertexArrays(vao);
-            vao = -1;
+        if (cleanable != null) {
+            cleanable.clean();
+            cleanable = null;
         }
 
-        if (modelVbo != -1) {
-            glDeleteBuffers(modelVbo);
-            modelVbo = -1;
+        if (this.resource != null) {
+            resource = null;
         }
 
-        if (instanceVbo != -1) {
-            glDeleteBuffers(instanceVbo);
-            instanceVbo = -1;
-        }
-
-        if (modelEbo != -1) {
-            glDeleteBuffers(modelEbo);
-            modelEbo = -1;
-            modelEboSize = 0;
-        }
-
+        modelEboSize = 0;
         maxInstancesSize = 0;
 
         initialized = false;
     }
 
+
+    private static FloatBuffer getInstanceDataBuffer(int requiredCapacity) {
+        if (instanceDataBuffer == null || instanceDataBuffer.capacity() < requiredCapacity) {
+            int newCapacity = instanceDataBuffer == null ?
+                    Math.max(requiredCapacity, 10000) :
+                    Math.max(requiredCapacity, instanceDataBuffer.capacity() * 2);
+
+            instanceDataBuffer = BufferUtils.createFloatBuffer(newCapacity);
+        }
+        return instanceDataBuffer;
+    }
+
+
     public void render(ShaderInstance shader, Collection<TileParticle> particles, Camera camera, float partialTicks) {
         init();
+        if (resource == null) return;
 
         int required = particles.size() * instanceDataSize;
-        if (instanceDataBuffer == null || instanceDataBuffer.capacity() < required) {
-            var newSize = Math.max(maxInstancesSize * 2, particles.size() + 100);
-            resize(newSize);
-            instanceDataBuffer = BufferUtils.createFloatBuffer(maxInstancesSize * instanceDataSize);
-        }
-
-        var buffer = instanceDataBuffer;
+        var buffer = getInstanceDataBuffer(required);
         buffer.clear();
 
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, instanceVbo);
+        glBindVertexArray(resource.vao);
+        glBindBuffer(GL_ARRAY_BUFFER, resource.instanceVbo);
 
         var vec3 = camera.getPosition();
         for (var p : particles) {
