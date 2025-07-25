@@ -5,3 +5,4 @@
 * Fixed Registries loading
 * Added Game Time Control
 * Fixed resource releasing
+* Check LDLib2 version
