@@ -25,5 +25,5 @@ QQ: 933426877
 Photon by KilaBash is licensed under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).  
 Commercial use of the mod requires explicit permission.  
 Content created using the mod (such as configs, data packs, etc.) is not covered by this license and may be freely licensed.
-See [LICENSE.txt](./LICENSE.txt) for full details.
+See [LICENSE](./LICENSE) for full details.
 
