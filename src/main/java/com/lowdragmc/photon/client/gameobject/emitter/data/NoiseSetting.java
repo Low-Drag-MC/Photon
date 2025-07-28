@@ -42,25 +42,25 @@ public class NoiseSetting extends ToggleGroup {
 
     private final ThreadLocal<PerlinNoise> noise = ThreadLocal.withInitial(PerlinNoise::new);
 
-    @Configurable(tips = "photon.emitter.config.noise.frequency")
+    @Configurable(name = "NoiseSetting.frequency", tips = "photon.emitter.config.noise.frequency")
     @ConfigNumber(range = {-Float.MAX_VALUE, Float.MAX_VALUE})
     protected float frequency = 1;
 
-    @Configurable(tips = "photon.emitter.config.noise.quality")
+    @Configurable(name = "NoiseSetting.quality", tips = "photon.emitter.config.noise.quality")
     protected Quality quality = Quality.Noise2D;
 
-    @Configurable(subConfigurable = true, tips = "photon.emitter.config.noise.remap")
+    @Configurable(name = "NoiseSetting.remap", subConfigurable = true, tips = "photon.emitter.config.noise.remap")
     protected final Remap remap = new Remap();
 
-    @Configurable(tips = "photon.emitter.config.noise.position")
+    @Configurable(name = "NoiseSetting.position", tips = "photon.emitter.config.noise.position")
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "lifetime", yAxis = "strength")))
     protected NumberFunction3 position = new NumberFunction3(0.1, 0.1, 0.1);
 
-    @Configurable(tips = "photon.emitter.config.noise.rotation")
+    @Configurable(name = "NoiseSetting.rotation", tips = "photon.emitter.config.noise.rotation")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 180}, xAxis = "rotation amount", yAxis = "lifetime"))
     protected NumberFunction rotation = NumberFunction.constant(0);
 
-    @Configurable(tips = "photon.emitter.config.noise.size")
+    @Configurable(name = "NoiseSetting.size", tips = "photon.emitter.config.noise.size")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "size amount", yAxis = "lifetime"))
     protected NumberFunction size = NumberFunction.constant(0);
 

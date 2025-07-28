@@ -24,9 +24,9 @@ import javax.annotation.Nonnull;
 @Setter
 public class MaterialSetting implements IConfigurable, IPersistedSerializable {
     @Nonnull
-    @Configurable
+    @Configurable(name = "material")
     protected IMaterial material = new TextureMaterial();
-    @Configurable(name = "Blend Mode", subConfigurable = true)
+    @Configurable(name = "MaterialSetting.blendMode", subConfigurable = true)
     protected final BlendMode blendMode = new BlendMode();
     @Configurable
     protected boolean cull = true;

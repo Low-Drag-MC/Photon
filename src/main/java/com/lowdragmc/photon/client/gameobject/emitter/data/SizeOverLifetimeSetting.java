@@ -22,7 +22,7 @@ import net.neoforged.api.distmarker.OnlyIn;
 @Getter
 public class SizeOverLifetimeSetting extends ToggleGroup {
 
-    @Configurable(tips = "photon.emitter.config.sizeOverLifetime.size")
+    @Configurable(name = "NoiseSetting.size", tips = "photon.emitter.config.sizeOverLifetime.size")
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "size")))
     protected NumberFunction3 size = new NumberFunction3(1, 1, 1);
 

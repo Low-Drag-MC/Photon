@@ -23,7 +23,7 @@ import org.joml.Vector4f;
 public class ColorOverLifetimeSetting extends ToggleGroup {
 
 
-    @Configurable(tips = "photon.emitter.config.colorOverLifetime.color")
+    @Configurable(name = "color", tips = "photon.emitter.config.colorOverLifetime.color")
     @NumberFunctionConfig(types = {Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction color = new Gradient();
 

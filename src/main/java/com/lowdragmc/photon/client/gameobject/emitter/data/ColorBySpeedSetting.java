@@ -25,11 +25,11 @@ import org.joml.Vector4f;
 @Getter
 public class ColorBySpeedSetting extends ToggleGroup {
 
-    @Configurable(tips = "photon.emitter.config.colorBySpeed.color")
+    @Configurable(name = "color", tips = "photon.emitter.config.colorBySpeed.color")
     @NumberFunctionConfig(types = {Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction color = new Gradient();
 
-    @Configurable(tips = "photon.emitter.config.colorBySpeed.speedRange")
+    @Configurable(name = "ColorBySpeedSetting.speedRange", tips = "photon.emitter.config.colorBySpeed.speedRange")
     @ConfigNumber(range = {0, 1000})
     protected Range speedRange = Range.of(0f, 1f);
 

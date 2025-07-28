@@ -44,18 +44,18 @@ public class EmissionSetting implements IConfigurable, IPersistedSerializable {
         Random
     }
 
-    @Configurable(tips = "photon.emitter.config.emission.emissionRate")
+    @Configurable(name = "EmissionSetting.emissionRate", tips = "photon.emitter.config.emission.emissionRate")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 0.5f, curveConfig = @CurveConfig(bound = {0, 5}, xAxis = "duration", yAxis = "emission rate"))
     protected NumberFunction emissionRate = NumberFunction.constant(0.5f);
 
-    @Configurable(tips = "photon.emitter.config.emission.distanceRate")
+    @Configurable(name = "EmissionSetting.distanceRate", tips = "photon.emitter.config.emission.distanceRate")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 0.5f, curveConfig = @CurveConfig(bound = {0, 5}, xAxis = "duration", yAxis = "emission rate"))
     protected NumberFunction distanceRate = NumberFunction.constant(0);
 
-    @Configurable(tips = "photon.emitter.config.emission.emissionMode")
+    @Configurable(name = "EmissionSetting.emissionMode", tips = "photon.emitter.config.emission.emissionMode")
     protected Mode emissionMode = Mode.Exacting;
 
-    @Configurable(tips = "photon.emitter.config.emission.bursts")
+    @Configurable(name = "EmissionSetting.bursts", tips = "photon.emitter.config.emission.bursts")
     @ConfigList(configuratorMethod = "buildBurstConfigurator", addDefaultMethod = "addDefaultBurst")
     @ReadOnlyManaged(serializeMethod = "burstsSerialize", deserializeMethod = "burstsDeserialize")
     protected List<Burst> bursts = new ArrayList<>();
@@ -129,21 +129,21 @@ public class EmissionSetting implements IConfigurable, IPersistedSerializable {
     }
 
     public static class Burst implements IConfigurable, IPersistedSerializable{
-        @Configurable(tips = "photon.emitter.config.emission.bursts.time")
+        @Configurable(name = "Burst.time", tips = "photon.emitter.config.emission.bursts.time")
         @ConfigNumber(range = {0, Integer.MAX_VALUE}, wheel = 1)
         public int time = 0;
         @Setter
         @Getter
-        @Configurable(tips = "photon.emitter.config.emission.bursts.count")
+        @Configurable(name = "Burst.count", tips = "photon.emitter.config.emission.bursts.count")
         @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 50, curveConfig = @CurveConfig(bound = {0, 50}, xAxis = "duration", yAxis = "emit count"))
         protected NumberFunction count = NumberFunction.constant(50);
-        @Configurable(tips = "photon.emitter.config.emission.bursts.cycles")
+        @Configurable(name = "Burst.cycles", tips = "photon.emitter.config.emission.bursts.cycles")
         @ConfigNumber(range = {0, Integer.MAX_VALUE})
         public int cycles = 1;
-        @Configurable(tips = "photon.emitter.config.emission.bursts.interval")
+        @Configurable(name = "Burst.interval", tips = "photon.emitter.config.emission.bursts.interval")
         @ConfigNumber(range = {1, Integer.MAX_VALUE}, wheel = 1)
         public int interval = 1;
-        @Configurable(tips = "photon.emitter.config.emission.bursts.probability")
+        @Configurable(name = "Burst.probability", tips = "photon.emitter.config.emission.bursts.probability")
         @ConfigNumber(range = {0, 1})
         public float probability = 1;
     }

@@ -46,7 +46,7 @@ import java.util.function.Supplier;
 @Getter
 public class SubEmittersSetting extends ToggleGroup {
 
-    @Configurable
+    @Configurable(name = "SubEmittersSetting.emitters")
     @ConfigList(configuratorMethod = "buildEmitterConfigurator", addDefaultMethod = "addDefaultEmitter")
     @ReadOnlyManaged(serializeMethod = "emittersSerialize", deserializeMethod = "emittersDeserialize")
     protected List<Emitter> emitters = new ArrayList<>();
@@ -97,23 +97,23 @@ public class SubEmittersSetting extends ToggleGroup {
         @Nullable
         @Persisted
         protected ResourceLocation fxLocation = null;
-        @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.event")
+        @Configurable(name = "Emitter.event", tips = "photon.emitter.config.sub_emitters.emitter.event")
         protected Event event = Event.Birth;
-        @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.emit_probability")
+        @Configurable(name = "Emitter.emitProbability", tips = "photon.emitter.config.sub_emitters.emitter.emit_probability")
         @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "probability", yAxis = "lifetime"))
         protected NumberFunction emitProbability = NumberFunction.constant(0);
-        @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.tick_interval")
+        @Configurable(name = "Emitter.tickInterval", tips = "photon.emitter.config.sub_emitters.emitter.tick_interval")
         @ConfigNumber(range = {1, Integer.MAX_VALUE})
         protected int tickInterval = 1;
-        @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.inherit_color")
+        @Configurable(name = "Emitter.inheritColor", tips = "photon.emitter.config.sub_emitters.emitter.inherit_color")
         protected boolean inheritColor = false;
-        @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.inherit_size")
+        @Configurable(name = "Emitter.inheritSize", tips = "photon.emitter.config.sub_emitters.emitter.inherit_size")
         protected boolean inheritSize = false;
-        @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.inherit_rotation")
+        @Configurable(name = "Emitter.inheritRotation", tips = "photon.emitter.config.sub_emitters.emitter.inherit_rotation")
         protected boolean inheritRotation = false;
-        @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.inherit_lifetime")
+        @Configurable(name = "Emitter.inheritLifetime", tips = "photon.emitter.config.sub_emitters.emitter.inherit_lifetime")
         protected boolean inheritLifetime = false;
-        @Configurable(tips = "photon.emitter.config.sub_emitters.emitter.inherit_duration")
+        @Configurable(name = "Emitter.inheritDuration", tips = "photon.emitter.config.sub_emitters.emitter.inherit_duration")
         protected boolean inheritDuration = false;
 
         public void spawnEmitter(TileParticle father) {

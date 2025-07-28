@@ -38,10 +38,10 @@ public class RendererSetting {
 
     }
 
-    @Configurable(tips = "photon.emitter.config.renderer.layer")
+    @Configurable(name = "RendererSetting.layer", tips = "photon.emitter.config.renderer.layer")
     protected Layer layer = Layer.Translucent;
 
-    @Configurable(name = "cull", subConfigurable = true, tips = "photon.emitter.config.renderer.cull")
+    @Configurable(name = "RendererSetting.cull", subConfigurable = true, tips = "photon.emitter.config.renderer.cull")
     protected final Cull cull = new Cull();
 
     @Configurable(name = "photon.emitter.config.renderer.orderInLayer", tips = "photon.emitter.config.renderer.orderInLayer.tips")

@@ -40,33 +40,33 @@ import java.util.HashMap;
 public class TrailsSetting extends ToggleGroup {
     @Setter
     @Getter
-    @Configurable(tips = "photon.emitter.config.trails.ratio")
+    @Configurable(name = "TrailsSetting.ratio", tips = "photon.emitter.config.trails.ratio")
     @ConfigNumber(range = {0f, 1f})
     protected float ratio = 1f;
     @Setter
     @Getter
-    @Configurable(tips = "photon.emitter.config.trails.lifetime")
+    @Configurable(name = "TrailsSetting.lifetime", tips = "photon.emitter.config.trails.lifetime")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "trail length"))
     protected NumberFunction lifetime = NumberFunction.constant(1);
     @Setter
     @Getter
-    @Configurable(tips = "photon.emitter.config.trails.dieWithParticles")
+    @Configurable(name = "TrailsSetting.dieWithParticles", tips = "photon.emitter.config.trails.dieWithParticles")
     protected boolean dieWithParticles = false;
     @Setter
     @Getter
-    @Configurable(tips = "photon.emitter.config.trails.sizeAffectsWidth")
+    @Configurable(name = "TrailsSetting.sizeAffectsWidth", tips = "photon.emitter.config.trails.sizeAffectsWidth")
     protected boolean sizeAffectsWidth = true;
     @Setter
     @Getter
-    @Configurable(tips = "photon.emitter.config.trails.sizeAffectsLifetime")
+    @Configurable(name = "TrailsSetting.sizeAffectsLifetime", tips = "photon.emitter.config.trails.sizeAffectsLifetime")
     protected boolean sizeAffectsLifetime = false;
     @Setter
     @Getter
-    @Configurable(tips = "photon.emitter.config.trails.inheritParticleColor")
+    @Configurable(name = "TrailsSetting.inheritParticleColor", tips = "photon.emitter.config.trails.inheritParticleColor")
     protected boolean inheritParticleColor = true;
     @Setter
     @Getter
-    @Configurable(tips = "photon.emitter.config.trails.colorOverLifetime")
+    @Configurable(name = "TrailsSetting.colorOverLifetime", tips = "photon.emitter.config.trails.colorOverLifetime")
     @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction colorOverLifetime = new Gradient();
 

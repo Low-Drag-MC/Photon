@@ -27,11 +27,11 @@ import net.neoforged.api.distmarker.OnlyIn;
 @Getter
 public class LifetimeByEmitterSpeedSetting extends ToggleGroup {
 
-    @Configurable(tips = "photon.emitter.config.lifetimeByEmitterSpeed.multiplier")
+    @Configurable(name = "LifetimeByEmitterSpeedSetting.multiplier", tips = "photon.emitter.config.lifetimeByEmitterSpeed.multiplier")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, defaultValue = 1f, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "multiplier", yAxis = "emitter velocity"))
     protected NumberFunction multiplier = NumberFunction.constant(1);
 
-    @Configurable(tips = "photon.emitter.config.lifetimeByEmitterSpeed.speedRange")
+    @Configurable(name = "ColorBySpeedSetting.speedRange", tips = "photon.emitter.config.lifetimeByEmitterSpeed.speedRange")
     @ConfigNumber(range = {0, 1000}, type = ConfigNumber.Type.FLOAT)
     protected Range speedRange = Range.of(0f, 1f);
 

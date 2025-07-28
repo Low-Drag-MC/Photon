@@ -61,7 +61,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     }
 
     private final ParticleConfig config;
-    @Configurable(tips = "photon.emitter.config.renderer.renderMode")
+    @Configurable(name = "ParticleRendererSetting.renderMode", tips = "photon.emitter.config.renderer.renderMode")
     @ConfigSelector(subConfiguratorBuilder = "buildSubConfigurator")
     protected Mode renderMode = Mode.Billboard;
     @Nullable
@@ -72,7 +72,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     protected boolean useBlockUV = true;
     @Persisted
     protected Vector3f modelPivot = new Vector3f();
-    @Configurable
+    @Configurable(name = "ParticleRendererSetting.useGPUInstance")
     private boolean useGPUInstance = false;
 
     public ParticleRendererSetting(ParticleConfig config) {
@@ -116,25 +116,21 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         config.particleRenderType.clearInstance();
     }
 
-    @ConfigSetter(field = "model")
     public void setModel(IModelRenderer model) {
         this.model = model;
         config.particleRenderType.clearInstance();
     }
 
-    @ConfigSetter(field = "shade")
     public void setShade(boolean shade) {
         this.shade = shade;
         config.particleRenderType.clearInstance();
     }
 
-    @ConfigSetter(field = "useBlockUV")
     public void setUseBlockUV(boolean useBlockUV) {
         this.useBlockUV = useBlockUV;
         config.particleRenderType.clearInstance();
     }
 
-    @ConfigSetter(field = "modelPivot")
     public void setModelPivot(Vector3f modelPivot) {
         this.modelPivot = modelPivot;
         config.particleRenderType.clearInstance();

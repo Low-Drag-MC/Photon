@@ -26,15 +26,15 @@ import net.minecraft.util.Mth;
 @Getter
 public class RotationOverLifetimeSetting extends ToggleGroup {
 
-    @Configurable(tips = "photon.emitter.config.rotation.roll")
+    @Configurable(name = "RotationBySpeedSetting.roll", tips = "photon.emitter.config.rotation.roll")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "lifetime", yAxis = "roll"))
     protected NumberFunction roll = NumberFunction.constant(0);
 
-    @Configurable(tips = "photon.emitter.config.rotation.pitch")
+    @Configurable(name = "RotationBySpeedSetting.pitch", tips = "photon.emitter.config.rotation.pitch")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "lifetime", yAxis = "pitch"))
     protected NumberFunction pitch = NumberFunction.constant(0);
 
-    @Configurable(tips = "photon.emitter.config.rotation.yaw")
+    @Configurable(name = "RotationBySpeedSetting.yaw", tips = "photon.emitter.config.rotation.yaw")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 360}, xAxis = "lifetime", yAxis = "yaw"))
     protected NumberFunction yaw = NumberFunction.constant(0);
 

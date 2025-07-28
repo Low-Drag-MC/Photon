@@ -25,11 +25,11 @@ import net.neoforged.api.distmarker.OnlyIn;
 @Getter
 public class LightOverLifetimeSetting extends ToggleGroup {
 
-    @Configurable(tips = "photon.emitter.config.lights.skyLight")
+    @Configurable(name = "LightOverLifetimeSetting.skyLight", tips = "photon.emitter.config.lights.skyLight")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, numberType = ConfigNumber.Type.INTEGER, defaultValue = 15, min = 0, max = 15, wheelDur = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction skyLight = NumberFunction.constant(15);
 
-    @Configurable(tips = "photon.emitter.config.lights.blockLight")
+    @Configurable(name = "LightOverLifetimeSetting.blockLight", tips = "photon.emitter.config.lights.blockLight")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, numberType = ConfigNumber.Type.INTEGER, defaultValue = 15, min = 0, max = 15, wheelDur = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction blockLight = NumberFunction.constant(15);
 

@@ -30,10 +30,10 @@ public class InheritVelocitySetting extends ToggleGroup {
         INITIAL,
     }
 
-    @Configurable(tips = "photon.emitter.config.inheritVelocity.mode")
+    @Configurable(name = "InheritVelocitySetting.mode", tips = "photon.emitter.config.inheritVelocity.mode")
     protected Mode mode = Mode.INITIAL;
 
-    @Configurable(tips = "photon.emitter.config.inheritVelocity.multiply")
+    @Configurable(name = "InheritVelocitySetting.multiply", tips = "photon.emitter.config.inheritVelocity.multiply")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1f, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction multiply = NumberFunction.constant(1);
 
