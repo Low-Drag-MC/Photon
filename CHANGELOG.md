@@ -1,8 +1,4 @@
 ## ChangeLog
 
-# v2.0.1
-* Cache draw target depth texture
-* Fixed Registries loading
-* Added Game Time Control
-* Fixed resource releasing
-* Check LDLib2 version
+# v2.0.2
+* Fixed uv animation settings crash

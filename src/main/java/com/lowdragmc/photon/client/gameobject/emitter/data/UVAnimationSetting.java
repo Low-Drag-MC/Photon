@@ -32,7 +32,7 @@ public class UVAnimationSetting extends ToggleGroup {
     @Setter
     @Getter
     @Configurable(tips = "photon.emitter.config.uvAnimation.tiles")
-    @ConfigNumber(range = {1, Integer.MAX_VALUE})
+    @ConfigNumber(range = {1, Integer.MAX_VALUE}, type = ConfigNumber.Type.INTEGER)
     protected Range tiles = Range.of(1, 1);
 
     @Setter
