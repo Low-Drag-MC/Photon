@@ -48,7 +48,7 @@ import java.util.Objects;
 
 public final class MeshData implements INBTSerializable<CompoundTag>, IConfigurable, IPersistedSerializable {
     @Getter
-    @Configurable
+    @Configurable(name = "MeshData.modelLocation")
     private ResourceLocation modelLocation = ResourceLocation.withDefaultNamespace("block/stone");
     // runtime
     private boolean isLoaded = false;

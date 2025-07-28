@@ -19,15 +19,15 @@ public class Circle implements IShape {
 
     @Getter
     @Setter
-    @Configurable
+    @Configurable(name = "radius")
     @ConfigNumber(range = {0, 1000})
     private float radius = .5f;
     @Getter @Setter
-    @Configurable
+    @Configurable(name = "radiusThickness")
     @ConfigNumber(range = {0, 1})
     private float radiusThickness = 1;
     @Getter @Setter
-    @Configurable
+    @Configurable(name = "arc")
     @ConfigNumber(range = {0, 360}, wheel = 10)
     private float arc = 360;
 

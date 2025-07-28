@@ -27,7 +27,7 @@ public class Box implements IShape {
     }
 
     @Getter @Setter
-    @Configurable
+    @Configurable(name = "Box.emitForm")
     private Type emitFrom = Type.Volume;
 
     @Override

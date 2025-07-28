@@ -55,17 +55,17 @@ public class TextureMaterial extends ShaderInstanceMaterial {
         public int bits = 8;
     }
 
-    @Configurable
+    @Configurable(name = "TextureMaterial.texture")
     protected ResourceLocation texture = Photon.id("textures/particle/circle.png");
-    @Configurable
+    @Configurable(name = "TextureMaterial.discardThreshold")
     @ConfigNumber(range = {0, 1})
     protected float discardThreshold = 0.1f;
-    @Configurable
+    @Configurable(name = "TextureMaterial.hdr")
     @ConfigHDR
     protected Vector4f hdr = new Vector4f(0, 0, 0, 1);
-    @Configurable
+    @Configurable(name = "TextureMaterial.hdrMode")
     protected HDRMode hdrMode = HDRMode.ADDITIVE;
-    @Configurable(subConfigurable = true)
+    @Configurable(name = "TextureMaterial.pixelArt", subConfigurable = true)
     protected final PixelArt pixelArt = new PixelArt();
     // runtime
     private static final Map<String, ShaderInstance> hdrParticleShaders = new HashMap<>();

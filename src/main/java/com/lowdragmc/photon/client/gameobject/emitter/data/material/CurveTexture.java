@@ -27,7 +27,7 @@ import java.util.function.Supplier;
 public class CurveTexture implements AutoCloseable, IConfigurable, INBTSerializable<ListTag> {
     private final int width;
     private final int height;
-    @Configurable(canCollapse = false, collapse = false)
+    @Configurable(name = "curves", canCollapse = false, collapse = false)
     @ConfigList(configuratorMethod = "buildCurveConfigurator", addDefaultMethod = "addDefaultCurve")
     private final List<Curve> curves = new ArrayList<>();
     // runtime

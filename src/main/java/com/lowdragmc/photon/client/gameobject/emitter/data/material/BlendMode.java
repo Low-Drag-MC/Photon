@@ -26,17 +26,17 @@ public class BlendMode {
         }
     }
 
-    @Configurable
+    @Configurable(name = "BlendMode.enableBlend")
     private boolean enableBlend;
-    @Configurable
+    @Configurable(name = "BlendMode.srcColorFactor")
     private SourceFactor srcColorFactor;
-    @Configurable
+    @Configurable(name = "BlendMode.dstColorFactor")
     private DestFactor dstColorFactor;
-    @Configurable
+    @Configurable(name = "BlendMode.srcAlphaFactor")
     private SourceFactor srcAlphaFactor;
-    @Configurable
+    @Configurable(name = "BlendMode.dstAlphaFactor")
     private DestFactor dstAlphaFactor;
-    @Configurable
+    @Configurable(name = "BlendMode.blendFunc")
     private BlendFuc blendFunc;
 
     private BlendMode(boolean enableBlend, SourceFactor srcColorFactor, DestFactor dstColorFactor, SourceFactor srcAlphaFactor, DestFactor dstAlphaFactor, BlendFuc blendFunc) {

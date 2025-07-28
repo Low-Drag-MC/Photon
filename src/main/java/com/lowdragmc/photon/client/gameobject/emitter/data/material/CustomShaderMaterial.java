@@ -56,9 +56,9 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     @Getter
     @Persisted
     private ResourceLocation shaderLocation = Photon.id("circle");
-    @Configurable(subConfigurable = true)
+    @Configurable(name = "SamplerCurve", subConfigurable = true)
     public final CurveTexture curveTexture = new CurveTexture(MAX_SAMPLING, MAX_SAMPLER);
-    @Configurable(subConfigurable = true)
+    @Configurable(name = "SamplerGradient", subConfigurable = true)
     public final GradientTexture gradientTexture = new GradientTexture(MAX_SAMPLING, MAX_SAMPLER);
     //runtime
     private final Map<String, LDShaderInstance> shaders = new HashMap<>();

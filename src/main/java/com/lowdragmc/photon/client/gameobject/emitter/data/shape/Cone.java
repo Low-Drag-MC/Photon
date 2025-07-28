@@ -20,20 +20,20 @@ public class Cone implements IShape {
 
     @Getter
     @Setter
-    @Configurable
+    @Configurable(name = "angle")
     @ConfigNumber(range = {0, 90}, wheel = 10)
     private float angle = 25;
     @Getter
     @Setter
-    @Configurable
+    @Configurable(name = "radius")
     @ConfigNumber(range = {0, 1000})
     private float radius = .5f;
     @Getter @Setter
-    @Configurable
+    @Configurable(name = "radiusThickness")
     @ConfigNumber(range = {0, 1})
     private float radiusThickness = 1;
     @Getter @Setter
-    @Configurable
+    @Configurable(name = "arc")
     @ConfigNumber(range = {0, 360}, wheel = 10)
     private float arc = 360;
 
