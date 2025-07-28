@@ -1,5 +1,9 @@
 ## ChangeLogs
 
+# v2.0.2
+* Fixed uv animation settings crash
+* Added more lang entries for configs
+
 # v2.0.1
 * Cache draw target depth texture
 * Fixed Registries loading
