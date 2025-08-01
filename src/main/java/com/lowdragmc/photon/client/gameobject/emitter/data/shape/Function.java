@@ -138,6 +138,6 @@ public class Function implements IShape {
         var pos = new Vector3f(xCache != null ? (float) xCache.value() : 0, yCache != null ? (float) yCache.value() : 0, zCache != null ? (float) zCache.value() : 0);
         var speed = new Vector3f(sXCache != null ? (float) sXCache.value() : 0, sYCache != null ? (float) sYCache.value() : 0, sZCache != null ? (float) sZCache.value() : 0);
         particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPoseWithoutNoise()), true);
-        particle.setInternalVelocity(Vector3fHelper.rotateYXY(speed.normalize().mul(0.05f), rotation));
+        particle.setInternalVelocity(Vector3fHelper.isZero(speed) ? speed : Vector3fHelper.rotateYXY(speed.normalize().mul(0.05f), rotation));
     }
 }
