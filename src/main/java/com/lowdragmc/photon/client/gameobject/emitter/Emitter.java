@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter;
 
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.client.gameobject.FXObject;
+import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQueueRenderType;
 import lombok.Getter;
 import net.minecraft.client.particle.ParticleRenderType;
@@ -42,8 +43,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     }
 
     @Override
-    public final void tick() {
-        super.tick();
+    public final void updateTick() {
+        super.updateTick();
         if (!isAlive()) {
             return;
         }
@@ -114,10 +115,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     }
 
     public void reset() {
-        this.age = 0;
+        super.reset();
         this.memRandom.clear();
-        this.removed = false;
-        this.onGround = false;
         this.previousPosition = null;
         this.velocity.zero();
         this.t = 0;

@@ -18,6 +18,7 @@ import com.lowdragmc.lowdraglib2.utils.data.BlockInfo;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
@@ -297,7 +298,11 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
         }).layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
 
         var reloadButton = new Configurator().addInlineChild(new Button()
-                .setOnClick(event -> clear()).setText("photon.reload_mesh").layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
+                .setOnClick(event -> {
+                    Minecraft.getInstance().reloadResourcePacks();
+                    clear();
+                    buttonConfigurator.notifyChanges();
+                }).setText("photon.reload_mesh").layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
         father.addConfigurators(buttonConfigurator, reloadButton);
     }
 

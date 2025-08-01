@@ -34,7 +34,7 @@ public class RandomColor extends RandomConstant {
 
     @Override
     public NumberFunction copy() {
-        return new RandomColor((int) getA(), (int) getB());
+        return new RandomColor(getA().intValue(), getB().intValue());
     }
 
     @Override
@@ -54,8 +54,8 @@ public class RandomColor extends RandomConstant {
 
     @Override
     public Integer get(float t, Supplier<Float> lerp) {
-        int colorA = (int) getA();
-        int colorB = (int) getB();
+        int colorA = getA().intValue();
+        int colorB = getB().intValue();
         return ColorUtils.blendColor(colorA, colorB, lerp.get());
     }
 

@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
@@ -478,5 +479,6 @@ public class ParticleInstanceRenderer {
         // draw instance
         glDrawElementsInstanced(GL_TRIANGLES, modelEboSize, GL_UNSIGNED_INT, 0, particles.size());
         glBindVertexArray(0);
+        BufferUploader.invalidate();
     }
 }

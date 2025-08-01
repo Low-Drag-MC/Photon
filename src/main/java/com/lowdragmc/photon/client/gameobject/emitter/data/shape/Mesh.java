@@ -64,7 +64,7 @@ public class Mesh implements IShape {
         }
         if (pos != null) {
             pos.mul(scale);
-            particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPos()), true);
+            particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPoseWithoutNoise()), true);
             particle.setInternalVelocity(new Vector3f(0, 0, 0));
         }
     }

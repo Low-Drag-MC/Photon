@@ -89,7 +89,7 @@ public class Curve implements NumberFunction {
     }
 
     @Override
-    public NumberFunction copy() {
+    public Curve copy() {
         return new Curve(min, max, lower, upper, xAxis, yAxis, curves.copy());
     }
 

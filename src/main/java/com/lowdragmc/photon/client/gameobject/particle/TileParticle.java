@@ -245,18 +245,26 @@ public class TileParticle implements IParticle {
     }
 
     public Vector3f getLocalPos(float partialTicks) {
-        if (isRemoved) {
-            return new Vector3f(localX, localY, localZ);
-        }
-        var pos = new Vector3f(Mth.lerp(partialTicks, this.localXo, this.localX),
-                Mth.lerp(partialTicks, this.localYo, this.localY),
-                Mth.lerp(partialTicks, this.localZo, this.localZ));
+        var pos = getLocalPoseWithoutNoise(partialTicks);
 
         if (config.noise.isEnable()) {
             pos.add(config.noise.getPosition(this, partialTicks));
         }
 
         return pos;
+    }
+
+    public Vector3f getLocalPoseWithoutNoise() {
+        return getLocalPoseWithoutNoise(0);
+    }
+
+    public Vector3f getLocalPoseWithoutNoise(float partialTicks) {
+        if (isRemoved) {
+            return new Vector3f(localX, localY, localZ);
+        }
+        return new Vector3f(Mth.lerp(partialTicks, this.localXo, this.localX),
+                Mth.lerp(partialTicks, this.localYo, this.localY),
+                Mth.lerp(partialTicks, this.localZo, this.localZ));
     }
 
     public Vector3f getWorldPos() {

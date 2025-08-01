@@ -50,7 +50,7 @@ public class EntityEffectExecutor extends FXEffectExecutor {
     @Override
     public void updateFXObjectFrame(IFXObject fxObject, float partialTicks) {
         if (runtime != null && fxObject == runtime.root) {
-            var position = entity.getPosition(partialTicks);
+            var position = entity.getEyePosition(partialTicks);
             runtime.root.updatePos(new Vector3f((float) (position.x + offset.x), (float) (position.y + offset.y), (float) (position.z + offset.z)));
             if (autoRotate != AutoRotate.NONE) {
                 switch (autoRotate) {
@@ -106,10 +106,10 @@ public class EntityEffectExecutor extends FXEffectExecutor {
         }
         this.runtime = fx.createRuntime();
         var root = this.runtime.getRoot();
-        root.updatePos(entity.getPosition(0).toVector3f().add(offset.x, offset.y, offset.z));
+        root.updatePos(entity.getEyePosition().toVector3f().add(offset.x, offset.y, offset.z));
         root.updateRotation(rotation);
         root.updateScale(scale);
-        this.runtime.emmit(this);
+        this.runtime.emmit(this, delay);
         effects.add(this);
     }
 }

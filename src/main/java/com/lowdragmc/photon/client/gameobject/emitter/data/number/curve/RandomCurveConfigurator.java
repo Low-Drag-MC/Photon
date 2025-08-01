@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.curve;
 
+import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
@@ -7,10 +8,12 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
+import com.lowdragmc.photon.gui.editor.resource.CurveResource;
 import net.minecraft.util.Mth;
 import org.appliedenergistics.yoga.YogaEdge;
 import org.appliedenergistics.yoga.YogaFlexDirection;
 import org.appliedenergistics.yoga.YogaPositionType;
+import org.jetbrains.annotations.NotNull;
 import oshi.util.tuples.Pair;
 
 import javax.annotation.Nonnull;
@@ -92,6 +95,24 @@ public class RandomCurveConfigurator extends ValueConfigurator<RandomCurve> {
         if (newValue == value || newValue.equals(value)) return;
         super.onValueUpdatePassively(newValue);
         this.curveGraph.setValue(new Pair<>(newValue.getCurves0(), newValue.getCurves1()), false);
+    }
+
+    @Override
+    protected void onDropObject(@NotNull Object object) {
+        if (object instanceof CurveResource.Curves curves) {
+            if (curves.curves1 == null || value == null) return;
+            value.getCurves0().deserializeNBT(Platform.getFrozenRegistry(), curves.curves0.serializeNBT(Platform.getFrozenRegistry()));
+            value.getCurves1().deserializeNBT(Platform.getFrozenRegistry(), curves.curves1.serializeNBT(Platform.getFrozenRegistry()));
+            this.curveGraph.setValue(new Pair<>(value.getCurves0(), value.getCurves1()), false);
+            updateValue();
+        } else {
+            super.onDropObject(object);
+        }
+    }
+
+    @Override
+    protected boolean canDropObject(@Nonnull Object object) {
+        return object instanceof CurveResource.Curves || super.canDropObject(object);
     }
 
     public void show() {

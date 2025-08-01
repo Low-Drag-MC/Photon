@@ -41,6 +41,10 @@ public class FXObject extends Particle implements IFXObject {
     @Configurable(name = "FXObject.transform", subConfigurable = true, collapse = false)
     public final Transform transform = new Transform(this);
     // runtime
+    @Setter
+    private int delay = 0;
+    @Setter
+    protected boolean hasPhysics = false;
     @Nullable
     private Level realLevel;
     @Setter
@@ -86,6 +90,14 @@ public class FXObject extends Particle implements IFXObject {
         return false;
     }
 
+    @Override
+    public void reset() {
+        this.delay = 0;
+        this.age = 0;
+        this.removed = false;
+        this.onGround = false;
+    }
+
     @Nullable
     @Override
     public Level getLevel() {
@@ -117,7 +129,11 @@ public class FXObject extends Particle implements IFXObject {
     }
 
     @Override
-    public void tick() {
+    public final void tick() {
+        if (delay > 0) {
+            delay--;
+            return;
+        }
         // effect first
         updateTick();
     }
@@ -131,6 +147,7 @@ public class FXObject extends Particle implements IFXObject {
 
     @Override
     public void render(@Nonnull VertexConsumer buffer, Camera pRenderInfo, float pPartialTicks) {
+        if (delay > 0) return;
         updateFrame(pPartialTicks);
         if (buffer instanceof RenderPassPipeline passBuffer) {
             passBuffer.setupRenderingState(pRenderInfo, pPartialTicks);

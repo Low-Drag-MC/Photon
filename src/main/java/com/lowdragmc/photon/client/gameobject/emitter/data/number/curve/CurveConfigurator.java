@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.curve;
 
+import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
@@ -7,11 +8,13 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
+import com.lowdragmc.photon.gui.editor.resource.CurveResource;
 import net.minecraft.util.Mth;
 import org.appliedenergistics.yoga.YogaDisplay;
 import org.appliedenergistics.yoga.YogaEdge;
 import org.appliedenergistics.yoga.YogaFlexDirection;
 import org.appliedenergistics.yoga.YogaPositionType;
+import org.jetbrains.annotations.NotNull;
 import oshi.hardware.Display;
 
 import javax.annotation.Nonnull;
@@ -87,6 +90,23 @@ public class CurveConfigurator extends ValueConfigurator<Curve> {
         this.dialog.setFocusable(true);
         this.dialog.setEnforceFocus(e -> hide());
         this.dialog.addEventListener(UIEvents.LAYOUT_CHANGED, e -> dialog.adaptPositionToScreen());
+    }
+
+    @Override
+    protected void onDropObject(@NotNull Object object) {
+        if (object instanceof CurveResource.Curves curves) {
+            if (value == null) return;
+            value.getCurves().deserializeNBT(Platform.getFrozenRegistry(), curves.curves0.serializeNBT(Platform.getFrozenRegistry()));
+            this.curveGraph.setValue(value.getCurves(), false);
+            updateValue();
+        } else {
+            super.onDropObject(object);
+        }
+    }
+
+    @Override
+    protected boolean canDropObject(@Nonnull Object object) {
+        return object instanceof CurveResource.Curves || super.canDropObject(object);
     }
 
     public CurveConfigurator disableBoundField() {

@@ -1,5 +1,6 @@
 ## ChangeLog
 
-# v2.0.2
-* Fixed uv animation settings crash
-* Added more lang entries for configs
+# v2.0.3
+* Fixed crash
+* Fixed delay doesn't work
+* Fixed invalid immediately buffer after using GPU Instance

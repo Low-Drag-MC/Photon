@@ -80,8 +80,13 @@ public class FXRuntime implements IScene {
     }
 
     public void emmit(IEffectExecutor effect) {
+        emmit(effect, 0);
+    }
+
+    public void emmit(IEffectExecutor effect, int delay) {
         for (var fxObject : objects.values()) {
             fxObject.emmit(effect);
+            fxObject.setDelay(delay);
         }
     }
 

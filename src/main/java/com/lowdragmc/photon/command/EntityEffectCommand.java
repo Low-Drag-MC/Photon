@@ -106,7 +106,7 @@ public class EntityEffectCommand extends EffectCommand {
                 .then(Commands.argument("entities", EntityArgument.entities())
                         .executes(c -> execute(c, false, false, false, false, false, false, false))
                         .then(Commands.argument("offset", Vec3Argument.vec3(false))
-                                .executes(c -> execute(c, false, false, false, false, false, false, false))
+                                .executes(c -> execute(c, true, false, false, false, false, false, false))
                                 .then(Commands.argument("rotation", Vec3Argument.vec3(false))
                                         .executes(c -> execute(c, true, true, false, false, false, false, false))
                                         .then(Commands.argument("scale", Vec3Argument.vec3(false))

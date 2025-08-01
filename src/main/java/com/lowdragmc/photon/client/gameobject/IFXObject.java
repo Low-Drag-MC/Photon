@@ -61,6 +61,8 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
 
     void setName(String name);
 
+    void setDelay(int delay);
+
     Level getLevel();
 
     void setLevel(Level level);
@@ -107,9 +109,7 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
     /**
      * reset runtime data
      */
-    default void reset() {
-
-    }
+    void reset();
 
     /**
      * copy this object
