@@ -17,7 +17,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.lang.ref.Cleaner;
 
 @Mod(Photon.MOD_ID)
 public class Photon {
@@ -34,13 +33,13 @@ public class Photon {
         } else {
             new PhotonCommonProxy(eventBus);
         }
-        if (new File(Platform.getGamePath().toFile(), "assets/photon").mkdirs()) {
-            LOGGER.info("Created photon config folder");
-        }
     }
 
     public static void init() {
         LOGGER.info("{} is initializing on platform: {}", NAME, Platform.platformName());
+        if (new File(LDLib2.getAssetsDir(), "photon").mkdirs()) {
+            LOGGER.info("Created photon assets folder");
+        }
     }
 
     public static ResourceLocation id(String path) {
