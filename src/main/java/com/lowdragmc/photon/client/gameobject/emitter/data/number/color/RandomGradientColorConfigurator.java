@@ -7,6 +7,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
+import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -19,6 +20,7 @@ import org.appliedenergistics.yoga.YogaEdge;
 import org.appliedenergistics.yoga.YogaFlexDirection;
 import org.appliedenergistics.yoga.YogaGutter;
 import org.appliedenergistics.yoga.YogaPositionType;
+import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nonnull;
 import java.util.function.Consumer;
@@ -78,6 +80,22 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
         super.onValueUpdatePassively(newValue);
         this.gradientSelector0.setValue(newValue.getLeft(), false);
         this.gradientSelector1.setValue(newValue.getRight(), false);
+    }
+
+    @Override
+    protected void onDropObject(@NotNull Object object) {
+        if (object instanceof GradientResource.Gradients gradients) {
+            if (gradients.gradient1 == null || value == null) return;
+            onValueUpdatePassively(Pair.of(gradients.gradient0, gradients.gradient1));
+            updateValue();
+        } else {
+            super.onDropObject(object);
+        }
+    }
+
+    @Override
+    protected boolean canDropObject(@Nonnull Object object) {
+        return object instanceof GradientResource.Gradients || super.canDropObject(object);
     }
 
     public void show() {
