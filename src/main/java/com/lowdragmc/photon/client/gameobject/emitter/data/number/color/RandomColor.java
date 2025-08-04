@@ -83,14 +83,14 @@ public class RandomColor extends RandomConstant {
             layout.setFlexDirection(YogaFlexDirection.ROW);
             layout.setWrap(YogaWrap.WRAP);
         }).addChildren(
-                a = new ColorConfigurator("", () -> (int) getA(), color -> {
+                a = new ColorConfigurator("", () -> getA().intValue(), color -> {
                     setA(color);
                     configurator.updateValue(this);
-                }, (int) getA(), true),
-                b = new ColorConfigurator("", () -> (int) getB(), color -> {
+                }, getA().intValue(), true),
+                b = new ColorConfigurator("", () -> getB().intValue(), color -> {
                     setB(color);
                     configurator.updateValue(this);
-                }, (int) getB(), true)
+                }, getB().intValue(), true)
         ));
         a.layout(layout -> {
             layout.setFlex(1);
