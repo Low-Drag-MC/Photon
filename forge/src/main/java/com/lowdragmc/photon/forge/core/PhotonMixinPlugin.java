@@ -15,8 +15,6 @@ import java.util.Set;
  */
 public class PhotonMixinPlugin implements IMixinConfigPlugin, MixinPluginShared {
 
-    boolean IS_IRIS_LOAD = MixinPluginShared.isClassFound("net.irisshaders.iris.api.v0.IrisApi");
-
     @Override
     public void onLoad(String mixinPackage) {
 
@@ -30,7 +28,7 @@ public class PhotonMixinPlugin implements IMixinConfigPlugin, MixinPluginShared 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         if (mixinClassName.contains("com.lowdragmc.photon.forge.core.mixins.no_iris")) {
-            return !IS_IRIS_LOAD;
+            return !IS_OCULUS_LOAD;
         }
         return true;
     }

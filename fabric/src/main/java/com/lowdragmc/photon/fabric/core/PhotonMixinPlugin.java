@@ -15,8 +15,6 @@ import java.util.Set;
  */
 public class PhotonMixinPlugin implements IMixinConfigPlugin, MixinPluginShared {
 
-    boolean IS_IRIS_LOAD = MixinPluginShared.isClassFound("net.irisshaders.iris.api.v0.IrisApi");
-
     @Override
     public void onLoad(String mixinPackage) {
     }
