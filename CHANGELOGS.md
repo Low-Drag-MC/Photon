@@ -1,5 +1,8 @@
 ## ChangeLogs
 
+# v1.1.13
+* Bump up ldlib to fix mixin loading crash for some minor cases
+
 # v1.1.12
 * Fixed model renderer mode crash
 * Fixed Bloom rendering (thanks to @RogoShum)
