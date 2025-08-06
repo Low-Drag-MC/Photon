@@ -19,6 +19,7 @@ import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.LoadingOverlay;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
@@ -107,6 +108,10 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
     }
 
     private void loadFromQuads(List<BakedQuad> quads) {
+        // do not access the model during reloading
+        if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
+            return;
+        }
         clear();
         double sumLength = 0;
         double sumArea = 0;
@@ -298,11 +303,12 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
         }).layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
 
         var reloadButton = new Configurator().addInlineChild(new Button()
-                .setOnClick(event -> {
-                    Minecraft.getInstance().reloadResourcePacks();
-                    clear();
-                    buttonConfigurator.notifyChanges();
-                }).setText("photon.reload_mesh").layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
+                .setOnClick(event -> Minecraft.getInstance().reloadResourcePacks().thenAccept(v ->
+                        Minecraft.getInstance().execute(() -> {
+                            clear();
+                            buttonConfigurator.notifyChanges();
+                        })
+                )).setText("photon.reload_mesh").layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
         father.addConfigurators(buttonConfigurator, reloadButton);
     }
 
