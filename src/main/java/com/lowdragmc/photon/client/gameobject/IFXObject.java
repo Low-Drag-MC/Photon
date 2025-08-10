@@ -69,6 +69,8 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
 
     boolean isAlive();
 
+    float getDeltaTime();
+
     @Override
     default String getConfigurableName() {
         return getName();

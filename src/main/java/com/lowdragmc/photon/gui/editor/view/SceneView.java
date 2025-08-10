@@ -52,10 +52,20 @@ public class SceneView extends View {
             this.translateKey = translateKey;
         }
     }
+    public enum DrawMode {
+        DRAW("draw_mode.draw"),
+        WIREFRAME("draw_mode.wireframe");
+
+        public final String translateKey;
+
+        DrawMode(String translateKey) {
+            this.translateKey = translateKey;
+        }
+    }
     public final FXEditor fxEditor;
     public final ParticleSceneEditor sceneEditor;
     public final TrackedDummyWorld level = new TrackedDummyWorld();
-    public final PhotonParticleManager particleManager = new PhotonParticleManager();
+    public final PhotonParticleManager particleManager = new PhotonParticleManager(this);
     public final FXProjectEffectExecutor effect = new FXProjectEffectExecutor(level);
     public final FXObjectInfoView fxObjectInfoView = new FXObjectInfoView();
     @Getter @Setter
@@ -64,6 +74,8 @@ public class SceneView extends View {
     private boolean isCullBoxVisible = true;
     @Getter
     private SceneMode sceneMode = SceneMode.PLATFORM;
+    @Getter @Setter
+    private DrawMode drawMode = DrawMode.DRAW;
     @Getter
     private int sceneRange = 6;
     // runtime
@@ -239,6 +251,27 @@ public class SceneView extends View {
                                 if (event.currentElement instanceof Selector selector) {
                                     if (selector.getValue() != getSceneMode()) {
                                         selector.setValue(getSceneMode(), false);
+                                    }
+                                }
+                            }),
+                    new Selector<DrawMode>()
+                            .setCandidates(List.of(DrawMode.values()))
+                            .setValue(getDrawMode(), false)
+                            .setOnValueChanged(SceneView.this::setDrawMode)
+                            .setCandidateUIProvider(candidate -> new Label()
+                                    .textStyle(style -> style
+                                            .textAlignHorizontal(Horizontal.LEFT)
+                                            .textAlignVertical(Vertical.CENTER))
+                                    .setText(candidate == null ? "---" : candidate.translateKey))
+                            .layout(layout -> {
+                                layout.setHeightPercent(100);
+                                layout.setFlex(1);
+                            })
+                            .style(style -> style.setTooltips("editor.draw_mode"))
+                            .addEventListener(UIEvents.TICK, event -> {
+                                if (event.currentElement instanceof Selector selector) {
+                                    if (selector.getValue() != getDrawMode()) {
+                                        selector.setValue(getDrawMode(), false);
                                     }
                                 }
                             }),

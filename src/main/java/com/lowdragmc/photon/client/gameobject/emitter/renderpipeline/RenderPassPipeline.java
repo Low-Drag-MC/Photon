@@ -7,9 +7,11 @@ import com.lowdragmc.lowdraglib2.client.utils.ShaderUtils;
 import com.lowdragmc.lowdraglib2.math.PositionedRect;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
+import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
 import com.lowdragmc.photon.core.mixins.iris.ExtendedShaderAccessor;
+import com.lowdragmc.photon.gui.editor.view.SceneView;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -48,6 +50,8 @@ public class RenderPassPipeline extends BufferBuilder {
     private final ByteBufferBuilder sortingBuffer;
 
     // runtime
+    @Getter
+    private SceneView.DrawMode drawMode = SceneView.DrawMode.DRAW;
     @Nullable
     @Getter
     private static RenderPassPipeline current = null;
@@ -104,6 +108,12 @@ public class RenderPassPipeline extends BufferBuilder {
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
         prepareTarget(mainTarget.width, mainTarget.height);
         PhotonPostProcessing.prepareTarget(mainTarget.width, mainTarget.height);
+        if (PhotonParticleManager.getDrawMode() == SceneView.DrawMode.WIREFRAME) {
+            drawMode = SceneView.DrawMode.WIREFRAME;
+            GL30.glPolygonMode(GL30.GL_FRONT_AND_BACK, GL30.GL_LINE);
+            GL30.glEnable(GL30.GL_POLYGON_OFFSET_LINE);
+            GL30.glPolygonOffset(-1.0f, -1.0f);
+        }
     }
 
     public static HDRTarget resize(@Nullable HDRTarget target, int width, int height, boolean useDepth) {
@@ -176,6 +186,12 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     private void afterRendering() {
+        if (PhotonParticleManager.getDrawMode() == SceneView.DrawMode.WIREFRAME) {
+            GL30.glPolygonOffset(0f, 0f);
+            GL30.glDisable(GL30.GL_POLYGON_OFFSET_LINE);
+            GL30.glPolygonMode(GL30.GL_FRONT_AND_BACK, GL30.GL_FILL);
+            drawMode = SceneView.DrawMode.DRAW;
+        }
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
         var lastViewport = PositionedRect.of(GlStateManager.Viewport.x(), GlStateManager.Viewport.y(), GlStateManager.Viewport.width(), GlStateManager.Viewport.height());
         var background = Minecraft.getInstance().getMainRenderTarget();

@@ -41,6 +41,12 @@ public class FXObject extends Particle implements IFXObject {
     @Configurable(name = "FXObject.transform", subConfigurable = true, collapse = false)
     public final Transform transform = new Transform(this);
     // runtime
+    @Getter
+    private long lastTick;
+    @Getter
+    private float lastTickTime;
+    @Getter
+    private float deltaTime = 0;
     @Setter
     private int delay = 0;
     @Setter
@@ -130,6 +136,7 @@ public class FXObject extends Particle implements IFXObject {
 
     @Override
     public final void tick() {
+        lastTick++;
         if (delay > 0) {
             delay--;
             return;
@@ -147,6 +154,9 @@ public class FXObject extends Particle implements IFXObject {
 
     @Override
     public void render(@Nonnull VertexConsumer buffer, Camera pRenderInfo, float pPartialTicks) {
+        var tickTime = lastTick + pPartialTicks;
+        deltaTime = tickTime - lastTickTime;
+        lastTickTime = tickTime;
         if (delay > 0) return;
         updateFrame(pPartialTicks);
         if (buffer instanceof RenderPassPipeline passBuffer) {

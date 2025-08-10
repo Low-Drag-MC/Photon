@@ -1,9 +1,13 @@
 package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 
+import com.lowdragmc.photon.client.PhotonShaders;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
+import com.lowdragmc.photon.gui.editor.view.SceneView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.Camera;
@@ -11,6 +15,7 @@ import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.opengl.GL30;
 
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -51,7 +56,12 @@ public abstract class PhotonFXRenderPass {
         var sorting = getSorting();
         var buffer = begin(tesselator);
 
-        var material = materialSetting.getMaterial();
+        IMaterial material;
+        if (pipeline.getDrawMode() == SceneView.DrawMode.WIREFRAME) {
+            material = CustomShaderMaterial.INVERSE;
+        } else {
+            material = materialSetting.getMaterial();
+        }
         var shader = material.begin(MaterialContext.NORMAL);
 
         RenderSystem.setShader(() -> shader);

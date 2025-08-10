@@ -50,6 +50,7 @@ import java.util.Optional;
 @ParametersAreNonnullByDefault
 @LDLRegisterClient(name = "custom_shader", registry = "photon:material")
 public class CustomShaderMaterial extends ShaderInstanceMaterial {
+    public final static CustomShaderMaterial INVERSE = new CustomShaderMaterial(Photon.id("inverse"));
     public final static int MAX_SAMPLER = 128;
     public final static int MAX_SAMPLING = 128;
 

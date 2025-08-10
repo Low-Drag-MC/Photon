@@ -20,6 +20,8 @@ public class PhotonShaders {
     @Getter
     private static ShaderInstance HDRParticleShader;
     @Getter
+    private static ShaderInstance spriteHDRParticleShader;
+    @Getter
     private static ShaderInstance pixelHDRParticleShader;
     @Getter
     private static ShaderInstance brightPassShader;
@@ -56,6 +58,9 @@ public class PhotonShaders {
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
                             Photon.id("hdr_particle"), DefaultVertexFormat.BLOCK),
                     shaderInstance -> HDRParticleShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("sprite_hdr_particle"), DefaultVertexFormat.BLOCK),
+                    shaderInstance -> spriteHDRParticleShader = shaderInstance);
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
                             Photon.id("pixel_hdr_particle"), DefaultVertexFormat.BLOCK),
                     shaderInstance -> pixelHDRParticleShader = shaderInstance);

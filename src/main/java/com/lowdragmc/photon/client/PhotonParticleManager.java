@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
+import com.lowdragmc.photon.gui.editor.view.SceneView;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -12,12 +13,17 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Camera;
 
+import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.function.Predicate;
 
 @OnlyIn(Dist.CLIENT)
 public class PhotonParticleManager extends ParticleManager {
+    public final SceneView sceneView;
     // runtime
+    @Nullable
+    @Getter
+    private static SceneView.DrawMode drawMode = null;
     @Getter @Setter
     private long time = 0;
     @Getter @Setter
@@ -30,8 +36,13 @@ public class PhotonParticleManager extends ParticleManager {
     private final long[] lastFrameTimes = new long[60];
     private int frameIndex = 0;
 
+    public PhotonParticleManager(SceneView sceneView) {
+        this.sceneView = sceneView;
+    }
+
     @Override
     public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks, Predicate<ParticleRenderType> renderTypeFilter) {
+        drawMode = sceneView.getDrawMode();
         RenderSystem.setShaderGameTime(time + timeOffset, isPlaying ? pPartialTicks : 0);
 
         var startTime = System.nanoTime();
@@ -45,6 +56,7 @@ public class PhotonParticleManager extends ParticleManager {
         if (Minecraft.getInstance().level != null) {
             RenderSystem.setShaderGameTime(Minecraft.getInstance().level.getGameTime(), pPartialTicks);
         }
+        drawMode = null;
     }
 
     @Override

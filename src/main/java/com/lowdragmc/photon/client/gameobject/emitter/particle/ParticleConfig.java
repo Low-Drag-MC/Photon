@@ -4,6 +4,8 @@ import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.*;
@@ -17,6 +19,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveCon
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
+import com.lowdragmc.photon.gui.editor.view.SceneView;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -148,7 +151,6 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     @ParametersAreNonnullByDefault
     public class RenderPass extends PhotonFXRenderPass {
         private final ParticleInstanceRenderer instanceRenderer = new ParticleInstanceRenderer(ParticleConfig.this);
-        private final MaterialContext context = MaterialContext.of();
 
         public RenderPass() {
             super(renderer, material);
@@ -165,9 +167,16 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
 
         public void drawParticles(RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
             if (renderer.isUseGPUInstance()) {
-                context.setShaderDefine(renderer.getRenderMode() == ParticleRendererSetting.Mode.Model ?
-                        "PARTICLE_MODEL_INSTANCE" :"PARTICLE_INSTANCE");
-                var material = materialSetting.getMaterial();
+                var context = renderer.getRenderMode() == ParticleRendererSetting.Mode.Model ?
+                        MaterialContext.PARTICLE_MODEL_INSTANCE : MaterialContext.PARTICLE_INSTANCE;
+
+                IMaterial material;
+                if (pipeline.getDrawMode() == SceneView.DrawMode.WIREFRAME) {
+                    material = CustomShaderMaterial.INVERSE;
+                } else {
+                    material = materialSetting.getMaterial();
+                }
+
                 var shader = material.begin(context);
                 instanceRenderer.render(shader, (Collection) particles, camera, partialTicks);
                 material.end(context);
