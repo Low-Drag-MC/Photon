@@ -78,7 +78,7 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     protected boolean looping = true;
 
 //            [Tooltip("Trail cross-section asset, determines the shape of the emitted trail. If no asset is specified, the trail will be a simple strip.")]
-    public TrailSection section = null;
+    public TrailSection section;
     @Configurable(name = "AraTrails.space", tips = "AraTrails.space.tips")
     @ConfigSelector(subConfiguratorBuilder = "createSpaceConfigurator")
     public TrailSpace space = TrailSpace.World;

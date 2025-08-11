@@ -394,11 +394,12 @@
   "AraTrails.uvWidthFactor": "Uv Width Factor",
   "AraTrails.uvWidthFactor.tips": "Defines how many times are V coords repeated trough the width of the trail.",
   "AraTrails.tileAnchor": "Tile Anchor",
-  "AraTrails.tileAnchor.tips": "When the texture mode is set to 'Tile', defines where to begin tiling from: 0 means the start of the trail, 1 means the end.",
+  "AraTrails.tileAnchor.tips": "When the texture mode is set to \u0027Tile\u0027, defines where to begin tiling from: 0 means the start of the trail, 1 means the end.",
   "AraTrails.Length": "Length",
   "AraTrails.Emission": "Emission",
   "AraTrails.Physics": "Physics",
   "AraTrails.Rendering": "Rendering",
   "AraTrails.Time": "Time",
-  "SpriteMaterial.spriteLocation": "Sprite Location"
+  "SpriteMaterial.spriteLocation": "Sprite Location",
+  "TrailsSetting.trailType": "Trail Type"
 }

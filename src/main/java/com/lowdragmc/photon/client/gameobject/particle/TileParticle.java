@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
+import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
@@ -304,6 +305,18 @@ u     */
     public Vector3f getWorldPos(float partialTicks) {
         var localPosition = getLocalPos(partialTicks);
         return new Vector3f(localPosition).mulPosition(getSpaceTransform());
+    }
+
+    public Vector3f getWorldUp(float partialTicks) {
+        return getSpaceRotation().transform(new Vector3f(0, 1, 0));
+    }
+
+    public Vector3f getWorldForward(float partialTicks) {
+        return getSpaceRotation().transform(new Vector3f(0, 0, -1));
+    }
+
+    public Vector3f getWorldRight(float partialTicks) {
+        return getSpaceRotation().transform(new Vector3f(1, 0, 0));
     }
 
     public AABB getRealBoundingBox(float partialTicks) {

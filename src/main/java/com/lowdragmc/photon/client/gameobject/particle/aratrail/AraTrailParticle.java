@@ -1,8 +1,5 @@
 package com.lowdragmc.photon.client.gameobject.particle.aratrail;
 
-import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigColor;
-import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
@@ -10,6 +7,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import it.unimi.dsi.fastutil.floats.Float2ObjectFunction;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import lombok.Getter;
@@ -23,10 +21,12 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 
 public class AraTrailParticle implements IParticle {
@@ -78,6 +78,35 @@ public class AraTrailParticle implements IParticle {
     private Vector4f uv = new Vector4f(0);
     private Vector4f color;
 
+    // for trails setting
+    @Getter @Setter @Nullable
+    private Runnable onUpdate;
+    @Getter @Setter @Nullable
+    private Float2ObjectFunction<Vector3f> worldPositionSupplier;
+    @Getter @Setter @Nullable
+    private Float2ObjectFunction<Vector3f> worldForwardSupplier;
+    @Getter @Setter @Nullable
+    private Float2ObjectFunction<Vector3f> worldUpSupplier;
+    @Getter @Setter @Nullable
+    private Float2ObjectFunction<Vector3f> worldRightSupplier;
+    @Getter @Setter @Nullable
+    private Float2ObjectFunction<Vector4f> colorMultiplierSupplier;
+    @Getter @Setter @Nullable
+    private Supplier<Float> lifetimeSupplier;
+    @Getter @Setter @Nullable
+    private Float2ObjectFunction<Float> thicknessMultiplierSupplier;
+
+    private Vector3f worldPosition = new Vector3f();
+    private Vector3f worldForward = new Vector3f();
+    private Vector3f worldUp = new Vector3f();
+    private Vector3f worldRight = new Vector3f();
+    @Getter
+    private Vector4f colorMultiplier = new Vector4f(1, 1, 1, 1);
+    @Getter
+    private float thicknessMultiplier = 1;
+    @Getter
+    private float lifeTime = 1;
+
     public AraTrailParticle(IParticleEmitter emitter, AraTrailConfig config) {
         this.emitter = emitter;
         this.config = config;
@@ -93,7 +122,7 @@ public class AraTrailParticle implements IParticle {
     @Override
     public boolean isAlive() {
         if (isRemoved) {
-            return dieWhenAllTailsRemoved && !points.isEmpty();
+            return dieWhenAllTailsRemoved && points.size() > 1;
         }
         return true;
     }
@@ -139,27 +168,51 @@ public class AraTrailParticle implements IParticle {
     }
 
     public Matrix4f getWorldToTrail() {
-        switch (config.space) {
-            case World:
-                return new Matrix4f(); // identity matrix
-            case Self:
-                return getTransform().worldToLocalMatrix();
-            case Custom:
+        return switch (config.space) {
+            case World -> new Matrix4f(); // identity matrix
+            case Self -> getTransform().worldToLocalMatrix();
+            case Custom -> {
                 var transform = config.customSpace.getTransform(emitter.getScene());
-                return transform != null ? transform.worldToLocalMatrix() : new Matrix4f();
-            default:
-                return new Matrix4f();
-        }
+                yield transform != null ? transform.worldToLocalMatrix() : new Matrix4f();
+            }
+        };
     }
 
     public Transform getTransform() {
         return emitter.transform();
     }
 
+    private void updateDynamicData(float partialTicks) {
+        var transform = getTransform();
+        this.worldPosition = worldPositionSupplier == null ? transform.position() : worldPositionSupplier.get(partialTicks);
+        this.worldForward = worldForwardSupplier == null ? transform.forward() : worldForwardSupplier.get(partialTicks);
+        this.worldUp = worldUpSupplier == null ? transform.up() : worldUpSupplier.get(partialTicks);
+        this.worldRight = worldRightSupplier == null ? transform.right() : worldRightSupplier.get(partialTicks);
+        this.colorMultiplier = colorMultiplierSupplier == null ? new Vector4f(1) : colorMultiplierSupplier.get(partialTicks);
+        this.thicknessMultiplier = thicknessMultiplierSupplier == null ? 1 : thicknessMultiplierSupplier.get(partialTicks);
+        this.lifeTime = lifetimeSupplier == null ? config.time : lifetimeSupplier.get();
+    }
+    
+    public Vector3f getWorldPosition() {
+        return new Vector3f(worldPosition);
+    }
+    
+    public Vector3f getWorldForward() {
+        return new Vector3f(worldForward);
+    }
+    
+    public Vector3f getWorldUp() {
+        return new Vector3f(worldUp);
+    }
+    
+    public Vector3f getWorldRight() {
+        return new Vector3f(worldRight);
+    }
+
     private void setup() {
         // initialize previous position, for correct velocity estimation in the first frame:
         Warmup();
-        prevPosition = getTransform().position();
+        prevPosition = getWorldPosition();
         velocity = new Vector3f();
         initialVelocity = config.initialVelocity;
         initialThickness = config.initialThickness;
@@ -180,12 +233,12 @@ public class AraTrailParticle implements IParticle {
 
     private void UpdateVelocity(float deltaTime) {
         if (deltaTime > 0) {
-            Vector3f deltaPosition = getTransform().position().sub(prevPosition);
+            Vector3f deltaPosition = getWorldPosition().sub(prevPosition);
             Vector3f currentVelocity = deltaPosition.div(deltaTime);
             velocity = velocity.lerp(currentVelocity, config.physicsSetting.velocitySmoothing);
         }
 
-        prevPosition = getTransform().position();
+        prevPosition = getWorldPosition();
     }
 
     @Override
@@ -197,6 +250,7 @@ public class AraTrailParticle implements IParticle {
      * Updates point physics.
      */
     private void updatePhysics() {
+        if (onUpdate != null) onUpdate.run();
         if (!config.physicsSetting.isEnable())
             return;
         PhysicsStep(0.02f);
@@ -209,13 +263,13 @@ public class AraTrailParticle implements IParticle {
         // If enough time has passed since the last emission (>= timeInterval), consider emitting new points.
         if (accumTime >= config.timeInterval) {
             if (config.emit) {
-                var position = getWorldToTrail().transformPosition(getTransform().position());
+                var position = getWorldToTrail().transformPosition(getWorldPosition());
 
                 // If there's less than 2 points, or if the last 2 points are too far apart, spawn a new one:
-                if (points.size() < 2 || (
-                        position.distance(points.get(points.size() - 2).position) >= config.minDistance
+                if (points.size() < 1 || (
+                        position.distance(points.get(points.size() - 1).position) >= config.minDistance
                 )) {
-                    EmitPoint(position);
+                    EmitPoint(position, false);
                     accumTime = 0;
                 }
             }
@@ -226,6 +280,7 @@ public class AraTrailParticle implements IParticle {
         if (!config.physicsSetting.isEnable()) return;
         float simulatedTime = config.physicsSetting.warmup;
         var fixedDeltaTime = getFixedDeltaTime();
+        updateDynamicData(0);
         while (simulatedTime > fixedDeltaTime) {
             PhysicsStep(fixedDeltaTime);
             EmissionStep(fixedDeltaTime);
@@ -270,10 +325,10 @@ public class AraTrailParticle implements IParticle {
             texcoord = points.getLast().texcoord + position.distance(points.getLast().position);
 
         var worldToTrail = getWorldToTrail();
-        var nrm = worldToTrail.transformDirection(getTransform().forward());
-        var tgt = worldToTrail.transformDirection(getTransform().right());
+        var nrm = worldToTrail.transformDirection(getWorldForward());
+        var tgt = worldToTrail.transformDirection(getWorldRight());
         var point = new Point(position, new Vector3f(velocity).mul(config.physicsSetting.inertia).add(initialVelocity),
-                tgt, nrm, initialColor, initialThickness, texcoord, config.time);
+                tgt, nrm, initialColor, initialThickness, texcoord, lifeTime);
         if (skipLast && points.size() > 1) {
             points.add(points.size() - 1, point);
         } else {
@@ -297,9 +352,9 @@ public class AraTrailParticle implements IParticle {
             if (!lastPoint.discontinuous)
             {
                 var worldToTrail = getWorldToTrail();
-                lastPoint.position = worldToTrail.transformPosition(getTransform().position());
-                lastPoint.normal = worldToTrail.transformDirection(getTransform().forward());
-                lastPoint.tangent = worldToTrail.transformDirection(getTransform().right());
+                lastPoint.position = worldToTrail.transformPosition(getWorldPosition());
+                lastPoint.normal = worldToTrail.transformDirection(getWorldForward());
+                lastPoint.tangent = worldToTrail.transformDirection(getWorldRight());
 
                 // if there's a previous point in the trail, use its texcoord to calculate ours.
                 if (points.size() > 1) {
@@ -480,18 +535,18 @@ public class AraTrailParticle implements IParticle {
         Vector3f tgnt = new Vector3f(nextPoint).sub(point);
 
         // Calculate tangent proximity to the normal vector of the frame (transform.forward).
-        float tangentProximity = Math.abs(tgnt.normalize(new Vector3f()).dot(getTransform().forward()));
+        float tangentProximity = Math.abs(tgnt.normalize(new Vector3f()).dot(getWorldForward()));
 
         // If both vectors are dangerously close, skew the tangent a bit so that a proper frame can be formed:
         if (Math.abs(tangentProximity - 1.0f) < 0.0001f) {
-            Vector3f rightVector = getTransform().right();
+            Vector3f rightVector = getWorldRight();
             Vector3f offset = rightVector.mul(0.01f, new Vector3f());
             tgnt.add(offset);
         }
 
 
         // Generate and return the frame:
-        return new CurveFrame(point, getTransform().forward(), getTransform().up(), tgnt);
+        return new CurveFrame(point, getWorldForward(), getWorldUp(), tgnt);
     }
 
     /**
@@ -500,10 +555,13 @@ public class AraTrailParticle implements IParticle {
     @Override
     public void render(VertexConsumer buffer, Camera camera, float partialTicks) {
         var deltaTime = getDeltaTime();
-        UpdateVelocity(deltaTime);
-        EmissionStep(deltaTime);
-        SnapLastPointToTransform();
-        UpdatePointsLifecycle(deltaTime);
+        updateDynamicData(partialTicks);
+        if (deltaTime > epsilon) {
+            UpdateVelocity(deltaTime);
+            EmissionStep(deltaTime);
+            SnapLastPointToTransform();
+            UpdatePointsLifecycle(deltaTime);
+        }
         ClearMeshData();
 
         // We need at least two points to create a trail mesh.
@@ -535,7 +593,7 @@ public class AraTrailParticle implements IParticle {
             return;
         }
 
-        var renderMatrix = getWorldToTrail().invert(new Matrix4f()).translate(cam.getPosition().toVector3f().negate());
+        var renderMatrix = getWorldToTrail().invert(new Matrix4f()).translateLocal(cam.getPosition().toVector3f().negate());
 
         for (int i = 0; i < tris.size(); i += 3) {
             int i0 = tris.getInt(i);
@@ -639,7 +697,7 @@ public class AraTrailParticle implements IParticle {
                 }
 
                 // Calculate normal vector:
-                normal = data[i].normal;
+                normal = new Vector3f(data[i].normal);
                 if (config.alignment != AraTrailConfig.TrailAlignment.Local)
                     normal = config.alignment == AraTrailConfig.TrailAlignment.View ?
                             new Vector3f(localCamPosition).sub(data[i].position) :
@@ -662,21 +720,21 @@ public class AraTrailParticle implements IParticle {
                 float normalizedLength = config.sorting == AraTrailConfig.TrailSorting.OlderOnTop ?
                         partialLength / totalLength :
                         (totalLength - partialLength) / totalLength;
-                float normalizedLife = Float.isInfinite(config.time) ? 1 : Mth.clamp(1 - data[i].life / config.time, 0, 1);
+                float normalizedLife = Float.isInfinite(getLifeTime()) ? 1 : Mth.clamp(1 - data[i].life / getLifeTime(), 0, 1);
                 partialLength += sectionLength;
 
                 // Calculate vertex color:
                 var timeColor = config.colorOverTime.get(normalizedLife, () -> getMemRandom("trails-colorOverTime")).intValue();
                 var lengthColor = config.colorOverLength.get(normalizedLength, () -> getMemRandom("trails-colorOverLength")).intValue();
-                color = new Vector4f(data[i].color).mul(
-                        ColorUtils.red(timeColor) * ColorUtils.red(lengthColor),
+                color = new Vector4f(data[i].color).mul(colorMultiplier).mul(
+                        ColorUtils.red(timeColor) * ColorUtils.red(lengthColor) ,
                         ColorUtils.green(timeColor) * ColorUtils.green(lengthColor),
                         ColorUtils.blue(timeColor) * ColorUtils.blue(lengthColor),
                         ColorUtils.alpha(timeColor) * ColorUtils.alpha(lengthColor)
                 );
 
                 // Calculate final thickness:
-                float sectionThickness = config.thickness * data[i].thickness *
+                float sectionThickness = config.thickness * thicknessMultiplier * data[i].thickness *
                         config.thicknessOverTime.get(normalizedLife, () -> getMemRandom("trails-thicknessOverTime")).floatValue() *
                         config.thicknessOverLength.get(normalizedLength, () -> getMemRandom("trails-thicknessOverLength")).floatValue();
 
@@ -707,7 +765,7 @@ public class AraTrailParticle implements IParticle {
         int verticesPerSection = sectionSegments + 1;
 
         int vc = vertices.size();
-
+        var color = new Vector4f(this.color);
         for (int j = 0; j <= sectionSegments; ++j) {
             // calculate normal using section vertex, curve normal and binormal:
             normal.x = (section.vertices.get(j).x * bitangent.x + section.vertices.get(j).y * tangent.x) * sectionThickness;
@@ -731,10 +789,10 @@ public class AraTrailParticle implements IParticle {
             uv.z = 0;
             uv.w = 1;
 
-            vertices.add(vertex);
-            normals.add(normal);
-            tangents.add(texTangent);
-            uvs.add(uv);
+            vertices.add(new Vector3f(vertex));
+            normals.add(new Vector3f(normal));
+            tangents.add(new Vector4f(texTangent));
+            uvs.add(new Vector4f(uv));
             vertColors.add(color);
 
             if (j < sectionSegments && i < count - 1) {
@@ -802,12 +860,15 @@ public class AraTrailParticle implements IParticle {
             vertices.add(data[i].position.sub(bitangent.mul(correctedThickness, new Vector3f()), new Vector3f()));
         }
 
-        normals.add(new Vector3f(normal));
-        normals.add(new Vector3f(normal));
+        var normal = new Vector3f(this.normal);
+        normals.add(normal);
+        normals.add(normal);
 
-        tangents.add(new Vector4f(tangent));
-        tangents.add(new Vector4f(tangent));
+        var tangent = new Vector4f(this.tangent);
+        tangents.add(tangent);
+        tangents.add(tangent);
 
+        var color = new Vector4f(this.color);
         vertColors.add(color);
         vertColors.add(color);
 
@@ -844,8 +905,8 @@ public class AraTrailParticle implements IParticle {
         if (hqCorners && config.cornerRoundness > 0) {
             for (int p = 0; p <= config.cornerRoundness; ++p) {
                 vertices.add(data[i].position.add(corner, new Vector3f()));
-                normals.add(new Vector3f(normal));
-                tangents.add(new Vector4f(tangent));
+                normals.add(normal);
+                tangents.add(tangent);
                 vertColors.add(color);
                 uv.set(vCoord, curvatureSign > 0 ? 0 : 1, 0, 1);
                 uvs.add(new Vector4f(uv));

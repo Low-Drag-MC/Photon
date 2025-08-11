@@ -2,10 +2,11 @@ package com.lowdragmc.photon.client.gameobject.particle.aratrail;
 
 import org.joml.Vector2f;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class TrailSection {
-    public List<Vector2f> vertices;
+    public List<Vector2f> vertices = new ArrayList<>();
     public int snapX = 0;
     public int snapY = 0;
 
