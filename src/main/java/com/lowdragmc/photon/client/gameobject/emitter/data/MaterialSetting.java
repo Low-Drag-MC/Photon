@@ -12,6 +12,7 @@ import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.mojang.blaze3d.systems.RenderSystem;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.experimental.Accessors;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
@@ -26,10 +27,11 @@ import java.util.Optional;
 @OnlyIn(Dist.CLIENT)
 @Getter
 @Setter
+@Accessors(chain = true)
 public class MaterialSetting implements IConfigurable, IPersistedSerializable {
     @Nonnull
     @Configurable(name = "material")
-    protected IMaterial material = Optional.ofNullable(MaterialResource.INSTANCE.getResourceInstance().getResource(new BuiltinPath("circle"))).orElseGet(TextureMaterial::new);
+    protected IMaterial material;
     @Configurable(name = "MaterialSetting.blendMode", subConfigurable = true)
     protected final BlendMode blendMode = new BlendMode();
     @Configurable
@@ -38,6 +40,14 @@ public class MaterialSetting implements IConfigurable, IPersistedSerializable {
     protected boolean depthTest = true;
     @Configurable
     protected boolean depthMask = false;
+
+    public MaterialSetting() {
+        this(Optional.ofNullable(MaterialResource.INSTANCE.getResourceInstance().getResource(new BuiltinPath("circle"))).orElseGet(TextureMaterial::new));
+    }
+
+    public MaterialSetting(@Nonnull IMaterial material) {
+        this.material = material;
+    }
 
     public void pre() {
         blendMode.apply();

@@ -69,7 +69,7 @@ public class ParticleEmitter extends Emitter {
     @Override
     public CompoundTag serializeNBT(HolderLookup.@NotNull Provider provider) {
         var tag = super.serializeNBT(provider);
-        tag.putInt("_version", VERSION);
+        tag.putInt("version", VERSION);
         return tag;
     }
 

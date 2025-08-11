@@ -1,4 +1,8 @@
 ## ChangeLog
 
-# v2.0.3.b
-* Fixed Try to access MeshData during reloading
+# v2.0.4
+* Added AraTrail
+* Added SpriteMaterial
+* Added wireframe mode
+* Added multiple materials rendering supports
+* Added DataFixer for LTS 

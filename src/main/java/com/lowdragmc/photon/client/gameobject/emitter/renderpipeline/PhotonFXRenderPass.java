@@ -1,8 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 
-import com.lowdragmc.photon.client.PhotonShaders;
-import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
-import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
+ import com.lowdragmc.photon.Photon;
+ import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
+ import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
@@ -15,11 +15,11 @@ import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.opengl.GL30;
 
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Collection;
+ import java.util.List;
 
 /**
  * @author KilaBash
@@ -29,66 +29,92 @@ import java.util.Collection;
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 public abstract class PhotonFXRenderPass {
-    public RendererSetting rendererSetting;
-    public MaterialSetting materialSetting;
+    public final static CustomShaderMaterial INVERSE = new CustomShaderMaterial(Photon.id("inverse"));
+    protected static final MaterialSetting WIREFRAME_MATERIAL = new MaterialSetting();
+    static {
+        WIREFRAME_MATERIAL.setMaterial(INVERSE);
+        WIREFRAME_MATERIAL.setCull(false);
+        WIREFRAME_MATERIAL.setDepthMask(false);
+        WIREFRAME_MATERIAL.setDepthTest(false);
+    }
 
-    public PhotonFXRenderPass(RendererSetting rendererSetting, MaterialSetting materialSetting) {
+    public RendererSetting rendererSetting;
+
+    public PhotonFXRenderPass(RendererSetting rendererSetting) {
         this.rendererSetting = rendererSetting;
-        this.materialSetting = materialSetting;
     }
 
     public boolean isParallel() {
         return false;
     }
 
-    /**
-     * setup opengl environment, setup shaders, uniforms.
-     */
     public void prepareStatus(@Nonnull RenderPassPipeline pipeline) {
-        materialSetting.pre();
         Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
     }
 
     public abstract BufferBuilder begin(Tesselator tesselator);
 
-    public void drawParticles(RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
-        var tesselator = Tesselator.getInstance();
-        var sorting = getSorting();
-        var buffer = begin(tesselator);
+    public final void drawParticles(RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+        var materials = getMaterials(pipeline);
+        if (materials.isEmpty()) return;
+        drawParticlesInternal(materials, pipeline, particles, camera, partialTicks);
+    }
 
-        IMaterial material;
-        if (pipeline.getDrawMode() == SceneView.DrawMode.WIREFRAME) {
-            material = CustomShaderMaterial.INVERSE;
-        } else {
-            material = materialSetting.getMaterial();
-        }
-        var shader = material.begin(MaterialContext.NORMAL);
-
-        RenderSystem.setShader(() -> shader);
+    protected void drawParticlesInternal(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+        // prepare mesh data
+        var buffer = begin(Tesselator.getInstance());
         for (var particle : particles) {
             particle.render(buffer, camera, partialTicks);
         }
+        var meshData = buffer.build();
+        if (meshData == null) return;
 
-        var data = buffer.build();
-        if (data != null) {
-            if (sorting != null) {
-                data.sortQuads(pipeline.getSortingBuffer(), sorting);
-            }
-            BufferUploader.drawWithShader(data);
+        // sort quads if necessary
+        var sorting = getSorting();
+        if (sorting != null) {
+            meshData.sortQuads(pipeline.getSortingBuffer(), sorting);
         }
 
-        material.end(MaterialContext.NORMAL);
+        // upload to vbo
+        var vbo = uploadFormatVbo(meshData);
+
+        // render materials
+        for (var materialSetting : materials) {
+            materialSetting.pre();
+            renderWithMaterial(materialSetting.getMaterial(), MaterialContext.NORMAL, vbo);
+            materialSetting.post();
+        }
+
+        // invalidate cache
+        BufferUploader.invalidate();
     }
 
-    public void onEmpty() {
+    protected List<MaterialSetting> getMaterials(RenderPassPipeline pipeline) {
+        var materials = rendererSetting.getMaterials();
+        if (pipeline.getDrawMode() == SceneView.DrawMode.WIREFRAME) {
+            materials = List.of(WIREFRAME_MATERIAL);
+        }
+        return materials;
+    }
 
+    protected static VertexBuffer uploadFormatVbo(MeshData meshData) {
+        var vbo = meshData.drawState().format().getImmediateDrawVertexBuffer();
+        vbo.bind();
+        vbo.upload(meshData);
+        return vbo;
+    }
+
+    protected void renderWithMaterial(IMaterial material, MaterialContext context, VertexBuffer vbo) {
+        var shader = material.begin(context);
+        RenderSystem.setShader(() -> shader);
+        vbo.drawWithShader(RenderSystem.getModelViewMatrix(), RenderSystem.getProjectionMatrix(), shader);
+        material.end(context);
     }
 
     /**
      * restore opengl environment.
      */
     public void releaseStatus(@Nonnull RenderPassPipeline pipeline) {
-        materialSetting.post();
     }
 
     /**

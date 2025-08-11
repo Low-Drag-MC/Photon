@@ -1,7 +1,11 @@
 package com.lowdragmc.photon.client.gameobject.emitter.beam;
 
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
+import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
@@ -18,19 +22,21 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.joml.Vector3f;
 
 import javax.annotation.Nonnull;
+import java.util.Optional;
 
 /**
  * @author KilaBash
  * @date 2023/6/21
  * @implNote BeamConfig
  */
-public class BeamConfig {
+public class BeamConfig implements IConfigurable, IPersistedSerializable {
     @Setter
     @Getter
     @Configurable(name = "ParticleConfig.duration", tips = "photon.emitter.config.duration")
@@ -65,9 +71,6 @@ public class BeamConfig {
     @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction color = new Color();
     @Getter
-    @Configurable(name = "material", subConfigurable = true, tips = "photon.emitter.config.material")
-    public final MaterialSetting material = new MaterialSetting();
-    @Getter
     @Configurable(name = "ParticleConfig.renderer", subConfigurable = true, tips = "photon.emitter.config.renderer")
     public final RendererSetting renderer = new RendererSetting();
     @Configurable(name = "ParticleConfig.uvAnimation", subConfigurable = true, tips = "photon.emitter.config.uvAnimation")
@@ -79,10 +82,15 @@ public class BeamConfig {
     // runtime
     public final PhotonFXRenderPass particleRenderType = new RenderPass();
 
+    public BeamConfig() {
+        renderer.getMaterials().add(new MaterialSetting(Optional.ofNullable(MaterialResource.INSTANCE.getResourceInstance()
+                .getResource(new BuiltinPath("laser"))).orElseGet(TextureMaterial::new)));
+    }
+
     private class RenderPass extends PhotonFXRenderPass {
 
         public RenderPass() {
-            super(renderer, material);
+            super(renderer);
         }
 
         @Override

@@ -8,13 +8,11 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.BeamParticle;
 import lombok.Getter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.NotNull;
 
@@ -42,7 +40,6 @@ public class BeamEmitter extends Emitter {
 
     public BeamEmitter() {
         this(new BeamConfig());
-        config.material.setMaterial(new TextureMaterial(ResourceLocation.parse("photon:textures/particle/laser.png")));
     }
 
     public BeamEmitter(BeamConfig config) {
@@ -69,7 +66,7 @@ public class BeamEmitter extends Emitter {
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         super.buildConfigurator(father);
-        ConfiguratorParser.createConfigurators(father, new HashMap<>(), config.getClass(), config);
+        config.buildConfigurator(father);
     }
 
     //////////////////////////////////////

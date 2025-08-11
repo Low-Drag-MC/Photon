@@ -9,7 +9,6 @@ import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -158,9 +157,6 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     @ConfigNumber(range = {0, 1})
     public float tileAnchor = 1;
     @Getter
-    @Configurable(name = "material", subConfigurable = true, tips = "photon.emitter.config.material")
-    public final MaterialSetting material = new MaterialSetting();
-    @Getter
     @Configurable(name = "ParticleConfig.renderer", subConfigurable = true, tips = "photon.emitter.config.renderer")
     public final RendererSetting renderer = new RendererSetting();
 
@@ -168,13 +164,13 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     public final PhotonFXRenderPass particleRenderType = new RenderPass();
 
     public AraTrailConfig() {
-        material.setMaterial(new CustomShaderMaterial());
+        renderer.getMaterials().add(new MaterialSetting());
     }
 
     private class RenderPass extends PhotonFXRenderPass {
 
         public RenderPass() {
-            super(renderer, material);
+            super(renderer);
         }
 
         @Override

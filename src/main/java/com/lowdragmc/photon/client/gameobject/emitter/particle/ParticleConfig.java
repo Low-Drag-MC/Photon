@@ -20,6 +20,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCu
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.gui.editor.view.SceneView;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -27,6 +28,9 @@ import net.minecraft.client.Camera;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Collection;
+import java.util.List;
+
+import static org.lwjgl.opengl.GL30.glBindVertexArray;
 
 /**
  * @author KilaBash
@@ -98,8 +102,6 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     public final EmissionSetting emission = new EmissionSetting();
     @Configurable(name = "ParticleConfig.shape", subConfigurable = true, tips = "photon.emitter.config.shape")
     public final ShapeSetting shape = new ShapeSetting();
-    @Configurable(name = "material", subConfigurable = true, tips = "photon.emitter.config.material")
-    public final MaterialSetting material = new MaterialSetting();
     @Configurable(name = "ParticleConfig.renderer", subConfigurable = true, tips = "photon.emitter.config.renderer")
     public final ParticleRendererSetting renderer = new ParticleRendererSetting(this);
     @Configurable(name = "ParticleConfig.physics", subConfigurable = true, tips = "photon.emitter.config.physics")
@@ -153,7 +155,7 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
         private final ParticleInstanceRenderer instanceRenderer = new ParticleInstanceRenderer(ParticleConfig.this);
 
         public RenderPass() {
-            super(renderer, material);
+            super(renderer);
         }
 
         public void clearInstance() {
@@ -165,24 +167,33 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
             return tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
         }
 
-        public void drawParticles(RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+        public void drawParticlesInternal(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
             if (renderer.isUseGPUInstance()) {
                 var context = renderer.getRenderMode() == ParticleRendererSetting.Mode.Model ?
                         MaterialContext.PARTICLE_MODEL_INSTANCE : MaterialContext.PARTICLE_INSTANCE;
 
-                IMaterial material;
-                if (pipeline.getDrawMode() == SceneView.DrawMode.WIREFRAME) {
-                    material = CustomShaderMaterial.INVERSE;
-                } else {
-                    material = materialSetting.getMaterial();
+                // upload to vbo
+                if (instanceRenderer.upload((Collection) particles, camera, partialTicks)) {
+                    for (MaterialSetting materialSetting : materials) {
+                        materialSetting.pre();
+                        renderInstanceWithMaterial(materialSetting.getMaterial(), context);
+                        materialSetting.post();
+                    }
                 }
 
-                var shader = material.begin(context);
-                instanceRenderer.render(shader, (Collection) particles, camera, partialTicks);
-                material.end(context);
+                // invalidate cache
+                glBindVertexArray(0);
+                BufferUploader.invalidate();
             } else {
-                super.drawParticles(pipeline, particles, camera, partialTicks);
+                super.drawParticlesInternal(materials, pipeline, particles, camera, partialTicks);
             }
+        }
+
+        protected void renderInstanceWithMaterial(IMaterial material, MaterialContext context) {
+            var shader = material.begin(context);
+            RenderSystem.setShader(() -> shader);
+            instanceRenderer.drawWithShader(shader);
+            material.end(context);
         }
 
         @Override

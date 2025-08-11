@@ -72,6 +72,7 @@ public class ParticleInstanceRenderer {
     private int modelEboSize = 0;
     private int instanceDataSize = 0; // number of bytes
     private int maxInstancesSize = 0;
+    private int instanceCount = 0;
     @Nullable
     private static FloatBuffer instanceDataBuffer = null;
 
@@ -393,10 +394,9 @@ public class ParticleInstanceRenderer {
         return instanceDataBuffer;
     }
 
-
-    public void render(ShaderInstance shader, Collection<TileParticle> particles, Camera camera, float partialTicks) {
+    public boolean upload(Collection<TileParticle> particles, Camera camera, float partialTicks) {
         init();
-        if (resource == null) return;
+        if (resource == null) return false;
 
         int required = particles.size() * instanceDataSize;
         var buffer = getInstanceDataBuffer(required);
@@ -466,7 +466,11 @@ public class ParticleInstanceRenderer {
 
         // upload
         glBufferSubData(GL_ARRAY_BUFFER, 0, buffer);
+        instanceCount = particles.size();
+        return instanceCount > 0;
+    }
 
+    public void drawWithShader(ShaderInstance shader) {
         // bind shader
         shader.setDefaultUniforms(
                 VertexFormat.Mode.QUADS,
@@ -477,8 +481,6 @@ public class ParticleInstanceRenderer {
         shader.apply();
 
         // draw instance
-        glDrawElementsInstanced(GL_TRIANGLES, modelEboSize, GL_UNSIGNED_INT, 0, particles.size());
-        glBindVertexArray(0);
-        BufferUploader.invalidate();
+        glDrawElementsInstanced(GL_TRIANGLES, modelEboSize, GL_UNSIGNED_INT, 0, instanceCount);
     }
 }

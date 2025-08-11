@@ -9,7 +9,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSett
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.UVAnimationSetting;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -89,9 +88,6 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
     @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
     protected NumberFunction colorOverTrail = new Gradient();
     @Getter
-    @Configurable(name = "material", subConfigurable = true, tips = "photon.emitter.config.material")
-    public final MaterialSetting material = new MaterialSetting();
-    @Getter
     @Configurable(name = "ParticleConfig.renderer", subConfigurable = true, tips = "photon.emitter.config.renderer")
     public final RendererSetting renderer = new RendererSetting();
     @Getter
@@ -105,13 +101,13 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
     public final PhotonFXRenderPass particleRenderType = new RenderPass();
 
     public TrailConfig() {
-        material.setMaterial(new CustomShaderMaterial());
+        renderer.getMaterials().add(new MaterialSetting());
     }
 
     private class RenderPass extends PhotonFXRenderPass {
 
         public RenderPass() {
-            super(renderer, material);
+            super(renderer);
         }
 
         @Override

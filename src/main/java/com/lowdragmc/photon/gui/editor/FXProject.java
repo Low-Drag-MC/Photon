@@ -13,10 +13,12 @@ import com.lowdragmc.lowdraglib2.syncdata.ISubscription;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.client.fx.FXHelper;
+import com.lowdragmc.photon.client.gameobject.emitter.data.fixer.PhotonFXProjectDataFixer;
 import com.lowdragmc.photon.gui.editor.resource.CurveResource;
 import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
+import com.mojang.datafixers.schemas.Schema;
 import lombok.Getter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -25,8 +27,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
+import java.util.function.BiFunction;
 
 public class FXProject implements IProject {
+    public static int VERSION = 2;
     public static final FileMenu.ProjectProvider PROVIDER = FileMenu.ProjectProvider.of(IGuiTexture.EMPTY, "fx_project", ".fxproj", FXProject::new);
 
     @Getter
@@ -45,6 +49,11 @@ public class FXProject implements IProject {
                 GradientResource.INSTANCE,
                 MeshResource.INSTANCE
         );
+    }
+
+    @Override
+    public String getVersion() {
+        return "%d.0".formatted(VERSION) ;
     }
 
     @Override
@@ -67,6 +76,21 @@ public class FXProject implements IProject {
     @Override
     public void deserializeProject(@NotNull HolderLookup.Provider provider, @NotNull CompoundTag nbt) {
         fx.deserializeNBT(provider, nbt.getCompound("fx"));
+    }
+
+    @Override
+    public CompoundTag getMetadata() {
+        var meta = IProject.super.getMetadata();
+        meta.putInt("version_num", VERSION);
+        return meta;
+    }
+
+    @Override
+    public void deserializeNBT(@NotNull HolderLookup.Provider provider, @NotNull CompoundTag nbt) {
+        // apply data fix for cross-version
+        var version = Math.max(1, nbt.getCompound("meta").getInt("version_num"));
+        var fixedData = PhotonFXProjectDataFixer.INSTANCE.applyFixes(version, VERSION, nbt.getCompound("data"));
+        deserializeProject(provider, fixedData);
     }
 
     @Override
