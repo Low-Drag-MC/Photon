@@ -49,6 +49,11 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     protected boolean looping = true;
     @Setter
     @Getter
+    @Configurable(name = "ParticleConfig.prewarm", tips = "photon.emitter.config.prewarm")
+    @ConfigNumber(range = {0, Integer.MAX_VALUE})
+    protected int prewarm = 0;
+    @Setter
+    @Getter
     @Configurable(name = "ParticleConfig.startDelay", tips = "photon.emitter.config.startDelay")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, numberType = ConfigNumber.Type.INTEGER, min = 0, curveConfig = @CurveConfig(bound = {0, 100}, xAxis = "duration", yAxis = "delay"))
     protected NumberFunction startDelay = NumberFunction.constant(0);

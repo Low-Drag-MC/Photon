@@ -28,7 +28,7 @@ import java.util.function.Supplier;
 
 
 public class AraTrailParticle implements IParticle {
-    public static float epsilon = 0.00001f;
+    public final static float EPSILON = 0.00001f;
 
     public final IParticleEmitter emitter;
     public final AraTrailConfig config;
@@ -168,7 +168,7 @@ public class AraTrailParticle implements IParticle {
     public Matrix4f getWorldToTrail() {
         return switch (config.space) {
             case World -> new Matrix4f(); // identity matrix
-            case Self -> getTransform().worldToLocalMatrix();
+            case Local -> getTransform().worldToLocalMatrix();
             case Custom -> {
                 var transform = config.customSpace.getTransform(emitter.getScene());
                 yield transform != null ? transform.worldToLocalMatrix() : new Matrix4f();
@@ -554,7 +554,7 @@ public class AraTrailParticle implements IParticle {
     public void render(VertexConsumer buffer, Camera camera, float partialTicks) {
         var deltaTime = getDeltaTime();
         updateDynamicData(partialTicks);
-        if (deltaTime > epsilon) {
+        if (deltaTime > EPSILON) {
             updateVelocity(deltaTime);
             emissionStep(deltaTime);
             snapLastPointToTransform();
@@ -647,7 +647,7 @@ public class AraTrailParticle implements IParticle {
             for (int i = 0; i < trail.size() - 1; ++i)
                 totalLength += new Vector3f(data[i].position).distance(data[i + 1].position);
 
-            totalLength = Math.max(totalLength, epsilon);
+            totalLength = Math.max(totalLength, EPSILON);
             float partialLength = 0;
             float vCoord = config.textureMode == AraTrailConfig.TextureMode.Stretch ?
                     0 :
@@ -939,17 +939,17 @@ public class AraTrailParticle implements IParticle {
             float c1 = v1.dot(v1);
 
             Vector3f rL = new Vector3f(normal).sub(
-                    new Vector3f(v1).mul(2 / (c1 + epsilon) * v1.dot(normal))
+                    new Vector3f(v1).mul(2 / (c1 + EPSILON) * v1.dot(normal))
             );
             Vector3f tL = new Vector3f(tangent).sub(
-                    new Vector3f(v1).mul(2 / (c1 + epsilon) * v1.dot(tangent))
+                    new Vector3f(v1).mul(2 / (c1 + EPSILON) * v1.dot(tangent))
             );
 
             Vector3f v2 = new Vector3f(newTangent).sub(tL);
             float c2 = v2.dot(v2);
 
             Vector3f r1 = new Vector3f(rL).sub(
-                    new Vector3f(v2).mul(2 / (c2 + epsilon) * v2.dot(rL))
+                    new Vector3f(v2).mul(2 / (c2 + EPSILON) * v2.dot(rL))
             );
             Vector3f s1 = new Vector3f(newTangent).cross(r1);
 

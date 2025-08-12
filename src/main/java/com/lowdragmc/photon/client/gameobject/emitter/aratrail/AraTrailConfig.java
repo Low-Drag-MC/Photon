@@ -47,7 +47,7 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     public enum TrailSpace
     {
         World,
-        Self,
+        Local,
         Custom
     }
 

@@ -55,7 +55,7 @@ public class TrailsSetting extends ToggleGroup {
     @Getter
     @Configurable(name = "TrailsSetting.lifetime", tips = "photon.emitter.config.trails.lifetime")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "trail length"))
-    protected NumberFunction lifetime = NumberFunction.constant(1);
+    protected NumberFunction lifetime = NumberFunction.constant(1f);
     @Setter
     @Getter
     @Configurable(name = "TrailsSetting.dieWithParticles", tips = "photon.emitter.config.trails.dieWithParticles")

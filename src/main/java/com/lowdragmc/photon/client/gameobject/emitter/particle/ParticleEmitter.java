@@ -42,6 +42,7 @@ public class ParticleEmitter extends Emitter {
     public final ParticleConfig config;
 
     // runtime
+    protected boolean hasFirstUpdate = false;
     @Getter @Setter
     protected float accumulatedDistance = 0;
     @Getter
@@ -85,6 +86,23 @@ public class ParticleEmitter extends Emitter {
 
     @Override
     public void update() {
+        if (!hasFirstUpdate) {
+            hasFirstUpdate = true;
+            if (config.prewarm > 0) {
+                for (int i = 0; i < config.prewarm; i++) {
+                    emitParticle();
+                    super.update();
+                    if (removed) {
+                        return;
+                    }
+                }
+            }
+        }
+        emitParticle();
+        super.update();
+    }
+
+    public void emitParticle() {
         // calculate distance
         accumulatedDistance += getVelocity().length();
         // emit new particle
@@ -120,8 +138,6 @@ public class ParticleEmitter extends Emitter {
                 }
             }
         }
-
-        super.update();
     }
 
     @Override
@@ -148,6 +164,7 @@ public class ParticleEmitter extends Emitter {
     public void reset() {
         super.reset();
         this.particles.clear();
+        this.hasFirstUpdate = false;
     }
 
     @Override

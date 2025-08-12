@@ -402,5 +402,7 @@
   "TrailsSetting.trailType": "Trail Type",
   "TrailSection.vertices": "Vertices",
   "AraTrails.section": "Section",
-  "AraTrails.section.tips": "Trail cross-section asset, determines the shape of the emitted trail. If it is disabled, the trail will be a simple strip."
+  "AraTrails.section.tips": "Trail cross-section asset, determines the shape of the emitted trail. If it is disabled, the trail will be a simple strip.",
+  "ParticleConfig.prewarm": "Prewarm",
+  "photon.emitter.config.prewarm": "Amount of ticks pre-simulated before the first frame of rendering."
 }
