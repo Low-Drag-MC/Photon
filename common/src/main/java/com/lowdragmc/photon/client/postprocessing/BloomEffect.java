@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.postprocessing;
 
+import com.lowdragmc.lowdraglib.utils.ColorUtils;
 import com.lowdragmc.photon.IrisFramebufferUtils;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.PhotonParticleRenderType;
@@ -109,7 +110,16 @@ public class BloomEffect {
         RenderSystem.setShader(() -> PARTICLE);
     }
 
-    //TODO not sure when to set
+    public static void setBloomColor(int color) {
+        if (RenderSystem.getShader() != null) {
+            var r = ColorUtils.red(color);
+            var g = ColorUtils.green(color);
+            var b = ColorUtils.blue(color);
+            var a = ColorUtils.alpha(color);
+            RenderSystem.getShader().safeGetUniform("BloomColor").set(r, g, b, a);
+        }
+    }
+
     public static void setBloomColor(Vector4f color) {
         if (RenderSystem.getShader() != null) {
             RenderSystem.getShader().safeGetUniform("BloomColor").set(color);

@@ -154,17 +154,6 @@ public class BeamParticle implements IParticle {
 
     public void render(@Nonnull VertexConsumer pBuffer, @Nonnull Camera camera, float partialTicks) {
         if (delay <= 0 && this.emitter.isVisible()) {
-
-            // set bloom color
-            if (config.renderer.isBloomEffect()) {
-                int bloomColor = config.renderer.getBloomColor().get(emitter.getRandomSource(), emitter.getT(partialTicks)).intValue();
-                float r = ColorUtils.red(bloomColor);
-                float g = ColorUtils.green(bloomColor);
-                float b = ColorUtils.blue(bloomColor);
-                float a = ColorUtils.alpha(bloomColor);
-                BloomEffect.setBloomColor(new Vector4f(r, g, b, a));
-            }
-
             var cameraPos = camera.getPosition().toVector3f();
             var from = getWorldPos();
             var end = new Vector3f(from).add(emitter.transform().localToWorldMatrix().transformDirection(config.getEnd(), new Vector3f()));

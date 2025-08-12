@@ -166,6 +166,7 @@ public class ParticleConfig implements IPersistedSerializable {
         public void prepareStatus() {
             if (renderer.isBloomEffect()) {
                 beginBloom();
+                BloomEffect.setBloomColor(renderer.getBloomColor());
             } else {
                 RenderSystem.setShader(GameRenderer::getParticleShader);
             }

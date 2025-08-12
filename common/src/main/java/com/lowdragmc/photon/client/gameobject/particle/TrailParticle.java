@@ -578,16 +578,6 @@ public class TrailParticle implements IParticle {
         }
 
         public void renderInternal(VertexConsumer buffer, float partialTicks, Vector3f cameraPos, Vector4f color, int light) {
-            // set bloom color
-            if (config.renderer.isBloomEffect()) {
-                int bloomColor = config.renderer.getBloomColor().get(emitter.getRandomSource(), emitter.getT(partialTicks)).intValue();
-                float r = ColorUtils.red(bloomColor);
-                float g = ColorUtils.green(bloomColor);
-                float b = ColorUtils.blue(bloomColor);
-                float a = ColorUtils.alpha(bloomColor);
-                BloomEffect.setBloomColor(new Vector4f(r, g, b, a));
-            }
-
             Vector3f lastNormal = null;
             Vector3f lastUp = null;
 

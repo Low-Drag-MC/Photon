@@ -95,6 +95,7 @@ public class BeamConfig {
         public void prepareStatus() {
             if (renderer.isBloomEffect()) {
                 beginBloom();
+                BloomEffect.setBloomColor(renderer.getBloomColor());
             } else {
                 RenderSystem.setShader(GameRenderer::getParticleShader);
             }

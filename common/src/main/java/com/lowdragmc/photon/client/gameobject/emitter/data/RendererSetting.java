@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib.client.renderer.impl.IModelRenderer;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.Configurable;
+import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberColor;
 import com.lowdragmc.lowdraglib.gui.editor.annotation.NumberRange;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.BooleanConfigurator;
 import com.lowdragmc.lowdraglib.gui.editor.configurator.ConfiguratorGroup;
@@ -56,8 +57,8 @@ public class RendererSetting {
     @Setter
     @Getter
     @Configurable(tips = "photon.emitter.config.renderer.bloomColor")
-    @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
-    protected NumberFunction bloomColor = NumberFunction.color(-1);
+    @NumberColor
+    protected int bloomColor = -1;
 
     @Configurable(name = "cull", subConfigurable = true, tips = "photon.emitter.config.renderer.cull")
     protected final Cull cull = new Cull();
