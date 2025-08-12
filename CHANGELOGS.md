@@ -2,6 +2,7 @@
 
 # v1.1.14
 * Fix incorrect shader attributes layout (thanks to @RogoShum)
+* Fix the bloom color crash with parallel rendering
 
 # v1.1.13
 * Bump up ldlib to fix mixin loading crash for some minor cases
