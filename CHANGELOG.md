@@ -8,3 +8,4 @@
 * Added DataFixer for LTS 
 * Added Particle Emitter prewarm
 * Added Particle Radial Velocity
+* Added Animation Tool Panel

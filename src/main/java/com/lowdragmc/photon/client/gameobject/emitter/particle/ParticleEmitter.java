@@ -13,7 +13,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
-import com.lowdragmc.photon.gui.editor.view.SceneView;
+import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.renderer.MultiBufferSource;

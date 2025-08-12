@@ -5,7 +5,7 @@ import com.lowdragmc.lowdraglib2.editor.ui.Editor;
 import com.lowdragmc.lowdraglib2.gui.texture.SpriteTexture;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
-import com.lowdragmc.photon.gui.editor.view.SceneView;
+import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import net.minecraft.MethodsReturnNonnullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;

@@ -54,7 +54,7 @@ public class BeamConfig implements IConfigurable, IPersistedSerializable {
     @Getter
     @Configurable(name = "BeamConfig.end", tips = "photon.emitter.beam.config.end")
     @ConfigNumber(range = {-Float.MAX_VALUE, Float.MAX_VALUE})
-    protected Vector3f end = new Vector3f(3, 0, 0);
+    protected Vector3f end = new Vector3f(0, 0, -3);
     @Setter
     @Getter
     @Configurable(name = "BeamConfig.width", tips = "photon.emitter.beam.config.width")

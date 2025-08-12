@@ -7,7 +7,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShader
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
-import com.lowdragmc.photon.gui.editor.view.SceneView;
+import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.Camera;

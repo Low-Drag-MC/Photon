@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
-import com.lowdragmc.photon.gui.editor.view.SceneView;
+import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -40,10 +40,18 @@ public class PhotonParticleManager extends ParticleManager {
         this.sceneView = sceneView;
     }
 
+    public long getRealTime() {
+        return time + timeOffset;
+    }
+
+    public float getRealTime(float pPartialTicks) {
+        return getRealTime() + (isPlaying ? pPartialTicks : 0);
+    }
+
     @Override
     public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks, Predicate<ParticleRenderType> renderTypeFilter) {
         drawMode = sceneView.getDrawMode();
-        RenderSystem.setShaderGameTime(time + timeOffset, isPlaying ? pPartialTicks : 0);
+        RenderSystem.setShaderGameTime(getRealTime(), isPlaying ? pPartialTicks : 0);
 
         var startTime = System.nanoTime();
         GlStateManager._disableScissorTest();

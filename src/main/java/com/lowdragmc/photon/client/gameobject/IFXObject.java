@@ -12,7 +12,7 @@ import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
-import com.lowdragmc.photon.gui.editor.view.SceneView;
+import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.serialization.Codec;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.Particle;

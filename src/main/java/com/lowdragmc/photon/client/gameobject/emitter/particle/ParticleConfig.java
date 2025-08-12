@@ -4,7 +4,6 @@ import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
@@ -19,7 +18,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveCon
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
-import com.lowdragmc.photon.gui.editor.view.SceneView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;

@@ -17,7 +17,10 @@
   "photon.shader.settings": "Shader Settings",
   "photon.transform": "transform",
   "photon.scene_information": "Scene Information",
+  "photon.animation": "Animation",
   "photon.reload_mesh": "reload mesh",
+  "photon.is_animation_view_visible": "is animation view visible",
+  "photon.is_information_view_visible": "is scene information view visible",
   "photon.is_shape_visible": "is shape outline visible",
   "photon.is_cull_visible": "is cull box visible",
   "editor.scene_mode": "scene mode",
@@ -406,5 +409,13 @@
   "ParticleConfig.prewarm": "Prewarm",
   "photon.emitter.config.prewarm": "Amount of ticks pre-simulated before the first frame of rendering.",
   "VelocityOverLifetimeSetting.radial": "Radial",
-  "photon.emitter.config.velocityOverLifetime.radial": "Radial velocity of particles away from/towards the center position."
+  "photon.emitter.config.velocityOverLifetime.radial": "Radial velocity of particles away from/towards the center position.",
+  "particle_emitter": "Particle Emitter",
+  "ara_trail_emitter": "Ara Trail",
+  "trail_emitter": "Trail",
+  "beam_emitter": "Beam",
+  "FXObjectAnimationView.rotation": "Rotation",
+  "FXObjectAnimationView.speed": "Speed",
+  "FXObjectAnimationView.selfRotation": "Self Rotation",
+  "FXObjectAnimationView.shape": "Shape"
 }

@@ -11,7 +11,7 @@ import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
 import com.lowdragmc.photon.core.mixins.iris.ExtendedShaderAccessor;
-import com.lowdragmc.photon.gui.editor.view.SceneView;
+import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
