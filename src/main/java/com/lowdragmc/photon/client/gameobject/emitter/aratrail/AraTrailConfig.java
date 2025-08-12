@@ -19,7 +19,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
-import com.lowdragmc.photon.client.gameobject.particle.aratrail.TrailSection;
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -76,9 +75,8 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     @Getter
     @Configurable(name = "ParticleConfig.looping", tips = "photon.emitter.config.looping")
     protected boolean looping = true;
-
-//            [Tooltip("Trail cross-section asset, determines the shape of the emitted trail. If no asset is specified, the trail will be a simple strip.")]
-    public TrailSection section;
+    @Configurable(name = "AraTrails.section", subConfigurable = true, tips = "AraTrails.section.tips")
+    public final TrailSection section = new TrailSection();
     @Configurable(name = "AraTrails.space", tips = "AraTrails.space.tips")
     @ConfigSelector(subConfiguratorBuilder = "createSpaceConfigurator")
     public TrailSpace space = TrailSpace.World;
@@ -138,15 +136,13 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     public float minDistance = 0.025f;
     @Configurable(name = "AraTrails.time", tips = "AraTrails.time.tips")
     @ConfigNumber(range = {0, Float.MAX_VALUE})
-    public float time = 2f;
+    public float time = 1f;
 
     @ConfigHeader("AraTrails.Physics")
     @Configurable(name = "AraTrails.physicsSetting", subConfigurable = true, tips = "AraTrails.physicsSetting.tips")
     public final AraPhysicsSetting physicsSetting = new AraPhysicsSetting();
 
     @ConfigHeader("AraTrails.Rendering")
-    @Configurable(name = "AraTrails.quadMapping", tips = "AraTrails.quadMapping.tips")
-    public boolean quadMapping = false;
     @Configurable(name = "AraTrails.textureMode", tips = "AraTrails.textureMode.tips")
     public TextureMode textureMode = TextureMode.Stretch;
     @Configurable(name = "AraTrails.uvFactor", tips = "AraTrails.uvFactor.tips")

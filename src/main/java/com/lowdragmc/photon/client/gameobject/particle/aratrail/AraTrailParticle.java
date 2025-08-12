@@ -16,12 +16,10 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
-import org.joml.Matrix4f;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
-import org.joml.Vector4f;
+import org.joml.*;
 
 import javax.annotation.Nullable;
+import java.lang.Math;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -64,7 +62,7 @@ public class AraTrailParticle implements IParticle {
     private final List<Vector3f> vertices = new ArrayList<>();
     private final List<Vector3f> normals = new ArrayList<>();
     private final List<Vector4f> tangents = new ArrayList<>();
-    private final List<Vector4f> uvs = new ArrayList<>();
+    private final List<Vector2f> uvs = new ArrayList<>();
     private final List<Vector4f> vertColors = new ArrayList<>();
     private final IntList tris = new IntArrayList();
 
@@ -75,7 +73,7 @@ public class AraTrailParticle implements IParticle {
     private Vector3f bitangent = new Vector3f(0);
     private Vector4f tangent = new Vector4f(0, 0, 0, 1);
     private Vector4f texTangent = new Vector4f(0);
-    private Vector4f uv = new Vector4f(0);
+    private Vector2f uv = new Vector2f(0);
     private Vector4f color;
 
     // for trails setting
@@ -211,7 +209,7 @@ public class AraTrailParticle implements IParticle {
 
     private void setup() {
         // initialize previous position, for correct velocity estimation in the first frame:
-        Warmup();
+        warmup();
         prevPosition = getWorldPosition();
         velocity = new Vector3f();
         initialVelocity = config.initialVelocity;
@@ -231,7 +229,7 @@ public class AraTrailParticle implements IParticle {
         points.clear();
     }
 
-    private void UpdateVelocity(float deltaTime) {
+    private void updateVelocity(float deltaTime) {
         if (deltaTime > 0) {
             Vector3f deltaPosition = getWorldPosition().sub(prevPosition);
             Vector3f currentVelocity = deltaPosition.div(deltaTime);
@@ -253,10 +251,10 @@ public class AraTrailParticle implements IParticle {
         if (onUpdate != null) onUpdate.run();
         if (!config.physicsSetting.isEnable())
             return;
-        PhysicsStep(0.02f);
+        physicsStep(0.02f);
     }
 
-    private void EmissionStep(float time) {
+    private void emissionStep(float time) {
         // Acumulate the amount of time passed:
         accumTime += time;
 
@@ -269,28 +267,28 @@ public class AraTrailParticle implements IParticle {
                 if (points.size() < 1 || (
                         position.distance(points.get(points.size() - 1).position) >= config.minDistance
                 )) {
-                    EmitPoint(position, false);
+                    emitPoint(position);
                     accumTime = 0;
                 }
             }
         }
     }
 
-    private void Warmup() {
+    private void warmup() {
         if (!config.physicsSetting.isEnable()) return;
         float simulatedTime = config.physicsSetting.warmup;
         var fixedDeltaTime = getFixedDeltaTime();
         updateDynamicData(0);
         while (simulatedTime > fixedDeltaTime) {
-            PhysicsStep(fixedDeltaTime);
-            EmissionStep(fixedDeltaTime);
-            SnapLastPointToTransform();
-            UpdatePointsLifecycle(fixedDeltaTime);
+            physicsStep(fixedDeltaTime);
+            emissionStep(fixedDeltaTime);
+            snapLastPointToTransform();
+            updatePointsLifecycle(fixedDeltaTime);
             simulatedTime -= fixedDeltaTime;
         }
     }
 
-    private void PhysicsStep(float timestep) {
+    private void physicsStep(float timestep) {
         float velocity_scale = (float) Math.pow(1 - Mth.clamp(config.physicsSetting.damping, 0, 1), timestep);
 
         for (Point point : points) {
@@ -304,13 +302,13 @@ public class AraTrailParticle implements IParticle {
     }
 
 
-    public void EmitPoint(Vector3f position) {
-        EmitPoint(position, true);
+    public void emitPoint(Vector3f position) {
+        emitPoint(position, false);
     }
     /**
      * Spawns a new point in the trail.
      */
-    public void EmitPoint(Vector3f position, boolean skipLast) {
+    public void emitPoint(Vector3f position, boolean skipLast) {
         // Adjust the current end of the trail, if any:
 //        if (adjustEnd && points.size() > 1) {
 //            Point lastPoint = points[points.Count - 1];
@@ -339,7 +337,7 @@ public class AraTrailParticle implements IParticle {
     /**
      * Makes sure the first point is always at the transform's center, and that its orientation matches it.
      */
-    private void SnapLastPointToTransform() {
+    private void snapLastPointToTransform() {
         // Last point always coincides with transform:
         if (!points.isEmpty()) {
             Point lastPoint = points.getLast();
@@ -370,7 +368,7 @@ public class AraTrailParticle implements IParticle {
     /**
      * Updated trail lifetime and removes dead points.
      */
-    private void UpdatePointsLifecycle(float deltaTime) {
+    private void updatePointsLifecycle(float deltaTime) {
         for (int i = points.size() - 1; i >= 0; --i)
         {
 
@@ -400,7 +398,7 @@ public class AraTrailParticle implements IParticle {
     /**
      * Clears all mesh data: vertices, normals, tangents, etc. This is called at the beginning of UpdateTrailMesh().
      */
-    private void ClearMeshData() {
+    private void clearMeshData() {
         vertices.clear();
         normals.clear();
         tangents.clear();
@@ -409,7 +407,7 @@ public class AraTrailParticle implements IParticle {
         tris.clear();
     }
 
-    private ElasticArray<Point> GetRenderablePoints(int start, int end) {
+    private ElasticArray<Point> getRenderablePoints(int start, int end) {
         renderablePoints.clear();
 
         if (config.smoothness <= 1) {
@@ -475,7 +473,7 @@ public class AraTrailParticle implements IParticle {
                         Float.isInfinite(data[i1].life) || Float.isInfinite(data[i2].life))
                     interpolated.life = Float.POSITIVE_INFINITY;
                 else
-                    interpolated.life = Point.CatmullRom(data[i_1].life, data[i].life, data[i1].life, data[i2].life, t);
+                    interpolated.life = Point.catmullRom(data[i_1].life, data[i].life, data[i1].life, data[i2].life, t);
 
                 float dx = pcx - pbx;
                 float dy = pcy - pby;
@@ -490,31 +488,31 @@ public class AraTrailParticle implements IParticle {
                 if (interpolated.life > 0)
                 {
 
-                    interpolated.position.x = Point.CatmullRom(pax, pbx, pcx, pdx, t);
-                    interpolated.position.y = Point.CatmullRom(pay, pby, pcy, pdy, t);
-                    interpolated.position.z = Point.CatmullRom(paz, pbz, pcz, pdz, t);
+                    interpolated.position.x = Point.catmullRom(pax, pbx, pcx, pdx, t);
+                    interpolated.position.y = Point.catmullRom(pay, pby, pcy, pdy, t);
+                    interpolated.position.z = Point.catmullRom(paz, pbz, pcz, pdz, t);
 
-                    interpolated.velocity.x = Point.CatmullRom(vax, vbx, vcx, vdx, t);
-                    interpolated.velocity.y = Point.CatmullRom(vay, vby, vcy, vdy, t);
-                    interpolated.velocity.z = Point.CatmullRom(vaz, vbz, vcz, vdz, t);
+                    interpolated.velocity.x = Point.catmullRom(vax, vbx, vcx, vdx, t);
+                    interpolated.velocity.y = Point.catmullRom(vay, vby, vcy, vdy, t);
+                    interpolated.velocity.z = Point.catmullRom(vaz, vbz, vcz, vdz, t);
 
-                    interpolated.tangent.x = Point.CatmullRom(tax, tbx, tcx, tdx, t);
-                    interpolated.tangent.y = Point.CatmullRom(tay, tby, tcy, tdy, t);
-                    interpolated.tangent.z = Point.CatmullRom(taz, tbz, tcz, tdz, t);
+                    interpolated.tangent.x = Point.catmullRom(tax, tbx, tcx, tdx, t);
+                    interpolated.tangent.y = Point.catmullRom(tay, tby, tcy, tdy, t);
+                    interpolated.tangent.z = Point.catmullRom(taz, tbz, tcz, tdz, t);
 
-                    interpolated.normal.x = Point.CatmullRom(nax, nbx, ncx, ndx, t);
-                    interpolated.normal.y = Point.CatmullRom(nay, nby, ncy, ndy, t);
-                    interpolated.normal.z = Point.CatmullRom(naz, nbz, ncz, ndz, t);
+                    interpolated.normal.x = Point.catmullRom(nax, nbx, ncx, ndx, t);
+                    interpolated.normal.y = Point.catmullRom(nay, nby, ncy, ndy, t);
+                    interpolated.normal.z = Point.catmullRom(naz, nbz, ncz, ndz, t);
 
-                    var a = Point.CatmullRom(cax, cbx, ccx, cdx, t);
-                    var r = Point.CatmullRom(cay, cby, ccy, cdy, t);
-                    var g = Point.CatmullRom(caz, cbz, ccz, cdz, t);
-                    var b = Point.CatmullRom(caw, cbw, ccw, cdw, t);
+                    var a = Point.catmullRom(cax, cbx, ccx, cdx, t);
+                    var r = Point.catmullRom(cay, cby, ccy, cdy, t);
+                    var g = Point.catmullRom(caz, cbz, ccz, cdz, t);
+                    var b = Point.catmullRom(caw, cbw, ccw, cdw, t);
 
                     interpolated.color = new Vector4f(r, g, b, a);
 
-                    interpolated.thickness = Point.CatmullRom(data[i_1].thickness, data[i].thickness, data[i1].thickness, data[i2].thickness, t);
-                    interpolated.texcoord = Point.CatmullRom(data[i_1].texcoord, data[i].texcoord, data[i1].texcoord, data[i2].texcoord, t);
+                    interpolated.thickness = Point.catmullRom(data[i_1].thickness, data[i].thickness, data[i1].thickness, data[i2].thickness, t);
+                    interpolated.texcoord = Point.catmullRom(data[i_1].texcoord, data[i].texcoord, data[i1].texcoord, data[i2].texcoord, t);
 
                     renderablePoints.add(interpolated.copy());
                 }
@@ -531,7 +529,7 @@ public class AraTrailParticle implements IParticle {
     /**
      * Initializes the frame used to generate the locally aligned trail mesh.
      */
-    private CurveFrame InitializeCurveFrame(Vector3f point, Vector3f nextPoint) {
+    private CurveFrame initializeCurveFrame(Vector3f point, Vector3f nextPoint) {
         Vector3f tgnt = new Vector3f(nextPoint).sub(point);
 
         // Calculate tangent proximity to the normal vector of the frame (transform.forward).
@@ -557,12 +555,12 @@ public class AraTrailParticle implements IParticle {
         var deltaTime = getDeltaTime();
         updateDynamicData(partialTicks);
         if (deltaTime > epsilon) {
-            UpdateVelocity(deltaTime);
-            EmissionStep(deltaTime);
-            SnapLastPointToTransform();
-            UpdatePointsLifecycle(deltaTime);
+            updateVelocity(deltaTime);
+            emissionStep(deltaTime);
+            snapLastPointToTransform();
+            updatePointsLifecycle(deltaTime);
         }
-        ClearMeshData();
+        clearMeshData();
 
         // We need at least two points to create a trail mesh.
         if (points.size() > 1) {
@@ -577,18 +575,18 @@ public class AraTrailParticle implements IParticle {
             // generate mesh for each trail segment:
             int start = 0;
             for (int i = 0; i < discontinuities.size(); ++i) {
-                UpdateSegmentMesh(start, discontinuities.getInt(i), localCamPosition, partialTicks);
+                updateSegmentMesh(start, discontinuities.getInt(i), localCamPosition, partialTicks);
                 start = discontinuities.getInt(i) + 1;
             }
 
-            RenderMesh(buffer, camera);
+            renderMesh(buffer, camera);
         }
     }
 
     /**
      * Asks Unity to render the trail mesh.
      */
-    private void RenderMesh(VertexConsumer buffer, Camera cam) {
+    private void renderMesh(VertexConsumer buffer, Camera cam) {
         if (vertices.isEmpty() || tris.isEmpty()) {
             return;
         }
@@ -618,10 +616,10 @@ public class AraTrailParticle implements IParticle {
         renderMatrix.transformDirection(normal);
 
         var uv = vertexIndex < uvs.size() ?
-                new Vector4f(uvs.get(vertexIndex)) : new Vector4f(0, 0, 0, 0);
+                new Vector2f(uvs.get(vertexIndex)) : new Vector2f(0);
 
         var color = vertexIndex < vertColors.size() ?
-                vertColors.get(vertexIndex) : new Vector4f(1, 1, 1, 1);
+                vertColors.get(vertexIndex) : new Vector4f(1);
 
         // Add vertex to buffer
         buffer.addVertex(pos.x, pos.y, pos.z)
@@ -635,9 +633,9 @@ public class AraTrailParticle implements IParticle {
     /**
      * Updates mesh for one trail segment:
      */
-    private void UpdateSegmentMesh(int start, int end, Vector3f localCamPosition, float partialTicks) {
+    private void updateSegmentMesh(int start, int end, Vector3f localCamPosition, float partialTicks) {
         // Get a list of the actual points to render: either the original, unsmoothed points or the smoothed curve.
-        ElasticArray<Point> trail = GetRenderablePoints(start, end);
+        ElasticArray<Point> trail = getRenderablePoints(start, end);
 
         if (config.sorting == AraTrailConfig.TrailSorting.NewerOnTop)
             trail.reverse();
@@ -659,7 +657,7 @@ public class AraTrailParticle implements IParticle {
                 vCoord = 1 - vCoord;
 
             // Initialize curve frame using the first two points to calculate the first tangent vector:
-            CurveFrame frame = InitializeCurveFrame(data[trail.size() - 1].position,
+            CurveFrame frame = initializeCurveFrame(data[trail.size() - 1].position,
                     data[trail.size() - 2].position);
 
             int va = 1;
@@ -701,7 +699,7 @@ public class AraTrailParticle implements IParticle {
                 if (config.alignment != AraTrailConfig.TrailAlignment.Local)
                     normal = config.alignment == AraTrailConfig.TrailAlignment.View ?
                             new Vector3f(localCamPosition).sub(data[i].position) :
-                            frame.Transport(new Vector3f(tangent.x, tangent.y, tangent.z), data[i].position);
+                            frame.transport(new Vector3f(tangent.x, tangent.y, tangent.z), data[i].position);
                 normal.normalize();
 
                 // Calculate bitangent vector:
@@ -742,10 +740,11 @@ public class AraTrailParticle implements IParticle {
                 if (config.textureMode == AraTrailConfig.TextureMode.WorldTile)
                     vCoord = config.tileAnchor + data[i].texcoord * config.uvFactor;
 
-                if (config.section != null)
-                    AppendSection(data, frame, i, trail.size(), sectionThickness, vCoord);
+                if (config.section.isEnable()) {
+                    appendSection(data, frame, i, trail.size(), sectionThickness, vCoord);
+                }
                 else {
-                    var modified = AppendFlatTrail(data, frame, i, trail.size(), sectionThickness, vCoord, va, vb);
+                    var modified = appendFlatTrail(data, frame, i, trail.size(), sectionThickness, vCoord, va, vb);
                     va = modified[0];
                     vb = modified[1];
                 }
@@ -757,8 +756,7 @@ public class AraTrailParticle implements IParticle {
         }
     }
 
-    private void AppendSection(Point[] data, CurveFrame frame, int i, int count, float sectionThickness, float vCoord)
-    {
+    private void appendSection(Point[] data, CurveFrame frame, int i, int count, float sectionThickness, float vCoord) {
         var section = config.section;
         // Loop around each segment:
         int sectionSegments = section.getSegments();
@@ -786,13 +784,11 @@ public class AraTrailParticle implements IParticle {
 
             uv.x = (j / (float)sectionSegments) * config.uvWidthFactor;
             uv.y = vCoord;
-            uv.z = 0;
-            uv.w = 1;
 
             vertices.add(new Vector3f(vertex));
             normals.add(new Vector3f(normal));
             tangents.add(new Vector4f(texTangent));
-            uvs.add(new Vector4f(uv));
+            uvs.add(new Vector2f(uv));
             vertColors.add(color);
 
             if (j < sectionSegments && i < count - 1) {
@@ -807,7 +803,7 @@ public class AraTrailParticle implements IParticle {
         }
     }
 
-    private int[] AppendFlatTrail(Point[] data, CurveFrame frame, int i, int count, float sectionThickness, float vCoord, int va, int vb) {
+    private int[] appendFlatTrail(Point[] data, CurveFrame frame, int i, int count, float sectionThickness, float vCoord, int va, int vb) {
         boolean hqCorners = config.highQualityCorners && config.alignment != AraTrailConfig.TrailAlignment.Local;
 
         Quaternionf q = new Quaternionf();
@@ -872,20 +868,10 @@ public class AraTrailParticle implements IParticle {
         vertColors.add(color);
         vertColors.add(color);
 
-
-        if (config.quadMapping) {
-            // passing perspective-correct coords requires the use of tex2Dproj in the shader, instead of tex2D.
-            uv.set(vCoord * sectionThickness, config.sorting == AraTrailConfig.TrailSorting.NewerOnTop ? config.uvWidthFactor * sectionThickness : 0, 0, sectionThickness);
-            uvs.add(new Vector4f(uv));
-            uv.set(vCoord * sectionThickness, config.sorting == AraTrailConfig.TrailSorting.NewerOnTop ? 0 : config.uvWidthFactor * sectionThickness, 0, sectionThickness);
-            uvs.add(new Vector4f(uv));
-        } else {
-            uv.set(vCoord, config.sorting == AraTrailConfig.TrailSorting.NewerOnTop ? config.uvWidthFactor : 0, 0, 1);
-            uvs.add(new Vector4f(uv));
-            uv.set(vCoord, config.sorting == AraTrailConfig.TrailSorting.NewerOnTop ? 0 : config.uvWidthFactor, 0, 1);
-            uvs.add(new Vector4f(uv));
-        }
-
+        uv.set(vCoord, config.sorting == AraTrailConfig.TrailSorting.NewerOnTop ? config.uvWidthFactor : 0);
+        uvs.add(new Vector2f(uv));
+        uv.set(vCoord, config.sorting == AraTrailConfig.TrailSorting.NewerOnTop ? 0 : config.uvWidthFactor);
+        uvs.add(new Vector2f(uv));
 
         if (i < count - 1) {
             int vc = vertices.size() - 1;
@@ -908,8 +894,8 @@ public class AraTrailParticle implements IParticle {
                 normals.add(normal);
                 tangents.add(tangent);
                 vertColors.add(color);
-                uv.set(vCoord, curvatureSign > 0 ? 0 : 1, 0, 1);
-                uvs.add(new Vector4f(uv));
+                uv.set(vCoord, curvatureSign > 0 ? 0 : 1);
+                uvs.add(new Vector2f(uv));
 
                 int vc = vertices.size() - 1;
 
@@ -947,7 +933,7 @@ public class AraTrailParticle implements IParticle {
             this.tangent = tangent;
         }
 
-        public Vector3f Transport(Vector3f newTangent, Vector3f newPosition) {
+        public Vector3f transport(Vector3f newTangent, Vector3f newPosition) {
             // double-reflection rotation-minimizing frame transport:
             Vector3f v1 = new Vector3f(newPosition).sub(position);
             float c1 = v1.dot(v1);
@@ -1003,7 +989,7 @@ public class AraTrailParticle implements IParticle {
             this.discontinuous = false;
         }
 
-        public static float CatmullRom(float p0, float p1, float p2, float p3, float t) {
+        public static float catmullRom(float p0, float p1, float p2, float p3, float t) {
             float t2 = t * t;
             return 0.5f * ((2 * p1) +
                     (-p0 + p2) * t +

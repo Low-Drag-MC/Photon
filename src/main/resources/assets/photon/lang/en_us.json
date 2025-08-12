@@ -385,8 +385,6 @@
   "AraTrails.velocitySmoothing.tips": "Amount of temporal smoothing applied to the velocity transferred from the transform to the trail.",
   "AraTrails.damping": "Damping",
   "AraTrails.damping.tips": "Amount of damping applied to the trail\u0027s velocity. Larger values will slow down the trail more as time passes.",
-  "AraTrails.quadMapping": "Quad Mapping",
-  "AraTrails.quadMapping.tips": "Quad mapping will send the shader an extra coordinate for each vertex, that can be used to correct UV distortion using quad.",
   "AraTrails.textureMode": "Texture Mode",
   "AraTrails.textureMode.tips": "How to apply the texture over the trail: stretch it all over its lenght, or tile it.",
   "AraTrails.uvFactor": "Uv Factor",
@@ -401,5 +399,8 @@
   "AraTrails.Rendering": "Rendering",
   "AraTrails.Time": "Time",
   "SpriteMaterial.spriteLocation": "Sprite Location",
-  "TrailsSetting.trailType": "Trail Type"
+  "TrailsSetting.trailType": "Trail Type",
+  "TrailSection.vertices": "Vertices",
+  "AraTrails.section": "Section",
+  "AraTrails.section.tips": "Trail cross-section asset, determines the shape of the emitted trail. If it is disabled, the trail will be a simple strip."
 }
