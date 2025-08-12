@@ -35,14 +35,18 @@ public class BloomEffect {
     private static RenderTarget INPUT, TRANSLUCENT_INPUT, GUI_INPUT, OUTPUT;
     private static RenderTarget SWAP2A, SWAP4A, SWAP8A, SWAP2B, SWAP4B, SWAP8B;
     //Add a standalone photon particle shader and generate bloom using MRT
-    private static final ShaderInstance PARTICLE = loadShader("photon:particle");
+    private static final ShaderInstance PARTICLE = loadShader("photon:particle", DefaultVertexFormat.PARTICLE);
     private static final ShaderInstance SEPARABLE_BLUR = loadShader("photon:separable_blur");
     private static final ShaderInstance UNREAL_COMPOSITE = loadShader("photon:unreal_composite");
     private static Field lastFramebuffer;
 
     private static ShaderInstance loadShader(String shaderName) {
+        return loadShader(shaderName, DefaultVertexFormat.POSITION);
+    }
+
+    private static ShaderInstance loadShader(String shaderName, VertexFormat format) {
         try {
-            return new ShaderInstance(Minecraft.getInstance().getResourceManager(), shaderName, DefaultVertexFormat.POSITION);
+            return new ShaderInstance(Minecraft.getInstance().getResourceManager(), shaderName, format);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
