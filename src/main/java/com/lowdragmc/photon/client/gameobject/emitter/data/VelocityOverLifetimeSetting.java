@@ -45,6 +45,10 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 1, curveConfig = @CurveConfig(bound = {-3, 3}, xAxis = "lifetime", yAxis = "orbital offset")))
     protected NumberFunction3 offset = new NumberFunction3(0, 0, 0);
 
+    @Configurable(name = "VelocityOverLifetimeSetting.radial", tips = "photon.emitter.config.velocityOverLifetime.radial")
+    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1f, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "speed modifier"))
+    protected NumberFunction radial = NumberFunction.constant(0);
+
     @Configurable(name = "VelocityOverLifetimeSetting.speedModifier", tips = "photon.emitter.config.velocityOverLifetime.speedModifier")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1f, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction speedModifier = NumberFunction.constant(1);
@@ -98,6 +102,10 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
                     addition.add(new Vector3f(toCenter).cross(new Vector3f(0, 0, 1)).normalize().mul(orbitalVec.z * 0.05f));
                 }
             }
+        }
+        var radialVec = radial.get(lifetime, () -> particle.getMemRandom("vol3")).floatValue();
+        if (radialVec != 0) {
+            addition.add(particle.getLocalPos().normalize().mul(radialVec * 0.01f));
         }
         return addition;
     }

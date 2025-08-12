@@ -404,5 +404,7 @@
   "AraTrails.section": "Section",
   "AraTrails.section.tips": "Trail cross-section asset, determines the shape of the emitted trail. If it is disabled, the trail will be a simple strip.",
   "ParticleConfig.prewarm": "Prewarm",
-  "photon.emitter.config.prewarm": "Amount of ticks pre-simulated before the first frame of rendering."
+  "photon.emitter.config.prewarm": "Amount of ticks pre-simulated before the first frame of rendering.",
+  "VelocityOverLifetimeSetting.radial": "Radial",
+  "photon.emitter.config.velocityOverLifetime.radial": "Radial velocity of particles away from/towards the center position."
 }

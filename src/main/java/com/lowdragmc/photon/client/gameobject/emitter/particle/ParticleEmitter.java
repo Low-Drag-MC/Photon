@@ -14,7 +14,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassP
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.lowdragmc.photon.gui.editor.view.SceneView;
-import com.mojang.blaze3d.vertex.PoseStack;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.renderer.MultiBufferSource;

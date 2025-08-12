@@ -153,6 +153,7 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     }
 
     public ParticleConfig() {
+        renderer.getMaterials().add(new MaterialSetting());
     }
 
     @ParametersAreNonnullByDefault
