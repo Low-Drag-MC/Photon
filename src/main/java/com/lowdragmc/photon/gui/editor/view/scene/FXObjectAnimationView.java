@@ -25,7 +25,7 @@ public class FXObjectAnimationView extends FloatView {
     @Configurable(name = "FXObjectAnimationView.shape")
     private Shape shape = Shape.Circle;
     @Getter @Setter
-    @Configurable(name = "FXObjectAnimationView.rotation")
+    @Configurable(name = "FXObjectAnimationView.size")
     @ConfigNumber(range = {0.1, Float.MAX_VALUE})
     private float size = 3;
     @Getter @Setter

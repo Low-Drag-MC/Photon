@@ -414,7 +414,7 @@
   "ara_trail_emitter": "Ara Trail",
   "trail_emitter": "Trail",
   "beam_emitter": "Beam",
-  "FXObjectAnimationView.rotation": "Rotation",
+  "FXObjectAnimationView.size": "Size",
   "FXObjectAnimationView.speed": "Speed",
   "FXObjectAnimationView.selfRotation": "Self Rotation",
   "FXObjectAnimationView.shape": "Shape"
