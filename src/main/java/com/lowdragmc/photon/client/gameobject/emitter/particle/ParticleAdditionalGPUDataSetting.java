@@ -41,6 +41,11 @@ public class ParticleAdditionalGPUDataSetting extends AdditionalGPUDataSetting {
                     1, (particle, buffer, partialTick) -> buffer.put(Float.intBitsToFloat(particle.getAge()))),
             new ParticleDataProvider("addition_gpu_data.lifetime", Component.translatable("addition_gpu_data.type.int"),
                     1, (particle, buffer, partialTick) -> buffer.put(Float.intBitsToFloat(particle.getLifetime()))),
+            new ParticleDataProvider("addition_gpu_data.position", Component.translatable("addition_gpu_data.type.vec3"),
+                    3, (particle, buffer, partialTick) -> {
+                var pos = particle.getLocalPos(partialTick);
+                buffer.put(pos.x).put(pos.y).put(pos.z);
+            }),
             new ParticleDataProvider("addition_gpu_data.velocity", Component.translatable("addition_gpu_data.type.vec3"),
                     3, (particle, buffer, partialTick) -> {
                 var velocity = particle.getRealVelocity();
@@ -53,6 +58,11 @@ public class ParticleAdditionalGPUDataSetting extends AdditionalGPUDataSetting {
                     1, (particle, buffer, partialTick) -> buffer.put(particle.getEmitter().getT(partialTick))),
             new ParticleDataProvider("addition_gpu_data.emitter_age", Component.translatable("addition_gpu_data.type.int"),
                     1, (particle, buffer, partialTick) -> buffer.put(Float.intBitsToFloat(particle.getEmitter().getAge()))),
+            new ParticleDataProvider("addition_gpu_data.emitter_position", Component.translatable("addition_gpu_data.type.vec3"),
+                    3, (particle, buffer, partialTick) -> {
+                var position = particle.getEmitter().transform().position();
+                buffer.put(position.x).put(position.y).put(position.z);
+            }),
             new ParticleDataProvider("addition_gpu_data.emitter_velocity", Component.translatable("addition_gpu_data.type.vec3"),
                     3, (particle, buffer, partialTick) -> {
                 var velocity = particle.getEmitter().getVelocity();
