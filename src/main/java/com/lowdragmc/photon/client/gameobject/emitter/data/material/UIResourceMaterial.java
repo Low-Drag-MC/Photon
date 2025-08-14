@@ -10,6 +10,7 @@ import lombok.Getter;
 import net.minecraft.client.renderer.ShaderInstance;
 
 import javax.annotation.Nonnull;
+import java.util.Objects;
 import java.util.Optional;
 
 @LDLRegisterClient(name = "ui_resource_material", registry = "photon:material")
@@ -50,5 +51,17 @@ public final class UIResourceMaterial implements IMaterial {
     @Override
     public UIResourceMaterial copy() {
         return new UIResourceMaterial(resourcePath);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        UIResourceMaterial that = (UIResourceMaterial) o;
+        return Objects.equals(resourcePath, that.resourcePath);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(resourcePath);
     }
 }

@@ -71,7 +71,10 @@ public class RenderPassPipeline extends BufferBuilder {
         return (passOne, passTwo) -> {
             var comparedResult = passOne.layerOrder() - passTwo.layerOrder();
             if (comparedResult == 0) {
-                return Integer.compare(System.identityHashCode(passOne), System.identityHashCode(passTwo));
+                if (passOne.equals(passTwo)) {
+                    return 0;
+                }
+                return Integer.compare(passOne.hashCode(), passTwo.hashCode());
             }
             return comparedResult;
         };
