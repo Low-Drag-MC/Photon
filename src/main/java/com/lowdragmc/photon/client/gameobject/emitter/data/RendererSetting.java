@@ -9,6 +9,7 @@ import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexSorting;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.nbt.IntTag;
@@ -25,6 +26,7 @@ import java.util.function.Supplier;
 @OnlyIn(Dist.CLIENT)
 @Getter
 @Setter
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class RendererSetting {
 
     public enum Layer {
@@ -50,18 +52,22 @@ public class RendererSetting {
     @Configurable(name = "RendererSetting.materials", collapse = false)
     @ConfigList(configuratorMethod = "createMaterialConfigurator", addDefaultMethod = "addDefaultMaterial")
     @ReadOnlyManaged(serializeMethod = "materialSerialize", deserializeMethod = "materialDeserialize")
+    @EqualsAndHashCode.Include
     protected List<MaterialSetting> materials = new ArrayList<>();
 
     @Configurable(name = "RendererSetting.layer", tips = "photon.emitter.config.renderer.layer")
+    @EqualsAndHashCode.Include
     protected Layer layer = Layer.Translucent;
 
     @Configurable(name = "RendererSetting.cull", subConfigurable = true, tips = "photon.emitter.config.renderer.cull")
     protected final Cull cull = new Cull();
 
     @Configurable(name = "photon.emitter.config.renderer.orderInLayer", tips = "photon.emitter.config.renderer.orderInLayer.tips")
+    @EqualsAndHashCode.Include
     protected int orderInLayer = 0;
 
     @Configurable(name = "photon.emitter.config.renderer.vertexSortingMode", tips = "photon.emitter.config.renderer.vertexSortingMode.tips")
+    @EqualsAndHashCode.Include
     protected SortMode vertexSortingMode = SortMode.NONE;
 
     public static class Cull extends ToggleGroup {

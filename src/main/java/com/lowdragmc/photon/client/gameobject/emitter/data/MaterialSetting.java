@@ -10,6 +10,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.mojang.blaze3d.systems.RenderSystem;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
@@ -19,15 +20,11 @@ import net.neoforged.api.distmarker.OnlyIn;
 import javax.annotation.Nonnull;
 import java.util.Optional;
 
-/**
- * @author KilaBash
- * @date 2023/5/29
- * @implNote Material
- */
 @OnlyIn(Dist.CLIENT)
 @Getter
 @Setter
 @Accessors(chain = true)
+@EqualsAndHashCode
 public class MaterialSetting implements IConfigurable, IPersistedSerializable {
     @Nonnull
     @Configurable(name = "material")

@@ -13,6 +13,7 @@ import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Camera;
@@ -29,6 +30,7 @@ import java.lang.reflect.Field;
 
 @Getter
 @Setter
+@EqualsAndHashCode(callSuper = true, onlyExplicitlyIncluded = true)
 public class ParticleRendererSetting extends RendererSetting implements IConfigurable, IPersistedSerializable {
 
     public enum Mode {
@@ -60,19 +62,26 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         }
     }
 
+    @EqualsAndHashCode.Exclude
     private final ParticleConfig config;
     @Configurable(name = "ParticleRendererSetting.renderMode", tips = "photon.emitter.config.renderer.renderMode")
     @ConfigSelector(subConfiguratorBuilder = "buildSubConfigurator")
+    @EqualsAndHashCode.Include
     protected Mode renderMode = Mode.Billboard;
     @Nullable
+    @EqualsAndHashCode.Include
     protected IModelRenderer model;
     @Persisted
+    @EqualsAndHashCode.Include
     protected boolean shade = true;
     @Persisted
+    @EqualsAndHashCode.Include
     protected boolean useBlockUV = true;
     @Persisted
+    @EqualsAndHashCode.Include
     protected Vector3f modelPivot = new Vector3f();
     @Configurable(name = "ParticleRendererSetting.useGPUInstance")
+    @EqualsAndHashCode.Include
     private boolean useGPUInstance = false;
 
     public ParticleRendererSetting(ParticleConfig config) {

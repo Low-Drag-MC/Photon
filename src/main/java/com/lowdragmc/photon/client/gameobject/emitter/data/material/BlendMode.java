@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.mojang.blaze3d.systems.RenderSystem;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
@@ -12,6 +13,7 @@ import static com.mojang.blaze3d.platform.GlStateManager.SourceFactor;
 
 @OnlyIn(Dist.CLIENT)
 @Getter @Setter
+@EqualsAndHashCode
 public class BlendMode {
     public enum BlendFuc {
         ADD(32774),
@@ -74,41 +76,6 @@ public class BlendMode {
     public void reset() {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
-    }
-
-    public boolean equals(Object object) {
-        if (this == object) {
-            return true;
-        }
-        if (!(object instanceof BlendMode blendMode)) {
-            return false;
-        }
-        if (this.blendFunc != blendMode.blendFunc) {
-            return false;
-        }
-        if (this.dstAlphaFactor != blendMode.dstAlphaFactor) {
-            return false;
-        }
-        if (this.dstColorFactor != blendMode.dstColorFactor) {
-            return false;
-        }
-        if (this.enableBlend != blendMode.enableBlend) {
-            return false;
-        }
-        if (this.srcAlphaFactor != blendMode.srcAlphaFactor) {
-            return false;
-        }
-        return this.srcColorFactor == blendMode.srcColorFactor;
-    }
-
-    public int hashCode() {
-        int i = this.srcColorFactor.value;
-        i = 31 * i + this.srcAlphaFactor.value;
-        i = 31 * i + this.dstColorFactor.value;
-        i = 31 * i + this.dstAlphaFactor.value;
-        i = 31 * i + this.blendFunc.op;
-        i = 31 * i + (this.enableBlend ? 1 : 0);
-        return i;
     }
 
 }

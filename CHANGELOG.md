@@ -1,11 +1,5 @@
 ## ChangeLog
 
-# v2.0.4
-* Added AraTrail
-* Added SpriteMaterial
-* Added wireframe mode
-* Added multiple materials rendering supports
-* Added DataFixer for LTS 
-* Added Particle Emitter prewarm
-* Added Particle Radial Velocity
-* Added Animation Tool Panel
+# v2.0.5
+* add mesh sorter for all vertex format
+* merge materials to reduce useless drawcall

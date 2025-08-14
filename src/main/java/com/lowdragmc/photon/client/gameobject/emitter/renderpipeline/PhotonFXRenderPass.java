@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 
+ import com.lowdragmc.lowdraglib2.client.utils.MeshDataSorter;
  import com.lowdragmc.photon.Photon;
  import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
  import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
@@ -10,7 +11,8 @@ import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
-import net.minecraft.client.Camera;
+ import lombok.EqualsAndHashCode;
+ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -28,6 +30,7 @@ import java.util.Collection;
  */
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public abstract class PhotonFXRenderPass {
     public final static CustomShaderMaterial INVERSE = new CustomShaderMaterial(Photon.id("inverse"));
     protected static final MaterialSetting WIREFRAME_MATERIAL = new MaterialSetting();
@@ -38,6 +41,7 @@ public abstract class PhotonFXRenderPass {
         WIREFRAME_MATERIAL.setDepthTest(false);
     }
 
+    @EqualsAndHashCode.Include
     public RendererSetting rendererSetting;
 
     public PhotonFXRenderPass(RendererSetting rendererSetting) {
@@ -72,7 +76,10 @@ public abstract class PhotonFXRenderPass {
         // sort quads if necessary
         var sorting = getSorting();
         if (sorting != null) {
-            meshData.sortQuads(pipeline.getSortingBuffer(), sorting);
+            var result = MeshDataSorter.sortPrimitives(meshData, pipeline.getSortingBuffer(), sorting);
+            if (result != null) {
+                result.applyTo(meshData);
+            }
         }
 
         // upload to vbo
