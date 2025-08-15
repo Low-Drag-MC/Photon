@@ -166,14 +166,13 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     private class RenderPass extends PhotonFXRenderPass {
 
         public RenderPass() {
-            super(renderer);
+            super(renderer, VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.BLOCK);
         }
 
         @Override
-        public BufferBuilder begin(@Nonnull Tesselator tesselator) {
-            return tesselator.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.BLOCK);
+        public boolean equals(@Nonnull Object o) {
+            return o instanceof RenderPass && super.equals(o);
         }
-
     }
 
     private void createSpaceConfigurator(TrailSpace space, ConfiguratorGroup group) {

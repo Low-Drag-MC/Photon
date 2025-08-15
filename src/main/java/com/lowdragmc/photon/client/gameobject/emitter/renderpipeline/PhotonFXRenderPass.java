@@ -42,10 +42,16 @@ public abstract class PhotonFXRenderPass {
     }
 
     @EqualsAndHashCode.Include
-    public RendererSetting rendererSetting;
+    public final RendererSetting rendererSetting;
+    @EqualsAndHashCode.Include
+    public final VertexFormat.Mode mode;
+    @EqualsAndHashCode.Include
+    public final VertexFormat format;
 
-    public PhotonFXRenderPass(RendererSetting rendererSetting) {
+    public PhotonFXRenderPass(RendererSetting rendererSetting, VertexFormat.Mode mode, VertexFormat format) {
         this.rendererSetting = rendererSetting;
+        this.mode = mode;
+        this.format = format;
     }
 
     public boolean isParallel() {
@@ -56,7 +62,9 @@ public abstract class PhotonFXRenderPass {
         Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
     }
 
-    public abstract BufferBuilder begin(Tesselator tesselator);
+    public BufferBuilder begin(@Nonnull Tesselator tesselator) {
+        return tesselator.begin(mode, format);
+    }
 
     public final void drawParticles(RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
         var materials = getMaterials(pipeline);

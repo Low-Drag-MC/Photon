@@ -24,6 +24,7 @@ import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Camera;
 
+import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Collection;
 import java.util.List;
@@ -159,16 +160,11 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
         private final ParticleInstanceRenderer instanceRenderer = new ParticleInstanceRenderer(ParticleConfig.this);
 
         public RenderPass() {
-            super(renderer);
+            super(renderer, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
         }
 
         public void clearInstance() {
             instanceRenderer.dispose();
-        }
-
-        @Override
-        public BufferBuilder begin(Tesselator tesselator) {
-            return tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
         }
 
         public void drawParticlesInternal(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
@@ -205,6 +201,10 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
             return isParallelRendering();
         }
 
+        @Override
+        public boolean equals(@Nonnull Object o) {
+            return o instanceof RenderPass && super.equals(o);
+        }
     }
 
 }

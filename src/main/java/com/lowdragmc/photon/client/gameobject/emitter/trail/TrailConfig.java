@@ -107,12 +107,7 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
     private class RenderPass extends PhotonFXRenderPass {
 
         public RenderPass() {
-            super(renderer);
-        }
-
-        @Override
-        public BufferBuilder begin(@Nonnull Tesselator tesselator) {
-            return tesselator.begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.BLOCK);
+            super(renderer, VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.BLOCK);
         }
 
         @Override
@@ -120,5 +115,9 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
             return isParallelRendering();
         }
 
+        @Override
+        public boolean equals(@Nonnull Object o) {
+            return o instanceof RenderPass && super.equals(o);
+        }
     }
 }
