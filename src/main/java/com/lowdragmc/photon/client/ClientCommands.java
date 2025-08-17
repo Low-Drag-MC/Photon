@@ -1,10 +1,7 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib2.editor.ui.EditorWindow;
-import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
-import com.lowdragmc.lowdraglib2.gui.ui.ModularUIContainerMenu;
-import com.lowdragmc.lowdraglib2.gui.ui.ModularUIContainerScreen;
-import com.lowdragmc.lowdraglib2.gui.ui.UI;
+import com.lowdragmc.lowdraglib2.gui.ui.*;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
@@ -39,9 +36,8 @@ public class ClientCommands {
                     var entityPlayer = minecraft.player;
                     if (entityPlayer == null) return 0;
                     var ui = new ModularUI(UI.of(new EditorWindow(FXEditor::new).setId("fx_editor"), size -> size)).shouldCloseOnEsc(false).shouldCloseOnKeyInventory(false);
-                    var screen = new ModularUIContainerScreen<>(ui, new ModularUIContainerMenu(entityPlayer.containerMenu.containerId), entityPlayer.getInventory(), Component.empty());
+                    var screen = new ModularUIScreen(ui, Component.empty());
                     minecraft.setScreen(screen);
-                    entityPlayer.containerMenu = screen.getMenu();
                     return 1;
                 }),
                 (LiteralArgumentBuilder<S>) createLiteral("photon_client")

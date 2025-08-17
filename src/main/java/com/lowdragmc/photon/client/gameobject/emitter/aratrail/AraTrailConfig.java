@@ -130,7 +130,7 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     public Vector3f initialVelocity = new Vector3f(0, 0, 0);
     @Configurable(name = "AraTrails.minSpawnTime", tips = "AraTrails.minSpawnTime.tips")
     @ConfigNumber(range = {0, Float.MAX_VALUE})
-    public float timeInterval = 0.02f;
+    public float timeInterval = 0.05f;
     @Configurable(name = "AraTrails.minDistance", tips = "AraTrails.minDistance.tips")
     @ConfigNumber(range = {0, Float.MAX_VALUE})
     public float minDistance = 0.025f;

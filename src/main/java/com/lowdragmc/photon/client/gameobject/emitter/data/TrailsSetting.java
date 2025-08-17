@@ -90,7 +90,7 @@ public class TrailsSetting extends ToggleGroup {
         config.setWidthOverTrail(NumberFunction.constant(0.5f));
         config.setParallelRendering(true);
         araConfig.thickness = 0.5f;
-        araConfig.minDistance = 0.005f;
+        araConfig.minDistance = 0.05f;
     }
 
     public void setup(ParticleEmitter emitter, TileParticle particle) {
