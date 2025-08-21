@@ -20,8 +20,10 @@ public final class PhotonFXProjectDataFixer {
 
         var schema1 = builder.addSchema(1, PhotonSchemas.V1::new);
         var schema2 = builder.addSchema(2, SAME);
-        
+        var schema3 = builder.addSchema(3, SAME);
+
         builder.addFixer(new MaterialToRendererMaterialsFix(schema2));
+        builder.addFixer(new UVAnimationTilesFix(schema3));
         this.dataFixer = builder.build().fixer();
     }
     

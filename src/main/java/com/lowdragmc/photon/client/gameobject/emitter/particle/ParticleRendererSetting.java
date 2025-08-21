@@ -62,7 +62,6 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         }
     }
 
-    @EqualsAndHashCode.Exclude
     private final ParticleConfig config;
     @Configurable(name = "ParticleRendererSetting.renderMode", tips = "photon.emitter.config.renderer.renderMode")
     @ConfigSelector(subConfiguratorBuilder = "buildSubConfigurator")

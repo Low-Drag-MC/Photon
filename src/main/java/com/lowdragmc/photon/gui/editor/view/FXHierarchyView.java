@@ -9,11 +9,11 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.data.TextWrap;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.*;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.gui.ui.style.value.TextWrap;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib2.math.Transform;
@@ -93,7 +93,7 @@ public class FXHierarchyView extends View {
                     var eyeButton = new Button().noText().setOnClick(e -> {
                         node.getKey().setSelfVisible(!node.getKey().isSelfVisible());
                     }).buttonStyle(style -> {
-                        style.defaultTexture(DynamicTexture.of(() -> node.getKey().isSelfVisible() ? Icons.EYE : Icons.EYE_OFF));
+                        style.baseTexture(DynamicTexture.of(() -> node.getKey().isSelfVisible() ? Icons.EYE : Icons.EYE_OFF));
                         style.hoverTexture(DynamicTexture.of(() -> (node.getKey().isSelfVisible() ? Icons.EYE : Icons.EYE_OFF)
                                 .copy().setColor(ColorPattern.LIGHT_GRAY.color)));
                         style.pressedTexture(DynamicTexture.of(() -> (node.getKey().isSelfVisible() ? Icons.EYE : Icons.EYE_OFF)
@@ -117,7 +117,7 @@ public class FXHierarchyView extends View {
                     nodeUI.addEventListener(UIEvents.MOUSE_UP, e -> {
                         var fxObject = node.getKey();
                         if (treeList.getSelected().size() == 1) {
-                            if (fxEditor.inspectorView.getInspectedConfigurable() != fxObject) {
+                            if (fxEditor.inspectorView.inspector.getInspectedConfigurable() != fxObject) {
                                 fxEditor.inspectorView.inspect(fxObject);
                                 fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(fxObject.transform(), () -> {
                                     fxEditor.historyView.recordSerializableObject(Component.translatable("photon.transform"), fxObject.transform(), fxObject);
@@ -390,7 +390,7 @@ public class FXHierarchyView extends View {
         if (fxEditor.sceneView.sceneEditor.getTransformGizmo().getTargetTransform() == fxObject.transform()) {
             fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
         }
-        if (fxEditor.inspectorView.getInspectedConfigurable() == fxObject) {
+        if (fxEditor.inspectorView.inspector.getInspectedConfigurable() == fxObject) {
             fxEditor.inspectorView.clear();
         }
         fxEditor.sceneView.fxObjectInfoView.clear();

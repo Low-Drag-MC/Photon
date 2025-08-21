@@ -2,8 +2,8 @@ package com.lowdragmc.photon.gui.editor.resource;
 
 import com.lowdragmc.lowdraglib2.client.scene.FBOWorldSceneRenderer;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
+import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
-import com.lowdragmc.lowdraglib2.editor.resource.ResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
@@ -52,7 +52,7 @@ public class MeshResource extends Resource<MeshData> {
     }
 
     @Override
-    public ResourceProviderContainer<MeshData> createResourceProviderContainer(ResourceProvider<MeshData> provider) {
+    public ResourceProviderContainer<MeshData> createResourceProviderContainer(IResourceProvider<MeshData> provider) {
         var container = super.createResourceProviderContainer(provider);
         container.setUiSupplier(path -> {
             var meshData = provider.getResource(path);

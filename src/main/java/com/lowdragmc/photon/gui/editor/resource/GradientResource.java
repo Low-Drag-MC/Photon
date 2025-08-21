@@ -5,8 +5,8 @@ import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
+import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
-import com.lowdragmc.lowdraglib2.editor.resource.ResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -61,7 +61,7 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
     }
 
     @Override
-    public ResourceProviderContainer<GradientResource.Gradients> createResourceProviderContainer(ResourceProvider<GradientResource.Gradients> provider) {
+    public ResourceProviderContainer<GradientResource.Gradients> createResourceProviderContainer(IResourceProvider<GradientResource.Gradients> provider) {
         var container = super.createResourceProviderContainer(provider);
         container.setUiSupplier(path -> new UIElement().layout(layout -> {
             layout.setWidthPercent(100);

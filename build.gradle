@@ -51,7 +51,7 @@ repositories {
     maven {
         // location of the maven that hosts JEI files since January 2023
         name = "Jared's maven"
-        url = "https://maven.firstdarkdev.xyz/snapshots"
+        url = "https://maven.firstdark.dev/snapshots"
     }
 }
 
@@ -174,7 +174,7 @@ publishing {
     }
     repositories {
         maven {
-            url "https://maven.firstdarkdev.xyz/snapshots"
+            url "https://maven.firstdark.dev/snapshots"
             credentials {
                 username System.getenv("MAVEN_USER")
                 password System.getenv("MAVEN_PASS")

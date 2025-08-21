@@ -89,7 +89,7 @@ public class SceneToggleBuilder {
             })
             .style(style -> {
                 if (tooltipKey != null) {
-                    style.setTooltips(tooltipKey);
+                    style.tooltips(tooltipKey);
                 }
             });
     }

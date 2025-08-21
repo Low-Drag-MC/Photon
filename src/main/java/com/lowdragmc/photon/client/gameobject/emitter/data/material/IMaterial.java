@@ -17,7 +17,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.ShaderInstance;
-import net.minecraft.client.renderer.texture.TextureManager;
+import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.neoforged.api.distmarker.Dist;
@@ -43,7 +43,7 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
     final class MissingMaterial implements IMaterial {
         @Override
         public ShaderInstance begin(MaterialContext context) {
-            RenderSystem.setShaderTexture(0, TextureManager.INTENTIONAL_MISSING_TEXTURE);
+            RenderSystem.setShaderTexture(0, MissingTextureAtlasSprite.getTexture().getId());
             return GameRenderer.getRendertypeSolidShader();
         }
 

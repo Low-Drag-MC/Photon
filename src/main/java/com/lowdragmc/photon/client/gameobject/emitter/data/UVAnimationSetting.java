@@ -2,7 +2,6 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.math.Range;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -15,6 +14,7 @@ import lombok.Getter;
 import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import org.joml.Vector2i;
 import org.joml.Vector4f;
 
 /**
@@ -33,7 +33,7 @@ public class UVAnimationSetting extends ToggleGroup {
     @Getter
     @Configurable(name = "UVAnimationSetting.tiles", tips = "photon.emitter.config.uvAnimation.tiles")
     @ConfigNumber(range = {1, Integer.MAX_VALUE}, type = ConfigNumber.Type.INTEGER)
-    protected Range tiles = Range.of(1, 1);
+    protected Vector2i tiles = new Vector2i(1, 1);
 
     @Setter
     @Getter
@@ -60,12 +60,12 @@ public class UVAnimationSetting extends ToggleGroup {
 
     public Vector4f getUVs(IParticle particle, float partialTicks) {
         var t = particle.getT(partialTicks);
-        var cellU = 1f / tiles.getA().intValue();
-        var cellV = 1f / tiles.getB().intValue();
+        var cellU = 1f / tiles.x();
+        var cellV = 1f / tiles.y();
         var currentFrame = this.startFrame.get(t, () -> particle.getMemRandom("startFrame")).floatValue();
         currentFrame += cycle * frameOverTime.get(t, () -> particle.getMemRandom("frameOverTime")).floatValue();
         float u0, v0, u1, v1;
-        var cellSize = tiles.getA().intValue();
+        var cellSize = tiles.x();
         if (animation == Animation.WholeSheet) {
             int X = (int) (currentFrame % cellSize);
             int Y = (int) (currentFrame / cellSize);
@@ -73,7 +73,7 @@ public class UVAnimationSetting extends ToggleGroup {
             v0 = Y * cellV;
         } else {
             int X = (int) (currentFrame % cellSize);
-            int Y = (int) (particle.getMemRandom("randomRow") * tiles.getB().intValue());
+            int Y = (int) (particle.getMemRandom("randomRow") * tiles.y());
             u0 = X * cellU;
             v0 = Y * cellV;
         }

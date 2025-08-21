@@ -3,10 +3,10 @@ package com.lowdragmc.photon.gui.editor;
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.editor.project.IProject;
+import com.lowdragmc.lowdraglib2.editor.project.ProjectType;
 import com.lowdragmc.lowdraglib2.editor.resource.ColorsResource;
 import com.lowdragmc.lowdraglib2.editor.resource.Resources;
 import com.lowdragmc.lowdraglib2.editor.ui.Editor;
-import com.lowdragmc.lowdraglib2.editor.ui.menu.FileMenu;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.syncdata.ISubscription;
@@ -18,7 +18,6 @@ import com.lowdragmc.photon.gui.editor.resource.CurveResource;
 import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
-import com.mojang.datafixers.schemas.Schema;
 import lombok.Getter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -27,11 +26,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
-import java.util.function.BiFunction;
 
 public class FXProject implements IProject {
-    public static int VERSION = 2;
-    public static final FileMenu.ProjectProvider PROVIDER = FileMenu.ProjectProvider.of(IGuiTexture.EMPTY, "fx_project", ".fxproj", FXProject::new);
+    public static int VERSION = 3;
+    public static final ProjectType TYPE = ProjectType.of(IGuiTexture.EMPTY, "fx_project", ".fxproj", FXProject::new);
 
     @Getter
     private final Resources resources;
@@ -57,13 +55,8 @@ public class FXProject implements IProject {
     }
 
     @Override
-    public String getSuffix() {
-        return PROVIDER.suffix;
-    }
-
-    @Override
-    public String getName() {
-        return PROVIDER.name;
+    public ProjectType getProjectType() {
+        return TYPE;
     }
 
     @Override

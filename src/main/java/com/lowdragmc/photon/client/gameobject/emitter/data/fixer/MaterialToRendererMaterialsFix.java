@@ -10,7 +10,7 @@ import java.util.stream.Stream;
 
 import static com.mojang.datafixers.DSL.remainderFinder;
 
-public class MaterialToRendererMaterialsFix extends DataFix {
+public final class MaterialToRendererMaterialsFix extends DataFix {
     public MaterialToRendererMaterialsFix(Schema outputSchema) {
         super(outputSchema, true);
     }

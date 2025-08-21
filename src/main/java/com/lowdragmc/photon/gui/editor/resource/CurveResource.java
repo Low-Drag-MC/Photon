@@ -2,6 +2,7 @@ package com.lowdragmc.photon.gui.editor.resource;
 
 import com.lowdragmc.lowdraglib2.configurator.EditAction;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
+import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
 import com.lowdragmc.lowdraglib2.editor.resource.ResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
@@ -69,7 +70,7 @@ public class CurveResource extends Resource<CurveResource.Curves> {
     }
 
     @Override
-    public ResourceProviderContainer<CurveResource.Curves> createResourceProviderContainer(ResourceProvider<CurveResource.Curves> provider) {
+    public ResourceProviderContainer<Curves> createResourceProviderContainer(IResourceProvider<Curves> provider) {
         var container = super.createResourceProviderContainer(provider);
         container.setUiSupplier(path -> new UIElement().layout(layout -> {
             layout.setWidthPercent(100);

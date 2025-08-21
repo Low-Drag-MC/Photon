@@ -5,7 +5,6 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
-import com.lowdragmc.lowdraglib2.gui.widget.ImageWidget;
 import com.lowdragmc.lowdraglib2.math.noise.PerlinNoise;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;

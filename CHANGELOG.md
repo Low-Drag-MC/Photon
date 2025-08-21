@@ -1,4 +1,3 @@
-# v2.0.5
-* add mesh sorter for all vertex format
-* merge materials to reduce useless drawcall
-* better initial config value
+# v2.1.0
+* Bump up LDLib2 version to 2.1.0+
+* Fixed UV Animation tiles definition

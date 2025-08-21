@@ -11,17 +11,21 @@ import java.util.List;
 
 @EqualsAndHashCode
 public class FXObjectTreeNode implements ITreeNode<IFXObject, Void> {
+    @Nullable
+    @Getter
+    public final FXObjectTreeNode parent;
     @Getter
     public final int dimension;
     @Getter
     public final IFXObject key;
 
     public FXObjectTreeNode(IFXObject root) {
-        this(0, root);
+        this(null, root);
     }
 
-    private FXObjectTreeNode(int dimension, IFXObject node) {
-        this.dimension = dimension;
+    private FXObjectTreeNode(@Nullable FXObjectTreeNode parent, IFXObject node) {
+        this.parent = parent;
+        this.dimension = parent == null ? 0 : parent.dimension + 1;
         this.key = node;
     }
 
@@ -33,6 +37,6 @@ public class FXObjectTreeNode implements ITreeNode<IFXObject, Void> {
     @Override
     @Nonnull
     public List<FXObjectTreeNode> getChildren() {
-        return key.children().stream().map(child -> new FXObjectTreeNode(dimension + 1, (IFXObject) child)).toList();
+        return key.children().stream().map(child -> new FXObjectTreeNode(this, (IFXObject) child)).toList();
     }
 }

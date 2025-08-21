@@ -1,8 +1,8 @@
 package com.lowdragmc.photon.gui.editor.resource;
 
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
+import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
-import com.lowdragmc.lowdraglib2.editor.resource.ResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -64,7 +64,7 @@ public class MaterialResource extends Resource<IMaterial> {
     }
 
     @Override
-    public ResourceProviderContainer<IMaterial> createResourceProviderContainer(ResourceProvider<IMaterial> provider) {
+    public ResourceProviderContainer<IMaterial> createResourceProviderContainer(IResourceProvider<IMaterial> provider) {
         var container = super.createResourceProviderContainer(provider);
         container.setUiSupplier(path -> new UIElement().layout(layout -> {
                     layout.setWidthPercent(100);

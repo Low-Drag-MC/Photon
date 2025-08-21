@@ -248,7 +248,7 @@ public class SceneView extends View {
                                 layout.setHeightPercent(100);
                                 layout.setFlex(1);
                             })
-                            .style(style -> style.setTooltips("editor.scene_mode"))
+                            .style(style -> style.tooltips("editor.scene_mode"))
                             .addEventListener(UIEvents.TICK, event -> {
                                 if (event.currentElement instanceof Selector selector) {
                                     if (selector.getValue() != getSceneMode()) {
@@ -269,7 +269,7 @@ public class SceneView extends View {
                                 layout.setHeightPercent(100);
                                 layout.setFlex(1);
                             })
-                            .style(style -> style.setTooltips("editor.draw_mode"))
+                            .style(style -> style.tooltips("editor.draw_mode"))
                             .addEventListener(UIEvents.TICK, event -> {
                                 if (event.currentElement instanceof Selector selector) {
                                     if (selector.getValue() != getDrawMode()) {

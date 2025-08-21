@@ -3,7 +3,6 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
-import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlendMode;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;

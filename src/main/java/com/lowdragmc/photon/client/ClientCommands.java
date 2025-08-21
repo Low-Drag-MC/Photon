@@ -1,10 +1,11 @@
 package com.lowdragmc.photon.client;
 
+import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.editor.ui.EditorWindow;
+import com.lowdragmc.lowdraglib2.gui.holder.ModularUIScreen;
 import com.lowdragmc.lowdraglib2.gui.ui.*;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQueueRenderType;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
 import com.lowdragmc.photon.client.fx.EntityEffectExecutor;
 import com.lowdragmc.photon.client.fx.FXHelper;
@@ -32,10 +33,16 @@ public class ClientCommands {
     public static <S> List<LiteralArgumentBuilder<S>> createClientCommands() {
         return List.of(
                 (LiteralArgumentBuilder<S>) createLiteral("photon_editor").executes(context -> {
+                    if (Platform.getMinecraftServer() != null && !Platform.getMinecraftServer().isSingleplayer()) {
+                        context.getSource().sendFailure(Component.literal("This command can only be used in singleplayer"));
+                        return 0;
+                    }
                     var minecraft = Minecraft.getInstance();
                     var entityPlayer = minecraft.player;
                     if (entityPlayer == null) return 0;
-                    var ui = new ModularUI(UI.of(new EditorWindow(FXEditor::new).setId("fx_editor"), size -> size)).shouldCloseOnEsc(false).shouldCloseOnKeyInventory(false);
+                    var ui = new ModularUI(UI.of(EditorWindow.open(FXEditor.WINDOW_ID, FXEditor::new).setId("fx_editor")))
+                            .shouldCloseOnEsc(false)
+                            .shouldCloseOnKeyInventory(false);
                     var screen = new ModularUIScreen(ui, Component.empty());
                     minecraft.setScreen(screen);
                     return 1;
