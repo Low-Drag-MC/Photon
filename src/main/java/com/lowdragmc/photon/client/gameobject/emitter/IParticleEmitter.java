@@ -3,9 +3,9 @@ package com.lowdragmc.photon.client.gameobject.emitter;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.ProgressBar;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -75,10 +75,10 @@ public interface IParticleEmitter extends IFXObject, IConfigurable {
     default void inspectSceneInformation(SceneView sceneView, UIElement container) {
         var progress = new ProgressBar() {
             @Override
-            public void drawBackgroundAdditional(@Nonnull GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
-                super.drawBackgroundAdditional(graphics, mouseX, mouseY, partialTicks);
+            public void drawBackgroundAdditional(@Nonnull GUIContext guiContext) {
+                super.drawBackgroundAdditional(guiContext);
                 if (isAlive()) {
-                    this.setValue(getT(sceneView.particleManager.isPlaying() ? partialTicks : 0));
+                    this.setValue(getT(sceneView.particleManager.isPlaying() ? guiContext.partialTick : 0));
                 } else {
                     this.setValue(1f);
                 }
