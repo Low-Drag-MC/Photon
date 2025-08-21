@@ -1,5 +1,8 @@
 ## ChangeLogs
 
+# v2.0.6
+* bump up ldlib2 to fix ResourcePack loading
+
 # v2.0.5
 * add mesh sorter for all vertex format
 * merge materials to reduce useless drawcall

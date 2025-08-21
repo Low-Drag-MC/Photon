@@ -1,4 +1,3 @@
-# v2.0.5
-* add mesh sorter for all vertex format
-* merge materials to reduce useless drawcall
-* better initial config value
+# v2.0.6
+* Bump up ldlib2 to fix ResourcePack loading
+* Fixed Force Death of Entity Remove Command
