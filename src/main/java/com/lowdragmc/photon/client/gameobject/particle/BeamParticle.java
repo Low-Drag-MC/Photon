@@ -11,8 +11,9 @@ import net.minecraft.client.Camera;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
@@ -22,6 +23,7 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import javax.annotation.Nonnull;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
@@ -153,15 +155,26 @@ public class BeamParticle implements IParticle {
 
     protected Vector3f getRealEnd(@Nonnull Camera camera, Vector3f from) {
         var end = new Vector3f(from).add(emitter.transform().localToWorldMatrix().transformDirection(config.getEnd(), new Vector3f()));
-        if (config.isRaycast()) {
-            Level level = camera.getEntity().level();
-            HitResult result = level.clip(
-                    new ClipContext(new Vec3(from.x, from.y, from.z), new Vec3(end.x, end.y, end.z), ClipContext.Block.VISUAL, ClipContext.Fluid.NONE, CollisionContext.empty()));
+        if (config.getRaycast() == BeamConfig.RaycastMode.BLOCKS || config.getRaycast() == BeamConfig.RaycastMode.BLOCKS_AND_ENTITIES) {
+            var level = camera.getEntity().level();
+            var result = level.clip(
+                    new ClipContext(new Vec3(from.x, from.y, from.z),
+                            new Vec3(end.x, end.y, end.z),
+                            config.getRaycastBlockMode(),
+                            config.getRaycastFluidMode(),
+                            CollisionContext.empty()));
             if (result.getType() != HitResult.Type.MISS) {
-                return result.getLocation().toVector3f();
+                end = result.getLocation().toVector3f();
             }
         }
-
+        if (config.getRaycast() == BeamConfig.RaycastMode.ENTITIES || config.getRaycast() == BeamConfig.RaycastMode.BLOCKS_AND_ENTITIES) {
+            var level = camera.getEntity().level();
+            var size = getRealWidth(0);
+            var velocity = new Vector3f(end).sub(from);
+            var vec3 = Entity.collideBoundingBox(null, new Vec3(velocity),
+                    AABB.ofSize(Vec3.ZERO, size, size, size), level, List.of());
+            end = new Vector3f(from).add(vec3.toVector3f());
+        }
         return end;
     }
 

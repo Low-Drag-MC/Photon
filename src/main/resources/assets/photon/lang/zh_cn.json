@@ -1,10 +1,10 @@
 {
-    "photon.configuration.enable_bloom": "Enable Bloom",
-    "photon.configuration.bloom_mip_level": "Bloom mip level",
-    "photon.configuration.bloom_threshold": "Bloom Threshold",
-    "photon.configuration.bloom_intensity": "Bloom Intensity",
-    "photon.configuration.enable_bloom_with_iris_shader": "Enable Bloom with Iris shader",
-    "photon.configuration.iris_shader_compatible_mode": "Iris Shader compatible mode",
+    "photon.configuration.enable_bloom": "启用Bloom泛光",
+    "photon.configuration.bloom_mip_level": "泛光 mip 级别",
+    "photon.configuration.bloom_threshold": "泛光阈值",
+    "photon.configuration.bloom_intensity": "泛光强度",
+    "photon.configuration.enable_bloom_with_iris_shader": "Iris光影下启用泛光",
+    "photon.configuration.iris_shader_compatible_mode": "Iris光影兼容模式",
 
     "ldlib.gui.editor.register.editor.fx.fxproj": "特效项目",
     "ldlib.gui.editor.register.editor.fx.particle_info": "粒子信息",

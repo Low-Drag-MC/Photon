@@ -1,10 +1,15 @@
 package com.lowdragmc.photon.client.gameobject.emitter.beam;
 
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.configurator.accessors.EnumAccessor;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
+import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSetting;
@@ -26,10 +31,11 @@ import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.world.level.ClipContext;
 import org.joml.Vector3f;
 
 import javax.annotation.Nonnull;
-import java.util.List;
+import java.util.Arrays;
 import java.util.Optional;
 
 /**
@@ -69,7 +75,16 @@ public class BeamConfig implements IConfigurable, IPersistedSerializable {
     @Setter
     @Getter
     @Configurable(name = "BeamConfig.raycast", tips = "photon.emitter.beam.config.raycast")
-    protected boolean raycast = false;
+    @ConfigSelector(subConfiguratorBuilder = "raycastSubConfiguratorBuilder")
+    protected RaycastMode raycast = RaycastMode.NONE;
+    @Setter
+    @Getter
+    @Persisted
+    protected ClipContext.Block raycastBlockMode = ClipContext.Block.VISUAL;
+    @Setter
+    @Getter
+    @Persisted
+    protected ClipContext.Fluid raycastFluidMode = ClipContext.Fluid.NONE;
     @Setter
     @Getter
     @Configurable(name = "BeamConfig.color", tips = "photon.emitter.beam.config.color")
@@ -84,12 +99,34 @@ public class BeamConfig implements IConfigurable, IPersistedSerializable {
     @Configurable(name = "ParticleConfig.fixedLight", subConfigurable = true, tips = "photon.emitter.config.lights")
     public final LightOverLifetimeSetting lights = new LightOverLifetimeSetting();
 
+    public enum RaycastMode {
+        NONE,
+        BLOCKS,
+        ENTITIES,
+        BLOCKS_AND_ENTITIES;
+    }
+
     // runtime
     public final PhotonFXRenderPass particleRenderType = new RenderPass();
 
     public BeamConfig() {
         renderer.getMaterials().add(new MaterialSetting(Optional.ofNullable(MaterialResource.INSTANCE.getResourceInstance()
                 .getResource(new BuiltinPath("laser"))).orElseGet(TextureMaterial::new)));
+    }
+
+    private void raycastSubConfiguratorBuilder(RaycastMode mode, ConfiguratorGroup group) {
+        if (mode == RaycastMode.BLOCKS || mode == RaycastMode.BLOCKS_AND_ENTITIES) {
+            group.addConfigurators(
+                    EnumAccessor.create("BeamConfig.raycast.block",
+                        Arrays.stream(ClipContext.Block.values()).toList(),
+                        this::getRaycastBlockMode, this::setRaycastBlockMode, ClipContext.Block.VISUAL, true)
+                            .setTips("photon.emitter.beam.config.raycast.block"),
+                    EnumAccessor.create("BeamConfig.raycast.fluid",
+                            Arrays.stream(ClipContext.Fluid.values()).toList(),
+                            this::getRaycastFluidMode, this::setRaycastFluidMode, ClipContext.Fluid.NONE, true)
+                            .setTips( "photon.emitter.beam.config.raycast.fluid")
+            );
+        }
     }
 
     private class RenderPass extends PhotonFXRenderPass {
