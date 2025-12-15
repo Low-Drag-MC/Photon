@@ -32,7 +32,7 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
         return getDataProviders().stream().map(DataProvider::getSize).reduce(0, Integer::sum);
     }
 
-    public void createInstanceData(int offset, int attribIndex, int stride) {
+    public void instanceDataLayout(int offset, int attribIndex, int stride) {
         for (var dataProvider : getDataProviders()) {
             var size =  dataProvider.getSize();
             glVertexAttribPointer(attribIndex, size, GL_FLOAT, false, stride, offset);
