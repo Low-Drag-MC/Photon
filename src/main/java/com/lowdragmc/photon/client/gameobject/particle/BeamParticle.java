@@ -2,17 +2,22 @@ package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Camera;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
@@ -146,11 +151,25 @@ public class BeamParticle implements IParticle {
         return config.getEmitRate().get(getT(pPartialTicks), () -> getMemRandom("emit")).floatValue();
     }
 
+    protected Vector3f getRealEnd(@Nonnull Camera camera, Vector3f from) {
+        var end = new Vector3f(from).add(emitter.transform().localToWorldMatrix().transformDirection(config.getEnd(), new Vector3f()));
+        if (config.isRaycast()) {
+            Level level = camera.getEntity().level();
+            HitResult result = level.clip(
+                    new ClipContext(new Vec3(from.x, from.y, from.z), new Vec3(end.x, end.y, end.z), ClipContext.Block.VISUAL, ClipContext.Fluid.NONE, CollisionContext.empty()));
+            if (result.getType() != HitResult.Type.MISS) {
+                return result.getLocation().toVector3f();
+            }
+        }
+
+        return end;
+    }
+
     public void render(@Nonnull VertexConsumer pBuffer, @Nonnull Camera camera, float partialTicks) {
         if (delay <= 0) {
             var cameraPos = camera.getPosition().toVector3f();
             var from = getWorldPos();
-            var end = new Vector3f(from).add(emitter.transform().localToWorldMatrix().transformDirection(config.getEnd(), new Vector3f()));
+            var end = getRealEnd(camera, from);
 
             var offset = - getRealEmit(partialTicks);
             var uvs = getRealUVs(partialTicks);
