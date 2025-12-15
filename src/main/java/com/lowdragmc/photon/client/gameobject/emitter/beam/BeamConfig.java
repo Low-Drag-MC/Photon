@@ -29,6 +29,7 @@ import lombok.Setter;
 import org.joml.Vector3f;
 
 import javax.annotation.Nonnull;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -65,6 +66,10 @@ public class BeamConfig implements IConfigurable, IPersistedSerializable {
     @Configurable(name = "BeamConfig.emitRate", tips = "photon.emitter.beam.config.emitRate")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "width"))
     protected NumberFunction emitRate = NumberFunction.constant(0);
+    @Setter
+    @Getter
+    @Configurable(name = "BeamConfig.raycast", tips = "photon.emitter.beam.config.raycast")
+    protected boolean raycast = false;
     @Setter
     @Getter
     @Configurable(name = "BeamConfig.color", tips = "photon.emitter.beam.config.color")
