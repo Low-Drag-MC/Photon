@@ -61,7 +61,7 @@ public abstract class PhotonParticleRenderType implements ParticleRenderType {
             }
 
             // render bloom effect
-            BloomEffect.renderBloom(background.width, background.height,
+            BloomEffect.renderBloom(
                     LAYER == RendererSetting.Layer.Opaque ? Photon.getSolidTextureID() : Photon.getTranslucentTextureID(true),
                     input.getColorTextureId(),
                     output);
