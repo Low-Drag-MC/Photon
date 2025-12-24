@@ -77,7 +77,10 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
             this.remove(false);
         }
         if (getLifetime() > 0) {
-            t = (this.age % getLifetime()) * 1f / getLifetime();
+            if(isLooping())
+                t = (this.age % getLifetime()) * 1f / getLifetime();
+            else
+                t = Math.clamp(this.age * 1f / getLifetime(), 0f, 1f);
         }
     }
 
@@ -98,7 +101,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     }
 
     public float getT(float partialTicks) {
-        if (this.lifetime > 0 ){
+        if (this.lifetime > 0){
+            if (!isLooping()) return Math.clamp(t + partialTicks / this.lifetime, 0f, 1f);
             return t + partialTicks / this.lifetime;
         }
         return 0;
