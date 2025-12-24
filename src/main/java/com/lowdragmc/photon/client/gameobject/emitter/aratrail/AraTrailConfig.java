@@ -113,9 +113,16 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     @Configurable(name = "AraTrails.thicknessOverTime", tips = "AraTrails.thicknessOverTime.tips")
     @NumberFunctionConfig(types = {Constant.class, Curve.class}, min = 0, defaultValue = 1f, curveConfig = @CurveConfig(bound = {0, 1f}, xAxis = "trail length", yAxis = "thickness"))
     public NumberFunction thicknessOverTime = NumberFunction.constant(1f);  /**< maps trail lifetime to thickness.*/
+    @Configurable(name = "AraTrails.thicknessOverSegmentTime", tips = "AraTrails.thicknessOverSegmentTime.tips")
+    @NumberFunctionConfig(types = {Constant.class, Curve.class}, min = 0, defaultValue = 1f, curveConfig = @CurveConfig(bound = {0, 1f}, xAxis = "trail length", yAxis = "thickness"))
+    public NumberFunction thicknessOverSegmentTime = NumberFunction.constant(1f);  /**< maps segment lifetime to thickness.*/
     @Configurable(name = "AraTrails.colorOverTime", tips = "AraTrails.colorOverTime.tips")
     @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
     public NumberFunction colorOverTime = NumberFunction.color(-1);
+    @Configurable(name = "AraTrails.colorOverSegmentTime", tips = "AraTrails.colorOverSegmentTime.tips")
+    @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
+    public NumberFunction colorOverSegmentTime = NumberFunction.color(-1);
+
 
     @ConfigHeader("AraTrails.Emission")
     @Configurable(name = "AraTrails.emit")

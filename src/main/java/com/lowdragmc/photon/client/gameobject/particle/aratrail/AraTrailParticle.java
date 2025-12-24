@@ -325,6 +325,7 @@ public class AraTrailParticle implements IParticle {
         var worldToTrail = getWorldToTrail();
         var nrm = worldToTrail.transformDirection(getWorldForward());
         var tgt = worldToTrail.transformDirection(getWorldRight());
+
         var point = new Point(position, new Vector3f(velocity).mul(config.physicsSetting.inertia).add(initialVelocity),
                 tgt, nrm, initialColor, initialThickness, texcoord, lifeTime);
         if (skipLast && points.size() > 1) {
@@ -514,7 +515,8 @@ public class AraTrailParticle implements IParticle {
                     interpolated.thickness = Point.catmullRom(data[i_1].thickness, data[i].thickness, data[i1].thickness, data[i2].thickness, t);
                     interpolated.texcoord = Point.catmullRom(data[i_1].texcoord, data[i].texcoord, data[i1].texcoord, data[i2].texcoord, t);
 
-                    renderablePoints.add(interpolated.copy());
+                    var copied = interpolated.copy();
+                    renderablePoints.add(copied);
                 }
             }
 
@@ -555,9 +557,11 @@ public class AraTrailParticle implements IParticle {
         var deltaTime = getDeltaTime();
         updateDynamicData(partialTicks);
         if (deltaTime > EPSILON) {
-            updateVelocity(deltaTime);
-            emissionStep(deltaTime);
-            snapLastPointToTransform();
+            if(!isRemoved){
+                updateVelocity(deltaTime);
+                emissionStep(deltaTime);
+                snapLastPointToTransform();
+            }
             updatePointsLifecycle(deltaTime);
         }
         clearMeshData();
@@ -718,22 +722,25 @@ public class AraTrailParticle implements IParticle {
                 float normalizedLength = config.sorting == AraTrailConfig.TrailSorting.OlderOnTop ?
                         partialLength / totalLength :
                         (totalLength - partialLength) / totalLength;
-                float normalizedLife = Float.isInfinite(getLifeTime()) ? 1 : Mth.clamp(1 - data[i].life / getLifeTime(), 0, 1);
+                float normalizedLife = Math.clamp(emitter.getT(), 0, 1);
                 partialLength += sectionLength;
+                float normalizedSegmentLife = Float.isInfinite(getLifeTime()) ? 1 : Mth.clamp(1 - data[i].life / getLifeTime(), 0, 1);
 
                 // Calculate vertex color:
                 var timeColor = config.colorOverTime.get(normalizedLife, () -> getMemRandom("trails-colorOverTime")).intValue();
                 var lengthColor = config.colorOverLength.get(normalizedLength, () -> getMemRandom("trails-colorOverLength")).intValue();
+                var segmentColor = config.colorOverSegmentTime.get(normalizedSegmentLife, () -> getMemRandom("trails-colorOverSegmentTime")).intValue();
                 color = new Vector4f(data[i].color).mul(colorMultiplier).mul(
-                        ColorUtils.red(timeColor) * ColorUtils.red(lengthColor) ,
-                        ColorUtils.green(timeColor) * ColorUtils.green(lengthColor),
-                        ColorUtils.blue(timeColor) * ColorUtils.blue(lengthColor),
-                        ColorUtils.alpha(timeColor) * ColorUtils.alpha(lengthColor)
+                        ColorUtils.red(timeColor) * ColorUtils.red(lengthColor) * ColorUtils.red(segmentColor),
+                        ColorUtils.green(timeColor) * ColorUtils.green(lengthColor) * ColorUtils.green(segmentColor),
+                        ColorUtils.blue(timeColor) * ColorUtils.blue(lengthColor) * ColorUtils.blue(segmentColor),
+                        ColorUtils.alpha(timeColor) * ColorUtils.alpha(lengthColor) * ColorUtils.alpha(segmentColor)
                 );
 
                 // Calculate final thickness:
                 float sectionThickness = config.thickness * thicknessMultiplier * data[i].thickness *
                         config.thicknessOverTime.get(normalizedLife, () -> getMemRandom("trails-thicknessOverTime")).floatValue() *
+                        config.thicknessOverSegmentTime.get(normalizedSegmentLife, () -> getMemRandom("trails-thicknessOverSegmentTime")).floatValue() *
                         config.thicknessOverLength.get(normalizedLength, () -> getMemRandom("trails-thicknessOverLength")).floatValue();
 
                 // In world tile mode, override texture coordinate with the point's one:
