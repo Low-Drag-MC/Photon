@@ -1,5 +1,8 @@
 ## ChangeLogs
 
+# v1.1.15
+* Fixed massive rendering issues related to the bloom pr
+
 # v1.1.14
 * Fix incorrect shader attributes layout (thanks to @RogoShum)
 * Fix the bloom color crash with parallel rendering
