@@ -63,7 +63,7 @@ public class RandomGradient implements NumberFunction {
     public Integer get(float t, Supplier<Float> lerp) {
         int color0 = gradientColor0.getColor(t);
         int color1 = gradientColor1.getColor(t);
-        return ColorUtils.blendColor(color0, color1, lerp.get());
+        return ColorUtils.blendRGBColor(color0, color1, lerp.get());
     }
 
     @Override

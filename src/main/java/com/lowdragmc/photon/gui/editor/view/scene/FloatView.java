@@ -36,7 +36,7 @@ public class FloatView extends UIElement {
             layout.setWidthPercent(100);
             layout.setAlignItems(YogaAlign.CENTER);
             layout.setPadding(YogaEdge.ALL, 5);
-        }).style(style -> style.backgroundTexture(Sprites.BORDER1_RT1));
+        }).addClass("preview_bg");
         titleBar.addChild(new Label()
                 .textStyle(style -> style
                         .textAlignVertical(Vertical.CENTER)
@@ -68,7 +68,7 @@ public class FloatView extends UIElement {
             layout.setJustifyContent(YogaJustify.CENTER);
             layout.setPadding(YogaEdge.ALL, 4);
             layout.setGap(YogaGutter.ALL, 2);
-        }).style(style -> style.backgroundTexture(Sprites.RECT_SOLID));
+        }).addClass("panel_bg");
 
         addChildren(titleBar, contentContainer);
     }

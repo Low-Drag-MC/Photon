@@ -56,7 +56,7 @@ public class RandomColor extends RandomConstant {
     public Integer get(float t, Supplier<Float> lerp) {
         int colorA = getA().intValue();
         int colorB = getB().intValue();
-        return ColorUtils.blendColor(colorA, colorB, lerp.get());
+        return ColorUtils.blendRGBColor(colorA, colorB, lerp.get());
     }
 
     private int randomColor(RandomSource randomSource, int minA, int maxA, int minR, int maxR, int minG, int maxG, int minB, int maxB) {

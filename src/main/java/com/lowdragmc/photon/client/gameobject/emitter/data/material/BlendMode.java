@@ -75,6 +75,7 @@ public class BlendMode {
 
     public void reset() {
         RenderSystem.enableBlend();
+        RenderSystem.blendEquation(BlendFuc.ADD.op);
         RenderSystem.defaultBlendFunc();
     }
 
