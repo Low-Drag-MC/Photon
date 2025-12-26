@@ -86,13 +86,18 @@ dependencies {
     common(project(path: ":${mod_id}-common", configuration: "namedElements")) { transitive = false }
     shadowCommon(project(path: ":${mod_id}-common", configuration: "transformProductionForge")) { transitive = false }
 
+    // mixin
+    compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:0.5.0"))
+    implementation(include("io.github.llamalad7:mixinextras-forge:0.5.0"))
+
     // LDLib
     modImplementation(forge.ldlib.forge) { transitive = false }
     include(forge.ldlib.forge)
 
     // Oculus
-    modCompileOnly(forge.embeddium) { transitive = false }
-    modCompileOnly(forge.oculus) { transitive = false }
+    forgeRuntimeLibrary(runtimeOnly("org.anarres:jcpp:1.4.14"))
+    modImplementation(forge.embeddium) { transitive = false }
+    modImplementation(forge.oculus) { transitive = false }
 }
 
 processResources {
