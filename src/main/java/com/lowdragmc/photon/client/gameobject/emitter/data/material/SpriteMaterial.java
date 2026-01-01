@@ -62,7 +62,13 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
                 Program.Type.FRAGMENT.getPrograms().remove(PhotonShaders.getSpriteHDRParticleShader().getFragmentProgram().getName());
                 Program.Type.VERTEX.getPrograms().remove(PhotonShaders.getSpriteHDRParticleShader().getVertexProgram().getName());
                 LDProgramDefineManager.addProgramDefine(define);
-                var shader = LDShaderInstance.create(Photon.id("sprite_hdr_particle"), DefaultVertexFormat.BLOCK);
+                LDShaderInstance shader;
+                try {
+                    shader = LDShaderInstance.create(Photon.id("sprite_hdr_particle"), DefaultVertexFormat.BLOCK);
+                } catch (Throwable e) {
+                    Photon.LOGGER.error("Failed to create sprite HDR particle shader", e);
+                    throw new RuntimeException(e);
+                }
                 LDProgramDefineManager.removeProgramDefine(define);
                 return shader;
             });

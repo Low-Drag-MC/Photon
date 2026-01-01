@@ -96,7 +96,13 @@ public class TextureMaterial extends ShaderInstanceMaterial {
                     Program.Type.FRAGMENT.getPrograms().remove(PhotonShaders.getPixelHDRParticleShader().getFragmentProgram().getName());
                     Program.Type.VERTEX.getPrograms().remove(PhotonShaders.getPixelHDRParticleShader().getVertexProgram().getName());
                     LDProgramDefineManager.addProgramDefine(define);
-                    var shader = LDShaderInstance.create(Photon.id("pixel_hdr_particle"), DefaultVertexFormat.BLOCK);
+                    LDShaderInstance shader = null;
+                    try {
+                        shader = LDShaderInstance.create(Photon.id("pixel_hdr_particle"), DefaultVertexFormat.BLOCK);
+                    } catch (Throwable e) {
+                        Photon.LOGGER.error("Failed to create pixel HDR particle shader", e);
+                        throw new RuntimeException(e);
+                    }
                     LDProgramDefineManager.removeProgramDefine(define);
                     return shader;
                 });
@@ -106,7 +112,13 @@ public class TextureMaterial extends ShaderInstanceMaterial {
                     Program.Type.FRAGMENT.getPrograms().remove(PhotonShaders.getHDRParticleShader().getFragmentProgram().getName());
                     Program.Type.VERTEX.getPrograms().remove(PhotonShaders.getHDRParticleShader().getVertexProgram().getName());
                     LDProgramDefineManager.addProgramDefine(define);
-                    var shader = LDShaderInstance.create(Photon.id("hdr_particle"), DefaultVertexFormat.BLOCK);
+                    LDShaderInstance shader = null;
+                    try {
+                        shader = LDShaderInstance.create(Photon.id("hdr_particle"), DefaultVertexFormat.BLOCK);
+                    } catch (Throwable e) {
+                        Photon.LOGGER.error("Failed to create HDR particle shader", e);
+                        throw new RuntimeException(e);
+                    }
                     LDProgramDefineManager.removeProgramDefine(define);
                     return shader;
                 });

@@ -3,8 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.client.shader.LDLibShaders;
-import com.lowdragmc.lowdraglib2.client.shader.LDProgramDefineManager;
-import com.lowdragmc.lowdraglib2.client.shader.LDShaderInstance;
+import com.lowdragmc.lowdraglib2.client.shader.LDShaderHolder;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
@@ -42,8 +41,7 @@ import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
 import java.lang.ref.Cleaner;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 
 @OnlyIn(Dist.CLIENT)
@@ -60,11 +58,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public final CurveTexture curveTexture = new CurveTexture(MAX_SAMPLING, MAX_SAMPLER);
     @Configurable(name = "SamplerGradient", subConfigurable = true)
     public final GradientTexture gradientTexture = new GradientTexture(MAX_SAMPLING, MAX_SAMPLER);
-    //runtime
-    private final Map<String, LDShaderInstance> shaders = new HashMap<>();
-    private final Map<String, Cleaner.Cleanable> shadersCleanable = new HashMap<>();
     @Nullable
-    private LDShaderInstance shaderInstance;
+    private LDShaderHolder shaderHolder;
     private Cleaner.Cleanable shaderCleanable;
     @Getter
     private String compiledErrorMessage = "";
@@ -98,8 +93,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     @Override
     public Tag serializeAdditionalNBT(HolderLookup.@NotNull Provider provider) {
         var shaderData = new CompoundTag();
-        if (shaderInstance != null) {
-            shaderData.put("shaderData", shaderInstance.serializeNBT(provider));
+        if (shaderHolder != null) {
+            shaderData.put("shaderData", shaderHolder.serializeNBT(provider));
         }
         return shaderData;
     }
@@ -108,10 +103,10 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public void deserializeAdditionalNBT(Tag tag, HolderLookup.@NotNull Provider provider) {
         if (!(tag instanceof CompoundTag shaderData)) return;
         recompile();
-        if (shaderInstance != null) {
-            shaderInstance.deserializeNBT(provider, shaderData.getCompound("shaderData"));
-            attachDynamicSamplers(shaderInstance);
-            attachDynamicUniforms(shaderInstance);
+        if (shaderHolder != null) {
+            shaderHolder.deserializeNBT(provider, shaderData.getCompound("shaderData"));
+            attachDynamicSamplers(shaderHolder);
+            attachDynamicUniforms(shaderHolder);
         }
     }
 
@@ -126,64 +121,58 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             shaderCleanable.clean();
             shaderCleanable = null;
         }
-        if (shaderInstance != null) {
-            this.shaderInstance = null;
+        if (shaderHolder != null) {
+            this.shaderHolder = null;
         }
 
-        shadersCleanable.values().forEach(Cleaner.Cleanable::clean);
-        shadersCleanable.clear();
-        shaders.clear();
         try {
-            this.shaderInstance = loadShaderInstance(shaderLocation, null);
-            this.shaderCleanable = AutoCloseCleaner.registerRenderThread(this, this.shaderInstance);
+            this.shaderHolder = loadShaderHolder(shaderLocation);
+            this.shaderCleanable = AutoCloseCleaner.registerRenderThread(this, this.shaderHolder);
         } catch (Throwable e) {
             Photon.LOGGER.error("Failed to recompile shader", e);
             this.compiledErrorMessage = e.getMessage();
-            this.shaderInstance = null;
             this.shaderCleanable = null;
         }
     }
 
-    private LDShaderInstance loadShaderInstance(ResourceLocation shaderLocation, @Nullable String define) throws Throwable {
-        if (define != null) {
-            LDProgramDefineManager.addProgramDefine(define);
-        }
-        var shader = new LDShaderInstance(Minecraft.getInstance().getResourceManager(), shaderLocation, DefaultVertexFormat.BLOCK);
+    private LDShaderHolder loadShaderHolder(ResourceLocation shaderLocation) throws Throwable {
+        var shaderHolder = LDShaderHolder.create(shaderLocation, DefaultVertexFormat.BLOCK);
+        if (shaderHolder == null) throw new IllegalStateException("Failed to find shader " + shaderLocation);
+        var shader = shaderHolder.baseInstance;
         var samplerNames = shader.getShaderInstanceAccessor().getSamplerNames();
         if (samplerNames.contains("SamplerBlockAtlas")) {
             var texture = Minecraft.getInstance().getTextureManager().getTexture(InventoryMenu.BLOCK_ATLAS);
             shader.setSampler("SamplerBlockAtlas", texture);
         }
-        attachDynamicSamplers(shader);
-        attachDynamicUniforms(shader);
-        if (define != null) {
-            LDProgramDefineManager.removeProgramDefine(define);
-        }
-        return shader;
+        attachDynamicSamplers(shaderHolder);
+        attachDynamicUniforms(shaderHolder);
+        return shaderHolder;
     }
 
-    private void attachDynamicSamplers(LDShaderInstance shader) {
+    private void attachDynamicSamplers(LDShaderHolder shaderHolder) {
+        var shader = shaderHolder.baseInstance;
         var samplerNames = shader.getShaderInstanceAccessor().getSamplerNames();
         if (samplerNames.contains("SamplerCurve")) {
-            shader.addDynamicSampler("SamplerCurve", curveTexture::getCurveTexture);
+            shaderHolder.addDynamicSampler("SamplerCurve", curveTexture::getCurveTexture);
         }
         if (samplerNames.contains("SamplerGradient")) {
-            shader.addDynamicSampler("SamplerGradient", gradientTexture::getGradientTexture);
+            shaderHolder.addDynamicSampler("SamplerGradient", gradientTexture::getGradientTexture);
         }
         if (samplerNames.contains("SamplerSceneColor")) {
-            shader.addDynamicSampler("SamplerSceneColor", () -> Optional.ofNullable(RenderPassPipeline.getCurrent())
+            shaderHolder.addDynamicSampler("SamplerSceneColor", () -> Optional.ofNullable(RenderPassPipeline.getCurrent())
                     .map(pipeline -> pipeline.getSceneSampler().getColorTextureId()).orElse(-1));
         }
         if (samplerNames.contains("SamplerSceneDepth")) {
-            shader.addDynamicSampler("SamplerSceneDepth", () -> Optional.ofNullable(RenderPassPipeline.getCurrent())
+            shaderHolder.addDynamicSampler("SamplerSceneDepth", () -> Optional.ofNullable(RenderPassPipeline.getCurrent())
                     .map(pipeline -> pipeline.getSceneSampler().getDepthTextureId()).orElse(-1));
         }
     }
 
-    private void attachDynamicUniforms(LDShaderInstance shader) {
+    private void attachDynamicUniforms(LDShaderHolder shaderHolder) {
+        var shader = shaderHolder.baseInstance;
         var uniformNames = shader.getShaderInstanceAccessor().getUniformMap().keySet();
         if (uniformNames.contains("U_CameraPosition")) {
-            shader.addDynamicUniform("U_CameraPosition", uniform -> {
+            shaderHolder.addDynamicUniform("U_CameraPosition", uniform -> {
                 if (RenderPassPipeline.getCurrent() != null) {
                     var camera = RenderPassPipeline.getCurrent().getCamera();
                     if (camera != null) {
@@ -194,12 +183,12 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             });
         }
         if (uniformNames.contains("U_InverseProjectionMatrix")) {
-            shader.addDynamicUniform("U_InverseProjectionMatrix", uniform -> {
+            shaderHolder.addDynamicUniform("U_InverseProjectionMatrix", uniform -> {
                 uniform.set(RenderSystem.getProjectionMatrix().invert(new Matrix4f()));
             });
         }
         if (uniformNames.contains("U_InverseViewMatrix")) {
-            shader.addDynamicUniform("U_InverseViewMatrix", uniform -> {
+            shaderHolder.addDynamicUniform("U_InverseViewMatrix", uniform -> {
                 uniform.set(RenderSystem.getModelViewMatrix().invert(new Matrix4f()));
             });
         }
@@ -207,36 +196,19 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     @Override
     public ShaderInstance getShader(MaterialContext context) {
-        if (shaderInstance == null) {
+        if (shaderHolder == null) {
             if (isCompiledError()) {
                 return PhotonShaders.getHDRParticleShader();
             }
             recompile();
         }
-        if (shaderInstance == null) {
+        if (shaderHolder == null) {
             return PhotonShaders.getHDRParticleShader();
         }
         if (context.getShaderDefine().isEmpty()) {
-            return shaderInstance;
+            return shaderHolder.getShaderInstance();
         }
-        return shaders.computeIfAbsent(context.getShaderDefine(), define -> {
-            // remove cache
-            Program.Type.FRAGMENT.getPrograms().remove(shaderInstance.getFragmentProgram().getName());
-            Program.Type.VERTEX.getPrograms().remove(shaderInstance.getVertexProgram().getName());
-            LDLibShaders.GEOMETRY_TYPE.getPrograms().remove(shaderInstance.getVertexProgram().getName());
-            var data = shaderInstance.serializeNBT(Platform.getFrozenRegistry());
-            try {
-                var defineShader = loadShaderInstance(shaderLocation, define);
-                defineShader.deserializeNBT(Platform.getFrozenRegistry(), data);
-                attachDynamicSamplers(defineShader);
-                attachDynamicUniforms(defineShader);
-                shadersCleanable.put(define, AutoCloseCleaner.registerRenderThread(this, defineShader));
-                return defineShader;
-            } catch (Throwable e) {
-                Photon.LOGGER.error("Failed to recompile shader", e);
-            }
-            return shaderInstance;
-        });
+        return shaderHolder.getShaderInstance(List.of(context.getShaderDefine()));
     }
 
     @Override
@@ -254,11 +226,6 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         var shaderConfigurator = new ConfiguratorGroup("photon.shader.settings");
         shaderConfigurator.setCollapse(false);
         shaderConfigurator.setCanCollapse(false);
-        shaderConfigurator.addEventListener(Configurator.CHANGE_EVENT, e -> {
-            shadersCleanable.values().forEach(Cleaner.Cleanable::clean);
-            shadersCleanable.clear();
-            shaders.clear();
-        });
 
         var shaderLocationField = new StringConfigurator("photon.shader",
                 () -> shaderLocation.toString(),
@@ -273,14 +240,14 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         var reloadButton = new Configurator().addInlineChild(new Button()
                 .setOnClick(event -> {
                     CompoundTag previousData = null;
-                    if (shaderInstance != null) {
-                        previousData = shaderInstance.serializeNBT(Platform.getFrozenRegistry());
+                    if (shaderHolder != null) {
+                        previousData = shaderHolder.serializeNBT(Platform.getFrozenRegistry());
                     }
                     recompile();
-                    if (previousData != null && shaderInstance != null) {
-                        shaderInstance.deserializeNBT(Platform.getFrozenRegistry(), previousData);
-                        attachDynamicSamplers(shaderInstance);
-                        attachDynamicUniforms(shaderInstance);
+                    if (previousData != null && shaderHolder != null) {
+                        shaderHolder.deserializeNBT(Platform.getFrozenRegistry(), previousData);
+                        attachDynamicSamplers(shaderHolder);
+                        attachDynamicUniforms(shaderHolder);
                     }
                     reloadShaderConfigurator(shaderConfigurator);
                 }).setText("photon.reload_shader").layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
@@ -313,8 +280,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     private void reloadShaderConfigurator(ConfiguratorGroup shaderConfigurator) {
         shaderConfigurator.removeAllConfigurators();
-        if (shaderInstance != null) {
-            shaderInstance.buildConfigurator(shaderConfigurator);
+        if (shaderHolder != null) {
+            shaderHolder.buildConfigurator(shaderConfigurator);
         }
     }
 
