@@ -435,5 +435,7 @@
   "FXObjectAnimationView.size": "Size",
   "FXObjectAnimationView.speed": "Speed",
   "FXObjectAnimationView.selfRotation": "Self Rotation",
-  "FXObjectAnimationView.shape": "Shape"
+  "FXObjectAnimationView.shape": "Shape",
+  "PhysicsSetting.collidedFriction": "Collided Friction",
+  "photon.emitter.config.physics.collidedFriction": "Friction applied when particles is collided"
 }

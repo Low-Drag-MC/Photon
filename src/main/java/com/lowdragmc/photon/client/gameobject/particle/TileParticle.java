@@ -465,10 +465,11 @@ u     */
         this.velocityY *= friction;
         this.velocityZ *= friction;
 
-        if (this.collided && friction != 1.0) {
-            this.velocityX *= 0.7F;
-            this.velocityY *= 0.7F;
-            this.velocityZ *= 0.7F;
+        if (this.collided) {
+            var collidedFriction = config.physics.getCollidedFriction(this);
+            this.velocityX *= collidedFriction;
+            this.velocityY *= collidedFriction;
+            this.velocityZ *= collidedFriction;
         }
     }
 

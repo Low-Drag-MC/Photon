@@ -31,6 +31,9 @@ public class PhysicsSetting extends ToggleGroup {
     @Configurable(name = "PhysicsSetting.friction", tips = "photon.emitter.config.physics.friction")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 1, curveConfig = @CurveConfig(xAxis = "duration", yAxis = "friction"))
     protected NumberFunction friction = NumberFunction.constant(1);
+    @Configurable(name = "PhysicsSetting.collidedFriction", tips = "photon.emitter.config.physics.collidedFriction")
+    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1, defaultValue = 1, curveConfig = @CurveConfig(xAxis = "duration", yAxis = "friction"))
+    protected NumberFunction collidedFriction = NumberFunction.constant(0.7f);
     @Configurable(name = "PhysicsSetting.gravity", tips = "photon.emitter.config.physics.gravity")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "gravity"))
     protected NumberFunction gravity = NumberFunction.constant(0);
@@ -46,6 +49,10 @@ public class PhysicsSetting extends ToggleGroup {
 
     public float getFriction(IParticle particle) {
         return friction.get(particle.getT(), () -> particle.getMemRandom("friction")).floatValue();
+    }
+
+    public float getCollidedFriction(IParticle particle) {
+        return collidedFriction.get(particle.getT(), () -> particle.getMemRandom("collidedFriction")).floatValue();
     }
 
     public float getGravity(IParticle particle) {
