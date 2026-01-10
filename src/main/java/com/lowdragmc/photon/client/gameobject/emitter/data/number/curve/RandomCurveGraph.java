@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.curve;
 
+import com.lowdragmc.lowdraglib2.client.shader.LDLibRenderTypes;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -12,14 +13,9 @@ import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib2.math.curve.ExplicitCubicBezierCurve2;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferUploader;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.Mth;
-import net.minecraft.world.phys.Vec2;
 import org.appliedenergistics.yoga.YogaDisplay;
 import org.appliedenergistics.yoga.YogaEdge;
 import org.appliedenergistics.yoga.YogaFlexDirection;
@@ -407,11 +403,11 @@ public class RandomCurveGraph extends BindableUIElement<Pair<ECBCurves, ECBCurve
         return this;
     }
 
-    private Vec2 getPointPosition(Vector2f coord, float x, float y, float width, float height) {
-        return new Vec2(x + width * coord.x, y + height * (1 - coord.y));
+    private Vector2f getPointPosition(Vector2f coord, float x, float y, float width, float height) {
+        return new Vector2f(x + width * coord.x, y + height * (1 - coord.y));
     }
 
-    private void drawGraphView(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTick) {
+    private void drawGraphView(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTick) {
         DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
         for (int i = 0; i < 6; i++) {
             DrawerHelper.drawSolidRect(graphics, x + i * width / 6, y, 1, height, ColorPattern.T_GRAY.color);
@@ -421,9 +417,9 @@ public class RandomCurveGraph extends BindableUIElement<Pair<ECBCurves, ECBCurve
         }
 
         // render area
-        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
+        var buffer = graphics.bufferSource().getBuffer(LDLibRenderTypes.guiOverlay());
+        RenderSystem.disableDepthTest();
+
         var matrix = graphics.pose().last().pose();
         var count = width * 2;
         for (int i = 0; i < count; i++) {
@@ -445,8 +441,6 @@ public class RandomCurveGraph extends BindableUIElement<Pair<ECBCurves, ECBCurve
             buffer.addVertex(matrix, p1.x, p1.y, 0.0f).setColor(ColorPattern.T_WHITE.color);
             buffer.addVertex(matrix, p0.x, p0.y, 0.0f).setColor(ColorPattern.T_WHITE.color);
         }
-
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
 
         drawGraphView(selectedPointA, value.getA(), graphics, x, y, width, height);
         drawGraphView(selectedPointB, value.getB(), graphics, x, y, width, height);

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.color;
 
+import com.lowdragmc.lowdraglib2.client.shader.LDLibRenderTypes;
 import com.lowdragmc.lowdraglib2.gui.texture.TransformTexture;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -7,7 +8,6 @@ import com.mojang.blaze3d.vertex.*;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.GameRenderer;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
@@ -23,19 +23,16 @@ public class GradientColorTexture extends TransformTexture {
 
     @Override
     @OnlyIn(Dist.CLIENT)
-    protected void drawInternal(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTicks) {
+    protected void drawInternal(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
         // render color bar
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        var mat = graphics.pose().last().pose();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        drawGradient(mat, buffer, x, y, width, height, gradientColor);
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
+        var buffer = graphics.bufferSource().getBuffer(LDLibRenderTypes.guiOverlay());
+        RenderSystem.disableDepthTest();
+
+        drawGradient(graphics.pose().last().pose(), buffer, x, y, width, height, gradientColor);
     }
 
     @OnlyIn(Dist.CLIENT)
-    public static void drawGradient(Matrix4f mat, BufferBuilder buf,
+    public static void drawGradient(Matrix4f mat, VertexConsumer buf,
                                     float x, float y, float width, float height, GradientColor gc) {
         final List<Float> keys = new ArrayList<>();
         keys.add(0f);

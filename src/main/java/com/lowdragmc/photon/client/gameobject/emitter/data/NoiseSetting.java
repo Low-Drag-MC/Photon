@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
+import com.lowdragmc.lowdraglib2.client.shader.LDLibRenderTypes;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
@@ -20,7 +21,6 @@ import lombok.Getter;
 import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.util.Mth;
 
 
@@ -140,15 +140,14 @@ public class NoiseSetting extends ToggleGroup {
 
         @Override
         @OnlyIn(Dist.CLIENT)
-        public void draw(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTicks) {
+        public void draw(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
             noise.get().setSeed(seed);
+
             // render color bar
-            RenderSystem.enableBlend();
-            RenderSystem.defaultBlendFunc();
             Matrix4f mat = graphics.pose().last().pose();
-            Tesselator tesselator = Tesselator.getInstance();
-            RenderSystem.setShader(GameRenderer::getPositionColorShader);
-            var buffer = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+
+            var buffer = graphics.bufferSource().getBuffer(LDLibRenderTypes.guiOverlay());
+            RenderSystem.disableDepthTest();
 
             for (int i = 0; i < width; i++) {
                 if (quality == Quality.Noise1D) {
@@ -182,8 +181,6 @@ public class NoiseSetting extends ToggleGroup {
                 }
 
             }
-
-            BufferUploader.drawWithShader(buffer.buildOrThrow());
         }
     }
 }

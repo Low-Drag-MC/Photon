@@ -12,7 +12,6 @@ import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.Mth;
-import net.minecraft.world.phys.Vec2;
 import org.appliedenergistics.yoga.YogaEdge;
 import org.appliedenergistics.yoga.YogaPositionType;
 import org.joml.Vector2f;
@@ -74,13 +73,13 @@ public class TrailSection extends ToggleGroup {
         father.addConfigurator(new Configurator().addInlineChild(canvas));
     }
 
-    private void drawCanvas(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTicks) {
+    private void drawCanvas(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
         if (vertices.size() < 2) return;
         var centerX = x + width / 2;
         var centerY = y + height / 2;
-        var points = new ArrayList<Vec2>();
+        var points = new ArrayList<Vector2f>();
         for (Vector2f vertex : vertices) {
-            points.add(new Vec2(vertex.x * width / 4  + centerX, vertex.y * height / 4 + centerY));
+            points.add(new Vector2f(vertex.x * width / 4  + centerX, vertex.y * height / 4 + centerY));
         }
         DrawerHelper.drawLines(graphics, points, -1, -1, 0.5f);
     }

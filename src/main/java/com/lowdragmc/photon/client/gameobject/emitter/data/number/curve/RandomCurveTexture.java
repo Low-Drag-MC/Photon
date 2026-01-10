@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.curve;
 
+import com.lowdragmc.lowdraglib2.client.shader.LDLibRenderTypes;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.TransformTexture;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -8,7 +9,6 @@ import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.GameRenderer;
 import org.joml.Vector2f;
 
 import java.util.function.Function;
@@ -39,12 +39,11 @@ public class RandomCurveTexture extends TransformTexture {
 
     @Override
     @OnlyIn(Dist.CLIENT)
-    protected void drawInternal(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTicks) {
+    protected void drawInternal(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
         // render area
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        var buffer = graphics.bufferSource().getBuffer(LDLibRenderTypes.guiOverlay());
+        RenderSystem.disableDepthTest();
+
         var matrix = graphics.pose().last().pose();
         Function<Vector2f, Vector2f> getPointPosition = coord -> new Vector2f(x + width * coord.x, y + height * (1 - coord.y));
         if (width < 2) return;
@@ -68,7 +67,6 @@ public class RandomCurveTexture extends TransformTexture {
             buffer.addVertex(matrix, p0.x, p0.y, 0.0f).setColor(ColorPattern.T_RED.color);
         }
 
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
         // render lines
         new CurveTexture(curves0).setColor(color).drawInternal(graphics, mouseX, mouseY, x, y, width, height, partialTicks);
         new CurveTexture(curves1).setColor(color).drawInternal(graphics, mouseX, mouseY, x, y, width, height, partialTicks);

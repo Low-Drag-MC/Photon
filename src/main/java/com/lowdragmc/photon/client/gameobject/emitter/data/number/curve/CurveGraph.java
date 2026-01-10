@@ -14,7 +14,6 @@ import com.lowdragmc.lowdraglib2.math.curve.ExplicitCubicBezierCurve2;
 import lombok.Getter;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.Mth;
-import net.minecraft.world.phys.Vec2;
 import org.appliedenergistics.yoga.YogaDisplay;
 import org.appliedenergistics.yoga.YogaEdge;
 import org.appliedenergistics.yoga.YogaFlexDirection;
@@ -327,11 +326,11 @@ public class CurveGraph extends BindableUIElement<ECBCurves> {
         return this;
     }
 
-    private Vec2 getPointPosition(Vector2f coord, float x, float y, float width, float height) {
-        return new Vec2(x + width * coord.x, y + height * (1 - coord.y));
+    private Vector2f getPointPosition(Vector2f coord, float x, float y, float width, float height) {
+        return new Vector2f(x + width * coord.x, y + height * (1 - coord.y));
     }
 
-    private void drawGraphView(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTick) {
+    private void drawGraphView(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTick) {
         DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
         for (int i = 0; i < 6; i++) {
             DrawerHelper.drawSolidRect(graphics, x + i * width / 6, y, 1, height, ColorPattern.T_GRAY.color);
@@ -342,6 +341,7 @@ public class CurveGraph extends BindableUIElement<ECBCurves> {
         var curves = value.getSegments();
         // render lines
         var points = curves.stream().flatMap(curve -> curve.getPoints(100).stream().map(coord -> getPointPosition(coord, x, y, width, height)).toList().stream()).collect(Collectors.toList());
+
         DrawerHelper.drawLines(graphics, points, -1, -1, 0.5f);
         Collections.reverse(points);
         DrawerHelper.drawLines(graphics, points, -1, -1, 0.5f);

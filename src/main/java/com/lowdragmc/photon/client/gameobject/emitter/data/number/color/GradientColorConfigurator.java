@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.color;
 
+import com.lowdragmc.lowdraglib2.client.shader.LDLibRenderTypes;
 import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
@@ -9,13 +10,7 @@ import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferUploader;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.GameRenderer;
-import org.apache.commons.lang3.tuple.Pair;
 import org.appliedenergistics.yoga.YogaEdge;
 import org.appliedenergistics.yoga.YogaPositionType;
 import org.jetbrains.annotations.NotNull;
@@ -120,22 +115,19 @@ public class GradientColorConfigurator extends ValueConfigurator<GradientColor> 
         }
     }
 
-    protected void drawColorPreview(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTicks) {
+    protected void drawColorPreview(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
         var gradientColor = value == null ? defaultValue : value;
         // render color bar
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
         var mat = graphics.pose().last().pose();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        var buffer = graphics.bufferSource().getBuffer(LDLibRenderTypes.guiOverlay());
+        RenderSystem.disableDepthTest();
+
         GradientColorTexture.drawGradient(mat, buffer, x, y, width, height, gradientColor);
         GradientColorTexture.drawGradient(mat, buffer, x, y - 1, width, 1, gradientColor);
         GradientColorTexture.drawGradient(mat, buffer, x, y + height, width, 1, gradientColor);
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
-        graphics.drawManaged(() -> {
-            DrawerHelper.drawSolidRect(graphics, x - 1, y, 1, height, gradientColor.getColor(0), false);
-            DrawerHelper.drawSolidRect(graphics, x + width, y, 1, height, gradientColor.getColor(1), false);
-        });
+
+        DrawerHelper.drawSolidRect(graphics, x - 1, y, 1, height, gradientColor.getColor(0));
+        DrawerHelper.drawSolidRect(graphics, x + width, y, 1, height, gradientColor.getColor(1));
     }
 
 }

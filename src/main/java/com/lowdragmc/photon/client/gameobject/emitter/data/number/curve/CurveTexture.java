@@ -7,7 +7,6 @@ import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.world.phys.Vec2;
 import org.joml.Vector2f;
 
 import java.util.ArrayList;
@@ -37,7 +36,7 @@ public class CurveTexture extends TransformTexture {
 
     @Override
     @OnlyIn(Dist.CLIENT)
-    protected void drawInternal(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTicks) {
+    protected void drawInternal(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
         var points = new ArrayList<Vector2f>();
         for (int i = 0; i < width; i++) {
             float coordX = i * 1f / width;
@@ -47,7 +46,7 @@ public class CurveTexture extends TransformTexture {
         points.add(new Vector2f(1, curves.getCurveY(1)));
         DrawerHelper.drawLines(
                 graphics,
-                points.stream().map(coord -> new Vec2(x + width * coord.x, y + height * (1 - coord.y))).toList(),
+                points.stream().map(coord -> new Vector2f(x + width * coord.x, y + height * (1 - coord.y))).toList(),
                 color,
                 color,
                 this.width);

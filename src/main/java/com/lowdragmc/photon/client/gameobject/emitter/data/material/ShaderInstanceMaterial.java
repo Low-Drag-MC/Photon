@@ -52,7 +52,9 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
     public class ShaderTexture implements IGuiTexture {
 
         @Override
-        public void draw(GuiGraphics graphics, int mouseX, int mouseY, float x, float y, float width, float height, float partialTicks) {
+        public void draw(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
+            graphics.flush();
+
             //sub area is just different width and height
             RenderSystem.enableBlend();
             float imageU = 0;
