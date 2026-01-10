@@ -213,6 +213,8 @@
   "addition_gpu_data.type.vec3": "Type: §evec3§r",
   "addition_gpu_data.t": "T",
   "addition_gpu_data.t.tips": "T value \u003d age / lifetime",
+  "addition_gpu_data.random": "Random Value",
+  "addition_gpu_data.random.tips": "Random value from [0, 1)",
   "addition_gpu_data.age": "Age",
   "addition_gpu_data.lifetime": "Lifetime",
   "addition_gpu_data.position": "Position (local)",
@@ -437,5 +439,7 @@
   "FXObjectAnimationView.selfRotation": "Self Rotation",
   "FXObjectAnimationView.shape": "Shape",
   "PhysicsSetting.collidedFriction": "Collided Friction",
-  "photon.emitter.config.physics.collidedFriction": "Friction applied when particles is collided"
+  "photon.emitter.config.physics.collidedFriction": "Friction applied when particles is collided",
+  "SamplerCurve": "Sampler Curve",
+  "SamplerGradient": "Sampler Gradient"
 }

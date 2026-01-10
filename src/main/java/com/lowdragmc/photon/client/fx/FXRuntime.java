@@ -119,21 +119,4 @@ public class FXRuntime implements IScene {
         }
         return list;
     }
-//
-//    @Override
-//    public @UnknownNullability CompoundTag serializeNBT(@Nonnull HolderLookup.Provider provider) {
-//        var runtimeData = new CompoundTag();
-//        runtimeData.put("fxData", fxData.serializeNBT(provider));
-//        runtimeData.put("root", root.serializeNBT(provider));
-//        return runtimeData;
-//    }
-//
-//    @Override
-//    public void deserializeNBT(@Nonnull HolderLookup.Provider provider, @Nonnull CompoundTag nbt) {
-//        root.transform().children().clear();
-//        objects.clear();
-//        fxData.deserializeNBT(provider, nbt.getCompound("fxData"));
-//        root.deserializeNBT(provider, nbt.getCompound("root"));
-//        initRuntime();
-//    }
 }

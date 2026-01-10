@@ -32,6 +32,10 @@ public class ParticleAdditionalGPUDataSetting extends AdditionalGPUDataSetting {
         }
     }
     private static final List<ParticleDataProvider> SUPPORTED_DATA_PROVIDERS = List.of(
+            new ParticleDataProvider("addition_gpu_data.random",
+                    Component.translatable("addition_gpu_data.random.tips")
+                            .append(Component.translatable("addition_gpu_data.type.float")),
+                    1, (particle, buffer, partialTick) -> buffer.put(particle.getMemRandom("instance_random"))),
             new ParticleDataProvider("addition_gpu_data.t",
                     Component.translatable("addition_gpu_data.t.tips")
                     .append(Component.translatable("addition_gpu_data.type.float")),
