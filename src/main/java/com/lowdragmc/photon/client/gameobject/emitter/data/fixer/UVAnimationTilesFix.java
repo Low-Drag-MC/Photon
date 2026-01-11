@@ -5,7 +5,9 @@ import com.mojang.datafixers.TypeRewriteRule;
 import com.mojang.datafixers.schemas.Schema;
 import com.mojang.serialization.Dynamic;
 
+import java.util.Map;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static com.mojang.datafixers.DSL.remainderFinder;
 
@@ -25,12 +27,14 @@ public final class UVAnimationTilesFix extends DataFix {
     private Dynamic<?> fixStructure(Dynamic<?> dynamic) {
         return dynamic.update("fx", fx ->
                 fx.update("fxData", fxData -> fxData.update("fxObjects",
-                        fxObjects -> fxObjects.createList(fxObjects.asStream().map(this::fixFXObject))
+                        fxObjects -> fxObjects.createList(fxObjects.asStream().map(fxObject -> {
+                            return fxObject.update("data", this::fixFXObject);
+                        }))
                 )));
     }
 
-    private Dynamic<?> fixFXObject(Dynamic<?> fxObject) {
-        return fxObject.update("data", data -> data.update("config", config -> {
+    private Dynamic<?> fixFXObject(Dynamic<?> data) {
+        return data.update("config", config -> {
             config = config.update("uvAnimation", uvAnimation -> {
                 var tilesOpt = uvAnimation.get("tiles").result();
                 if (tilesOpt.isPresent()) {
@@ -42,8 +46,12 @@ public final class UVAnimationTilesFix extends DataFix {
                 }
                 return uvAnimation;
             });
+            var trailMaterialOpt = config.get("trails").get("config").result();
+            if (trailMaterialOpt.isPresent()) {
+                config = config.update("trails", this::fixFXObject);
+            }
             return config;
-        }));
+        });
     }
 
 
