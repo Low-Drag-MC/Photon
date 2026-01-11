@@ -19,6 +19,7 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.lowdragmc.photon.client.PhotonShaders;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
+import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import lombok.Getter;
@@ -34,6 +35,7 @@ import net.minecraft.resources.ResourceLocation;
 import org.appliedenergistics.yoga.YogaAlign;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Matrix4f;
+import org.joml.Vector4f;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -187,6 +189,14 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         if (uniformNames.contains("U_InverseViewMatrix")) {
             shaderHolder.addDynamicUniform("U_InverseViewMatrix", uniform -> {
                 uniform.set(RenderSystem.getModelViewMatrix().invert(new Matrix4f()));
+            });
+        }
+        if (uniformNames.contains("U_ViewPort")) {
+            shaderHolder.addDynamicUniform("U_ViewPort", uniform -> {
+                uniform.set(new Vector4f(
+                        GlStateManager.Viewport.x(), GlStateManager.Viewport.y(),
+                        GlStateManager.Viewport.width(), GlStateManager.Viewport.height()
+                ));
             });
         }
     }
