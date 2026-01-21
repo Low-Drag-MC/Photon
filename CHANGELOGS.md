@@ -1,5 +1,8 @@
 ## ChangeLogs
 
+# v1.1.17
+* revert to 1.1.15
+
 # v1.1.15
 * Fixed massive rendering issues related to the bloom pr
 
