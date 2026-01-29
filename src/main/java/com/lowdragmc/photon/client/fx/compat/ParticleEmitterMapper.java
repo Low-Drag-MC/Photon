@@ -1,36 +1,29 @@
 package com.lowdragmc.photon.client.fx.compat;
 
+import com.lowdragmc.lowdraglib2.utils.TagBuilder;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtUtils;
 
 public class ParticleEmitterMapper implements Mapper{
+
     public static CompoundTag mapParticleEmitter(CompoundTag emitterTag){
         CompoundTag newEmitterTag = new CompoundTag();
-        newEmitterTag.putString("type", emitterTag.getString("_type"));
+        newEmitterTag.putString("type", emitterTag.getString("_type") + "_emitter");
         CompoundTag dataTag = new CompoundTag();
 
         //data tag
         dataTag.putString("name", emitterTag.getString("name"));
         dataTag.putInt("version",  emitterTag.getInt("_version"));
-        dataTag.put("transform", mapTransformTag(emitterTag.getCompound("transform")));
-
+        dataTag.put("transform", MapperUtils.mapTransformTag(emitterTag.getCompound("transform")));
+        dataTag.put("config", mapConfigTag(emitterTag.getCompound("config")));
+        newEmitterTag.put("data", dataTag);
 
 
         return newEmitterTag;
     }
 
-    public static CompoundTag mapTransformTag(CompoundTag transformTag){
-        CompoundTag newTransformTag = new CompoundTag();
-        newTransformTag.put("_childrenId", new ListTag());
-        newTransformTag.putString("_parentId", NbtUtils.loadUUID(transformTag.get("_parentID")).toString());
-        newTransformTag.putString("id", NbtUtils.loadUUID(transformTag.get("id")).toString());
-        newTransformTag.put("localRotation", MapperUtils.mapCoords(transformTag.get("localRotation")));
-        newTransformTag.put("localScale", MapperUtils.mapCoords(transformTag.get("localScale")));
-        newTransformTag.put("localPosition",  MapperUtils.mapCoords(transformTag.get("localPosition")));
-
-        return newTransformTag;
-    }
 
     public static CompoundTag mapConfigTag(CompoundTag configTag){
         CompoundTag newConfigTag = new CompoundTag();
@@ -45,29 +38,35 @@ public class ParticleEmitterMapper implements Mapper{
         newConfigTag.put("startDelay", MapperUtils.mapTypedValue(configTag.getCompound("startDelay")));
         newConfigTag.put("sizeOverLifetime",  MapperUtils.mapTypedValue(configTag.getCompound("sizeOverLifetime")));
         newConfigTag.put("startRotation", MapperUtils.mapTyped3Vec(configTag.getCompound("startRotation"), null));
-        newConfigTag.put()
+        newConfigTag.put("rotationBySpeed", mapRotationBySpeedTag(configTag.getCompound("rotationBySpeed")));
+        newConfigTag.put("physics", mapPhysicsTag(configTag.getCompound("physics")));
+        newConfigTag.put("startColor", MapperUtils.mapTypedValue(configTag.getCompound("startColor")));
+        newConfigTag.put("startSpeed", MapperUtils.mapTypedValue(configTag.getCompound("startSpeed")));
+        newConfigTag.put("inheritVelocity", mapInheritVelocity(configTag.getCompound("inheritVelocity")));
+        newConfigTag.put("colorOverLifetime",  mapColorOTTag(configTag.getCompound("colorOverLifetime")));
+        newConfigTag.put("startSize", MapperUtils.mapTyped3Vec(configTag.getCompound("startSize"), null));
+        newConfigTag.put("sizeOverLifetime", mapSizeOverLifeTimeTag(configTag.getCompound("sizeOverLifetime")));
+        newConfigTag.put("forceOverLifetime", mapForceOTTag(configTag.getCompound("forceOverLifetime")));
+        newConfigTag.put("noise", mapNoiseTag(configTag.getCompound("noise")));
+        newConfigTag.put("emission", mapEmissionTag(configTag.getCompound("emission")));
+        newConfigTag.put("sizeBySpeed", mapSizeBySpeedTag(configTag.getCompound("sizeBySpeed")));
+        newConfigTag.put("velocityOverLifetime", mapVelocityOLTag(configTag.getCompound("velocityOverLifetime")));
+        newConfigTag.put("rotationOverLifetime", mapRotationOLTTag(configTag.getCompound("rotationOverLifetime")));
+        newConfigTag.put("shape", mapShapeTag(configTag.getCompound("shape")));
+        newConfigTag.put("trails", mapTrailsTag(configTag.getCompound("trails")));
+        newConfigTag.put("subEmitters", mapSubEmittersTag(configTag.getCompound("subEmitters")));
+        newConfigTag.put("lifetimeByEmitterSpeed", mapLTByEmitterSpeed(configTag.getCompound("lifetimeByEmitterSpeed")));
+        newConfigTag.put("additionalGPUDataSetting", new CompoundTag());
+        newConfigTag.getCompound("additionalGPUDataSetting").putByte("_enable", (byte)0);
+        newConfigTag.put("renderer", MapperUtils.mapRendererTag(configTag.getCompound("renderer"), configTag));
+        newConfigTag.put("uvAnimation", MapperUtils.mapUVTag(configTag.getCompound("uvAnimation")));
+        newConfigTag.put("lights", MapperUtils.mapLightTag(configTag.getCompound("lights")));
+        newConfigTag.put("colorBySpeed", mapColorBSTag(configTag.getCompound("colorBySpeed")));
 
+        return newConfigTag;
     }
 
-    public static CompoundTag mapRendererTag(CompoundTag renderTag, CompoundTag configTag){
-        CompoundTag newRendererTag = new CompoundTag();
-        newRendererTag.putString("renderMode", renderTag.getString("renderMode"));
-        newRendererTag.putByte("useBlockUV",  renderTag.getByte("useBlockUV"));
-        newRendererTag.putByte("shade",  renderTag.getByte("shade"));
-        newRendererTag.putString("layer",  renderTag.getString("layer"));
-        newRendererTag.put("cull", mapCullTag(renderTag.getCompound("cull")));
-        return newRendererTag;
-    }
 
-    public static CompoundTag mapCullTag(CompoundTag cullTag){
-        CompoundTag newCullTag = new CompoundTag();
-        newCullTag.putByte("_enable", cullTag.getByte("_enable"));
-        if(newCullTag.getByte("_enable") == 1){
-            newCullTag.put("min", MapperUtils.mapCoords(cullTag.get("from")));
-            newCullTag.put("max", MapperUtils.mapCoords(cullTag.get("to")));
-        }
-        return newCullTag;
-    }
 
     public static CompoundTag mapRotationBySpeedTag(CompoundTag rotationTag){
         CompoundTag newRotationTag = new CompoundTag();
@@ -79,6 +78,16 @@ public class ParticleEmitterMapper implements Mapper{
             newRotationTag.put("yaw", MapperUtils.mapTypedValue(rotationTag.getCompound("yaw")));
         }
         return newRotationTag;
+    }
+
+    public static CompoundTag mapColorOTTag(CompoundTag colorTag){
+        CompoundTag newColorTag = new CompoundTag();
+        newColorTag.putByte("_enable", colorTag.getByte("enable"));
+        if(newColorTag.getByte("_enable") == 1){
+            newColorTag.put("color", MapperUtils.mapTypedValue(colorTag.getCompound("color")));
+        }
+            return newColorTag;
+
     }
 
     public static CompoundTag mapSizeOverLifeTimeTag(CompoundTag sizeOverLifeTimeTag){
@@ -100,15 +109,6 @@ public class ParticleEmitterMapper implements Mapper{
         return newForceOTTag;
     }
 
-    public static CompoundTag mapLightTag(CompoundTag lightTag){
-        CompoundTag newLightTag = new CompoundTag();
-        newLightTag.putByte("_enable", lightTag.getByte("enable"));
-        if(newLightTag.getByte("enable") == 1){
-            newLightTag.put("blockLight", MapperUtils.mapTypedValue(lightTag.getCompound("blockLight")));
-            newLightTag.put("skyLight", MapperUtils.mapTypedValue(lightTag.getCompound("skyLight")));
-        }
-        return newLightTag;
-    }
 
     public static CompoundTag mapNoiseTag(CompoundTag noiseTag){
         CompoundTag newNoiseTag = new CompoundTag();
@@ -175,7 +175,7 @@ public class ParticleEmitterMapper implements Mapper{
         return newSizeBySpeedTag;
     }
 
-    public static CompoundTag mapVelocityOTTag(CompoundTag velocityOTTag){
+    public static CompoundTag mapVelocityOLTag(CompoundTag velocityOTTag){
         CompoundTag newVelocityOTTag = new CompoundTag();
         newVelocityOTTag.putByte("_enable", velocityOTTag.getByte("enable"));
         if(newVelocityOTTag.getByte("enable") == 1){
@@ -208,8 +208,159 @@ public class ParticleEmitterMapper implements Mapper{
         newShapeTag.put("rotation", MapperUtils.mapTyped3Vec(shapeTag.getCompound("rotation"), null));
         newShapeTag.put("scale",  MapperUtils.mapTyped3Vec(shapeTag.getCompound("scale"), null));
         newShapeTag.put("position",  MapperUtils.mapTyped3Vec(shapeTag.getCompound("position"), null));
-        //Need to map shape here...
+        newShapeTag.put("shape", MapperUtils.mapShape(shapeTag.getCompound("shape")));
 
         return newShapeTag;
     }
+
+
+
+    public static CompoundTag mapTrailsTag(CompoundTag trailsTag){
+        CompoundTag newTrailsTag = new CompoundTag();
+        newTrailsTag.putByte("_enable", trailsTag.getByte("enable"));
+        if(newTrailsTag.getByte("enable") == 1){
+            newTrailsTag.putByte("dieWithParticles", trailsTag.getByte("dieWithParticles"));
+            newTrailsTag.putByte("sizeAffectsWidth", trailsTag.getByte("sizeAffectsWidth"));
+            newTrailsTag.putByte("inheritParticleColor", trailsTag.getByte("inheritParticleColor"));
+            newTrailsTag.putByte("sizeAffectsLifetime", trailsTag.getByte("sizeAffectsLifetime"));
+            newTrailsTag.putFloat("ratio",  trailsTag.getFloat("ratio"));
+            newTrailsTag.put("colorOverLifetime", MapperUtils.mapTypedValue(trailsTag.getCompound("colorOverLifetime")));
+            newTrailsTag.put("lifetime", MapperUtils.mapTypedValue(trailsTag.getCompound("lifetime")));
+        }
+        newTrailsTag.put("config", TrailEmitterMapper.mapTrailConfig(trailsTag.getCompound("config")));
+        newTrailsTag.put("araConfig", buildAraConfig());
+
+        return newTrailsTag;
+    }
+
+
+
+    public static CompoundTag buildAraConfig(){
+        CompoundTag tag = new CompoundTag();
+        tag.putInt("smoothness", 1);
+        tag.putString("space", "World");
+        tag.putString("textureMode", "Stretch");
+        tag.putFloat("uvWidthFactor", 1);
+        tag.putFloat("initialThickness", 1);
+        tag.putFloat("smoothingDistance", 0.05f);
+
+
+        tag.put("colorOverLength", MapperUtils.blankColorTag());
+
+        tag.putString("alignment", "View");
+
+        ListTag velTag = new ListTag();
+        velTag.add(FloatTag.valueOf(0));
+        velTag.add(FloatTag.valueOf(0));
+        velTag.add(FloatTag.valueOf(0));
+        tag.put("initialVelocity", velTag);
+
+        tag.putFloat("timeInterval", 0.05f);
+        tag.putFloat("thickness", 0.5f);
+
+        tag.put("thicknessOverTime", MapperUtils.blankTypedTag());
+
+        tag.putInt("duration", 100);
+        tag.putString("sorting", "OlderOnTop");
+        tag.putFloat("minDistance", 0.05f);
+        tag.putByte("highQualityCorners", (byte)0);
+
+        tag.put("thicknessOverLength", MapperUtils.blankTypedTag());
+
+        tag.putInt("initialColor", -1);
+
+        tag.put("physicsSetting", new CompoundTag());
+        tag.getCompound("physicsSetting").putByte("_enable", (byte)0);
+
+        tag.putByte("emit", (byte)1);
+        tag.putFloat("tileAnchor", 1);
+
+        tag.put("colorOverSegmentTime", MapperUtils.blankColorTag());
+
+        tag.putInt("cornerRoundness", 5);
+        tag.putFloat("time", 1);
+
+        tag.put("colorOverTime", MapperUtils.blankColorTag());
+
+        tag.putString("customSpace", "");
+
+        tag.put("thicknessOverSegmentTime", MapperUtils.blankTypedTag());
+
+        tag.putFloat("uvFactor", 1);
+
+        tag.put("section", new CompoundTag());
+        tag.getCompound("section").putByte("_enable", (byte)0);
+
+        tag.putByte("looping", (byte)1);
+
+
+        tag.put("renderer", MapperUtils.blankRenderer());
+
+        return tag;
+    }
+
+    public static CompoundTag mapInheritVelocity(CompoundTag inheritVelTag){
+        CompoundTag newInheritVelTag = new CompoundTag();
+        newInheritVelTag.putByte("_enable", inheritVelTag.getByte("enable"));
+        if(inheritVelTag.getByte("enable") == 1){
+            newInheritVelTag.put("multiply", MapperUtils.mapTypedValue(inheritVelTag.getCompound("multiply")));
+            newInheritVelTag.putString("mode",  inheritVelTag.getString("mode"));
+        }
+
+        return newInheritVelTag;
+    }
+
+    public static CompoundTag mapLTByEmitterSpeed(CompoundTag lteTag){
+        CompoundTag newLTETag = new CompoundTag();
+        newLTETag.putByte("_enable", lteTag.getByte("enable"));
+        if(lteTag.getByte("enable") == 1){
+            newLTETag.put("multiplier", MapperUtils.mapTypedValue(lteTag.getCompound("multiplier")));
+            newLTETag.put("speedRange", lteTag.getCompound("speedRange"));
+        }
+
+        return newLTETag;
+    }
+
+    public static CompoundTag mapSubEmittersTag(CompoundTag seTag){
+        CompoundTag newSeTag = new CompoundTag();
+        newSeTag.putByte("_enable", seTag.getByte("enable"));
+
+        if(seTag.getByte("enable") == 1){
+            ListTag payload = new ListTag();
+            ListTag oldPayload = seTag.getList("emitters", 10);
+            oldPayload.forEach(e -> payload.add(mapSubEmitter((CompoundTag)e)));
+            newSeTag.put("payload", payload);
+            newSeTag.putInt("uid", payload.size());
+        }
+        return newSeTag;
+    }
+
+    public static CompoundTag mapSubEmitter(CompoundTag subEmitterTag){
+        CompoundTag newSubEmitterTag = new CompoundTag();
+        newSubEmitterTag.putByte("inheritSize",  subEmitterTag.getByte("inheritSize"));
+        newSubEmitterTag.putByte("inheritRotation",   subEmitterTag.getByte("inheritRotation"));
+        newSubEmitterTag.putByte("inheritLifetime",  subEmitterTag.getByte("inheritLifetime"));
+        newSubEmitterTag.putInt("tickInterval", subEmitterTag.getByte("tickInterval"));
+        newSubEmitterTag.putByte("inheritColor",  subEmitterTag.getByte("inheritColor"));
+        newSubEmitterTag.put("emitProbability", MapperUtils.mapTypedValue(subEmitterTag.getCompound("emitProbability")));
+        newSubEmitterTag.putByte("inheritDuration",  subEmitterTag.getByte("inheritDuration"));
+        newSubEmitterTag.putString("event", subEmitterTag.getString("event"));
+        newSubEmitterTag.putString("fxLocation", subEmitterTag.getString("emitter"));
+
+        return newSubEmitterTag;
+    }
+
+    public static CompoundTag mapColorBSTag(CompoundTag colorTag){
+        CompoundTag newColorTag = new CompoundTag();
+        newColorTag.putByte("_enable", colorTag.getByte("enable"));
+        if(newColorTag.getByte("_enable") == 1){
+            newColorTag.put("speedRange",  colorTag.getCompound("speedRange"));
+            newColorTag.put("color", MapperUtils.mapTypedValue(colorTag.getCompound("color")));
+        }
+        return  newColorTag;
+    }
+
+
+
+
 }
