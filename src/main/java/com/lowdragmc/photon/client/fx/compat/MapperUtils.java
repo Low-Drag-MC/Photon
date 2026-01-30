@@ -118,14 +118,10 @@ public class MapperUtils {
 
     public static CompoundTag gradient(ListTag oldA, ListTag oldR, ListTag oldG, ListTag oldB) {
         // Load old data from tags
-        List<Vec2> aP = new ArrayList<>();
         List<Vec2> rP = new ArrayList<>();
         List<Vec2> gP = new ArrayList<>();
         List<Vec2> bP = new ArrayList<>();
 
-        for (int i = 0; i < oldA.size(); i += 2) {
-            aP.add(new Vec2(oldA.getFloat(i), oldA.getFloat(i + 1)));
-        }
         for (int i = 0; i < oldR.size(); i += 2) {
             rP.add(new Vec2(oldR.getFloat(i), oldR.getFloat(i + 1)));
         }
@@ -136,9 +132,9 @@ public class MapperUtils {
             bP.add(new Vec2(oldB.getFloat(i), oldB.getFloat(i + 1)));
         }
 
-        // Helper method to interpolate value at t (same logic as old get() method)
+        // Helper method to interpolate value at t
         java.util.function.BiFunction<List<Vec2>, Float, Float> get = (data, t) -> {
-            if (data.isEmpty()) return 0f;
+            if (data.isEmpty()) return 1f;
             var value = data.get(0).y;
             var found = t < data.get(0).x;
             if (!found) {
@@ -158,14 +154,8 @@ public class MapperUtils {
             return value;
         };
 
-        // Create new alpha ListTag (copy directly)
-        ListTag newA = new ListTag();
-        for (var point : aP) {
-            newA.add(FloatTag.valueOf(point.x));
-            newA.add(FloatTag.valueOf(point.y));
-        }
 
-        // Create new RGB ListTag (merge r, g, b channels)
+        // Create new RGB ListTag (merge r, g, b at each unique t position)
         ListTag newRGB = new ListTag();
 
         // Collect all unique t values from r, g, b channels
@@ -188,7 +178,7 @@ public class MapperUtils {
 
         // Create and return new CompoundTag
         var tag = new CompoundTag();
-        tag.put("a", newA);
+        tag.put("a", oldA);
         tag.put("rgb", newRGB);
         return tag;
     }
