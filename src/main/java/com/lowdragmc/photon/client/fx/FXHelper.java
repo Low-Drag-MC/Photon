@@ -1,7 +1,6 @@
 package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.lowdraglib2.Platform;
-import com.lowdragmc.photon.Photon;
 import net.minecraft.nbt.NbtAccounter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -54,7 +53,6 @@ public class FXHelper {
             fx.deserializeNBT(Platform.getFrozenRegistry(), tag);
             return fx;
         } catch (Exception ignored) {
-            Photon.LOGGER.error(ignored.getMessage());
             return null;
         }
     }
