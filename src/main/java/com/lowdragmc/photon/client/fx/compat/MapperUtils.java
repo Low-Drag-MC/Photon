@@ -94,6 +94,22 @@ public class MapperUtils {
                 dataTag.putString("resourcePath",  "built-in(built-in:circle)");
                 break;
 
+            case "RandomColor":
+                newTypedValueTag.putString("type", "random_color");
+                if(typedValueTag.contains("a", Tag.TAG_INT)){
+                    dataTag.putInt("a", typedValueTag.getInt("a"));
+                }
+                else{
+                    dataTag.putFloat("a", typedValueTag.getFloat("a"));
+                }
+                if(typedValueTag.contains("b", Tag.TAG_INT)){
+                    dataTag.putInt("b", typedValueTag.getInt("b"));
+                }
+                else{
+                    dataTag.putFloat("b", typedValueTag.getFloat("b"));
+                }
+                break;
+
 
         }
         newTypedValueTag.put("data", dataTag);
