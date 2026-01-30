@@ -15,6 +15,8 @@ public class BeamEmitterMapper implements Mapper{
         dataTag.put("transform", MapperUtils.mapTransformTag(emitterTag.getCompound("transform")));
         dataTag.put("config", mapBeamConfig(emitterTag.getCompound("config")));
 
+        newEmitterTag.put("data", dataTag);
+
 
         return newEmitterTag;
     }
@@ -24,13 +26,13 @@ public class BeamEmitterMapper implements Mapper{
         newBeamConfigTag.putInt("duration",  configTag.getInt("duration"));
         newBeamConfigTag.putByte("looping", configTag.getByte("looping"));
 
-        newBeamConfigTag.put("color", MapperUtils.mapTypedValue(configTag.getCompound("color")));
-        newBeamConfigTag.put("end", MapperUtils.mapTyped3Vec(configTag.getCompound("end"), null));
+        newBeamConfigTag.put("color", MapperUtils.mapTypedValue(configTag.getCompound("color"), false));
+        newBeamConfigTag.put("end", MapperUtils.mapCoords(configTag.getCompound("end")));
         newBeamConfigTag.put("renderer", MapperUtils.mapRendererTag(configTag.getCompound("renderer"), configTag));
         newBeamConfigTag.put("uvAnimation", MapperUtils.mapUVTag(configTag.getCompound("uvAnimation")));
-        newBeamConfigTag.put("width", MapperUtils.mapTypedValue(configTag.getCompound("width")));
+        newBeamConfigTag.put("width", MapperUtils.mapTypedValue(configTag.getCompound("width"), false));
         newBeamConfigTag.put("lights", MapperUtils.mapLightTag(configTag.getCompound("lights")));
-        newBeamConfigTag.put("emitRate", MapperUtils.mapTypedValue(configTag.getCompound("emitRate")));
+        newBeamConfigTag.put("emitRate", MapperUtils.mapTypedValue(configTag.getCompound("emitRate"), false));
 
         newBeamConfigTag.putString("raycastBlockMode", "VISUAL");
 

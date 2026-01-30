@@ -15,7 +15,7 @@ public class TrailEmitterMapper implements Mapper {
         dataTag.put("transform", MapperUtils.mapTransformTag(emitterTag.getCompound("transform")));
         dataTag.put("config", mapTrailConfig(emitterTag.getCompound("config")));
 
-
+        newEmitterTag.put("data", dataTag);
 
         return newEmitterTag;
     }
@@ -25,8 +25,8 @@ public class TrailEmitterMapper implements Mapper {
         newTrailConfigTag.putInt("startDelay",  trailConfigTag.getByte("startDelay"));
         newTrailConfigTag.put("lights", MapperUtils.mapLightTag(trailConfigTag.getCompound("lights")));
         newTrailConfigTag.put("uvAnimation", MapperUtils.mapUVTag(trailConfigTag.getCompound("uvAnimation")));
-        newTrailConfigTag.put("colorOverTrail", MapperUtils.mapTypedValue(trailConfigTag.getCompound("colorOverTrail")));
-        newTrailConfigTag.put("widthOverTrail",  MapperUtils.mapTypedValue(trailConfigTag.getCompound("widthOverTrail")));
+        newTrailConfigTag.put("colorOverTrail", MapperUtils.mapTypedValue(trailConfigTag.getCompound("colorOverTrail"), false));
+        newTrailConfigTag.put("widthOverTrail",  MapperUtils.mapTypedValue(trailConfigTag.getCompound("widthOverTrail"), false));
         newTrailConfigTag.putFloat("minVertexDistance",  trailConfigTag.getFloat("minVertexDistance"));
         newTrailConfigTag.putInt("time",  trailConfigTag.getInt("time"));
         newTrailConfigTag.putString("uvMode",  trailConfigTag.getString("uvMode"));

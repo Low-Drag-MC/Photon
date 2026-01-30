@@ -68,6 +68,9 @@ public class FXCompat {
                 case "particle":
                     fxObj.add(ParticleEmitterMapper.mapParticleEmitter(fxObject));
                     break;
+                case "empty":
+                    fxObj.add(EmptyMapper.mapEmpty(fxObject));
+                    break;
                 default:
                     Photon.LOGGER.warn("Detected unknown type {}", fxObject.getString("_type"));
 

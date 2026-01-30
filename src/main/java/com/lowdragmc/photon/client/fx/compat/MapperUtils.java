@@ -42,56 +42,78 @@ public class MapperUtils {
      * @param key that the list tag lives under.
      * @return
      */
-    public static ListTag mapTyped3Vec(CompoundTag typed3VecTag, String[] key){
+    public static ListTag mapTyped3Vec(CompoundTag typed3VecTag, String[] key, boolean floatToDouble){
         if(key == null){
             key = new String[]{"x", "y", "z"};
         }
         ListTag listTag = new ListTag();
         for(int i = 0; i < key.length; i++){
-            listTag.add(mapTypedValue(typed3VecTag.getCompound(key[i])));
+            listTag.add(mapTypedValue(typed3VecTag.getCompound(key[i]), floatToDouble));
         }
         return listTag;
     }
 
-    public static CompoundTag mapTypedValue(CompoundTag typedValueTag){
+
+
+    public static CompoundTag mapTypedValue(CompoundTag typedValueTag,  boolean floatToDouble){
         CompoundTag newTypedValueTag = new CompoundTag();
         newTypedValueTag.putString("type", typedValueTag.getString("_type").toLowerCase());
         CompoundTag dataTag = new CompoundTag();
         switch(typedValueTag.getString("_type")){
-            case "Constant":
-                dataTag.putInt("number", typedValueTag.getInt("number"));
-                break;
             case "Curve":
                dataTag = typedValueTag.copy();
                dataTag.remove("_type");
                dataTag.remove("defaultValue");
                dataTag.putByte("lockControlPoint", (byte)1);
                break;
-            case "Color":
+            case "Constant", "Color":
                 dataTag = typedValueTag.copy();
                 dataTag.remove("_type");
+                if(floatToDouble && dataTag.contains("number", Tag.TAG_FLOAT)){
+                    //convert to double
+                    dataTag.putDouble("number", dataTag.getFloat("number"));
+                }
+                break;
+            case "RandomConstant":
+                dataTag.putFloat("a", typedValueTag.getFloat("a"));
+                dataTag.putFloat("b", typedValueTag.getFloat("b"));
+                newTypedValueTag.putString("type", "random_constant");
                 break;
             case "Gradient":
-                dataTag = gradient(typedValueTag.getList("a", 10), typedValueTag.getList("r", 10), typedValueTag.getList("g", 10), typedValueTag.getList("b", 10));
+                CompoundTag gradientTag = gradient(typedValueTag.getList("a", Tag.TAG_FLOAT), typedValueTag.getList("r", Tag.TAG_FLOAT), typedValueTag.getList("g", Tag.TAG_FLOAT), typedValueTag.getList("b", Tag.TAG_FLOAT));
+                dataTag.put("gradientColor",  gradientTag);
                 break;
             case "TextureMaterial":
                 newTypedValueTag.putString("type", "texture");
+                dataTag = buildBlankTexture();
                 dataTag.putString("texture",  typedValueTag.getString("texture"));
                 dataTag.putFloat("discardThreshold", typedValueTag.getFloat("discardThreshold"));
-                dataTag.putString("hdrMode", "ADDITIVE");
-                ListTag hdr = new ListTag();
-                hdr.add(FloatTag.ZERO);
-                hdr.add(FloatTag.ZERO);
-                hdr.add(FloatTag.ZERO);
-                hdr.add(FloatTag.valueOf(1));
-                dataTag.put("hdr", hdr);
-                dataTag.put("pixelArt", new CompoundTag());
-                dataTag.getCompound("pixelArt").putByte("_enable", (byte)0);
                 break;
+            case "CustomShaderMaterial":
+                newTypedValueTag.putString("type", "ui_resource_material");
+                dataTag.putString("resourcePath",  "built-in(built-in:circle)");
+                break;
+
 
         }
         newTypedValueTag.put("data", dataTag);
         return newTypedValueTag;
+    }
+
+    public static CompoundTag buildBlankTexture(){
+        CompoundTag dataTag = new CompoundTag();
+        dataTag.putString("texture",  "");
+        dataTag.putFloat("discardThreshold", .01f);
+        dataTag.putString("hdrMode", "ADDITIVE");
+        ListTag hdr = new ListTag();
+        hdr.add(FloatTag.ZERO);
+        hdr.add(FloatTag.ZERO);
+        hdr.add(FloatTag.ZERO);
+        hdr.add(FloatTag.valueOf(1));
+        dataTag.put("hdr", hdr);
+        dataTag.put("pixelArt", new CompoundTag());
+        dataTag.getCompound("pixelArt").putByte("_enable", (byte)0);
+        return dataTag;
     }
 
     public static CompoundTag gradient(ListTag oldA, ListTag oldR, ListTag oldG, ListTag oldB) {
@@ -242,7 +264,12 @@ public class MapperUtils {
         // data section (expanded)
         var data = new CompoundTag();
         data.putString("texture", "photon:textures/particle/circle.png");
-        data.putInt("hdr", 4);
+        ListTag hdr =  new ListTag();
+        hdr.add(FloatTag.ZERO);
+        hdr.add(FloatTag.ZERO);
+        hdr.add(FloatTag.ZERO);
+        hdr.add(FloatTag.valueOf(1));
+        data.put("hdr", hdr);
         data.putString("hdrMode", "ADDITIVE");
         data.put("pixelArt", new CompoundTag());
         data.putFloat("discardThreshold", 0.1f);
@@ -254,10 +281,10 @@ public class MapperUtils {
 
         payload.add(payloadElement0);
         materials.put("payload", payload);
+        materials.putInt("uid", 1);
 
         tag.put("materials", materials);
 
-        tag.putInt("uid", 1);
 
         return tag;
 
@@ -270,7 +297,7 @@ public class MapperUtils {
         newMaterialTag.putByte("depthMask", materialTag.getByte("depthMask"));
         newMaterialTag.putByte("depthTest", materialTag.getByte("depthTest"));
         newMaterialTag.put("blendMode", materialTag.getCompound("blendMode"));
-        newMaterialTag.put("material",  mapTypedValue(materialTag.getCompound("material")));
+        newMaterialTag.put("material",  mapTypedValue(materialTag.getCompound("material"), false));
 
         return newMaterialTag;
     }
@@ -280,8 +307,8 @@ public class MapperUtils {
         CompoundTag newLightTag = new CompoundTag();
         newLightTag.putByte("_enable", lightTag.getByte("enable"));
         if(newLightTag.getByte("_enable") == 1){
-            newLightTag.put("blockLight", MapperUtils.mapTypedValue(lightTag.getCompound("blockLight")));
-            newLightTag.put("skyLight", MapperUtils.mapTypedValue(lightTag.getCompound("skyLight")));
+            newLightTag.put("blockLight", MapperUtils.mapTypedValue(lightTag.getCompound("blockLight"), false));
+            newLightTag.put("skyLight", MapperUtils.mapTypedValue(lightTag.getCompound("skyLight"), false));
         }
         return newLightTag;
     }
@@ -314,6 +341,7 @@ public class MapperUtils {
         pivot.add(FloatTag.ZERO);
         pivot.add(FloatTag.ZERO);
         newRendererTag.put("modelPivot", pivot);
+        newRendererTag.putString("vertexSortingMode", "NONE");
 
         return newRendererTag;
     }
@@ -333,10 +361,10 @@ public class MapperUtils {
         newUVTag.putByte("_enable", uvTag.getByte("enable"));
         if(newUVTag.getByte("_enable") == 1){
             newUVTag.putIntArray("tiles", new int[]{uvTag.getCompound("tiles").getInt("a"), uvTag.getCompound("tiles").getInt("b")});
-            newUVTag.put("startFrame", MapperUtils.mapTypedValue(uvTag.getCompound("startFrame")));
+            newUVTag.put("startFrame", MapperUtils.mapTypedValue(uvTag.getCompound("startFrame"), false));
             newUVTag.putFloat("cycle",  uvTag.getFloat("cycle"));
             newUVTag.putString("animation",  uvTag.getString("animation"));
-            newUVTag.put("frameOverTime", MapperUtils.mapTypedValue(uvTag.getCompound("frameOverTime")));
+            newUVTag.put("frameOverTime", MapperUtils.mapTypedValue(uvTag.getCompound("frameOverTime"), false));
         }
 
         return newUVTag;
