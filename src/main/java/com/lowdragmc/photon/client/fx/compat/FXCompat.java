@@ -29,9 +29,6 @@ public class FXCompat {
         } catch (IOException e) {
             Photon.LOGGER.error(e.getMessage());
         }
-
-
-
             try {
                 Files.list(FX_CVT_PATH).forEach(path -> {
                     try {

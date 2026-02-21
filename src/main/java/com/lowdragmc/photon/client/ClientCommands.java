@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.editor.ui.EditorWindow;
 import com.lowdragmc.lowdraglib2.gui.holder.ModularUIScreen;
 import com.lowdragmc.lowdraglib2.gui.ui.*;
+import com.lowdragmc.photon.client.fx.compat.FXCompat;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
@@ -12,6 +13,7 @@ import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.core.mixins.accessor.ParticleEngineAccessor;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import net.minecraft.commands.Commands;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Minecraft;
@@ -66,6 +68,11 @@ public class ClientCommands {
                                     } else {
                                         FXHelper.clearCache();
                                     }
+                                    return 1;
+                                }))
+                        .then(Commands.literal("convert").requires(source -> source.hasPermission(2))
+                                .executes(context -> {
+                                    FXCompat.convertFX();
                                     return 1;
                                 }))
         );
