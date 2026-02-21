@@ -22,6 +22,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassP
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
@@ -32,7 +33,6 @@ import net.minecraft.world.inventory.InventoryMenu;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.resources.ResourceLocation;
-import org.appliedenergistics.yoga.YogaAlign;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -257,7 +257,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                         attachDynamicUniforms(shaderHolder);
                     }
                     reloadShaderConfigurator(shaderConfigurator);
-                }).setText("photon.reload_shader").layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
+                }).setText("photon.reload_shader").layout(layout -> layout.alignSelf(AlignItems.CENTER)));
 
         configurator.inlineContainer.addChild( // button to select shader
                 new Button().setText("photon.select_shader").setOnClick(e -> {
@@ -272,7 +272,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                             configurator.notifyChanges();
                         }
                     }).show(mui.ui.rootElement);
-                }).layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
+                }).layout(layout -> layout.alignSelf(AlignItems.CENTER)));
 
         reloadShaderConfigurator(shaderConfigurator);
 

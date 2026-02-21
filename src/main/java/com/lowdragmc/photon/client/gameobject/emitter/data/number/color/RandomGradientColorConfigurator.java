@@ -12,10 +12,8 @@ import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
 import org.apache.commons.lang3.tuple.Pair;
-import org.appliedenergistics.yoga.YogaEdge;
-import org.appliedenergistics.yoga.YogaFlexDirection;
-import org.appliedenergistics.yoga.YogaGutter;
-import org.appliedenergistics.yoga.YogaPositionType;
+import dev.vfyjxf.taffy.style.FlexDirection;
+import dev.vfyjxf.taffy.style.TaffyPosition;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nonnull;
@@ -35,11 +33,11 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
         }
 
         inlineContainer.addChildren(colorPreview = new UIElement().layout(layout -> {
-                    layout.setHeight(14);
-                    layout.setPadding(YogaEdge.ALL, 3);
+                    layout.height(14);
+                    layout.paddingAll(3);
                 }).style(style -> style.backgroundTexture(Sprites.RECT_RD_SOLID))
                 .addChildren(new UIElement()
-                        .layout(layout -> layout.setHeightPercent(100))
+                        .layout(layout -> layout.heightPercent(100))
                         .style(style -> style.backgroundTexture(this::drawColorPreview))
                         .addEventListener(UIEvents.MOUSE_DOWN, this::onClick)));
 
@@ -47,11 +45,11 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
         this.gradientSelector1 = createGradientSelector(gradient -> updateValueActively(Pair.of(value.getLeft(), gradient) ), value.getRight());
 
         this.gradientSelector = new UIElement().layout(layout -> {
-            layout.setPositionType(YogaPositionType.ABSOLUTE);
-            layout.setFlexDirection(YogaFlexDirection.ROW);
-            layout.setPadding(YogaEdge.ALL, 4);
-            layout.setGap(YogaGutter.ALL, 2);
-            layout.setMaxWidth(300);
+            layout.positionType(TaffyPosition.ABSOLUTE);
+            layout.flexDirection(FlexDirection.ROW);
+            layout.paddingAll(4);
+            layout.gapAll(2);
+            layout.maxWidth(300);
         }).style(style -> style.zIndex(1).backgroundTexture(Sprites.BORDER))
                 .addChildren(gradientSelector0, gradientSelector1);
         this.gradientSelector.setFocusable(true);
@@ -62,7 +60,7 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
     private GradientColorSelector createGradientSelector(Consumer<GradientColor> onGradientChanged, GradientColor initialValue) {
         var gradientSelector = new GradientColorSelector();
         gradientSelector.layout(layout -> {
-            layout.setFlex(1);
+            layout.flex(1);
         });
         gradientSelector.setOnColorGradientChangeListener(onGradientChanged);
         gradientSelector.setValue(initialValue, false);
@@ -105,9 +103,9 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
             root.addChild(gradientSelector.layout(layout -> {
                 var x = colorPreview.getPositionX();
                 var y = colorPreview.getPositionY();
-                layout.setPosition(YogaEdge.LEFT, x - root.getLayoutX());
-                layout.setPosition(YogaEdge.TOP, y - root.getLayoutY());
-                layout.setWidth(colorPreview.getSizeWidth());
+                layout.left( x - root.getLayoutX());
+                layout.top( y - root.getLayoutY());
+                layout.width(colorPreview.getSizeWidth());
             }));
             this.gradientSelector.focus();
         }

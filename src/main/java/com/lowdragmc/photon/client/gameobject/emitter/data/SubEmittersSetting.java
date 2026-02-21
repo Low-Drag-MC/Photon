@@ -27,7 +27,6 @@ import net.minecraft.nbt.IntTag;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import org.appliedenergistics.yoga.YogaDisplay;
 import org.joml.Quaternionf;
 
 import javax.annotation.Nullable;
@@ -63,7 +62,7 @@ public class SubEmittersSetting extends ToggleGroup {
         var instance = getter.get();
         if (instance != null && instance.createDirectConfigurator() instanceof ConfiguratorGroup group) {
             group.setCollapse(false);
-            group.lineContainer.setDisplay(YogaDisplay.NONE);
+            group.lineContainer.setDisplay(false);
             return group;
         }
         return new Configurator();

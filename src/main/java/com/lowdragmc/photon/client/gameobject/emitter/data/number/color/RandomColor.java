@@ -7,11 +7,9 @@ import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.configurator.NumberFunctionConfigurator;
+import dev.vfyjxf.taffy.style.FlexWrap;
 import net.minecraft.util.RandomSource;
-import org.appliedenergistics.yoga.YogaEdge;
-import org.appliedenergistics.yoga.YogaFlexDirection;
-import org.appliedenergistics.yoga.YogaGutter;
-import org.appliedenergistics.yoga.YogaWrap;
+import dev.vfyjxf.taffy.style.FlexDirection;
 
 import java.util.function.Supplier;
 
@@ -77,11 +75,11 @@ public class RandomColor extends RandomConstant {
     public void createConfigurator(NumberFunctionConfigurator configurator) {
         ColorConfigurator a, b;
         configurator.inlineContainer.addChild(new UIElement().layout(layout -> {
-            layout.setWidthPercent(100);
-            layout.setGap(YogaGutter.ALL, 2);
-            layout.setMargin(YogaEdge.LEFT, 2);
-            layout.setFlexDirection(YogaFlexDirection.ROW);
-            layout.setWrap(YogaWrap.WRAP);
+            layout.widthPercent(100);
+            layout.gapAll(2);
+            layout.marginLeft(2);
+            layout.flexDirection(FlexDirection.ROW);
+            layout.wrap(FlexWrap.WRAP);
         }).addChildren(
                 a = new ColorConfigurator("", () -> getA().intValue(), color -> {
                     setA(color);
@@ -93,14 +91,14 @@ public class RandomColor extends RandomConstant {
                 }, getB().intValue(), true)
         ));
         a.layout(layout -> {
-            layout.setFlex(1);
-            layout.setMinWidth(40);
-            layout.setHeight(14);
+            layout.flex(1);
+            layout.minWidth(40);
+            layout.height(14);
         });
         b.layout(layout -> {
-            layout.setFlex(1);
-            layout.setMinWidth(40);
-            layout.setHeight(14);
+            layout.flex(1);
+            layout.minWidth(40);
+            layout.height(14);
         });
     }
 

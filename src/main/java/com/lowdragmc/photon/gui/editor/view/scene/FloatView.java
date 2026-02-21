@@ -5,10 +5,12 @@ import com.lowdragmc.lowdraglib2.gui.ui.data.Horizontal;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
+import dev.vfyjxf.taffy.style.AlignContent;
+import dev.vfyjxf.taffy.style.AlignItems;
+import dev.vfyjxf.taffy.style.FlexDirection;
+import dev.vfyjxf.taffy.style.TaffyPosition;
 import lombok.Getter;
 import net.minecraft.network.chat.Component;
-import org.appliedenergistics.yoga.*;
 import org.joml.Vector2f;
 
 import java.util.function.Supplier;
@@ -24,18 +26,18 @@ public class FloatView extends UIElement {
 
     public FloatView(SceneView sceneView, Component title) {
         this.sceneView = sceneView;
-        getLayout().setPositionType(YogaPositionType.ABSOLUTE);
-        getLayout().setWidth(150);
-        getLayout().setPositionPercent(YogaEdge.LEFT, 100);
-        getLayout().setPositionPercent(YogaEdge.TOP, 100);
+        getLayout().positionType(TaffyPosition.ABSOLUTE);
+        getLayout().width(150);
+        getLayout().leftPercent(100);
+        getLayout().topPercent(100);
 
         this.titleBar = new UIElement();
         this.contentContainer = new UIElement();
 
         this.titleBar.layout(layout -> {
-            layout.setWidthPercent(100);
-            layout.setAlignItems(YogaAlign.CENTER);
-            layout.setPadding(YogaEdge.ALL, 5);
+            layout.widthPercent(100);
+            layout.alignItems(AlignItems.CENTER);
+            layout.paddingAll(5);
         }).addClass("preview_bg");
         titleBar.addChild(new Label()
                 .textStyle(style -> style
@@ -51,8 +53,8 @@ public class FloatView extends UIElement {
             if (event.currentElement == titleBar && event.dragHandler.draggingObject instanceof Vector2f initialPos) {
                 var newPos = new Vector2f(initialPos).add(event.x - event.dragStartX, event.y - event.dragStartY);
                 this.layout(layout -> {
-                    layout.setPosition(YogaEdge.LEFT, newPos.x);
-                    layout.setPosition(YogaEdge.TOP, newPos.y);
+                    layout.left( newPos.x);
+                    layout.top( newPos.y);
                 });
             }
         });
@@ -63,11 +65,11 @@ public class FloatView extends UIElement {
         });
 
         this.contentContainer.layout(layout -> {
-            layout.setWidthPercent(100);
-            layout.setAlignItems(YogaAlign.CENTER);
-            layout.setJustifyContent(YogaJustify.CENTER);
-            layout.setPadding(YogaEdge.ALL, 4);
-            layout.setGap(YogaGutter.ALL, 2);
+            layout.widthPercent(100);
+            layout.alignItems(AlignItems.CENTER);
+            layout.justifyContent(AlignContent.CENTER);
+            layout.paddingAll(4);
+            layout.gapAll(2);
         }).addClass("panel_bg");
 
         addChildren(titleBar, contentContainer);
@@ -76,22 +78,22 @@ public class FloatView extends UIElement {
     public void show() {
         if (isHidden) {
             isHidden = false;
-            contentContainer.setDisplay(YogaDisplay.FLEX);
+            contentContainer.setDisplay(true);
         }
     }
 
     public void hide() {
         if (!isHidden) {
             isHidden = true;
-            contentContainer.setDisplay(YogaDisplay.NONE);
+            contentContainer.setDisplay(false);
         }
     }
 
     public UIElement createInformation(Component title, Supplier<Component> info) {
         return new UIElement().layout(layout -> {
-            layout.setWidthPercent(100);
-            layout.setFlexDirection(YogaFlexDirection.ROW);
-            layout.setHeight(9);
+            layout.widthPercent(100);
+            layout.flexDirection(FlexDirection.ROW);
+            layout.height(9);
         }).addChildren(
                 new Label().setText(title).textStyle(style -> style
                         .adaptiveWidth(true)
@@ -100,7 +102,7 @@ public class FloatView extends UIElement {
                         .adaptiveWidth(true)
                         .textAlignVertical(Vertical.CENTER)
                         .textAlignHorizontal(Horizontal.RIGHT)).layout(layout -> {
-                    layout.setFlex(1);
+                    layout.flex(1);
                 }).addEventListener(UIEvents.TICK, event -> ((Label) event.currentElement).setText(info.get()))
         );
     }

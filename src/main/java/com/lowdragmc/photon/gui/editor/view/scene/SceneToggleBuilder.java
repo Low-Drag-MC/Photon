@@ -8,7 +8,6 @@ import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import it.unimi.dsi.fastutil.booleans.BooleanConsumer;
 import lombok.Setter;
 import lombok.experimental.Accessors;
-import org.appliedenergistics.yoga.YogaEdge;
 
 import java.util.function.Supplier;
 
@@ -48,7 +47,6 @@ public class SceneToggleBuilder {
     
     public SceneToggleBuilder disabledColor(int color) {
         this.disabledColor = color;
-        // 更新禁用图标颜色
         if (this.enabledIcon != null && this.disabledIcon == null) {
             this.disabledIcon = this.enabledIcon.copy().setColor(color);
         }
@@ -65,8 +63,8 @@ public class SceneToggleBuilder {
             .setText("")
             .setOn(valueGetter.get(), false)
             .toggleButton(button -> button.layout(layout -> {
-                layout.setWidthPercent(100);
-                layout.setHeightPercent(100);
+                layout.widthPercent(100);
+                layout.heightPercent(100);
             }))
             .setOnToggleChanged(valueSetter)
             .toggleStyle(style -> {
@@ -76,8 +74,8 @@ public class SceneToggleBuilder {
                 style.markTexture(enabledIcon.copy().scale(iconScale));
             })
             .layout(layout -> {
-                layout.setPadding(YogaEdge.ALL, 0);
-                layout.setHeightPercent(100);
+                layout.paddingAll(0);
+                layout.heightPercent(100);
                 layout.setAspectRatio(1f);
             })
             .addEventListener(UIEvents.TICK, event -> {

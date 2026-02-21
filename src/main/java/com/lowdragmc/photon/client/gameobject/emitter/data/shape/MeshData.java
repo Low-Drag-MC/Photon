@@ -18,6 +18,7 @@ import com.lowdragmc.lowdraglib2.utils.data.BlockInfo;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
+import dev.vfyjxf.taffy.style.AlignItems;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.LoadingOverlay;
 import net.minecraft.client.renderer.GameRenderer;
@@ -29,8 +30,6 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.client.model.IQuadTransformer;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.common.util.INBTSerializable;
-import org.appliedenergistics.yoga.YogaAlign;
-import org.appliedenergistics.yoga.YogaEdge;
 import org.joml.Vector3f;
 import lombok.Getter;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -229,9 +228,9 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
         scene.setAfterWorldRender(s -> drawLineFrames(new PoseStack()));
         scene.layout(layout -> {
             layout.setAspectRatio(1.0f);
-            layout.setWidthPercent(80);
-            layout.setAlignSelf(YogaAlign.CENTER);
-            layout.setPadding(YogaEdge.ALL, 3);
+            layout.widthPercent(80);
+            layout.alignSelf(AlignItems.CENTER);
+            layout.paddingAll(3);
         });
         scene.style(style -> style.backgroundTexture(Sprites.BORDER1_RT1));
         return scene;
@@ -300,7 +299,7 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
                     buttonConfigurator.notifyChanges();
                 }
             }).show(mui.ui.rootElement);
-        }).layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
+        }).layout(layout -> layout.alignSelf(AlignItems.CENTER)));
 
         var reloadButton = new Configurator().addInlineChild(new Button()
                 .setOnClick(event -> Minecraft.getInstance().reloadResourcePacks().thenAccept(v ->
@@ -308,7 +307,7 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
                             clear();
                             buttonConfigurator.notifyChanges();
                         })
-                )).setText("photon.reload_mesh").layout(layout -> layout.setAlignSelf(YogaAlign.CENTER)));
+                )).setText("photon.reload_mesh").layout(layout -> layout.alignSelf(AlignItems.CENTER)));
         father.addConfigurators(buttonConfigurator, reloadButton);
     }
 

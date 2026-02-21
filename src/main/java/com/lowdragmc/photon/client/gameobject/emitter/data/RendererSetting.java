@@ -16,7 +16,6 @@ import net.minecraft.nbt.IntTag;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.world.phys.AABB;
-import org.appliedenergistics.yoga.YogaDisplay;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -91,7 +90,7 @@ public class RendererSetting {
         var configurator = getter.get().createDirectConfigurator();
         if (configurator instanceof ConfiguratorGroup group) {
             group.setCollapse(false);
-            group.lineContainer.setDisplay(YogaDisplay.NONE);
+            group.lineContainer.setDisplay(false);
             return group;
         }
         return configurator;

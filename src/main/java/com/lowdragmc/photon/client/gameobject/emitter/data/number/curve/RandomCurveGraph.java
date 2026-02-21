@@ -16,10 +16,8 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import lombok.Getter;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.Mth;
-import org.appliedenergistics.yoga.YogaDisplay;
-import org.appliedenergistics.yoga.YogaEdge;
-import org.appliedenergistics.yoga.YogaFlexDirection;
-import org.appliedenergistics.yoga.YogaPositionType;
+import dev.vfyjxf.taffy.style.FlexDirection;
+import dev.vfyjxf.taffy.style.TaffyPosition;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector2f;
 import oshi.util.tuples.Pair;
@@ -50,11 +48,11 @@ public class RandomCurveGraph extends BindableUIElement<Pair<ECBCurves, ECBCurve
 
     public RandomCurveGraph() {
         refreshGraph();
-        getLayout().setFlexDirection(YogaFlexDirection.ROW);
+        getLayout().flexDirection(FlexDirection.ROW);
 
         graphView.layout(layout -> {
-            layout.setHeightPercent(100);
-            layout.setFlex(1);
+            layout.heightPercent(100);
+            layout.flex(1);
         }).style(style -> style.backgroundTexture(this::drawGraphView))
                 .addEventListener(UIEvents.MOUSE_DOWN, this::onGraphMouseDown)
                 .addEventListener(UIEvents.DOUBLE_CLICK, this::onGraphDoubleClick)
@@ -124,12 +122,12 @@ public class RandomCurveGraph extends BindableUIElement<Pair<ECBCurves, ECBCurve
 
     private void createControlPoint(UIElement controlPoint1A) {
         controlPoint1A.layout(layout -> {
-                    layout.setPositionType(YogaPositionType.ABSOLUTE);
-                    layout.setWidth(2);
-                    layout.setHeight(2);
-                    layout.setMargin(YogaEdge.LEFT, -1);
-                    layout.setMargin(YogaEdge.TOP, -1);
-                }).style(style -> style.backgroundTexture(ColorPattern.GREEN.rectTexture())).setDisplay(YogaDisplay.NONE)
+                    layout.positionType(TaffyPosition.ABSOLUTE);
+                    layout.width(2);
+                    layout.height(2);
+                    layout.marginLeft(-1);
+                    layout.marginTop(-1);
+                }).style(style -> style.backgroundTexture(ColorPattern.GREEN.rectTexture())).setDisplay(false)
                 .addEventListener(UIEvents.MOUSE_DOWN, event -> {
                     event.currentElement.startDrag(null, null);
                 }).addEventListener(UIEvents.MOUSE_ENTER, event -> {
@@ -179,8 +177,8 @@ public class RandomCurveGraph extends BindableUIElement<Pair<ECBCurves, ECBCurve
                         .setHoverTextureProvider(TreeBuilder.Menu::hoverTextureProvider)
                         .setOnNodeClicked(TreeBuilder.Menu::handle)
                         .layout(layout -> {
-                            layout.setPosition(YogaEdge.LEFT, event.x - this.getContentX());
-                            layout.setPosition(YogaEdge.TOP, event.y - this.getContentY());
+                            layout.left( event.x - this.getContentX());
+                            layout.top( event.y - this.getContentY());
                         }));
             }
         }
@@ -258,8 +256,8 @@ public class RandomCurveGraph extends BindableUIElement<Pair<ECBCurves, ECBCurve
         var percentX = clamp ? Mth.clamp(x / width, 0f, 1f) : x / width;
         var percentY = clamp ? Mth.clamp(y / height, 0f, 1f) : y / height;
         event.currentElement.layout(layout -> {
-            layout.setPositionPercent(YogaEdge.LEFT, percentX * 100);
-            layout.setPositionPercent(YogaEdge.TOP, percentY * 100);
+            layout.leftPercent(percentX * 100);
+            layout.topPercent(percentY * 100);
         });
         return new Vector2f(percentX, 1 - percentY);
     }
@@ -297,23 +295,23 @@ public class RandomCurveGraph extends BindableUIElement<Pair<ECBCurves, ECBCurve
             var segments = value.getSegments();
             if (selectedPoint > 0) {
                 controlPoint1.layout(layout -> {
-                    layout.setPositionPercent(YogaEdge.LEFT, segments.get(selectedPoint - 1).c1.x * 100);
-                    layout.setPositionPercent(YogaEdge.TOP, (1 - segments.get(selectedPoint - 1).c1.y) * 100);
-                }).setDisplay(YogaDisplay.FLEX);
+                    layout.leftPercent(segments.get(selectedPoint - 1).c1.x * 100);
+                    layout.topPercent((1 - segments.get(selectedPoint - 1).c1.y) * 100);
+                }).setDisplay(true);
             } else {
-                controlPoint1.setDisplay(YogaDisplay.NONE);
+                controlPoint1.setDisplay(false);
             }
             if (selectedPoint < segments.size()) {
                 controlPoint2.layout(layout -> {
-                    layout.setPositionPercent(YogaEdge.LEFT, segments.get(selectedPoint).c0.x * 100);
-                    layout.setPositionPercent(YogaEdge.TOP, (1 - segments.get(selectedPoint).c0.y) * 100);
-                }).setDisplay(YogaDisplay.FLEX);
+                    layout.leftPercent(segments.get(selectedPoint).c0.x * 100);
+                    layout.topPercent((1 - segments.get(selectedPoint).c0.y) * 100);
+                }).setDisplay(true);
             } else {
-                controlPoint2.setDisplay(YogaDisplay.NONE);
+                controlPoint2.setDisplay(false);
             }
         } else {
-            controlPoint1.setDisplay(YogaDisplay.NONE);
-            controlPoint2.setDisplay(YogaDisplay.NONE);
+            controlPoint1.setDisplay(false);
+            controlPoint2.setDisplay(false);
         }
     }
 
@@ -352,13 +350,13 @@ public class RandomCurveGraph extends BindableUIElement<Pair<ECBCurves, ECBCurve
 
     private UIElement createPointUI(ECBCurves value, int index, Vector2f point, IntConsumer setter) {
         return new UIElement().layout(layout -> {
-            layout.setPositionType(YogaPositionType.ABSOLUTE);
-            layout.setWidth(4);
-            layout.setHeight(4);
-            layout.setMargin(YogaEdge.LEFT, -2);
-            layout.setMargin(YogaEdge.TOP, -2);
-            layout.setPositionPercent(YogaEdge.LEFT, point.x * 100);
-            layout.setPositionPercent(YogaEdge.TOP, (1 - point.y) * 100);
+            layout.positionType(TaffyPosition.ABSOLUTE);
+            layout.width(4);
+            layout.height(4);
+            layout.marginLeft(-2);
+            layout.marginTop(-2);
+            layout.leftPercent(point.x * 100);
+            layout.topPercent((1 - point.y) * 100);
         }).style(style -> style.backgroundTexture(ColorPattern.LIGHT_GRAY.rectTexture()))
                 .addEventListener(UIEvents.MOUSE_DOWN, event -> {
                     setter.accept(index);

@@ -15,6 +15,7 @@ import com.lowdragmc.photon.PhotonRegistries;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
+import dev.vfyjxf.taffy.style.AlignItems;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
@@ -23,8 +24,6 @@ import net.minecraft.nbt.Tag;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.nbt.CompoundTag;
-import org.appliedenergistics.yoga.YogaAlign;
-import org.appliedenergistics.yoga.YogaEdge;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -86,13 +85,13 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
         father.addConfigurators(new Configurator("ldlib.gui.editor.group.preview")
                 .addChild(new UIElement().layout(layout -> {
                             layout.setAspectRatio(1.0f);
-                            layout.setWidthPercent(80);
-                            layout.setAlignSelf(YogaAlign.CENTER);
-                            layout.setPadding(YogaEdge.ALL, 3);
+                            layout.widthPercent(80);
+                            layout.alignSelf(AlignItems.CENTER);
+                            layout.paddingAll(3);
                         }).style(style -> style.backgroundTexture(Sprites.BORDER1_RT1))
                         .addChild(new UIElement().layout(layout -> {
-                            layout.setWidthPercent(100);
-                            layout.setHeightPercent(100);
+                            layout.widthPercent(100);
+                            layout.heightPercent(100);
                         }).style(style -> style.backgroundTexture(DynamicTexture.of(this::preview))))));
     }
 

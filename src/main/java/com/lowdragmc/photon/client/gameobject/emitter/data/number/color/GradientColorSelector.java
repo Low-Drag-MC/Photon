@@ -9,8 +9,10 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
+import dev.vfyjxf.taffy.style.AlignItems;
+import dev.vfyjxf.taffy.style.FlexDirection;
+import dev.vfyjxf.taffy.style.TaffyPosition;
 import lombok.Getter;
-import org.appliedenergistics.yoga.*;
 
 import java.util.function.Consumer;
 
@@ -27,26 +29,26 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
     private int selectedPoint = -1;
 
     public GradientColorSelector() {
-        getLayout().setGap(YogaGutter.ALL, 1);
+        getLayout().gapAll(1);
         gradientPreview.layout(layout -> {
-            layout.setMargin(YogaEdge.LEFT, 2.5f);
-            layout.setMargin(YogaEdge.RIGHT, 2.5f);
+            layout.marginLeft(2.5f);
+            layout.marginRight(2.5f);
         }).addChildren(
                 alphaIndicatorContainer.layout(layout -> {
-                    layout.setFlexDirection(YogaFlexDirection.ROW);
-                    layout.setHeight(5);
-                    layout.setWidthPercent(100);
-                    layout.setAlignItems(YogaAlign.CENTER);
+                    layout.flexDirection(FlexDirection.ROW);
+                    layout.height(5);
+                    layout.widthPercent(100);
+                    layout.alignItems(AlignItems.CENTER);
                 }).addEventListener(UIEvents.DOUBLE_CLICK, event -> createNewIndicator(event, true)),
                 new UIElement().layout(layout -> {
-                    layout.setHeight(10);
-                    layout.setWidthPercent(100);
+                    layout.height(10);
+                    layout.widthPercent(100);
                 }).style(style -> style.backgroundTexture(DynamicTexture.of(() -> new GradientColorTexture(value)))),
                 rgbIndicatorContainer.layout(layout -> {
-                    layout.setFlexDirection(YogaFlexDirection.ROW);
-                    layout.setHeight(5);
-                    layout.setWidthPercent(100);
-                    layout.setAlignItems(YogaAlign.CENTER);
+                    layout.flexDirection(FlexDirection.ROW);
+                    layout.height(5);
+                    layout.widthPercent(100);
+                    layout.alignItems(AlignItems.CENTER);
                 }).addEventListener(UIEvents.DOUBLE_CLICK, event -> createNewIndicator(event, false))
         );
         colorSelector.setOnColorChangeListener(this::onColorChanged);
@@ -74,11 +76,11 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
         rgbIndicatorContainer.clearAllChildren();
         for (var alphaP : value.getAP()) {
             alphaIndicatorContainer.addChild(new UIElement().layout(layout -> {
-                layout.setPositionType(YogaPositionType.ABSOLUTE);
-                layout.setPositionPercent(YogaEdge.LEFT, alphaP.x * 100);
-                layout.setMargin(YogaEdge.LEFT, -2.5f);
-                layout.setWidth(5);
-                layout.setHeight(5);
+                layout.positionType(TaffyPosition.ABSOLUTE);
+                layout.leftPercent(alphaP.x * 100);
+                layout.marginLeft(-2.5f);
+                layout.width(5);
+                layout.height(5);
             }).style(style -> style.backgroundTexture(DynamicTexture.of(() -> (isSelectAlpha && selectedPoint == value.getAP().indexOf(alphaP)) ?
                     Icons.DOWN_ARROW_NO_BAR_S : Icons.DOWN_ARROW_NO_BAR_S_WHITE)))
                     .addEventListener(UIEvents.DRAG_SOURCE_UPDATE, event -> onDragIndicator(event, true, value.getAP().indexOf(alphaP)))
@@ -86,11 +88,11 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
         }
         for (var rgbP : value.getRgbP()) {
             rgbIndicatorContainer.addChild(new UIElement().layout(layout -> {
-                layout.setPositionType(YogaPositionType.ABSOLUTE);
-                layout.setPositionPercent(YogaEdge.LEFT, rgbP.x * 100);
-                layout.setMargin(YogaEdge.LEFT, -2.5f);
-                layout.setWidth(5);
-                layout.setHeight(5);
+                layout.positionType(TaffyPosition.ABSOLUTE);
+                layout.leftPercent(rgbP.x * 100);
+                layout.marginLeft(-2.5f);
+                layout.width(5);
+                layout.height(5);
             }).style(style -> style.backgroundTexture(DynamicTexture.of(() -> (!isSelectAlpha && selectedPoint == value.getRgbP().indexOf(rgbP)) ?
                     Icons.UP_ARROW_NO_BAR_S : Icons.UP_ARROW_NO_BAR_S_WHITE)))
                     .addEventListener(UIEvents.DRAG_SOURCE_UPDATE, event -> onDragIndicator(event, false, value.getRgbP().indexOf(rgbP)))
@@ -119,7 +121,7 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
         var percent = (event.x - gradientPreview.getPositionX()) / gradientPreview.getSizeWidth();
         percent = Math.max(0, Math.min(1, percent));
         var offset = percent * 100;
-        event.currentElement.layout(layout -> layout.setPositionPercent(YogaEdge.LEFT, offset));
+        event.currentElement.layout(layout -> layout.leftPercent(offset));
         if (isAlpha) {
             if (point >= 0 && point < value.getAP().size()) {
                 value.getAP().get(point).x = percent;

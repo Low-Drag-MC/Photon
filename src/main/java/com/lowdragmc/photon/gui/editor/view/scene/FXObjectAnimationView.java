@@ -11,8 +11,6 @@ import com.lowdragmc.lowdraglib2.math.Transform;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.network.chat.Component;
-import org.appliedenergistics.yoga.YogaEdge;
-import org.appliedenergistics.yoga.YogaGutter;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -39,8 +37,8 @@ public class FXObjectAnimationView extends FloatView {
 
     public FXObjectAnimationView(SceneView sceneView) {
         super(sceneView, Component.translatable("photon.animation"));
-        getLayout().setPositionPercent(YogaEdge.LEFT, 0);
-        getLayout().setPositionPercent(YogaEdge.TOP, 100);
+        getLayout().leftPercent(0);
+        getLayout().topPercent(100);
 
         initBasicInfo();
         hide();
@@ -57,8 +55,8 @@ public class FXObjectAnimationView extends FloatView {
         group.removeAllConfigurators();
         contentContainer.addChildren(
                 new UIElement().layout(layout -> {
-                    layout.setWidthPercent(100);
-                    layout.setGap(YogaGutter.ALL, 2);
+                    layout.widthPercent(100);
+                    layout.gapAll(2);
                 }).addChildren(configurators),
                 // buttons
                 new Button().setText(isPlaying() ?
@@ -70,8 +68,8 @@ public class FXObjectAnimationView extends FloatView {
                                 isPlaying = !isPlaying;
                             }
                 }).layout(layout -> {
-                    layout.setHeight(12);
-                    layout.setWidthPercent(100);
+                    layout.height(12);
+                    layout.widthPercent(100);
                 }).addEventListener(UIEvents.TICK, event -> ((Button) event.currentElement).text
                         .setText(Component.translatable(isPlaying() ?
                                 "photon.gui.editor.fx_info.pause" :

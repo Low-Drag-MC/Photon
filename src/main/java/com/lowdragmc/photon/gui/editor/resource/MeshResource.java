@@ -79,8 +79,8 @@ public class MeshResource extends Resource<MeshData> {
             fboRenderer.setCameraLookAt(center, zoom, Math.toRadians(-135), Math.toRadians(25));
             fboRenderer.setAfterWorldRender(renderer -> meshData.drawLineFrames(new PoseStack()));
             return new UIElement().layout(layout -> {
-                        layout.setWidthPercent(100);
-                        layout.setHeightPercent(100);
+                        layout.widthPercent(100);
+                        layout.heightPercent(100);
                     }).style(style -> style.backgroundTexture(fboRenderer.drawAsTexture()))
                     // release resources here
                     .addEventListener(UIEvents.REMOVED, e -> fboRenderer.releaseResource());

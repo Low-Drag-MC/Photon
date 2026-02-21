@@ -6,11 +6,10 @@ import com.lowdragmc.lowdraglib2.gui.texture.*;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
+import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 import net.minecraft.MethodsReturnNonnullByDefault;
-import org.appliedenergistics.yoga.YogaAlign;
-import org.appliedenergistics.yoga.YogaEdge;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.function.Consumer;
@@ -34,15 +33,15 @@ public class IMaterialConfigurator extends ValueConfigurator<IMaterial> {
 
         inlineContainer.addChild(preview.layout(layout -> {
             layout.setAspectRatio(1.0f);
-            layout.setWidthPercent(100);
-            layout.setMaxWidth(100);
-            layout.setMaxHeight(100);
-            layout.setAlignSelf(YogaAlign.CENTER);
-            layout.setPadding(YogaEdge.ALL, 3);
+            layout.widthPercent(100);
+            layout.maxWidth(100);
+            layout.maxHeight(100);
+            layout.alignSelf(AlignItems.CENTER);
+            layout.paddingAll(3);
         }).style(style -> style.backgroundTexture(Sprites.BORDER1_RT1))
                 .addChild(new UIElement().layout(layout -> {
-                    layout.setWidthPercent(100);
-                    layout.setHeightPercent(100);
+                    layout.widthPercent(100);
+                    layout.heightPercent(100);
                 }).style(style -> style.backgroundTexture(DynamicTexture.of(() -> value.preview())))));
 
         setPastable(IMaterial.class, pasted -> {

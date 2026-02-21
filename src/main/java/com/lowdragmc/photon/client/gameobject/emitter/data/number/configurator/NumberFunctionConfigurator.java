@@ -10,9 +10,10 @@ import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
+import dev.vfyjxf.taffy.style.FlexDirection;
+import dev.vfyjxf.taffy.style.FlexWrap;
 import lombok.Getter;
 import net.minecraft.MethodsReturnNonnullByDefault;
-import org.appliedenergistics.yoga.*;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -43,7 +44,7 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
         value.createConfigurator(this);
         this.lineContainer.addChildAt(numberFunctionButton, 2);
         if (config.types().length <= 1) {
-            numberFunctionButton.setDisplay(YogaDisplay.NONE);
+            numberFunctionButton.setDisplay(false);
         } else {
             numberFunctionButton.noText().setOnClick(e -> {
                 var menu = TreeBuilder.Menu.start();
@@ -66,17 +67,17 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
                             .setHoverTextureProvider(TreeBuilder.Menu::hoverTextureProvider)
                             .setOnNodeClicked(TreeBuilder.Menu::handle)
                             .layout(layout -> {
-                                layout.setPosition(YogaEdge.LEFT, numberFunctionButton.getPositionX() +
+                                layout.left( numberFunctionButton.getPositionX() +
                                         numberFunctionButton.getSizeWidth() - 120 + - mui.ui.rootElement.getPositionX());
-                                layout.setPosition(YogaEdge.TOP, numberFunctionButton.getPositionY() +
+                                layout.top( numberFunctionButton.getPositionY() +
                                         numberFunctionButton.getSizeHeight() - mui.ui.rootElement.getContentY());
                             }));
                 }
             }).layout(layout -> {
                 layout.setAspectRatio(1);
             }).addChild(new UIElement().layout(layout -> {
-                layout.setWidthPercent(100);
-                layout.setHeightPercent(100);
+                layout.widthPercent(100);
+                layout.heightPercent(100);
             }).style(style -> style.backgroundTexture(Icons.DOWN_ARROW_NO_BAR)));
         }
         setCopiable(value -> value.copy());
@@ -99,10 +100,10 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
     private void clearInlineContainer() {
         inlineContainer.clearAllChildren();
         inlineContainer.layout(layout -> {
-            layout.setGap(YogaGutter.ALL, 0);
-            layout.setMargin(YogaEdge.LEFT, 0);
-            layout.setFlexDirection(YogaFlexDirection.COLUMN);
-            layout.setWrap(YogaWrap.NO_WRAP);
+            layout.gapAll(0);
+            layout.marginLeft(0);
+            layout.flexDirection(FlexDirection.COLUMN);
+            layout.wrap(FlexWrap.NO_WRAP);
         });
     }
 

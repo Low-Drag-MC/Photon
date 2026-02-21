@@ -11,8 +11,7 @@ import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
-import org.appliedenergistics.yoga.YogaEdge;
-import org.appliedenergistics.yoga.YogaPositionType;
+import dev.vfyjxf.taffy.style.TaffyPosition;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nonnull;
@@ -33,11 +32,11 @@ public class GradientColorConfigurator extends ValueConfigurator<GradientColor> 
         this.gradientSelector = new GradientColorSelector();
         this.gradientSelector.style(style -> style.zIndex(1).backgroundTexture(Sprites.BORDER));
         this.gradientSelector.layout(layout -> {
-            layout.setPositionType(YogaPositionType.ABSOLUTE);
-            layout.setWidthPercent(100);
-            layout.setMaxWidth(150);
-            layout.setMinWidth(100);
-            layout.setPadding(YogaEdge.ALL, 4);
+            layout.positionType(TaffyPosition.ABSOLUTE);
+            layout.widthPercent(100);
+            layout.maxWidth(150);
+            layout.minWidth(100);
+            layout.paddingAll(4);
         });
         this.gradientSelector.setOnColorGradientChangeListener(this::updateValueActively);
         this.gradientSelector.setFocusable(true);
@@ -45,11 +44,11 @@ public class GradientColorConfigurator extends ValueConfigurator<GradientColor> 
         this.gradientSelector.addEventListener(UIEvents.LAYOUT_CHANGED, e -> gradientSelector.adaptPositionToScreen());
 
         inlineContainer.addChildren(colorPreview = new UIElement().layout(layout -> {
-            layout.setHeight(14);
-            layout.setPadding(YogaEdge.ALL, 3);
+            layout.height(14);
+            layout.paddingAll(3);
         }).style(style -> style.backgroundTexture(Sprites.RECT_RD_SOLID))
                 .addChildren(new UIElement()
-                        .layout(layout -> layout.setHeightPercent(100))
+                        .layout(layout -> layout.heightPercent(100))
                         .style(style -> style.backgroundTexture(this::drawColorPreview))
                         .addEventListener(UIEvents.MOUSE_DOWN, this::onClick)));
 
@@ -91,9 +90,9 @@ public class GradientColorConfigurator extends ValueConfigurator<GradientColor> 
             root.addChild(gradientSelector.layout(layout -> {
                 var x = colorPreview.getPositionX();
                 var y = colorPreview.getPositionY();
-                layout.setPosition(YogaEdge.LEFT, x - root.getLayoutX());
-                layout.setPosition(YogaEdge.TOP, y - root.getLayoutY());
-                layout.setWidth(colorPreview.getSizeWidth());
+                layout.left( x - root.getLayoutX());
+                layout.top( y - root.getLayoutY());
+                layout.width(colorPreview.getSizeWidth());
             }));
             this.gradientSelector.focus();
         }

@@ -2,22 +2,18 @@ package com.lowdragmc.photon.gui.editor.view.scene;
 
 import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
-import com.lowdragmc.lowdraglib2.gui.ui.data.Horizontal;
-import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
+import dev.vfyjxf.taffy.style.AlignContent;
+import dev.vfyjxf.taffy.style.AlignItems;
+import dev.vfyjxf.taffy.style.FlexDirection;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
-import org.appliedenergistics.yoga.*;
 import org.joml.Random;
-import org.joml.Vector2f;
 
 import javax.annotation.Nullable;
-import java.util.function.Supplier;
 
 public class FXObjectInfoView extends FloatView {
     public final UIElement inspector;
@@ -29,12 +25,12 @@ public class FXObjectInfoView extends FloatView {
     public FXObjectInfoView(SceneView sceneView) {
         super(sceneView, Component.translatable("photon.scene_information"));
         inspector = new UIElement().layout(layout -> {
-            layout.setWidthPercent(100);
-            layout.setAlignItems(YogaAlign.CENTER);
-            layout.setJustifyContent(YogaJustify.CENTER);
-            layout.setGap(YogaGutter.ALL, 2);
+            layout.widthPercent(100);
+            layout.alignItems(AlignItems.CENTER);
+            layout.justifyContent(AlignContent.CENTER);
+            layout.gapAll(2);
         });
-        inspector.setDisplay(YogaDisplay.NONE);
+        inspector.setDisplay(false);
         stopInteractionEventsPropagation();
         initBasicInfo();
     }
@@ -43,15 +39,15 @@ public class FXObjectInfoView extends FloatView {
         contentContainer.addChildren(
                 // buttons
                 new UIElement().layout(layout -> {
-                    layout.setWidthPercent(100);
-                    layout.setFlexDirection(YogaFlexDirection.ROW);
-                    layout.setGap(YogaGutter.ALL, 2);
+                    layout.widthPercent(100);
+                    layout.flexDirection(FlexDirection.ROW);
+                    layout.gapAll(2);
                 }).addChildren(
                         new Button().setText("photon.gui.editor.fx_info.restart").setOnClick(e -> {
                             sceneView.fxEditor.reloadEffect();
                         }).layout(layout -> {
-                            layout.setHeight(12);
-                            layout.setFlex(1);
+                            layout.height(12);
+                            layout.flex(1);
                         }),
                         new Button().setText("photon.gui.editor.fx_info.pause").setOnClick(e -> {
                             if (sceneView.particleManager.isPlaying()) {
@@ -60,8 +56,8 @@ public class FXObjectInfoView extends FloatView {
                                 sceneView.particleManager.play();
                             }
                         }).layout(layout -> {
-                            layout.setHeight(12);
-                            layout.setFlex(1);
+                            layout.height(12);
+                            layout.flex(1);
                         }).addEventListener(UIEvents.TICK, event -> ((Button) event.currentElement).text
                                 .setText(Component.translatable(sceneView.particleManager.isPlaying() ?
                                         "photon.gui.editor.fx_info.pause" :
@@ -77,11 +73,11 @@ public class FXObjectInfoView extends FloatView {
                             onValueUpdatePassively(supplier.get());
                         }
                     }
-                }.setRange(0, 500 * 20).layout(layout -> layout.setWidthPercent(100)),
+                }.setRange(0, 500 * 20).layout(layout -> layout.widthPercent(100)),
                 new UIElement().layout(layout -> {
-                    layout.setWidthPercent(100);
-                    layout.setFlexDirection(YogaFlexDirection.ROW);
-                    layout.setGap(YogaGutter.ALL, 2);
+                    layout.widthPercent(100);
+                    layout.flexDirection(FlexDirection.ROW);
+                    layout.gapAll(2);
                 }).addChildren(
                         new NumberConfigurator("photon.gui.editor.fx_info.seed",
                                 sceneView.effect::getSeed,
@@ -91,7 +87,7 @@ public class FXObjectInfoView extends FloatView {
                                     sceneView.particleManager.setTimeOffset(Math.abs(seed.longValue()));
                                     sceneView.simulateTo(curTime);
                                 }, sceneView.effect.getSeed(), true)
-                                .layout(layout -> layout.setFlex(1)),
+                                .layout(layout -> layout.flex(1)),
 
                         new Button().setText("random").setOnClick(e -> {
                             var curTime = sceneView.particleManager.getTime();
@@ -130,10 +126,10 @@ public class FXObjectInfoView extends FloatView {
         inspector.clearAllChildren();
         this.inspected = fxObject;
         if (inspected != null) {
-            inspector.setDisplay(YogaDisplay.FLEX);
+            inspector.setDisplay(true);
             inspected.inspectSceneInformation(sceneView, inspector);
         } else {
-            inspector.setDisplay(YogaDisplay.NONE);
+            inspector.setDisplay(false);
         }
     }
 }

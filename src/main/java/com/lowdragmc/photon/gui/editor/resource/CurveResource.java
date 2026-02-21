@@ -4,7 +4,6 @@ import com.lowdragmc.lowdraglib2.configurator.EditAction;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
-import com.lowdragmc.lowdraglib2.editor.resource.ResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -13,14 +12,13 @@ import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.*;
+import dev.vfyjxf.taffy.style.TaffyDimension;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.common.util.INBTSerializable;
-import org.appliedenergistics.yoga.YogaEdge;
-import org.appliedenergistics.yoga.style.StyleSizeLength;
 import oshi.util.tuples.Pair;
 
 import javax.annotation.Nonnull;
@@ -73,20 +71,20 @@ public class CurveResource extends Resource<CurveResource.Curves> {
     public ResourceProviderContainer<Curves> createResourceProviderContainer(IResourceProvider<Curves> provider) {
         var container = super.createResourceProviderContainer(provider);
         container.setUiSupplier(path -> new UIElement().layout(layout -> {
-            layout.setWidthPercent(100);
-            layout.setHeightPercent(100);
+            layout.widthPercent(100);
+            layout.heightPercent(100);
         }).style(style -> style.backgroundTexture(provider.getResource(path).preview())));
         container.setOnEdit((c, path) -> {
             var curves = provider.getResource(path);
             if (curves == null) return;
-            var dialog = new Dialog().width(StyleSizeLength.points(250)).setTitle("editor.edit_curve");
+            var dialog = new Dialog().width(TaffyDimension.length(250)).setTitle("editor.edit_curve");
             if (curves.curves1 == null) {
                 var curveGraph = new CurveGraph();
                 curveGraph.style(style -> style.zIndex(1).backgroundTexture(Sprites.BORDER));
                 curveGraph.layout(layout -> {
-                    layout.setWidthPercent(100);
-                    layout.setHeight(100);
-                    layout.setPadding(YogaEdge.ALL, 4);
+                    layout.widthPercent(100);
+                    layout.height(100);
+                    layout.paddingAll(4);
                 });
                 curveGraph.setValue(curves.curves0.copy(), false);
                 dialog.addContent(curveGraph)
@@ -106,9 +104,9 @@ public class CurveResource extends Resource<CurveResource.Curves> {
                 var curveGraph = new RandomCurveGraph();
                 curveGraph.style(style -> style.zIndex(1).backgroundTexture(Sprites.BORDER));
                 curveGraph.layout(layout -> {
-                    layout.setWidthPercent(100);
-                    layout.setHeight(100);
-                    layout.setPadding(YogaEdge.ALL, 4);
+                    layout.widthPercent(100);
+                    layout.height(100);
+                    layout.paddingAll(4);
                 });
                 curveGraph.setValue(new Pair<>(curves.curves0.copy(), curves.curves1.copy()), false);
                 dialog.addContent(curveGraph)

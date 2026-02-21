@@ -5,7 +5,7 @@
   "photon.configuration.bloom_intensity": "泛光强度",
   "photon.configuration.enable_bloom_with_iris_shader": "Iris光影下启用泛光",
   "photon.configuration.iris_shader_compatible_mode": "Iris光影兼容模式",
-  "ldlib.gui.editor.register.editor.fx.fxproj": "特效项目",
+  "fx_project": "特效项目",
   "ldlib.gui.editor.register.editor.fx.particle_info": "粒子信息",
   "ldlib.gui.editor.group.particles": "粒子图层组",
   "ldlib.gui.editor.tips.other": "其他",

@@ -5,7 +5,7 @@
   "photon.configuration.bloom_intensity": "Bloom Intensity",
   "photon.configuration.enable_bloom_with_iris_shader": "Enable Bloom with Iris shader",
   "photon.configuration.iris_shader_compatible_mode": "Iris Shader compatible mode",
-  "ldlib.gui.editor.register.editor.fx.fxproj": "FX Project",
+  "fx_project": "FX Project",
   "ldlib.gui.editor.register.editor.fx.particle_info": "Particle Information",
   "ldlib.gui.editor.group.particles": "particles",
   "ldlib.gui.editor.tips.other": "other",

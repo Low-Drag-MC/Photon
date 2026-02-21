@@ -67,8 +67,8 @@ public class MaterialResource extends Resource<IMaterial> {
     public ResourceProviderContainer<IMaterial> createResourceProviderContainer(IResourceProvider<IMaterial> provider) {
         var container = super.createResourceProviderContainer(provider);
         container.setUiSupplier(path -> new UIElement().layout(layout -> {
-                    layout.setWidthPercent(100);
-                    layout.setHeightPercent(100);
+                    layout.widthPercent(100);
+                    layout.heightPercent(100);
                 }).style(style -> style.backgroundTexture(provider.getResource(path).preview())));
         container.setOnEdit((c, path) -> {
             var material = provider.getResource(path);

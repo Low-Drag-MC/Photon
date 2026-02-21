@@ -19,6 +19,7 @@ import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.FXProjectEffectExecutor;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
+import dev.vfyjxf.taffy.style.FlexDirection;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
@@ -28,7 +29,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
-import org.appliedenergistics.yoga.*;
+import org.jetbrains.annotations.NotNull;
 import org.lwjgl.opengl.GL11;
 
 import java.util.List;
@@ -76,15 +77,15 @@ public class SceneView extends View {
 
     public SceneView(FXEditor fxEditor) {
         super("editor.scene", Icons.CAMERA);
-        this.getLayout().setWidthPercent(100.0F);
-        this.getLayout().setHeightPercent(100.0F);
+        this.getLayout().widthPercent(100.0F);
+        this.getLayout().heightPercent(100.0F);
         this.fxEditor = fxEditor;
         level.setParticleManager(particleManager);
 
         sceneEditor = new ParticleSceneEditor();
         sceneEditor.layout(layout -> {
-            layout.setWidthPercent(100);
-            layout.setFlex(1);
+            layout.widthPercent(100);
+            layout.flex(1);
         });
         sceneEditor.scene
                 .createScene(level)
@@ -189,7 +190,7 @@ public class SceneView extends View {
         }
 
         @Override
-        protected void renderAfterWorld(MultiBufferSource bufferSource, float partialTicks) {
+        protected void renderAfterWorld(@NotNull MultiBufferSource bufferSource, float partialTicks) {
             if (fxObjectInfoView.getInspected() != null) {
                 fxObjectInfoView.getInspected().drawEditorAfterWorld(this, bufferSource, partialTicks);
                 if (isCullBoxVisible && fxObjectInfoView.getInspected() instanceof FXObject fxObject) {
@@ -225,13 +226,13 @@ public class SceneView extends View {
         public void initTopBar() {
             super.initTopBar();
             var sceneRangeScroller = new Scroller.Horizontal();
-            sceneRangeScroller.headButton.setDisplay(YogaDisplay.NONE);
-            sceneRangeScroller.tailButton.setDisplay(YogaDisplay.NONE);
+            sceneRangeScroller.headButton.setDisplay(false);
+            sceneRangeScroller.tailButton.setDisplay(false);
             var sceneSettings = new UIElement().layout(layout -> {
-                layout.setHeightPercent(100);
-                layout.setFlexDirection(YogaFlexDirection.ROW);
-                layout.setGap(YogaGutter.ALL, 1);
-                layout.setFlex(1);
+                layout.heightPercent(100);
+                layout.flexDirection(FlexDirection.ROW);
+                layout.gapAll(1);
+                layout.flex(1);
             }).addChildren(
                     new Selector<SceneMode>()
                             .setCandidates(List.of(SceneMode.values()))
@@ -243,8 +244,8 @@ public class SceneView extends View {
                                             .textAlignVertical(Vertical.CENTER))
                                     .setText(candidate == null ? "---" : candidate.translateKey))
                             .layout(layout -> {
-                                layout.setHeightPercent(100);
-                                layout.setFlex(1);
+                                layout.heightPercent(100);
+                                layout.flex(1);
                             })
                             .style(style -> style.tooltips("editor.scene_mode"))
                             .addEventListener(UIEvents.TICK, event -> {
@@ -264,8 +265,8 @@ public class SceneView extends View {
                                             .textAlignVertical(Vertical.CENTER))
                                     .setText(candidate == null ? "---" : candidate.translateKey))
                             .layout(layout -> {
-                                layout.setHeightPercent(100);
-                                layout.setFlex(1);
+                                layout.heightPercent(100);
+                                layout.flex(1);
                             })
                             .style(style -> style.tooltips("editor.draw_mode"))
                             .addEventListener(UIEvents.TICK, event -> {
@@ -277,14 +278,14 @@ public class SceneView extends View {
                             }),
                     sceneRangeScroller.setRange(1, 10).setValue((float) getSceneRange(), false)
                             .setScrollBarSize(10).setOnValueChanged(value -> setSceneRange(Mth.clamp((int) value, 1, 10))).layout(layout -> {
-                        layout.setHeightPercent(100);
-                        layout.setFlex(1);
+                        layout.heightPercent(100);
+                        layout.flex(1);
                     })
             );
             var rightMost = new UIElement().layout(layout -> {
-                layout.setHeightPercent(100);
-                layout.setFlexDirection(YogaFlexDirection.ROW_REVERSE);
-                layout.setGap(YogaGutter.ALL, 1);
+                layout.heightPercent(100);
+                layout.flexDirection(FlexDirection.ROW_REVERSE);
+                layout.gapAll(1);
             });
 
             rightMost.addChildren(
@@ -299,12 +300,12 @@ public class SceneView extends View {
                             .tooltipKey("photon.is_cull_visible")
                             .build(),
                     new SceneToggleBuilder(fxObjectAnimationView::isDisplayed,
-                            visible -> fxObjectAnimationView.setDisplay(visible ? YogaDisplay.FLEX : YogaDisplay.NONE))
+                            fxObjectAnimationView::setDisplay)
                             .icon(new TextTexture("A"))
                             .tooltipKey("photon.is_animation_view_visible")
                             .build(),
                     new SceneToggleBuilder(fxObjectInfoView::isDisplayed,
-                            visible -> fxObjectInfoView.setDisplay(visible ? YogaDisplay.FLEX : YogaDisplay.NONE))
+                            fxObjectInfoView::setDisplay)
                             .icon(new TextTexture("S"))
                             .tooltipKey("photon.is_information_view_visible")
                             .build()

@@ -10,10 +10,9 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
+import dev.vfyjxf.taffy.style.TaffyPosition;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.Mth;
-import org.appliedenergistics.yoga.YogaEdge;
-import org.appliedenergistics.yoga.YogaPositionType;
 import org.joml.Vector2f;
 
 import java.util.ArrayList;
@@ -53,13 +52,13 @@ public class TrailSection extends ToggleGroup {
     public void buildConfigurator(ConfiguratorGroup father) {
         super.buildConfigurator(father);
         var canvas = new UIElement().layout(layout -> {
-            layout.setWidthPercent(100);
+            layout.widthPercent(100);
             layout.setAspectRatio(1);
-            layout.setPadding(YogaEdge.ALL, 4);
+            layout.paddingAll(4);
         }).style(style -> style.backgroundTexture(Sprites.BORDER1_DARK));
         var container = new UIElement().layout(layout -> {
-            layout.setWidthPercent(100);
-            layout.setHeightPercent(100);
+            layout.widthPercent(100);
+            layout.heightPercent(100);
         }).style(style -> style.backgroundTexture(this::drawCanvas));
         AtomicReference<List<Vector2f>> verticesRef = new AtomicReference<>(new ArrayList<>(vertices));
         reloadCanvas(container, verticesRef.get());
@@ -88,13 +87,13 @@ public class TrailSection extends ToggleGroup {
         container.clearAllChildren();
         for (Vector2f vertex : vertices) {
             var point = new UIElement().layout(layout -> {
-                        layout.setPositionType(YogaPositionType.ABSOLUTE);
-                        layout.setHeight(4);
-                        layout.setWidth(4);
-                        layout.setMargin(YogaEdge.LEFT, -2);
-                        layout.setMargin(YogaEdge.TOP, -2);
-                        layout.setPositionPercent(YogaEdge.LEFT, (vertex.x + 2) / 4 * 100);
-                        layout.setPositionPercent(YogaEdge.TOP, (vertex.y + 2) / 4 * 100);
+                        layout.positionType(TaffyPosition.ABSOLUTE);
+                        layout.height(4);
+                        layout.width(4);
+                        layout.marginLeft(-2);
+                        layout.marginTop(-2);
+                        layout.leftPercent((vertex.x + 2) / 4 * 100);
+                        layout.topPercent((vertex.y + 2) / 4 * 100);
                     }).style(style -> style.backgroundTexture(ColorPattern.GREEN.rectTexture()))
                     .addEventListener(UIEvents.MOUSE_DOWN, event -> {
                         event.currentElement.startDrag(null, null);
@@ -110,8 +109,8 @@ public class TrailSection extends ToggleGroup {
                         var percentX = Mth.clamp(x / width, 0f, 1f);
                         var percentY = Mth.clamp(y / height, 0f, 1f);
                         event.currentElement.layout(layout -> {
-                            layout.setPositionPercent(YogaEdge.LEFT, percentX * 100);
-                            layout.setPositionPercent(YogaEdge.TOP, percentY * 100);
+                            layout.leftPercent(percentX * 100);
+                            layout.topPercent(percentY * 100);
                         });
                         var pX = percentX * 4 - 2;
                         var pY = percentY * 4 - 2;

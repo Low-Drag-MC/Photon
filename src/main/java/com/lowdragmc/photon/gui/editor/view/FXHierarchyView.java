@@ -23,9 +23,7 @@ import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import lombok.Getter;
 import net.minecraft.network.chat.Component;
-import org.appliedenergistics.yoga.YogaFlexDirection;
-import org.appliedenergistics.yoga.YogaGutter;
-import org.appliedenergistics.yoga.YogaOverflow;
+import dev.vfyjxf.taffy.style.FlexDirection;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -47,12 +45,12 @@ public class FXHierarchyView extends View {
     public FXHierarchyView(FXEditor fxEditor) {
         super("editor.fx_object.hierarchy");
         this.fxEditor = fxEditor;
-        this.getLayout().setWidthPercent(100.0F);
-        this.getLayout().setHeightPercent(100.0F);
+        this.getLayout().widthPercent(100.0F);
+        this.getLayout().heightPercent(100.0F);
 
         this.scrollerView.layout((layout) -> {
-            layout.setWidthPercent(100.0F);
-            layout.setHeightPercent(100.0F);
+            layout.widthPercent(100.0F);
+            layout.heightPercent(100.0F);
         });
         this.addChild(this.scrollerView);
         scrollerView.addEventListener(UIEvents.MOUSE_DOWN, this::onMouseDown, true);
@@ -60,22 +58,22 @@ public class FXHierarchyView extends View {
                 .setSupportMultipleSelection(true)
                 .setNodeUISupplier((node) -> {
                     UIElement container = (new UIElement()).layout((layout) -> {
-                        layout.setFlexDirection(YogaFlexDirection.ROW);
-                        layout.setGap(YogaGutter.ALL, 2.0F);
-                        layout.setHeight(10.0F);
-                        layout.setFlex(1.0F);
+                        layout.flexDirection(FlexDirection.ROW);
+                        layout.gapAll(2.0F);
+                        layout.height(10.0F);
+                        layout.flex(1.0F);
                     }).addChildren();
                     UIElement icon = (new UIElement()).layout((layout) -> {
                         layout.setAspectRatio(1.0F);
-                        layout.setHeightPercent(100.0F);
+                        layout.heightPercent(100.0F);
                     }).style((style) -> style.backgroundTexture(node.getKey().getIcon()));
                     TextElement label = new TextElement();
                     label.textStyle((style) -> {
                         style.textWrap(TextWrap.HOVER_ROLL).textAlignVertical(Vertical.CENTER);
                     }).setText(node.getKey().getName(), false).layout((layout) -> {
-                        layout.setHeightPercent(100.0F);
-                        layout.setFlex(1.0F);
-                    }).setOverflow(YogaOverflow.HIDDEN).addEventListener(UIEvents.TICK, e -> {
+                        layout.heightPercent(100.0F);
+                        layout.flex(1.0F);
+                    }).setOverflowVisible(false).addEventListener(UIEvents.TICK, e -> {
                         label.setText(Component.literal(node.getKey().getName()));
                     }).addEventListener(UIEvents.TICK, e -> {
                         label.getTextStyle().textColor(node.getKey().isVisible() ? ColorPattern.WHITE.color : ColorPattern.LIGHT_GRAY.color);
@@ -99,8 +97,8 @@ public class FXHierarchyView extends View {
                         style.pressedTexture(DynamicTexture.of(() -> (node.getKey().isSelfVisible() ? Icons.EYE : Icons.EYE_OFF)
                                 .copy().setColor(ColorPattern.LIGHT_GRAY.color)));
                     }).layout((layout) -> {
-                        layout.setWidth(7);
-                        layout.setHeight(7);
+                        layout.width(7);
+                        layout.height(7);
                     });
                     nodeUI.addChildAt(eyeButton, 0);
                     nodeUI.addEventListener(UIEvents.MOUSE_DOWN, e -> {

@@ -10,9 +10,8 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.photon.gui.editor.resource.CurveResource;
 import net.minecraft.util.Mth;
-import org.appliedenergistics.yoga.YogaEdge;
-import org.appliedenergistics.yoga.YogaFlexDirection;
-import org.appliedenergistics.yoga.YogaPositionType;
+import dev.vfyjxf.taffy.style.FlexDirection;
+import dev.vfyjxf.taffy.style.TaffyPosition;
 import org.jetbrains.annotations.NotNull;
 import oshi.util.tuples.Pair;
 
@@ -40,9 +39,9 @@ public class RandomCurveConfigurator extends ValueConfigurator<RandomCurve> {
             updateValue();
         });
         upperBound.layout(layout -> {
-            layout.setWidthPercent(100);
-            layout.setPositionType(YogaPositionType.ABSOLUTE);
-            layout.setPosition(YogaEdge.TOP, 0);
+            layout.widthPercent(100);
+            layout.positionType(TaffyPosition.ABSOLUTE);
+            layout.top( 0);
         });
         lowerBound.setNumbersOnlyFloat(value.getMin(), value.getMax());
         lowerBound.setText(value.getLower() + "");
@@ -51,19 +50,19 @@ public class RandomCurveConfigurator extends ValueConfigurator<RandomCurve> {
             updateValue();
         });
         lowerBound.layout(layout -> {
-            layout.setWidthPercent(100);
-            layout.setPositionType(YogaPositionType.ABSOLUTE);
-            layout.setPosition(YogaEdge.BOTTOM, 0);
+            layout.widthPercent(100);
+            layout.positionType(TaffyPosition.ABSOLUTE);
+            layout.bottom( 0);
         });
 
         this.curveGraph.setOnCurveChangeListener(curves -> updateValue());
 
         inlineContainer.addChildren(curvePreview.layout(layout -> {
-            layout.setHeight(14);
-            layout.setPadding(YogaEdge.ALL, 3);
+            layout.height(14);
+            layout.paddingAll(3);
         }).style(style -> style.backgroundTexture(Sprites.RECT_RD_SOLID))
                 .addChildren(new UIElement()
-                        .layout(layout -> layout.setHeightPercent(100))
+                        .layout(layout -> layout.heightPercent(100))
                         .style(style -> style.backgroundTexture(DynamicTexture.of(() -> new RandomCurveTexture(value.getCurves0(), value.getCurves1()))))
                         .addEventListener(UIEvents.MOUSE_DOWN, this::onClick)));
 
@@ -71,18 +70,18 @@ public class RandomCurveConfigurator extends ValueConfigurator<RandomCurve> {
 
         this.dialog.style(style -> style.zIndex(1).backgroundTexture(Sprites.BORDER));
         this.dialog.layout(layout -> {
-            layout.setPositionType(YogaPositionType.ABSOLUTE);
-            layout.setWidthPercent(100);
-            layout.setHeight(100);
-            layout.setPadding(YogaEdge.ALL, 4);
-            layout.setFlexDirection(YogaFlexDirection.ROW);
+            layout.positionType(TaffyPosition.ABSOLUTE);
+            layout.widthPercent(100);
+            layout.height(100);
+            layout.paddingAll(4);
+            layout.flexDirection(FlexDirection.ROW);
         }).addChildren(new UIElement().layout(layout -> {
-            layout.setHeightPercent(100);
-            layout.setWidth(40);
-            layout.setMargin(YogaEdge.RIGHT, 2);
+            layout.heightPercent(100);
+            layout.width(40);
+            layout.marginRight(2);
         }).addChildren(upperBound, lowerBound), curveGraph.layout(layout -> {
-            layout.setHeightPercent(100);
-            layout.setFlex(1);
+            layout.heightPercent(100);
+            layout.flex(1);
         }));
         this.dialog.setFocusable(true);
         this.dialog.setEnforceFocus(e -> hide());
@@ -126,9 +125,9 @@ public class RandomCurveConfigurator extends ValueConfigurator<RandomCurve> {
             root.addChild(dialog.layout(layout -> {
                 var x = curvePreview.getPositionX();
                 var y = curvePreview.getPositionY();
-                layout.setPosition(YogaEdge.LEFT, x - root.getLayoutX());
-                layout.setPosition(YogaEdge.TOP, y - root.getLayoutY());
-                layout.setWidth(Math.max(curvePreview.getSizeWidth(), 300));
+                layout.left( x - root.getLayoutX());
+                layout.top( y - root.getLayoutY());
+                layout.width(Math.max(curvePreview.getSizeWidth(), 300));
             }));
             this.dialog.focus();
         }

@@ -64,8 +64,8 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
     public ResourceProviderContainer<GradientResource.Gradients> createResourceProviderContainer(IResourceProvider<GradientResource.Gradients> provider) {
         var container = super.createResourceProviderContainer(provider);
         container.setUiSupplier(path -> new UIElement().layout(layout -> {
-            layout.setWidthPercent(100);
-            layout.setHeightPercent(100);
+            layout.widthPercent(100);
+            layout.heightPercent(100);
         }).style(style -> style.backgroundTexture(provider.getResource(path).preview())));
         container.setOnEdit((c, path) -> {
             var gradients = provider.getResource(path);
@@ -140,14 +140,14 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
                     new GradientColorSelector().setValue(gradient0.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
                         gradient0.deserializeNBT(Platform.getFrozenRegistry(), gradientColor.serializeNBT(Platform.getFrozenRegistry()));
                         container.notifyChanges();
-                    }).layout(layout -> layout.setWidthPercent(100))
+                    }).layout(layout -> layout.widthPercent(100))
             );
             if (gradient1 != null) {
                 container.addInlineChild(
                         new GradientColorSelector().setValue(gradient1.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
                             gradient1.deserializeNBT(Platform.getFrozenRegistry(), gradientColor.serializeNBT(Platform.getFrozenRegistry()));
                             container.notifyChanges();
-                        }).layout(layout -> layout.setWidthPercent(100))
+                        }).layout(layout -> layout.widthPercent(100))
                 );
             }
             father.addConfigurator(container);

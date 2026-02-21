@@ -87,7 +87,7 @@ public interface IParticleEmitter extends IFXObject, IConfigurable {
         progress.label(label -> label.setText(""))
                 .progressBarStyle(style -> style.interpolate(false))
                 .layout(layout -> {
-                    layout.setWidthPercent(100);
+                    layout.widthPercent(100);
                 });
         container.addChildren(
                 sceneView.fxObjectInfoView.createInformation(

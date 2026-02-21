@@ -18,13 +18,13 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
 import com.mojang.blaze3d.shaders.Program;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
 import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
-import org.appliedenergistics.yoga.YogaAlign;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector4f;
 
@@ -162,7 +162,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
                                     configurator.notifyChanges();
                                 }
                             }).show(mui.ui.rootElement);
-                        }).layout(layout -> layout.setAlignSelf(YogaAlign.CENTER))
+                        }).layout(layout -> layout.alignSelf(AlignItems.CENTER))
                 ));
         ConfiguratorParser.createConfigurators(father, this);
     }

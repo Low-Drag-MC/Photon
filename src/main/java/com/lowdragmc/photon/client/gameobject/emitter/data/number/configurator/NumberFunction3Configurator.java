@@ -4,11 +4,9 @@ import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3Config;
+import dev.vfyjxf.taffy.style.FlexWrap;
 import lombok.Getter;
-import org.appliedenergistics.yoga.YogaEdge;
-import org.appliedenergistics.yoga.YogaFlexDirection;
-import org.appliedenergistics.yoga.YogaGutter;
-import org.appliedenergistics.yoga.YogaWrap;
+import dev.vfyjxf.taffy.style.FlexDirection;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -60,22 +58,22 @@ public class NumberFunction3Configurator extends ValueConfigurator<NumberFunctio
                     if (notifyChange) notifyChanges();
                 }, true, config.xyz().length > 2 ? config.xyz()[2] : config.common())
         ).layout(layout -> {
-            layout.setGap(YogaGutter.ALL, 2);
-            layout.setMargin(YogaEdge.LEFT, 2);
-            layout.setFlexDirection(YogaFlexDirection.ROW);
-            layout.setWrap(YogaWrap.WRAP);
+            layout.gapAll(2);
+            layout.marginLeft(2);
+            layout.flexDirection(FlexDirection.ROW);
+            layout.wrap(FlexWrap.WRAP);
         });
         x.layout(layout -> {
-            layout.setFlex(1);
-            layout.setMinWidth(40);
+            layout.flex(1);
+            layout.minWidth(40);
         });
         y.layout(layout -> {
-            layout.setFlex(1);
-            layout.setMinWidth(40);
+            layout.flex(1);
+            layout.minWidth(40);
         });
         z.layout(layout -> {
-            layout.setFlex(1);
-            layout.setMinWidth(40);
+            layout.flex(1);
+            layout.minWidth(40);
         });
     }
 
