@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client;
 
+import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.editor.ui.EditorWindow;
 import com.lowdragmc.lowdraglib2.gui.holder.ModularUIScreen;
@@ -14,6 +15,7 @@ import com.lowdragmc.photon.core.mixins.accessor.ParticleEngineAccessor;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.ClickEvent;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Minecraft;
@@ -72,7 +74,23 @@ public class ClientCommands {
                                 }))
                         .then(Commands.literal("convert").requires(source -> source.hasPermission(2))
                                 .executes(context -> {
-                                    FXCompat.convertFX();
+                                    if (Minecraft.getInstance().player != null) {
+                                        Minecraft.getInstance().player.sendSystemMessage(
+                                                Component.literal("trying to convert photon 1 fx under the ")
+                                                        .append(Component.literal("[ldlib2/assets/photon/fx_old]")
+                                                                .withStyle(style -> style.withColor(0xff008000)
+                                                                        .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE,
+                                                                                LDLib2.getAssetsDir() + "/photon/fx_old")))
+                                                        )
+                                                        .append(Component.literal(" folder"))
+                                        );
+                                    }
+                                    var converted = FXCompat.convertFX();
+                                    if (Minecraft.getInstance().player != null) {
+                                        Minecraft.getInstance().player.sendSystemMessage(
+                                                Component.literal("convert result: " + converted)
+                                        );
+                                    }
                                     return 1;
                                 }))
         );

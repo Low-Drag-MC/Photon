@@ -3,16 +3,12 @@ package com.lowdragmc.photon.client.fx.compat;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.fx.FXHelper;
-import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.*;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.packs.resources.Resource;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * A compatibility layer for porting Photon 1 FX to Photon 2
@@ -22,28 +18,30 @@ public class FXCompat {
 
     private static final Path FX_CVT_PATH = Path.of(LDLib2.getAssetsDir() + "/photon/fx_old");
 
-    public static void convertFX(){
+    public static int convertFX() {
+        if (!Files.exists(FX_CVT_PATH)) return 0;
+        AtomicInteger count = new AtomicInteger();
         try {
-            Files.createDirectories(FX_CVT_PATH);
             Files.createDirectories(Path.of(LDLib2.getAssetsDir() + "/photon/fx"));
         } catch (IOException e) {
             Photon.LOGGER.error(e.getMessage());
         }
-            try {
-                Files.list(FX_CVT_PATH).forEach(path -> {
-                    try {
-                        CompoundTag photon1FX = NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap());
-                        CompoundTag photon2FX = mapEffect(photon1FX);
-                        NbtIo.writeCompressed(photon2FX, Path.of(LDLib2.getAssetsDir() + "/photon/fx/" + path.getFileName()));
-                    }
-                    catch(IOException e){
-                        Photon.LOGGER.error("Failed to read FX tag at {}", path.getFileName());
-                    }
-                });
-            } catch (IOException e) {
-                Photon.LOGGER.error("Failed to read fx_old directory");
-            }
-
+        try {
+            Files.list(FX_CVT_PATH).forEach(path -> {
+                try {
+                    CompoundTag photon1FX = NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap());
+                    CompoundTag photon2FX = mapEffect(photon1FX);
+                    NbtIo.writeCompressed(photon2FX, Path.of(LDLib2.getAssetsDir() + "/photon/fx/" + path.getFileName()));
+                    count.getAndIncrement();
+                }
+                catch(IOException e){
+                    Photon.LOGGER.error("Failed to read FX tag at {}", path.getFileName());
+                }
+            });
+        } catch (IOException e) {
+            Photon.LOGGER.error("Failed to read fx_old directory");
+        }
+        return count.get();
     }
 
     public static CompoundTag mapEffect(CompoundTag fx) {
@@ -77,7 +75,5 @@ public class FXCompat {
         new_fx.put("fxData", fxData);
         return new_fx;
     }
-
-
 
 }
