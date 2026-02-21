@@ -1,6 +1,8 @@
 package com.lowdragmc.photon;
 
+import com.lowdragmc.photon.client.fx.compat.FXCompat;
 import com.lowdragmc.photon.command.*;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -26,6 +28,11 @@ public class ServerCommands {
                                         .then(RemoveEntityEffectCommand.createServerCommand())
                                 )
                         )
+                        .then(Commands.literal("convert").requires(source -> source.hasPermission(2))
+                                .executes(context -> {
+                                    FXCompat.convertFX();
+                                    return 1;
+                                }))
 
         );
     }
