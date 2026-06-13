@@ -213,6 +213,8 @@
   "addition_gpu_data.type.vec3": "类型：§e三维向量§r",
   "addition_gpu_data.t": "T",
   "addition_gpu_data.t.tips": "T 值 = 存在时间 / 生命周期 ",
+  "addition_gpu_data.random": "随机数",
+  "addition_gpu_data.random.tips": "随机值范围在 [0, 1)",
   "addition_gpu_data.age": "存在时间",
   "addition_gpu_data.lifetime": "生命周期",
   "addition_gpu_data.position": "位置（局部）",
