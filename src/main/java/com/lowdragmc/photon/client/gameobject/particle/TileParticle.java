@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
-import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
@@ -697,7 +696,7 @@ u     */
                 );
                 quaternion = new Quaternionf().setFromNormalized(mat);
 
-                float stretch = config.renderer.getLengthScale() + speed * config.renderer.getSpeedScale();
+                float stretch = config.renderer.getLengthScale() + speed * config.renderer.getVelocityScale();
                 finalSizeX *= stretch;
 
                 float offsetAmount = (finalSizeX - size.x) * spaceScale.x;

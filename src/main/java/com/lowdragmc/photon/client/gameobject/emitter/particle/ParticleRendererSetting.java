@@ -83,7 +83,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     protected Vector3f modelPivot = new Vector3f();
     @Persisted
     @EqualsAndHashCode.Include
-    protected float speedScale = 0.0f;
+    protected float velocityScale = 0.0f;
     @Persisted
     @EqualsAndHashCode.Include
     protected float lengthScale = 2.0f;
@@ -101,9 +101,9 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
 		            new NumberConfigurator("lengthScale", this::getLengthScale, value -> setLengthScale(value.floatValue()), 2.0f, true)
 				            .setWheel(0.1f)
 				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.lengthScale"),
-		            new NumberConfigurator("speedScale", this::getSpeedScale, value -> setSpeedScale(value.floatValue()), 0.0f, true)
+		            new NumberConfigurator("velocityScale", this::getVelocityScale, value -> setVelocityScale(value.floatValue()), 0.0f, true)
 				            .setWheel(0.1f)
-				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.speedScale")
+				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.velocityScale")
             );
         }
         if (mode == Mode.Model) {
@@ -162,8 +162,8 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         config.particleRenderType.clearInstance();
     }
 
-    public void setSpeedScale(float speedScale) {
-        this.speedScale = speedScale;
+    public void setVelocityScale(float velocityScale) {
+        this.velocityScale = velocityScale;
         config.particleRenderType.clearInstance();
     }
 

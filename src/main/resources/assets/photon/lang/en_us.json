@@ -108,6 +108,8 @@
   "photon.emitter.config.renderer.renderMode.model.shade": "If enabled, the model will be rendered with shade for each side",
   "photon.emitter.config.renderer.renderMode.model.useBlockUV": "If enabled, use uv according to the model, otherwise use the particle uv.",
   "photon.emitter.config.renderer.renderMode.model.modelPivot": "Model pivot offset",
+  "photon.emitter.config.renderer.renderMode.stretchedBillboard.lengthScale": "Stretches particles proportionally to their current size along the direction of their velocity. Setting this to zero makes the particles disappear, having effectively zero length.",
+  "photon.emitter.config.renderer.renderMode.stretchedBillboard.velocityScale": "Stretches particles proportionally to their speed. Set this to zero to disable stretching based on speed.",
   "photon.emitter.config.renderer.layer": "Defines the render layer of the particle renderer.",
   "photon.emitter.config.renderer.bloomEffect": "Render particles with the bloom effect.",
   "photon.emitter.config.renderer.cull": "Cull particles that are out of view.",

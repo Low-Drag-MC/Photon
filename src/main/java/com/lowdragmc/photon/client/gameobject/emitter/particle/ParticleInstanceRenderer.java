@@ -519,7 +519,7 @@ public class ParticleInstanceRenderer {
                     );
                     quaternion = new Quaternionf().setFromNormalized(mat);
 
-                    float stretch = config.renderer.getLengthScale() + speed * config.renderer.getSpeedScale();
+                    float stretch = config.renderer.getLengthScale() + speed * config.renderer.getVelocityScale();
                     finalSizeX *= stretch;
 
                     float offsetAmount = (finalSizeX - size.x) * scale.x;

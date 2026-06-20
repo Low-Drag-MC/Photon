@@ -108,6 +108,8 @@
   "photon.emitter.config.renderer.renderMode.model.shade": "如果启用，模型将根据每个面进行着色渲染",
   "photon.emitter.config.renderer.renderMode.model.useBlockUV": "如果启用，使用模型对应的UV，否则使用粒子UV。",
   "photon.emitter.config.renderer.renderMode.model.modelPivot": "模型枢轴偏移",
+  "photon.emitter.config.renderer.renderMode.stretchedBillboard.lengthScale": "定义粒子与其宽度相比较的长度。这确定了粒子不移动时的基本长度。值为1表示中性，不产生拉伸和挤压。",
+  "photon.emitter.config.renderer.renderMode.stretchedBillboard.velocityScale": "定义与自身速度比较的粒子的长度。",
   "photon.emitter.config.renderer.layer": "定义粒子渲染器的渲染层。",
   "photon.emitter.config.renderer.bloomEffect": "使用泛光效果渲染粒子。",
   "photon.emitter.config.renderer.cull": "剔除视野外的粒子。",
