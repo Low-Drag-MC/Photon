@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
@@ -42,6 +43,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
             quaternion.rotateY((float) Math.toRadians(180 - c.getYRot()));
             return quaternion;
         }),
+        StretchedBillboard((p, c, t) -> new Quaternionf()),
         Model((p, c, t) -> new Quaternionf());
 
         public final TriFunction<TileParticle, Camera, Float, Quaternionf> quaternion;
@@ -79,6 +81,12 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     @Persisted
     @EqualsAndHashCode.Include
     protected Vector3f modelPivot = new Vector3f();
+    @Persisted
+    @EqualsAndHashCode.Include
+    protected float speedScale = 0.0f;
+    @Persisted
+    @EqualsAndHashCode.Include
+    protected float lengthScale = 2.0f;
     @Configurable(name = "ParticleRendererSetting.useGPUInstance")
     @EqualsAndHashCode.Include
     private boolean useGPUInstance = false;
@@ -88,6 +96,16 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     }
 
     public void buildSubConfigurator(Mode mode, ConfiguratorGroup group) {
+        if (mode == Mode.StretchedBillboard) {
+            group.addConfigurators(
+		            new NumberConfigurator("lengthScale", this::getLengthScale, value -> setLengthScale(value.floatValue()), 2.0f, true)
+				            .setWheel(0.1f)
+				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.lengthScale"),
+		            new NumberConfigurator("speedScale", this::getSpeedScale, value -> setSpeedScale(value.floatValue()), 0.0f, true)
+				            .setWheel(0.1f)
+				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.speedScale")
+            );
+        }
         if (mode == Mode.Model) {
             getModel().buildConfigurator(group);
             group.addConfigurators(
@@ -141,6 +159,16 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
 
     public void setModelPivot(Vector3f modelPivot) {
         this.modelPivot = modelPivot;
+        config.particleRenderType.clearInstance();
+    }
+
+    public void setSpeedScale(float speedScale) {
+        this.speedScale = speedScale;
+        config.particleRenderType.clearInstance();
+    }
+
+    public void setLengthScale(float lengthScale) {
+        this.lengthScale = lengthScale;
         config.particleRenderType.clearInstance();
     }
 

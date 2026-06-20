@@ -15,7 +15,9 @@ import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.neoforged.neoforge.client.model.IQuadTransformer;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.apache.commons.lang3.tuple.Pair;
+import org.joml.Matrix3f;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.system.MemoryStack;
 
@@ -472,15 +474,72 @@ public class ParticleInstanceRenderer {
                 buffer.put(Float.intBitsToFloat(light));
             } else {
                 var uvs = p.getRealUVs(partialTicks);
-                var quaternion = renderMode.quaternion.apply(p, camera, partialTicks);
-                if (!Vector3fHelper.isZero(rotation)) {
-                    quaternion = new Quaternionf(quaternion).rotateXYZ(rotation.x, rotation.y, rotation.z);
+
+                Quaternionf quaternion;
+                float finalSizeX = size.x;
+                float finalSizeY = size.y;
+                if (renderMode == ParticleRendererSetting.Mode.StretchedBillboard) {
+                    Vector3f vel = p.getRealVelocity();
+                    float speed = vel.length();
+
+                    Vector3f right = new Vector3f();
+                    if (speed > 1e-5f) {
+                        right.set(vel).div(speed);
+                    } else {
+                        right.set(1, 0, 0);
+                    }
+
+                    Vector3f dirToCam = new Vector3f((float)(vec3.x - localPos.x), (float)(vec3.y - localPos.y), (float)(vec3.z - localPos.z));
+                    if (dirToCam.lengthSquared() > 1e-5f) {
+                        dirToCam.normalize();
+                    } else {
+                        dirToCam.set(0, 0, 1);
+                    }
+
+                    Vector3f up = new Vector3f();
+                    dirToCam.cross(right, up);
+
+                    if (up.lengthSquared() < 1e-5f) {
+                        if (Math.abs(right.y) > 0.99f) {
+                            up.set(0, 0, 1).cross(right).normalize();
+                        } else {
+                            up.set(0, 1, 0).cross(right).normalize();
+                        }
+                    } else {
+                        up.normalize();
+                    }
+
+                    Vector3f forward = new Vector3f();
+                    right.cross(up, forward).normalize();
+
+                    Matrix3f mat = new Matrix3f(
+                                    right.x,   right.y,   right.z,
+                                    up.x,      up.y,      up.z,
+                                    forward.x, forward.y, forward.z
+                    );
+                    quaternion = new Quaternionf().setFromNormalized(mat);
+
+                    float stretch = config.renderer.getLengthScale() + speed * config.renderer.getSpeedScale();
+                    finalSizeX *= stretch;
+
+                    float offsetAmount = (finalSizeX - size.x) * scale.x;
+                    x -= right.x * offsetAmount;
+                    y -= right.y * offsetAmount;
+                    z -= right.z * offsetAmount;
+
+                } else {
+                    var defaultQuat = renderMode.quaternion.apply(p, camera, partialTicks);
+                    if (!Vector3fHelper.isZero(rotation)) {
+                        quaternion = new Quaternionf(defaultQuat).rotateXYZ(rotation.x, rotation.y, rotation.z);
+                    } else {
+                        quaternion = defaultQuat;
+                    }
                 }
 
                 // pos vec3
                 buffer.put(x).put(y).put(z);
                 // size vec2
-                buffer.put(size.x).put(size.y);
+                buffer.put(finalSizeX).put(finalSizeY);
                 // scale vec3
                 buffer.put(scale.x).put(scale.y).put(scale.z);
                 // rot quat (vec4)
