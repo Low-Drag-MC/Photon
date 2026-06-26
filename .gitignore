@@ -22,3 +22,5 @@ forge/src/generated/resources/.cache/
 fabric/src/generated/resources/.cache/
 *.DS_Store
 /runs
+AGENTS.md
+CLAUDE.md
