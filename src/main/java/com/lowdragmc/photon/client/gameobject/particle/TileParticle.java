@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
-import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
@@ -661,10 +660,68 @@ u     */
                 }
             }
         } else {
-            var quaternion = renderMode.quaternion.apply(this, camera, partialTicks);
-            if (!Vector3fHelper.isZero(rotation)) {
-                quaternion = new Quaternionf(quaternion).rotateXYZ(rotation.x, rotation.y, rotation.z);
+            Quaternionf quaternion;
+            float finalSizeX = size.x;
+            float finalSizeY = size.y;
+            float finalSizeZ = size.z;
+            var spaceScale = getSpaceScale();
+
+            if (renderMode == ParticleRendererSetting.Mode.StretchedBillboard) {
+                Vector3f vel = getRealVelocity();
+                float speed = vel.length();
+
+                Vector3f right = new Vector3f();
+                if (speed > 1e-5f) {
+                    right.set(vel).div(speed);
+                } else {
+                    right.set(1, 0, 0);
+                }
+
+                Vector3f dirToCam = new Vector3f((float)(vec3.x - localPos.x), (float)(vec3.y - localPos.y), (float)(vec3.z - localPos.z));
+                if (dirToCam.lengthSquared() > 1e-5f) {
+                    dirToCam.normalize();
+                } else {
+                    dirToCam.set(0, 0, 1);
+                }
+
+                Vector3f up = new Vector3f();
+                dirToCam.cross(right, up);
+
+                if (up.lengthSquared() < 1e-5f) {
+                    if (Math.abs(right.y) > 0.99f) {
+                        up.set(0, 0, 1).cross(right).normalize();
+                    } else {
+                        up.set(0, 1, 0).cross(right).normalize();
+                    }
+                } else {
+                    up.normalize();
+                }
+
+                Vector3f forward = new Vector3f();
+                right.cross(up, forward).normalize();
+
+                Matrix3f mat = new Matrix3f(
+                        right.x,   right.y,   right.z,
+                        up.x,      up.y,      up.z,
+                        forward.x, forward.y, forward.z
+                );
+                quaternion = new Quaternionf().setFromNormalized(mat);
+
+                float stretch = config.renderer.getLengthScale() + speed * config.renderer.getVelocityScale();
+                finalSizeX *= stretch;
+
+                float offsetAmount = (finalSizeX - size.x) * spaceScale.x;
+                x -= right.x * offsetAmount;
+                y -= right.y * offsetAmount;
+                z -= right.z * offsetAmount;
+
+            } else {
+                quaternion = renderMode.quaternion.apply(this, camera, partialTicks);
+                if (!Vector3fHelper.isZero(rotation)) {
+                    quaternion = new Quaternionf(quaternion).rotateXYZ(rotation.x, rotation.y, rotation.z);
+                }
             }
+
             var rawVertexes = new Vector3f[]{
                     new Vector3f(1.0F, -1.0F, 0.0F),
                     new Vector3f(1.0F, 1.0F, 0.0F),
@@ -672,10 +729,10 @@ u     */
                     new Vector3f(-1.0F, -1.0F, 0.0F),
             };
             var normal = new Vector3f(0, 0, 1);
-            var spaceScale = getSpaceScale();
+
             for (var i = 0; i < 4; ++i) {
                 var vertex = rawVertexes[i];
-                vertex.mul(size.x, size.y, size.z);
+                vertex.mul(finalSizeX, finalSizeY, finalSizeZ);
                 vertex = quaternion.transform(vertex);
                 vertex.mul(spaceScale);
                 vertex.add(x, y, z);

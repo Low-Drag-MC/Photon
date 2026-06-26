@@ -19,8 +19,11 @@ import java.lang.reflect.Field;
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class FacingDirectionSetting implements IConfigurable, IPersistedSerializable {
 
-    private Runnable onChanged = () -> {
-    };
+    public final ParticleRendererSetting particleRendererSetting;
+
+    public FacingDirectionSetting(ParticleRendererSetting particleRendererSetting) {
+        this.particleRendererSetting = particleRendererSetting;
+    }
 
     public enum Mode {
         DERIVE_FROM_VELOCITY,
@@ -44,8 +47,9 @@ public class FacingDirectionSetting implements IConfigurable, IPersistedSerializ
     }
 
     public void setMode(Mode mode) {
+        if (mode == this.mode) return;
         this.mode = mode;
-        onChanged.run();
+        particleRendererSetting.getConfig().particleRenderType.clearInstance();
     }
 
     public float getMinSpeedThreshold() {
@@ -53,8 +57,9 @@ public class FacingDirectionSetting implements IConfigurable, IPersistedSerializ
     }
 
     public void setMinSpeedThreshold(float minSpeedThreshold) {
+        if (minSpeedThreshold == this.minSpeedThreshold) return;
         this.minSpeedThreshold = minSpeedThreshold;
-        onChanged.run();
+        particleRendererSetting.getConfig().particleRenderType.clearInstance();
     }
 
     public Vector3f getCustomDirection() {
@@ -62,19 +67,15 @@ public class FacingDirectionSetting implements IConfigurable, IPersistedSerializ
     }
 
     public void setCustomDirection(Vector3f customDirection) {
+        if (customDirection.equals(this.customDirection)) return;
         this.customDirection = customDirection;
-        onChanged.run();
-    }
-
-    public void setOnChanged(Runnable onChanged) {
-        this.onChanged = onChanged == null ? () -> {
-        } : onChanged;
+        particleRendererSetting.getConfig().particleRenderType.clearInstance();
     }
 
     @Override
     public void afterDeserialize() {
         IPersistedSerializable.super.afterDeserialize();
-        onChanged.run();
+        particleRendererSetting.getConfig().particleRenderType.clearInstance();
     }
 
     @Override

@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorSelectorConfigurator;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
@@ -47,6 +48,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
             quaternion.rotateY((float) Math.toRadians(180 - c.getYRot()));
             return quaternion;
         }),
+        StretchedBillboard((p, c, t) -> new Quaternionf()),
         Model((p, c, t) -> new Quaternionf());
 
         public final TriFunction<TileParticle, Camera, Float, Quaternionf> quaternion;
@@ -84,6 +86,12 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     @Persisted
     @EqualsAndHashCode.Include
     protected Vector3f modelPivot = new Vector3f();
+    @Persisted
+    @EqualsAndHashCode.Include
+    protected float velocityScale = 0.0f;
+    @Persisted
+    @EqualsAndHashCode.Include
+    protected float lengthScale = 2.0f;
     @Configurable(name = "ParticleRendererSetting.useGPUInstance")
     @EqualsAndHashCode.Include
     private boolean useGPUInstance = false;
@@ -92,14 +100,22 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     private FacingMode facingMode = FacingMode.DEFAULT;
     @Persisted(subPersisted = true)
     @EqualsAndHashCode.Include
-    private final FacingDirectionSetting facingDirection = new FacingDirectionSetting();
+    private final FacingDirectionSetting facingDirection = new FacingDirectionSetting(this);
 
     public ParticleRendererSetting(ParticleConfig config) {
         this.config = config;
-        this.facingDirection.setOnChanged(this::onFacingSettingChanged);
     }
 
     public void buildSubConfigurator(Mode mode, ConfiguratorGroup group) {
+        if (mode == Mode.StretchedBillboard) {
+            group.addConfigurators(
+		            new NumberConfigurator("lengthScale", this::getLengthScale, value -> setLengthScale(value.floatValue()), 2.0f, true)
+				            .setWheel(0.1f)
+				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.lengthScale"),
+		            new NumberConfigurator("velocityScale", this::getVelocityScale, value -> setVelocityScale(value.floatValue()), 0.0f, true)
+				            .setWheel(0.1f)
+				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.velocityScale"));
+        }
         if (mode == Mode.Billboard) {
             var modeNames = java.util.Arrays.stream(FacingMode.values()).map(Enum::name).toList();
             group.addConfigurators(
@@ -186,6 +202,16 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
 
     public void setModelPivot(Vector3f modelPivot) {
         this.modelPivot = modelPivot;
+        config.particleRenderType.clearInstance();
+    }
+
+    public void setVelocityScale(float velocityScale) {
+        this.velocityScale = velocityScale;
+        config.particleRenderType.clearInstance();
+    }
+
+    public void setLengthScale(float lengthScale) {
+        this.lengthScale = lengthScale;
         config.particleRenderType.clearInstance();
     }
 
