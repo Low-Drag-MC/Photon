@@ -701,9 +701,9 @@ u     */
                 right.cross(up, forward).normalize();
 
                 Matrix3f mat = new Matrix3f(
-                                right.x,   right.y,   right.z,
-                                up.x,      up.y,      up.z,
-                                forward.x, forward.y, forward.z
+                        right.x,   right.y,   right.z,
+                        up.x,      up.y,      up.z,
+                        forward.x, forward.y, forward.z
                 );
                 quaternion = new Quaternionf().setFromNormalized(mat);
 
@@ -723,10 +723,10 @@ u     */
             }
 
             var rawVertexes = new Vector3f[]{
-                            new Vector3f(1.0F, -1.0F, 0.0F),
-                            new Vector3f(1.0F, 1.0F, 0.0F),
-                            new Vector3f(-1.0F, 1.0F, 0.0F),
-                            new Vector3f(-1.0F, -1.0F, 0.0F),
+                    new Vector3f(1.0F, -1.0F, 0.0F),
+                    new Vector3f(1.0F, 1.0F, 0.0F),
+                    new Vector3f(-1.0F, 1.0F, 0.0F),
+                    new Vector3f(-1.0F, -1.0F, 0.0F),
             };
             var normal = new Vector3f(0, 0, 1);
 
