@@ -2,6 +2,7 @@ package com.lowdragmc.photon.gui.editor.view.scene;
 
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.ui.Style;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
@@ -25,7 +26,7 @@ public class SceneToggleBuilder {
     @Setter
     private IGuiTexture hoverTexture = Sprites.BORDER1_RT1;
     @Setter
-    private float iconScale = 0.6f;
+    private float iconScale = 0.8f;
     private int disabledColor = ColorPattern.GRAY.color;
     
     public SceneToggleBuilder(Supplier<Boolean> valueGetter, BooleanConsumer valueSetter) {
@@ -68,8 +69,10 @@ public class SceneToggleBuilder {
             }))
             .setOnToggleChanged(valueSetter)
             .toggleStyle(style -> {
-                style.baseTexture(baseTexture);
-                style.hoverTexture(hoverTexture);
+                Style.defaultPipeline(style, s -> {
+                    s.baseTexture(baseTexture);
+                    s.hoverTexture(hoverTexture);
+                });
                 style.unmarkTexture(disabledIcon.copy().scale(iconScale));
                 style.markTexture(enabledIcon.copy().scale(iconScale));
             })

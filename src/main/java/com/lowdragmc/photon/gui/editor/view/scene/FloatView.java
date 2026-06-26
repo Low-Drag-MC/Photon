@@ -75,6 +75,12 @@ public class FloatView extends UIElement {
         addChildren(titleBar, contentContainer);
     }
 
+    @Override
+    protected void onLayoutChanged(boolean hasGeometryChanged) {
+        super.onLayoutChanged(hasGeometryChanged);
+        adaptPositionToElement(sceneView.sceneEditor.scene);
+    }
+
     public void show() {
         if (isHidden) {
             isHidden = false;
