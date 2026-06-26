@@ -9,6 +9,7 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorSelectorConfigurator;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
@@ -35,7 +36,11 @@ import java.lang.reflect.Field;
 public class ParticleRendererSetting extends RendererSetting implements IConfigurable, IPersistedSerializable {
 
     public enum Mode {
-        Billboard((p, c, t) -> c.rotation()),
+        None((p, c, t) -> new Quaternionf()),
+        Billboard((p, c, t) -> {
+            var renderer = p.getConfig().renderer;
+            return renderer.getFacingMode().compute(renderer.getFacingDirection(), p, c, t);
+        }),
         Horizontal(0, -90),
         Vertical(0, 0),
         VerticalBillboard((p, c, t) -> {
@@ -90,6 +95,12 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     @Configurable(name = "ParticleRendererSetting.useGPUInstance")
     @EqualsAndHashCode.Include
     private boolean useGPUInstance = false;
+    @Persisted
+    @EqualsAndHashCode.Include
+    private FacingMode facingMode = FacingMode.DEFAULT;
+    @Persisted(subPersisted = true)
+    @EqualsAndHashCode.Include
+    private final FacingDirectionSetting facingDirection = new FacingDirectionSetting(this);
 
     public ParticleRendererSetting(ParticleConfig config) {
         this.config = config;
@@ -103,7 +114,39 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
 				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.lengthScale"),
 		            new NumberConfigurator("velocityScale", this::getVelocityScale, value -> setVelocityScale(value.floatValue()), 0.0f, true)
 				            .setWheel(0.1f)
-				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.velocityScale")
+				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.velocityScale"));
+        }
+        if (mode == Mode.Billboard) {
+            var modeNames = java.util.Arrays.stream(FacingMode.values()).map(Enum::name).toList();
+            group.addConfigurators(
+                    new ConfiguratorSelectorConfigurator<>(
+                            "ParticleRendererSetting.facingMode",
+                            () -> facingMode.name(),
+                            name -> setFacingMode(FacingMode.valueOf(name)),
+                            FacingMode.DEFAULT.name(),
+                            true,
+                            modeNames,
+                            s -> "ParticleRendererSetting.facingMode." + s,
+                            (selectedName, subGroup) -> {
+                                var selectedMode = FacingMode.valueOf(selectedName);
+                                if (selectedMode.requiresDirection()) {
+                                    facingDirection.buildConfigurator(subGroup);
+                                }
+                            }
+                    ).setTips(
+                            "photon.emitter.config.renderer.facingMode",
+                            "photon.emitter.config.renderer.facingMode.DEFAULT",
+                            "photon.emitter.config.renderer.facingMode.ROTATE_Y",
+                            "photon.emitter.config.renderer.facingMode.LOOKAT_XYZ",
+                            "photon.emitter.config.renderer.facingMode.LOOKAT_Y",
+                            "photon.emitter.config.renderer.facingMode.LOOKAT_DIRECTION",
+                            "photon.emitter.config.renderer.facingMode.DIRECTION_X",
+                            "photon.emitter.config.renderer.facingMode.DIRECTION_Y",
+                            "photon.emitter.config.renderer.facingMode.DIRECTION_Z",
+                            "photon.emitter.config.renderer.facingMode.EMITTER_TRANSFORM_XY",
+                            "photon.emitter.config.renderer.facingMode.EMITTER_TRANSFORM_XZ",
+                            "photon.emitter.config.renderer.facingMode.EMITTER_TRANSFORM_YZ"
+                    )
             );
         }
         if (mode == Mode.Model) {
@@ -172,9 +215,21 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         config.particleRenderType.clearInstance();
     }
 
+    public void setFacingMode(FacingMode facingMode) {
+        this.facingMode = facingMode == null ? FacingMode.DEFAULT : facingMode;
+        config.particleRenderType.clearInstance();
+    }
+
+    private void onFacingSettingChanged() {
+        config.particleRenderType.clearInstance();
+    }
+
     @Override
     public void deserializeNBT(HolderLookup.@NotNull Provider provider, @NotNull CompoundTag tag) {
         IPersistedSerializable.super.deserializeNBT(provider, tag);
+        if (facingMode == null) {
+            facingMode = FacingMode.DEFAULT;
+        }
         if (renderMode == Mode.Model) {
             if (model == null) {
                 model = new IModelRenderer(ResourceLocation.parse("block/dirt"));

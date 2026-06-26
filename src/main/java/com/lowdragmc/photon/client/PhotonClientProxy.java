@@ -1,11 +1,17 @@
 package com.lowdragmc.photon.client;
 
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonCommonProxy;
+import com.lowdragmc.photon.gui.editor.resource.MeshResource;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.model.ModelResourceLocation;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterShadersEvent;
 
 
@@ -16,6 +22,7 @@ public class PhotonClientProxy extends PhotonCommonProxy {
         super(eventBus);
         eventBus.addListener(this::clientSetup);
         eventBus.addListener(this::shaderRegistry);
+        eventBus.addListener(this::registerModels);
     }
 
     @SubscribeEvent
@@ -26,5 +33,20 @@ public class PhotonClientProxy extends PhotonCommonProxy {
     @SubscribeEvent
     public void shaderRegistry(RegisterShadersEvent event) {
         PhotonShaders.registerShaders(event);
+    }
+
+    @SubscribeEvent
+    public void registerModels(ModelEvent.RegisterAdditional event) {
+        // load all models under the ldlib folder
+        for (var entry : Minecraft.getInstance().getResourceManager().listResources("models",
+                id -> id.getNamespace().equals(Photon.MOD_ID) && id.getPath().endsWith(".json")).entrySet()) {
+            var modelLocation = ResourceLocation.fromNamespaceAndPath(
+                    entry.getKey().getNamespace(),
+                    entry.getKey().getPath()
+                            .replace("models/", "")
+                            .replace(".json", ""));
+            event.register(ModelResourceLocation.standalone(modelLocation));
+        }
+        MeshResource.INSTANCE.onAdditionalModel(event::register);
     }
 }

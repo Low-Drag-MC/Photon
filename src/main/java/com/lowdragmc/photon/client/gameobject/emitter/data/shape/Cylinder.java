@@ -30,6 +30,9 @@ public class Cylinder implements IShape {
     @Configurable(name = "arc")
     @ConfigNumber(range = {0, 360}, wheel = 10)
     private float arc = 360;
+    @Getter
+    @Configurable(name = "ShapeArcSetting", subConfigurable = true, tips = "photon.emitter.config.shape.arc")
+    private final ShapeArcSetting shapeArc = new ShapeArcSetting();
 
 
     @Override
@@ -41,7 +44,7 @@ public class Cylinder implements IShape {
         var bound = outer * outer;
         var r = outer == inner ? outer : Math.sqrt(origin + random.nextDouble() * (bound - origin));
 
-        var theta = arc * Mth.TWO_PI * random.nextDouble() / 360;
+        var theta = arc * Mth.TWO_PI * shapeArc.sampleArcFraction(particle, emitter, random) / 360;
 
         var pos = new Vector3f((float) (r * Math.cos(theta)),
                 random.nextFloat() * 1 - 0.5f,

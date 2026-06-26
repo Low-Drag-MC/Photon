@@ -94,6 +94,10 @@ public class TileParticle implements IParticle {
     protected ConcurrentHashMap<Object, Float> memRandom = new ConcurrentHashMap<>();
     @Getter
     public RandomSource randomSource;
+    @Getter
+    protected int particleBatchIndex;
+    @Getter
+    protected int particleBatchCount = 1;
 
     public TileParticle(IParticleEmitter emitter, ParticleConfig config) {
         this.emitter = emitter;
@@ -103,6 +107,13 @@ public class TileParticle implements IParticle {
     }
 
     public void setup() {
+        if (emitter instanceof ParticleEmitter particleEmitter) {
+            particleBatchIndex = particleEmitter.nextParticleBatchIndex();
+            particleBatchCount = particleEmitter.getParticleBatchCount();
+        } else {
+            particleBatchIndex = 0;
+            particleBatchCount = 1;
+        }
         this.initialTransform = emitter.transform().localToWorldMatrix();
         this.initialTransformInverse = emitter.transform().worldToLocalMatrix();
         this.initialScale = emitter.transform().scale();

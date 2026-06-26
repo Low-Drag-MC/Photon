@@ -47,6 +47,8 @@ public class ParticleEmitter extends Emitter {
     @Getter
     protected final Map<PhotonFXRenderPass, Queue<IParticle>> particles = new LinkedHashMap<>();
     public final Queue<IParticle> waitToAdded = Queues.newArrayDeque();
+    protected int particleBatchCount = 1;
+    protected int particleBatchCursor = 0;
 
     public ParticleEmitter() {
         this(new ParticleConfig());
@@ -107,7 +109,10 @@ public class ParticleEmitter extends Emitter {
         // emit new particle
         var available = config.maxParticles - getParticleAmount();
         if (!removed && getParticleAmount() < config.maxParticles) {
-            available = Math.min(config.emission.getEmissionCount(this, getRandomSource()), available);
+            var emissionCount = config.emission.getEmissionCount(this, getRandomSource());
+            available = Math.min(emissionCount, available);
+            particleBatchCount = Math.max(1, available);
+            particleBatchCursor = 0;
             for (int i = 0; i < available; i++) {
                 emitParticle(createNewParticle());
             }
@@ -164,6 +169,8 @@ public class ParticleEmitter extends Emitter {
         super.reset();
         this.particles.clear();
         this.hasFirstUpdate = false;
+        this.particleBatchCount = 1;
+        this.particleBatchCursor = 0;
     }
 
     @Override
@@ -207,5 +214,13 @@ public class ParticleEmitter extends Emitter {
         if(scene.sceneView().isShapeVisible()) {
             config.shape.drawGuideLines(bufferSource, partialTicks, this);
         }
+    }
+
+    public int nextParticleBatchIndex() {
+        return particleBatchCursor++;
+    }
+
+    public int getParticleBatchCount() {
+        return particleBatchCount;
     }
 }
