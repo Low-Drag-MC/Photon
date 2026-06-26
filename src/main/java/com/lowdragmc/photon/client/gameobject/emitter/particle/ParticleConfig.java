@@ -168,6 +168,9 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
         }
 
         public void drawParticlesInternal(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+            if (renderer.getRenderMode() == ParticleRendererSetting.Mode.None) {
+                return;
+            }
             if (renderer.isUseGPUInstance()) {
                 var context = renderer.getRenderMode() == ParticleRendererSetting.Mode.Model ?
                         MaterialContext.PARTICLE_MODEL_INSTANCE : MaterialContext.PARTICLE_INSTANCE;

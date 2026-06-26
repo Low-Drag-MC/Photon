@@ -30,6 +30,9 @@ public class Circle implements IShape {
     @Configurable(name = "arc")
     @ConfigNumber(range = {0, 360}, wheel = 10)
     private float arc = 360;
+    @Getter
+    @Configurable(name = "ShapeArcSetting", subConfigurable = true, tips = "photon.emitter.config.shape.arc")
+    private final ShapeArcSetting shapeArc = new ShapeArcSetting();
 
     @Override
     public void nextPosVel(TileParticle particle, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
@@ -40,7 +43,7 @@ public class Circle implements IShape {
         var bound = outer * outer;
         var r = outer == inner ? outer : Math.sqrt(origin + random.nextDouble() * (bound - origin));
 
-        var theta = arc * Mth.TWO_PI * random.nextDouble() / 360;
+        var theta = arc * Mth.TWO_PI * shapeArc.sampleArcFraction(particle, emitter, random) / 360;
 
         var pos = new Vector3f((float) (r * Math.cos(theta)),
                 0f,
