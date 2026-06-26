@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib2.client.scene.FBOWorldSceneRenderer;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
+import com.lowdragmc.lowdraglib2.editor.resource.ResourceProviderType;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
@@ -12,11 +13,17 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
 
 
 public class MeshResource extends Resource<MeshData> {
@@ -92,5 +99,32 @@ public class MeshResource extends Resource<MeshData> {
         });
         container.setAddDefault(MeshData::new);
         return container;
+    }
+
+    public void onAdditionalModel(Consumer<ModelResourceLocation> registry) {
+        for (var meshData : getLoadedResourceMeshes()) {
+            registry.accept(ModelResourceLocation.standalone(meshData.getModelLocation()));
+        }
+    }
+
+    private List<MeshData> getLoadedResourceMeshes() {
+        var instance = getResourceInstance();
+        refreshProviders(instance.getBuiltinProviders());
+        refreshProviders(instance.getCustomProviders());
+        var meshes = new ArrayList<MeshData>();
+        for (var entry : instance.listAllResources()) {
+            if (entry.getValue() != null) {
+                meshes.add(entry.getValue());
+            }
+        }
+        return meshes;
+    }
+
+    private static void refreshProviders(Map<ResourceProviderType, List<IResourceProvider<MeshData>>> providersByType) {
+        for (var providers : providersByType.values()) {
+            for (var provider : providers) {
+                provider.checkAndUpdateResourceProvider();
+            }
+        }
     }
 }

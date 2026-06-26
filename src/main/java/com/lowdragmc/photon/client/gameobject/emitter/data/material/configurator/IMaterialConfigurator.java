@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material.configurato
 import com.google.common.base.Predicates;
 import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.*;
+import com.lowdragmc.lowdraglib2.gui.ui.Style;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
@@ -38,7 +39,7 @@ public class IMaterialConfigurator extends ValueConfigurator<IMaterial> {
             layout.maxHeight(100);
             layout.alignSelf(AlignItems.CENTER);
             layout.paddingAll(3);
-        }).style(style -> style.backgroundTexture(Sprites.BORDER1_RT1))
+        }).addClass("preview_bg").style(style -> Style.defaultPipeline(style, s -> s.backgroundTexture(Sprites.BORDER1_RT1)))
                 .addChild(new UIElement().layout(layout -> {
                     layout.widthPercent(100);
                     layout.heightPercent(100);
