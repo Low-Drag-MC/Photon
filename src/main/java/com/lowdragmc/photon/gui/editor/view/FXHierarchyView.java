@@ -107,23 +107,22 @@ public class FXHierarchyView extends View {
                         }
                     });
                     nodeUI.addEventListener(UIEvents.MOUSE_LEAVE, e -> {
-                        if (lastClickTime != 0 && isMouseDown(0) && treeList.getSelected().size() == 1) {
+                        // allow dragging the pressed node even when nothing is selected yet
+                        if (lastClickTime != 0 && isMouseDown(0)) {
                             nodeUI.startDrag(new DraggingNode(node), new TextTexture(node.getKey().getName()));
                         }
                         lastClickTime = 0;
                     }, true);
                     nodeUI.addEventListener(UIEvents.MOUSE_UP, e -> {
                         var fxObject = node.getKey();
-                        if (treeList.getSelected().size() == 1) {
-                            if (fxEditor.inspectorView.inspector.getInspectedConfigurable() != fxObject) {
-                                fxEditor.inspectorView.inspect(fxObject);
-                                fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(fxObject.transform(), () -> {
-                                    fxEditor.historyView.recordSerializableObject(Component.translatable("photon.transform"), fxObject.transform(), fxObject);
-                                });
-                            }
-                        } else {
-                            fxEditor.inspectorView.clear();
-                            fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
+                        // inspect the clicked node directly: the TreeList selection updates on the
+                        // following CLICK, so getSelected() is stale here (it would be empty on the
+                        // first click after a timeline clip/track selection cleared the tree).
+                        if (e.button == 0 && fxEditor.inspectorView.inspector.getInspectedConfigurable() != fxObject) {
+                            fxEditor.inspectorView.inspect(fxObject);
+                            fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(fxObject.transform(), () -> {
+                                fxEditor.historyView.recordSerializableObject(Component.translatable("photon.transform"), fxObject.transform(), fxObject);
+                            });
                         }
                         lastClickTime = 0;
                     });

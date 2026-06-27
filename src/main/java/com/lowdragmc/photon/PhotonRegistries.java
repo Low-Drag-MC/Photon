@@ -8,6 +8,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlockTexture
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.IShape;
+import com.lowdragmc.photon.client.fx.timeline.Track;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
@@ -26,6 +27,9 @@ public class PhotonRegistries {
 
     @OnlyIn(Dist.CLIENT)
     public static AutoRegistry.LDLibRegisterClient<IShape, Supplier<IShape>> SHAPES;
+
+    @OnlyIn(Dist.CLIENT)
+    public static AutoRegistry.LDLibRegisterClient<Track, Supplier<Track>> TIMELINE_TRACKS;
 
     static {
         if (LDLib2.isClient()) {
@@ -47,6 +51,8 @@ public class PhotonRegistries {
                     .create(Photon.id("number_function"), NumberFunction.class, AutoRegistry::noArgsCreator);
             SHAPES = AutoRegistry.LDLibRegisterClient
                     .create(Photon.id("shape"), IShape.class, AutoRegistry::noArgsCreator);
+            TIMELINE_TRACKS = AutoRegistry.LDLibRegisterClient
+                    .create(Photon.id("timeline_track"), Track.class, AutoRegistry::noArgsCreator);
             MATERIALS.register("missing", AutoRegistry.Holder.of(
                     IMaterial.MissingMaterial.class.getAnnotation(LDLRegisterClient.class),
                     IMaterial.MissingMaterial.class,

@@ -171,6 +171,15 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         return false;
     }
 
+    /**
+     * Configured start delay in ticks before this emitter begins. Used (with {@link #getLifetime()})
+     * to compute a sensible default timeline clip length. Defaults to 0; emitter types with a start
+     * delay override this.
+     */
+    public int getStartDelay() {
+        return 0;
+    }
+
     public void setRGBAColor(Vector4f color) {
         this.rCol = color.x;
         this.gCol = color.y;

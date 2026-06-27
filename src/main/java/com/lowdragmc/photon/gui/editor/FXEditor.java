@@ -6,6 +6,7 @@ import com.lowdragmc.lowdraglib2.editor.ui.Editor;
 import com.lowdragmc.lowdraglib2.gui.texture.SpriteTexture;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
+import com.lowdragmc.photon.gui.editor.view.FXTimelineView;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.resources.ResourceLocation;
@@ -23,6 +24,7 @@ public class FXEditor extends Editor {
     public final static SpriteTexture ICON = SpriteTexture.of("photon:textures/icon.png");
     public final FXHierarchyView hierarchyView = new FXHierarchyView(this);
     public final SceneView sceneView = new SceneView(this);
+    public final FXTimelineView timelineView = new FXTimelineView(this);
 
     // runtime
     @Nullable
@@ -32,6 +34,7 @@ public class FXEditor extends Editor {
         this.icon.style(style -> style.backgroundTexture(ICON));
         this.leftWindow.getLeftTop().addView(hierarchyView);
         this.centerWindow.getLeftTop().addView(sceneView);
+        this.bottomWindow.getLeftTop().addView(timelineView);
     }
 
     @Override
@@ -59,6 +62,7 @@ public class FXEditor extends Editor {
             this.runtime = fxProject.getFx().createInternalRuntime();
             this.runtime.root.updatePos(new Vector3f(0.5f, 2, 0.5f));
             hierarchyView.loadFXRuntime(runtime);
+            timelineView.rebuild();
             sceneView.loadScene();
             reloadEffect();
         }
@@ -68,6 +72,7 @@ public class FXEditor extends Editor {
     protected void closeCurrentProject() {
         super.closeCurrentProject();
         hierarchyView.clearFXRuntime();
+        timelineView.clear();
         sceneView.clearScene();
         runtime = null;
     }

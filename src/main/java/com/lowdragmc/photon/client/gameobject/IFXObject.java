@@ -77,16 +77,42 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
     }
 
     /**
-     * should render particle
+     * should render particle. Hierarchical: hidden if this node is hidden by the manual eye-toggle
+     * ({@link #isSelfVisible()}) or by the timeline ({@link #isSelfTimelineVisible()}), or if any
+     * ancestor is hidden.
      */
     default boolean isVisible() {
-        if (!isSelfVisible()) return false;
+        if (!isSelfVisible() || !isSelfTimelineVisible()) return false;
         var parent = transform().parent();
         if (parent != null && parent.sceneObject() instanceof IFXObject ifxObject) {
             return ifxObject.isVisible();
         }
         return true;
     }
+
+    /**
+     * Whether this node is active (ticking). Hierarchical: an inactive node and all its descendants
+     * neither tick nor render. Driven at runtime by the timeline's activator/control tracks; defaults
+     * to active for objects the timeline does not control.
+     */
+    default boolean isActive() {
+        if (!isSelfActive()) return false;
+        var parent = transform().parent();
+        if (parent != null && parent.sceneObject() instanceof IFXObject ifxObject) {
+            return ifxObject.isActive();
+        }
+        return true;
+    }
+
+    /** set/get this node's own active flag (timeline-driven, not persisted). */
+    void setSelfActive(boolean active);
+
+    boolean isSelfActive();
+
+    /** set/get this node's own timeline-visibility flag (timeline-driven, not persisted). */
+    void setSelfTimelineVisible(boolean visible);
+
+    boolean isSelfTimelineVisible();
 
     /**
      * set fx self visible

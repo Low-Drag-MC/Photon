@@ -139,6 +139,14 @@ dependencies {
     implementation("maven.modrinth:sodium:${sodium_version}")
     implementation("maven.modrinth:iris:${iris_version}")
 
+    // Unit tests (JUnit 5). Only for MC-free logic such as the Timeline evaluation core.
+    testImplementation(platform("org.junit:junit-bom:5.11.3"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+test {
+    useJUnitPlatform()
 }
 
 tasks.withType(ProcessResources).configureEach {

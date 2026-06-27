@@ -3,7 +3,9 @@ package com.lowdragmc.photon.client.fx;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.IScene;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.timeline.TimelinePlayer;
 import com.lowdragmc.photon.client.gameobject.EmptyFXObject;
+import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import lombok.Getter;
 import org.jetbrains.annotations.Nullable;
@@ -19,6 +21,7 @@ public class FXRuntime implements IScene {
     public final FXData fxData;
     public final Map<UUID, IFXObject> objects = new LinkedHashMap<>();
     public final IFXObject root;
+    public final TimelinePlayer timelinePlayer;
 
     public FXRuntime(FXData fxData) {
         this.fxData = fxData;
@@ -27,6 +30,15 @@ public class FXRuntime implements IScene {
         addSceneObject(root);
         root.setName("root");
         initRuntime();
+        this.timelinePlayer = new TimelinePlayer(this, fxData.timeline());
+        // the always-on root drives the timeline once per tick (editor + in-world)
+        if (root instanceof FXObject fxRoot) {
+            fxRoot.setOnUpdateTick(() -> {
+                if (!timelinePlayer.isEmpty()) {
+                    timelinePlayer.tick();
+                }
+            });
+        }
     }
 
     private void initRuntime() {
@@ -84,10 +96,12 @@ public class FXRuntime implements IScene {
     }
 
     public void emmit(IEffectExecutor effect, int delay) {
+        // emit every object once; the timeline only gates active/visibility and restarts via the player
         for (var fxObject : objects.values()) {
             fxObject.emmit(effect);
             fxObject.setDelay(delay);
         }
+        timelinePlayer.begin(effect);
     }
 
     public boolean isAlive() {

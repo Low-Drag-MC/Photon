@@ -49,6 +49,19 @@ public class FXObject extends Particle implements IFXObject {
     private float deltaTime = 0;
     @Setter
     private int delay = 0;
+    /** Timeline active flag (this node only; see hierarchical {@link #isActive()}). Default active. */
+    @Setter
+    protected boolean selfActive = true;
+    /** Timeline visibility flag (this node only; folded into hierarchical {@link #isVisible()}). */
+    @Setter
+    protected boolean selfTimelineVisible = true;
+    /**
+     * Optional per-tick callback used by {@link com.lowdragmc.photon.client.fx.FXRuntime} to drive
+     * the timeline from the always-on root object. Runs after the start delay, before {@code updateTick}.
+     */
+    @Setter
+    @Nullable
+    protected Runnable onUpdateTick;
     @Setter
     protected boolean hasPhysics = false;
     @Nullable
@@ -81,6 +94,11 @@ public class FXObject extends Particle implements IFXObject {
         random.setSeed(effectExecutor.getRandomSource().nextLong());
     }
 
+    /** Reseed this object's RNG (used by control-track clips on restart). */
+    public void setRandomSeed(long seed) {
+        random.setSeed(seed);
+    }
+
     @Override
     public final void setSceneInternal(IScene scene) {
         this.scene = scene;
@@ -102,6 +120,10 @@ public class FXObject extends Particle implements IFXObject {
         this.age = 0;
         this.removed = false;
         this.onGround = false;
+        // restore timeline defaults; the player re-applies gating each tick for controlled objects.
+        // (objects that stop being timeline-controlled must fall back to active/visible.)
+        this.selfActive = true;
+        this.selfTimelineVisible = true;
     }
 
     @Nullable
@@ -141,6 +163,14 @@ public class FXObject extends Particle implements IFXObject {
             delay--;
             return;
         }
+        // drive the timeline (root only) once the start delay has elapsed
+        if (onUpdateTick != null) {
+            onUpdateTick.run();
+        }
+        // inactive (timeline) nodes and their descendants neither tick nor render
+        if (!isActive()) {
+            return;
+        }
         // effect first
         updateTick();
     }
@@ -174,6 +204,9 @@ public class FXObject extends Particle implements IFXObject {
 
     @Override
     public void updateFrame(float partialTicks) {
+        if (!isActive()) {
+            return;
+        }
         if (effectExecutor != null) {
             effectExecutor.updateFXObjectFrame(this, partialTicks);
         }

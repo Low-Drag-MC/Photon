@@ -84,6 +84,11 @@ public class BeamEmitter extends Emitter {
     }
 
     @Override
+    public int getStartDelay() {
+        return config.startDelay;
+    }
+
+    @Override
     protected void updateOrigin() {
         super.updateOrigin();
         setLifetime(config.duration);
