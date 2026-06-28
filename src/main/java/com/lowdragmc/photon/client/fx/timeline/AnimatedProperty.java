@@ -27,38 +27,34 @@ import java.util.TreeSet;
  * The value model is <b>absolute, seeded from pose</b>: {@link #base} is the object's value captured when
  * the property was added; the curves are seeded with a single keyframe at that value and from then on
  * fully own the property. {@link #restoreBase} writes {@code base} back when the property is removed/muted.
+ * <p>
+ * Creation, serialization and inspection are owned by the {@link AnimatedPropertyType}; per-type extra
+ * state (e.g. rotation's interpolation mode) lives on a subclass (see
+ * {@code com.lowdragmc.photon.client.fx.timeline.property.RotationAnimatedProperty}).
  */
 public class AnimatedProperty {
-    /** Interpolation mode for angular ({@link AnimatedPropertyType#angular()}) properties. */
-    public static final int INTERP_DEFAULT = 0;
-    public static final int INTERP_SHORTEST = 1;
-
-    private final AnimatedPropertyType type;
+    protected final AnimatedPropertyType type;
     private final float[] base;          // captured authored value, one per channel
     private final ECBCurves[] channels;  // one keyframe curve per channel
     private float rangeMin;              // shared display value range (one Y axis for all channels)
     private float rangeMax;
-    private int interpMode = INTERP_DEFAULT;
 
-    private AnimatedProperty(AnimatedPropertyType type, float[] base, ECBCurves[] channels,
-                            float rangeMin, float rangeMax, int interpMode) {
+    public AnimatedProperty(AnimatedPropertyType type, float[] base, ECBCurves[] channels,
+                            float rangeMin, float rangeMax) {
         this.type = type;
         this.base = base;
         this.channels = channels;
         this.rangeMin = rangeMin;
         this.rangeMax = rangeMax;
-        this.interpMode = interpMode;
     }
 
-    /** Create a property seeded from the target's current value (one keyframe per channel at that value). */
-    public static AnimatedProperty create(AnimatedPropertyType type, FXObject target) {
-        var base = type.capture(target);
+    /** Seed one zero-width (single-keyframe) channel per base value. */
+    public static ECBCurves[] seedChannels(float[] base) {
         var channels = new ECBCurves[base.length];
         for (int i = 0; i < base.length; i++) {
             channels[i] = single(base[i]);
         }
-        var range = type.defaultRange(base);
-        return new AnimatedProperty(type, base.clone(), channels, range[0], range[1], INTERP_DEFAULT);
+        return channels;
     }
 
     /** A single keyframe at (0, v), stored as a zero-width segment so it reads as exactly one key. */
@@ -97,14 +93,6 @@ public class AnimatedProperty {
     public void setRange(float min, float max) {
         this.rangeMin = min;
         this.rangeMax = max;
-    }
-
-    public int interpMode() {
-        return interpMode;
-    }
-
-    public void interpMode(int interpMode) {
-        this.interpMode = interpMode;
     }
 
     /** Sample one channel at {@code x} (ticks), clamping to the first/last keyframe value outside the
@@ -264,6 +252,19 @@ public class AnimatedProperty {
         return -1;
     }
 
+    /** Set the keyframe at {@code tick} to {@code value}: moves the existing key there (if any, matched
+     *  to the rounded tick) or inserts a new one. Used by record mode (one key per channel per tick). */
+    public int putKey(int axis, float tick, float value) {
+        var count = keyCount(axis);
+        for (int k = 0; k < count; k++) {
+            if (Math.round(key(axis, k).x) == Math.round(tick)) {
+                moveKey(axis, k, tick, value);
+                return k;
+            }
+        }
+        return addKey(axis, tick, value);
+    }
+
     public void removeKey(int axis, int k) {
         var segs = channels[axis].getSegments();
         if (isSingleKey(channels[axis])) return; // never remove the last remaining key
@@ -302,32 +303,36 @@ public class AnimatedProperty {
         }
     }
 
+    /** Restore channels + range (+ subclass extras) from another property (for inspector-edit undo). */
+    public void restoreFrom(AnimatedProperty other) {
+        restoreChannels(other.snapshotChannels());
+        setRange(other.rangeMin, other.rangeMax);
+        restoreExtraFrom(other);
+    }
+
+    /** Hook for subclasses to restore their extra state (e.g. rotation interp mode). */
+    protected void restoreExtraFrom(AnimatedProperty other) {
+    }
+
     public AnimatedProperty copy() {
-        var copy = new ECBCurves[channels.length];
-        for (int i = 0; i < channels.length; i++) {
-            copy[i] = channels[i].copy();
-        }
-        return new AnimatedProperty(type, base.clone(), copy, rangeMin, rangeMax, interpMode);
+        return new AnimatedProperty(type, base.clone(), snapshotChannels(), rangeMin, rangeMax);
+    }
+
+    /** Build a configurator for this property's inspector (e.g. rotation interp mode), or {@code null}. */
+    @Nullable
+    public com.lowdragmc.lowdraglib2.configurator.IConfigurable inspect(Runnable onChanged) {
+        return type.inspect(this, onChanged);
     }
 
     // ------------------------------------------------------------------ serialization
 
+    /** Serialize this property via its {@link AnimatedPropertyType} (type owns the format). */
     public CompoundTag serializeNBT(HolderLookup.Provider provider) {
-        var tag = new CompoundTag();
-        tag.putString("type", type.name());
-        tag.put("base", floats(base));
-        var chs = new ListTag();
-        for (var channel : channels) {
-            chs.add(channel.serializeNBT(provider));
-        }
-        tag.put("channels", chs);
-        tag.putFloat("rangeMin", rangeMin);
-        tag.putFloat("rangeMax", rangeMax);
-        tag.putInt("interp", interpMode);
-        return tag;
+        return type.serialize(provider, this);
     }
 
-    /** Deserialize a property; returns {@code null} if its type is no longer registered. */
+    /** Dispatcher: read the property type from {@code tag} and delegate to {@link AnimatedPropertyType#deserialize}.
+     *  Returns {@code null} if the type is no longer registered. */
     @Nullable
     public static AnimatedProperty deserialize(HolderLookup.Provider provider, CompoundTag tag) {
         var typeName = tag.getString("type");
@@ -336,23 +341,12 @@ public class AnimatedProperty {
             Photon.LOGGER.warn("Unknown animated property type '{}' skipped while loading", typeName);
             return null;
         }
-        var base = readFloats(tag.getList("base", Tag.TAG_FLOAT));
-        var channels = new ECBCurves[type.channelCount()];
-        var chs = tag.getList("channels", Tag.TAG_LIST);
-        for (int i = 0; i < channels.length; i++) {
-            channels[i] = new ECBCurves();
-            if (i < chs.size()) {
-                channels[i].deserializeNBT(provider, chs.getList(i));
-            }
-        }
-        // tolerate a base shorter/longer than the current channel count (type changed)
-        var fixedBase = new float[type.channelCount()];
-        System.arraycopy(base, 0, fixedBase, 0, Math.min(base.length, fixedBase.length));
-        return new AnimatedProperty(type, fixedBase, channels,
-                tag.getFloat("rangeMin"), tag.getFloat("rangeMax"), tag.getInt("interp"));
+        return type.deserialize(provider, tag);
     }
 
-    private static ListTag floats(float[] values) {
+    // ---- shared (de)serialization helpers used by AnimatedPropertyType defaults ----
+
+    public static ListTag floatsToTag(float[] values) {
         var list = new ListTag();
         for (var v : values) {
             list.add(FloatTag.valueOf(v));
@@ -360,11 +354,24 @@ public class AnimatedProperty {
         return list;
     }
 
-    private static float[] readFloats(ListTag list) {
+    public static float[] readFloatsFromTag(ListTag list) {
         var values = new float[list.size()];
         for (int i = 0; i < values.length; i++) {
             values[i] = list.getFloat(i);
         }
         return values;
+    }
+
+    /** Read {@code count} channels from the {@code "channels"} list of {@code tag}. */
+    public static ECBCurves[] readChannels(HolderLookup.Provider provider, CompoundTag tag, int count) {
+        var channels = new ECBCurves[count];
+        var chs = tag.getList("channels", Tag.TAG_LIST);
+        for (int i = 0; i < count; i++) {
+            channels[i] = new ECBCurves();
+            if (i < chs.size()) {
+                channels[i].deserializeNBT(provider, chs.getList(i));
+            }
+        }
+        return channels;
     }
 }

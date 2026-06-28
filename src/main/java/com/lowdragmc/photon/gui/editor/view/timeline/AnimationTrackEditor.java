@@ -31,8 +31,10 @@ import org.joml.Vector2f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Editor for {@code animation} tracks: a bound-target header (root excluded), a keyframe-dot lane,
@@ -45,12 +47,26 @@ public class AnimationTrackEditor extends TrackEditor {
         @Nullable AnimatedProperty selectedProperty;
         int selectedAxis = -1;            // -1 = all channels, else a single channel
         int selKeyAxis = -1, selKeyIndex = -1;
+        /** True once the user explicitly clicked a property/keyframe/curve (vs the auto-select on expand);
+         *  used so an animation track still highlights when its header/lane is clicked. */
+        boolean explicitSelection = false;
         final Set<AnimatedProperty> expandedProperties = new HashSet<>();
         // curve drag transient
         @Nullable AnimatedProperty dragProperty;
         int dragAxis = -1, dragKey = -1, dragHandle = 0; // handle: 0 point, 1 in, 2 out
         @Nullable ECBCurves[] dragSnapshot;
+        // record mode
+        /** Last captured value per type (the reference the poll diffs against). Re-read after every write
+         *  so a capture/apply round-trip (e.g. euler↔quaternion) is absorbed and never re-triggers. */
+        final Map<AnimatedPropertyType, float[]> recordLast = new HashMap<>();
+        /** Last polled (integer) time; a change means the playhead moved (scrub/play) → don't write. */
+        long recordLastTime = Long.MIN_VALUE;
+        @Nullable List<AnimatedProperty> recordSnapshot;
+        boolean recordDirty;
     }
+
+    /** Per-channel value difference (degrees / blocks) above which record mode writes a keyframe. */
+    private static final float REC_EPS = 1e-4f;
 
     @Override
     public AnimationTrackUIState createState() {
@@ -121,6 +137,140 @@ public class AnimationTrackEditor extends TrackEditor {
         return false;
     }
 
+    @Override
+    public boolean hasSubSelection(TrackUIState state) {
+        return ((AnimationTrackUIState) state).explicitSelection;
+    }
+
+    @Override
+    public void clearSubSelection(TrackUIState state) {
+        var st = (AnimationTrackUIState) state;
+        st.selectedProperty = null;
+        st.selectedAxis = -1;
+        st.selKeyAxis = -1;
+        st.selKeyIndex = -1;
+        st.explicitSelection = false;
+    }
+
+    // ------------------------------------------------------------------ record mode
+
+    @Override
+    public UIElement buildHeaderControls(TimelineContext ctx, Track track, TrackUIState state) {
+        var toggle = new Toggle().noText().setOn(ctx.isRecording(track))
+                .setOnToggleChanged(on -> ctx.setRecordingTrack(on ? track : null));
+        toggle.getToggleStyle()
+                .markTexture(ColorPattern.RED.rectTexture())
+                .unmarkTexture(ColorPattern.T_DARK_GRAY.rectTexture());
+        toggle.setId("timeline.trackHeader.record").layout(layout -> layout.aspectRatio(1).heightPercent(100))
+                .style(style -> style.tooltips("photon.gui.editor.timeline.record"));
+        return toggle;
+    }
+
+    @Override
+    public void beginRecording(TimelineContext ctx, Track track, TrackUIState state) {
+        var st = (AnimationTrackUIState) state;
+        var animation = (AnimationTrack) track;
+        st.recordLast.clear();
+        st.recordDirty = false;
+        st.recordSnapshot = snapshotProperties(animation);
+        st.recordLastTime = Math.max(0L, ctx.currentTimeTicks());
+        var runtime = ctx.runtime();
+        if (runtime != null && animation.targetId() != null
+                && runtime.objects.get(animation.targetId()) instanceof FXObject target) {
+            referenceRecord(st, target);
+        }
+    }
+
+    @Override
+    public void endRecording(TimelineContext ctx, Track track, TrackUIState state) {
+        var st = (AnimationTrackUIState) state;
+        var animation = (AnimationTrack) track;
+        var before = st.recordSnapshot;
+        st.recordSnapshot = null;
+        st.recordLast.clear();
+        if (!st.recordDirty || before == null) return;
+        st.recordDirty = false;
+        var after = snapshotProperties(animation);
+        ctx.pushApplied("photon.gui.editor.timeline.record",
+                () -> { restoreProperties(animation, after); ctx.requestRebuild(); ctx.refreshPreview(); },
+                () -> { restoreProperties(animation, before); ctx.requestRebuild(); ctx.refreshPreview(); });
+    }
+
+    @Override
+    public void pollRecording(TimelineContext ctx, Track track, TrackUIState state) {
+        var st = (AnimationTrackUIState) state;
+        var animation = (AnimationTrack) track;
+        var runtime = ctx.runtime();
+        if (runtime == null || animation.targetId() == null || track.lock()) return;
+        if (!(runtime.objects.get(animation.targetId()) instanceof FXObject target)) return;
+        var time = Math.max(0L, ctx.currentTimeTicks());
+        // playhead moved (scrub/play): re-reference to the new pose and write nothing this tick — only a
+        // user edit while the time is stationary should drop a key.
+        if (time != st.recordLastTime) {
+            st.recordLastTime = time;
+            referenceRecord(st, target);
+            return;
+        }
+        var ftime = (float) Math.max(0, time);
+        boolean changed = false;
+        boolean structural = false;
+        for (var type : target.getFXObjectType().animatableProperties()) {
+            var actual = type.capture(target);
+            var last = st.recordLast.get(type);
+            if (last == null) { st.recordLast.put(type, actual); continue; }
+            if (!channelsDiffer(actual, last)) continue; // no new edit since the last poll
+            var property = animation.property(type);
+            if (property == null) {
+                property = type.create(target);
+                for (int c = 0; c < property.channelCount(); c++) {
+                    property.moveKey(c, 0, ftime, property.key(c, 0).y); // relocate the seed key to the record time
+                }
+                animation.properties().add(property);
+                structural = true;
+            }
+            for (int c = 0; c < actual.length; c++) {
+                var prev = c < last.length ? last[c] : actual[c];
+                if (Math.abs(actual[c] - prev) > REC_EPS) {
+                    property.putKey(c, ftime, actual[c]);
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            st.recordDirty = true;
+            ctx.refreshPreview();
+            // re-read the applied pose as the new reference so a capture/apply round-trip doesn't re-fire
+            referenceRecord(st, target);
+            if (structural) ctx.requestRebuild();
+        }
+    }
+
+    /** Capture the current value of every animatable type into the record reference map. */
+    private static void referenceRecord(AnimationTrackUIState st, FXObject target) {
+        for (var type : target.getFXObjectType().animatableProperties()) {
+            st.recordLast.put(type, type.capture(target));
+        }
+    }
+
+    private static boolean channelsDiffer(float[] actual, float[] expected) {
+        for (int c = 0; c < actual.length; c++) {
+            var exp = c < expected.length ? expected[c] : actual[c];
+            if (Math.abs(actual[c] - exp) > REC_EPS) return true;
+        }
+        return false;
+    }
+
+    private static List<AnimatedProperty> snapshotProperties(AnimationTrack track) {
+        var copy = new ArrayList<AnimatedProperty>();
+        for (var p : track.properties()) copy.add(p.copy());
+        return copy;
+    }
+
+    private static void restoreProperties(AnimationTrack track, List<AnimatedProperty> snapshot) {
+        track.properties().clear();
+        for (var p : snapshot) track.properties().add(p.copy());
+    }
+
     // ------------------------------------------------------------------ lane (keyframe dots)
 
     @Override
@@ -134,6 +284,11 @@ public class AnimationTrackEditor extends TrackEditor {
                     DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
                     if (ctx.isTrackSelected(track)) {
                         DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
+                    }
+                    if (track.mute()) {
+                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color);
+                    } else if (track.lock()) {
+                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
                     }
                 })
                 .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
@@ -165,7 +320,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var st = (AnimationTrackUIState) state;
         // auto-select the first property so the curve panel isn't blank when expanded
         if (st.selectedProperty == null && !animation.properties().isEmpty()) {
-            selectProperty(st, animation.properties().getFirst(), -1);
+            selectPropertyState(st, animation.properties().getFirst(), -1);
         }
         var scroller = new ScrollerView();
         scroller.setId("timeline.animProperties");
@@ -190,6 +345,12 @@ public class AnimationTrackEditor extends TrackEditor {
         });
         for (var property : animation.properties()) {
             list.addChild(createPropertyGroup(ctx, animation, st, property));
+        }
+        if (!track.lock()) {
+            var addBtn = new Button().setText("photon.gui.editor.timeline.add_property_button")
+                    .setOnClick(e -> openAddPropertyMenu(ctx, animation, st, e.x, e.y));
+            addBtn.setId("timeline.animProperty.add").layout(layout -> layout.widthPercent(100));
+            list.addChild(addBtn);
         }
         scroller.addScrollViewChild(list);
         return scroller;
@@ -246,10 +407,7 @@ public class AnimationTrackEditor extends TrackEditor {
                         (st.selectedProperty == property && st.selectedAxis < 0 ? ColorPattern.GRAY : ColorPattern.T_GRAY).color)));
         row.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) {
-                ctx.selectTrack(track);
-                selectProperty(st, property, -1);
-            } else if (e.button == 1 && property.type().angular() && !track.lock()) {
-                openInterpModeMenu(ctx, property, e.x, e.y);
+                selectProperty(ctx, track, st, property, -1);
                 e.stopPropagation();
             }
         });
@@ -286,8 +444,8 @@ public class AnimationTrackEditor extends TrackEditor {
                         (st.selectedProperty == property && st.selectedAxis == axis ? ColorPattern.GRAY : ColorPattern.T_DARK_GRAY).color)));
         row.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) {
-                ctx.selectTrack(track);
-                selectProperty(st, property, axis);
+                selectProperty(ctx, track, st, property, axis);
+                e.stopPropagation();
             }
         });
         var swatch = new UIElement().layout(layout -> layout.width(4).heightPercent(100))
@@ -320,10 +478,10 @@ public class AnimationTrackEditor extends TrackEditor {
         var runtime = ctx.runtime();
         if (runtime == null || track.targetId() == null) return;
         if (!(runtime.objects.get(track.targetId()) instanceof FXObject target)) return;
-        var property = AnimatedProperty.create(type, target);
+        var property = type.create(target);
         st.expanded = true;
         ctx.pushEdit("photon.gui.editor.timeline.add_property",
-                () -> { track.properties().add(property); selectProperty(st, property, -1); ctx.requestRebuild(); ctx.refreshPreview(); },
+                () -> { track.properties().add(property); selectPropertyState(st, property, -1); ctx.requestRebuild(); ctx.refreshPreview(); },
                 () -> { track.properties().remove(property); property.restoreBase(target); clearSelectedIf(st, property); ctx.requestRebuild(); ctx.refreshPreview(); });
     }
 
@@ -352,28 +510,37 @@ public class AnimationTrackEditor extends TrackEditor {
         st.expandedProperties.remove(property);
     }
 
-    private void openInterpModeMenu(TimelineContext ctx, AnimatedProperty property, float x, float y) {
-        var menu = TreeBuilder.Menu.start();
-        menu.leaf(Component.translatable("photon.gui.editor.timeline.interp_default"),
-                () -> setInterpMode(ctx, property, AnimatedProperty.INTERP_DEFAULT));
-        menu.leaf(Component.translatable("photon.gui.editor.timeline.interp_shortest"),
-                () -> setInterpMode(ctx, property, AnimatedProperty.INTERP_SHORTEST));
-        ctx.openMenu(x, y, menu);
+    /** Select a property (sets the active track for delete-routing, no track highlight) and inspect it. */
+    private void selectProperty(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
+                               AnimatedProperty property, int axis) {
+        selectPropertyState(st, property, axis);
+        st.explicitSelection = true;
+        ctx.setActiveTrack(track);
+        inspectProperty(ctx, track, property);
     }
 
-    private void setInterpMode(TimelineContext ctx, AnimatedProperty property, int mode) {
-        var old = property.interpMode();
-        if (old == mode) return;
-        ctx.pushEdit("photon.gui.editor.timeline.edit_curve",
-                () -> { property.interpMode(mode); ctx.refreshPreview(); },
-                () -> { property.interpMode(old); ctx.refreshPreview(); });
-    }
-
-    private void selectProperty(AnimationTrackUIState st, AnimatedProperty property, int axis) {
+    /** State-only selection (used on rebuild auto-select; does not touch the inspector or active track). */
+    private void selectPropertyState(AnimationTrackUIState st, AnimatedProperty property, int axis) {
         st.selectedProperty = property;
         st.selectedAxis = axis;
         st.selKeyAxis = -1;
         st.selKeyIndex = -1;
+    }
+
+    /** Inspect a property's configurator (e.g. rotation interp mode); falls back to the track config.
+     *  Inspector edits are made undoable via property copy/restoreFrom snapshots. */
+    private void inspectProperty(TimelineContext ctx, AnimationTrack track, AnimatedProperty property) {
+        var before = new AnimatedProperty[]{property.copy()};
+        var cfg = property.inspect(() -> {
+            var prev = before[0];
+            var after = property.copy();
+            before[0] = after;
+            ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                    () -> { property.restoreFrom(after); ctx.refreshPreview(); },
+                    () -> { property.restoreFrom(prev); ctx.refreshPreview(); });
+            ctx.refreshPreview();
+        });
+        ctx.inspectProperty(track, cfg != null ? cfg : trackConfigurator(ctx, track));
     }
 
     private static String propertyKey(AnimatedPropertyType type) {
@@ -471,7 +638,7 @@ public class AnimationTrackEditor extends TrackEditor {
     }
 
     private void onCurveMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, AnimationTrackUIState st) {
-        if (e.button == 0) ctx.selectTrack(track);
+        if (e.button == 0) { ctx.setActiveTrack(track); st.explicitSelection = true; }
         var property = st.selectedProperty;
         if (property == null || !track.properties().contains(property)) return;
         var el = e.currentElement;
@@ -566,6 +733,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var tick = Math.max(0, curveXToTick(ctx, e.x, bx));
         var value = curveYToValue(e.y, by, bh, range[0], range[1]);
         if (st.dragHandle == 0) {
+            tick = (float) ctx.snapKeyTick(tick, e.isCtrlDown());
             var count = property.keyCount(axis);
             var lo = k > 0 ? property.key(axis, k - 1).x + 0.001f : 0;
             var hi = k < count - 1 ? property.key(axis, k + 1).x - 0.001f : Float.MAX_VALUE;

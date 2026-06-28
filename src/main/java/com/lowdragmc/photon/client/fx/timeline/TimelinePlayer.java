@@ -38,6 +38,9 @@ public class TimelinePlayer {
     private long localTime = 0;
     /** Time of the most recent {@link #evaluate}, so {@link #frame} can interpolate within the tick. */
     private double lastEvalTime = 0;
+    /** When recording (editor only), the per-frame re-apply is frozen so gizmo/inspector edits to the
+     *  target persist between ticks instead of being stomped by the sampled pose. */
+    private boolean recording = false;
 
     public TimelinePlayer(FXRuntime runtime, Timeline timeline) {
         this.runtime = runtime;
@@ -71,7 +74,13 @@ public class TimelinePlayer {
      * gates it), so the pose stays put when stopped.
      */
     public void frame(float partialTicks) {
+        if (recording) return; // keep the user's live edits to the recording target
         applyAnimations(lastEvalTime + partialTicks);
+    }
+
+    /** Editor-only: freeze the per-frame re-apply so record mode can capture live target edits. */
+    public void setRecording(boolean recording) {
+        this.recording = recording;
     }
 
     private void evaluate(long time) {

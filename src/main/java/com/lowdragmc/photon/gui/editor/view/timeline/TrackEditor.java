@@ -72,6 +72,34 @@ public abstract class TrackEditor {
         return false;
     }
 
+    /** Whether the user has an explicit sub-selection (e.g. a keyframe/property) that should suppress
+     *  the whole-track highlight. Default false. */
+    public boolean hasSubSelection(TrackUIState state) {
+        return false;
+    }
+
+    /** Clear any sub-selection (called when the track itself is selected). Default no-op. */
+    public void clearSubSelection(TrackUIState state) {
+    }
+
+    /** Poll for user edits while this track is in record mode (Unity-style). Default no-op. */
+    public void pollRecording(TimelineContext ctx, Track track, TrackUIState state) {
+    }
+
+    /** Called when record mode is entered for this track (snapshot baselines). Default no-op. */
+    public void beginRecording(TimelineContext ctx, Track track, TrackUIState state) {
+    }
+
+    /** Called when record mode exits for this track (push a single undo of the session). Default no-op. */
+    public void endRecording(TimelineContext ctx, Track track, TrackUIState state) {
+    }
+
+    /** Optional trailing header controls (inserted before mute/lock), e.g. a record toggle. */
+    @Nullable
+    public UIElement buildHeaderControls(TimelineContext ctx, Track track, TrackUIState state) {
+        return null;
+    }
+
     /** The inspector configurator for the track (mute/lock plus type-specific fields). */
     public abstract IConfigurable trackConfigurator(TimelineContext ctx, Track track);
 
@@ -119,7 +147,7 @@ public abstract class TrackEditor {
         for (var object : runtime.objects.values()) {
             if (!allowRoot && object == runtime.root) continue;
             var id = object.transform().id();
-            menu.leaf("%s: %s".formatted(object.name(), object.getName()), () -> ctx.bind(track, id));
+            menu.leaf("[%s]".formatted(object.getName()), () -> ctx.bind(track, id));
         }
         ctx.openMenu(x, y, menu);
     }

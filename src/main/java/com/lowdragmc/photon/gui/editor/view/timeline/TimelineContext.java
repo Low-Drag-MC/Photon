@@ -72,7 +72,21 @@ public interface TimelineContext {
     // ---- selection ----
     void selectTrack(Track track);
 
+    /** Make {@code track} the active track (for Delete-routing / paste) without highlighting it or
+     *  clearing its sub-selection; used when selecting a keyframe/property inside it. */
+    void setActiveTrack(Track track);
+
+    /** Inspect a sub-selection's configurable (e.g. a property's interp mode) without selecting the
+     *  whole track. */
+    void inspectProperty(Track track, com.lowdragmc.lowdraglib2.configurator.IConfigurable configurable);
+
     boolean isTrackSelected(Track track);
+
+    // ---- record mode ----
+    /** Enter/exit record mode for {@code track} (null = stop). Pauses playback on enter. */
+    void setRecordingTrack(@Nullable Track track);
+
+    boolean isRecording(Track track);
 
     void selectClip(Track track, Clip clip);
 
@@ -91,6 +105,9 @@ public interface TimelineContext {
     double snapTick(double tick, @Nullable Clip exclude, boolean ctrl);
 
     double snapMoveStart(double start, double duration, @Nullable Clip exclude, boolean ctrl);
+
+    /** Snap a keyframe tick to clip edges, the playhead, tick 0 and every other keyframe time. */
+    double snapKeyTick(double tick, boolean ctrl);
 
     /** Set/clear the cross-track snap guide lines drawn over all lanes while dragging a clip. */
     void setDragGuide(@Nullable Clip clip);

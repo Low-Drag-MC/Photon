@@ -102,6 +102,11 @@ public abstract class ClipTrackEditor extends TrackEditor {
                     if (ctx.isTrackSelected(track)) {
                         DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
                     }
+                    if (track.mute()) {
+                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color);
+                    } else if (track.lock()) {
+                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
+                    }
                 })
                 .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> ctx.drawPlayhead(graphics, x, y, w, h, pt)));
         lane.addEventListener(UIEvents.MOUSE_WHEEL, ctx::zoom);

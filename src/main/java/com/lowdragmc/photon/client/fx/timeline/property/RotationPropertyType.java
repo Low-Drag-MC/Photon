@@ -1,13 +1,21 @@
 package com.lowdragmc.photon.client.fx.timeline.property;
 
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
+import com.lowdragmc.photon.client.fx.timeline.property.RotationAnimatedProperty.InterpMode;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+
+import java.util.List;
 
 @OnlyIn(Dist.CLIENT)
 public class RotationPropertyType extends TransformPropertyType {
@@ -40,8 +48,50 @@ public class RotationPropertyType extends TransformPropertyType {
     }
 
     @Override
+    public AnimatedProperty create(FXObject target) {
+        var base = capture(target);
+        var channels = AnimatedProperty.seedChannels(base);
+        var range = defaultRange(base);
+        return new RotationAnimatedProperty(this, base.clone(), channels, range[0], range[1]);
+    }
+
+    @Override
+    public CompoundTag serialize(HolderLookup.Provider provider, AnimatedProperty property) {
+        var tag = super.serialize(provider, property);
+        if (property instanceof RotationAnimatedProperty rotation) {
+            tag.putInt("interp", rotation.interpMode().ordinal());
+        }
+        return tag;
+    }
+
+    @Override
+    public AnimatedProperty deserialize(HolderLookup.Provider provider, CompoundTag tag) {
+        var base = AnimatedProperty.readFloatsFromTag(tag.getList("base", net.minecraft.nbt.Tag.TAG_FLOAT));
+        var channels = AnimatedProperty.readChannels(provider, tag, channelCount());
+        var fixedBase = new float[channelCount()];
+        System.arraycopy(base, 0, fixedBase, 0, Math.min(base.length, fixedBase.length));
+        var rotation = new RotationAnimatedProperty(this, fixedBase, channels,
+                tag.getFloat("rangeMin"), tag.getFloat("rangeMax"));
+        rotation.interpMode(InterpMode.byOrdinal(tag.getInt("interp")));
+        return rotation;
+    }
+
+    @Override
+    public IConfigurable inspect(AnimatedProperty property, Runnable onChanged) {
+        if (!(property instanceof RotationAnimatedProperty rotation)) return null;
+        return IConfigurable.create(group -> group.addConfigurator(new SelectorConfigurator<>(
+                "photon.gui.editor.timeline.interp_mode",
+                rotation::interpMode,
+                mode -> { rotation.interpMode(mode); onChanged.run(); },
+                rotation.interpMode(), true,
+                List.of(InterpMode.values()),
+                mode -> Component.translatable(mode.langKey()).getString())));
+    }
+
+    @Override
     public float[] sample(AnimatedProperty property, float time) {
-        var shortest = property.interpMode() == AnimatedProperty.INTERP_SHORTEST;
+        var shortest = property instanceof RotationAnimatedProperty rotation
+                && rotation.interpMode() == InterpMode.SHORTEST;
         var values = new float[channelCount()];
         for (int i = 0; i < values.length; i++) {
             var channel = shortest ? unwrap(property.channel(i)) : property.channel(i);

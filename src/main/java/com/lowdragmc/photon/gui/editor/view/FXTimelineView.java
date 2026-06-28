@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.gui.editor.view;
 
 import com.lowdragmc.lowdraglib2.configurator.EditAction;
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -24,6 +25,7 @@ import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.fx.FXRuntime;
+import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.gameobject.FXObject;
@@ -105,6 +107,9 @@ public class FXTimelineView extends View implements TimelineContext {
     private Track selectedClipTrack;
     @Nullable
     private Track selectedTrack;
+    /** The track currently in record mode (Unity-style), or null. */
+    @Nullable
+    private Track recordingTrack;
 
     /** Clipboards for copy/paste (deep copies), shared across the panel. */
     @Nullable
@@ -126,7 +131,7 @@ public class FXTimelineView extends View implements TimelineContext {
 
         addEventListener(UIEvents.KEY_DOWN, this::onKeyDown);
         addEventListener(UIEvents.EXECUTE_COMMAND, this::onCommand);
-        addEventListener(UIEvents.TICK, e -> updateHScroller());
+        addEventListener(UIEvents.TICK, e -> { updateHScroller(); pollRecording(); });
     }
 
     // ------------------------------------------------------------------ TimelineContext
@@ -145,7 +150,14 @@ public class FXTimelineView extends View implements TimelineContext {
     @Override public void refreshPreview() { fxEditor.sceneView.simulateTo(currentTimeTicks()); }
     @Override public void openMenu(float x, float y, TreeBuilder.Menu menu) { fxEditor.openMenu(x, y, menu); }
     @Override public void requestRebuild() { rebuild(); }
-    @Override public boolean isTrackSelected(Track track) { return selectedTrack == track; }
+    @Override public boolean isTrackSelected(Track track) {
+        return selectedTrack == track && selectedClip == null && !subSelectionActive(track);
+    }
+    private boolean subSelectionActive(Track track) {
+        var editor = editorFor(track);
+        var state = states.get(track);
+        return editor != null && state != null && editor.hasSubSelection(state);
+    }
     @Override @Nullable public Clip selectedClip() { return selectedClip; }
     @Override @Nullable public Track selectedClipTrack() { return selectedClipTrack; }
     @Override public boolean isClipSelected(Clip clip) { return selectedClip == clip; }
@@ -439,13 +451,16 @@ public class FXTimelineView extends View implements TimelineContext {
                         layout.widthPercent(100).height(state.expandedHeight).flexDirection(FlexDirection.COLUMN));
                 var left = editor.buildExpandedLeft(this, track, state);
                 if (left != null) leftWrapper.addChild(left.layout(l -> l.flex(1)));
-                leftWrapper.setDisplay(state.expanded);
 
                 rightWrapper = new UIElement().setId("timeline.expandRight").layout(layout ->
                         layout.widthPercent(100).height(state.expandedHeight).flexDirection(FlexDirection.COLUMN));
                 var right = editor.buildExpandedRight(this, track, state);
                 if (right != null) rightWrapper.addChild(right.layout(l -> l.flex(1)));
+
+                // a resize grip at the bottom of both panels (drag either to set the lane height)
+                leftWrapper.addChild(createResizeHandle(state, leftWrapper, rightWrapper));
                 rightWrapper.addChild(createResizeHandle(state, leftWrapper, rightWrapper));
+                leftWrapper.setDisplay(state.expanded);
                 rightWrapper.setDisplay(state.expanded);
             }
             headersContainer.addChild(createTrackHeader(track, editor, state, leftWrapper, rightWrapper));
@@ -480,9 +495,15 @@ public class FXTimelineView extends View implements TimelineContext {
             layout.flexDirection(FlexDirection.ROW);
             layout.gapAll(2);
             layout.paddingAll(2);
-        }).style(style -> style.backgroundTexture((graphics, mx, my, x, y, w, h, pt) ->
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h,
-                                selectedTrack == track ? ColorPattern.GRAY.color : ColorPattern.T_GRAY.color))
+        }).style(style -> style.backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                    DrawerHelper.drawSolidRect(graphics, x, y, w, h,
+                            isTrackSelected(track) ? ColorPattern.GRAY.color : ColorPattern.T_GRAY.color);
+                    if (track.mute()) {
+                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color);
+                    } else if (track.lock()) {
+                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
+                    }
+                })
                 .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     if (reorderTarget == track) {
                         DrawerHelper.drawSolidRect(graphics, x, reorderBelow ? y + h - 1 : y, w, 1, ColorPattern.WHITE.color);
@@ -546,9 +567,12 @@ public class FXTimelineView extends View implements TimelineContext {
 
         var menu = new Button().setText("...").setOnClick(e -> openTrackMenu(track, editor, e.x, e.y));
         menu.setId("timeline.trackHeader.menu").layout(layout -> layout.aspectRatio(1).heightPercent(100));
+        var controls = editor.buildHeaderControls(this, track, state);
         header.addChild(chip);
         if (expand != null) header.addChild(expand);
-        return header.addChildren(content, muteToggle, lockToggle, menu);
+        header.addChild(content);
+        if (controls != null) header.addChild(controls);
+        return header.addChildren(muteToggle, lockToggle, menu);
     }
 
     private String trackTitle(Track track) {
@@ -632,6 +656,37 @@ public class FXTimelineView extends View implements TimelineContext {
     }
 
     @Override
+    public double snapKeyTick(double tick, boolean ctrl) {
+        if (ctrl) return tick;
+        var runtime = fxEditor.runtime;
+        if (runtime == null) return tick;
+        double threshold = SNAP_PX / scale;
+        double best = tick;
+        double bestDist = threshold;
+        for (var track : runtime.fxData.timeline().tracks()) {
+            for (var clip : track.clips()) {
+                for (var cand : new double[]{clip.start(), clip.end()}) {
+                    var d = Math.abs(cand - tick);
+                    if (d < bestDist) { bestDist = d; best = cand; }
+                }
+            }
+            if (track instanceof AnimationTrack animation) {
+                for (var property : animation.properties()) {
+                    for (var t : property.keyframeTimes()) {
+                        var d = Math.abs(t - tick);
+                        if (d < bestDist) { bestDist = d; best = t; }
+                    }
+                }
+            }
+        }
+        for (var cand : new double[]{0, currentTimeTicks()}) {
+            var d = Math.abs(cand - tick);
+            if (d < bestDist) { bestDist = d; best = cand; }
+        }
+        return best;
+    }
+
+    @Override
     public double snapMoveStart(double start, double duration, @Nullable Clip exclude, boolean ctrl) {
         if (ctrl) return start;
         var snapStart = snapTick(start, exclude, false);
@@ -664,6 +719,10 @@ public class FXTimelineView extends View implements TimelineContext {
                     tracks.remove(track);
                     if (selectedTrack == track) selectedTrack = null;
                     if (selectedClipTrack == track) { selectedClip = null; selectedClipTrack = null; }
+                    if (recordingTrack == track) {
+                        recordingTrack = null;
+                        if (fxEditor.runtime != null) fxEditor.runtime.timelinePlayer.setRecording(false);
+                    }
                     if (editor != null) editor.onRemoved(this, track, stateFor(track, editor));
                     states.remove(track);
                     rebuild();
@@ -833,8 +892,53 @@ public class FXTimelineView extends View implements TimelineContext {
         });
         selectedClip = clip;
         selectedClipTrack = track;
-        selectedTrack = track; // so the track highlights and Delete dispatches to its editor
+        selectedTrack = track; // active track for Delete-routing/paste (highlight suppressed: selectedClip != null)
         applyClipSelectionClasses();
+    }
+
+    @Override
+    public void setActiveTrack(Track track) {
+        selectedTrack = track;
+        selectedClip = null;
+        selectedClipTrack = null;
+        applyClipSelectionClasses();
+    }
+
+    @Override
+    public void inspectProperty(Track track, IConfigurable configurable) {
+        clearFxObjectSelection();
+        fxEditor.inspectorView.inspect(configurable, null, () -> {});
+    }
+
+    @Override
+    public boolean isRecording(Track track) {
+        return recordingTrack == track;
+    }
+
+    @Override
+    public void setRecordingTrack(@Nullable Track track) {
+        if (recordingTrack == track) return;
+        // exit the previous recording session (push its single undo)
+        if (recordingTrack != null) {
+            var prev = editorFor(recordingTrack);
+            if (prev != null) prev.endRecording(this, recordingTrack, stateFor(recordingTrack, prev));
+        }
+        recordingTrack = track;
+        var runtime = fxEditor.runtime;
+        if (runtime != null) runtime.timelinePlayer.setRecording(track != null);
+        if (track != null) {
+            fxEditor.sceneView.particleManager.pause();
+            var editor = editorFor(track);
+            if (editor != null) editor.beginRecording(this, track, stateFor(track, editor));
+        }
+        refreshPreview();
+        rebuild(); // sync record toggles across tracks
+    }
+
+    private void pollRecording() {
+        if (recordingTrack == null) return;
+        var editor = editorFor(recordingTrack);
+        if (editor != null) editor.pollRecording(this, recordingTrack, stateFor(recordingTrack, editor));
     }
 
     private void applyClipSelectionClasses() {
@@ -849,9 +953,10 @@ public class FXTimelineView extends View implements TimelineContext {
 
     @Override
     public void selectTrack(Track track) {
-        if (selectedTrack == track && selectedClip == null) return; // already selected
         var editor = editorFor(track);
         if (editor == null) return;
+        if (selectedTrack == track && selectedClip == null && !subSelectionActive(track)) return; // already selected
+        editor.clearSubSelection(stateFor(track, editor));
         clearFxObjectSelection();
         fxEditor.inspectorView.inspect(editor.trackConfigurator(this, track), null, () -> {
             if (selectedTrack == track) selectedTrack = null;
@@ -863,6 +968,11 @@ public class FXTimelineView extends View implements TimelineContext {
     }
 
     private void deleteSelection() {
+        // a selected clip first (its track may differ from the active track)
+        if (selectedClip != null && selectedClipTrack != null) {
+            var clipEditor = editorFor(selectedClipTrack);
+            if (clipEditor != null && clipEditor.deleteSelection(this, selectedClipTrack, stateFor(selectedClipTrack, clipEditor))) return;
+        }
         var track = selectedTrack;
         if (track == null) return;
         var editor = editorFor(track);
@@ -880,5 +990,6 @@ public class FXTimelineView extends View implements TimelineContext {
         selectedClip = null;
         selectedClipTrack = null;
         selectedTrack = null;
+        recordingTrack = null;
     }
 }
