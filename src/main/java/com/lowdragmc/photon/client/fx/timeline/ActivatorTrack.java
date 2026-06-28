@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
-import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
@@ -11,7 +10,6 @@ import net.neoforged.api.distmarker.OnlyIn;
  * Multiple activator tracks on the same object OR together. No clips ⇒ inactive the whole time.
  */
 @OnlyIn(Dist.CLIENT)
-@LDLRegisterClient(name = "activator", registry = "photon:timeline_track")
 public class ActivatorTrack extends Track {
 
     public ActivatorTrack() {

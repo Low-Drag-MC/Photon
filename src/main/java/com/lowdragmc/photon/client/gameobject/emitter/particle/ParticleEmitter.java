@@ -7,6 +7,8 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.FXObjectType;
+import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
@@ -17,10 +19,7 @@ import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.core.HolderLookup;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.phys.AABB;
-import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -32,10 +31,25 @@ import java.util.*;
  * @implNote ParticleEmitter
  */
 @ParametersAreNonnullByDefault
-@LDLRegisterClient(name = "particle_emitter", registry = "photon:fx_object")
 public class ParticleEmitter extends Emitter {
     public static final IGuiTexture ICON = Icons.icon(Photon.MOD_ID, "particle");
-    public static int VERSION = 2;
+    @LDLRegisterClient(name = "particle_emitter", registry = "photon:fx_object")
+    public static final FXObjectType TYPE = new FXObjectType() {
+        @Override
+        public IFXObject create() {
+            return new ParticleEmitter();
+        }
+
+        @Override
+        public IGuiTexture icon() {
+            return ICON;
+        }
+
+        @Override
+        public int version() {
+            return 2;
+        }
+    };
 
     @Persisted(subPersisted = true)
     public final ParticleConfig config;
@@ -64,15 +78,13 @@ public class ParticleEmitter extends Emitter {
     }
 
     @Override
-    public ParticleEmitter shallowCopy() {
-        return new ParticleEmitter(config);
+    public FXObjectType getFXObjectType() {
+        return TYPE;
     }
 
     @Override
-    public CompoundTag serializeNBT(HolderLookup.@NotNull Provider provider) {
-        var tag = super.serializeNBT(provider);
-        tag.putInt("version", VERSION);
-        return tag;
+    public ParticleEmitter shallowCopy() {
+        return new ParticleEmitter(config);
     }
 
     @Override

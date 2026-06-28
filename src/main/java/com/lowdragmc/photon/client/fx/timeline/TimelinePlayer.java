@@ -36,6 +36,8 @@ public class TimelinePlayer {
     @Nullable
     private IEffectExecutor effect;
     private long localTime = 0;
+    /** Time of the most recent {@link #evaluate}, so {@link #frame} can interpolate within the tick. */
+    private double lastEvalTime = 0;
 
     public TimelinePlayer(FXRuntime runtime, Timeline timeline) {
         this.runtime = runtime;
@@ -62,7 +64,18 @@ public class TimelinePlayer {
         localTime++;
     }
 
+    /**
+     * Per-frame pass (driven from the always-on root's frame update): re-applies the animation tracks at
+     * the current fractional master time ({@code lastEvalTime + partialTicks}) so transform animation is
+     * smooth between ticks instead of stepping 20×/s. {@code partialTicks} is 0 while paused (the editor
+     * gates it), so the pose stays put when stopped.
+     */
+    public void frame(float partialTicks) {
+        applyAnimations(lastEvalTime + partialTicks);
+    }
+
     private void evaluate(long time) {
+        lastEvalTime = time;
         var controlled = controlledObjectIds();
         // revert objects that are no longer controlled (e.g. their track/clip was deleted)
         for (var id : lastControlled) {
@@ -119,6 +132,25 @@ public class TimelinePlayer {
             var state = TimelineState.resolve(hasActivator, activatorActive, hasControl, controlClip != null);
             object.setSelfActive(state.tick());
             object.setSelfTimelineVisible(state.render());
+        }
+
+        applyAnimations(time);
+    }
+
+    /**
+     * Drive animation-track targets' local transforms. Runs after the active/control resolution (so a
+     * control restart's reset pose is overwritten by the animation for the same tick). Animation does
+     * not gate active/visible, so it is a separate pass from {@link #controlledObjectIds()}.
+     */
+    private void applyAnimations(double time) {
+        for (var track : timeline.tracks()) {
+            if (track.mute() || !(track instanceof AnimationTrack animation)) {
+                continue;
+            }
+            var id = animation.targetId();
+            if (id != null && runtime.objects.get(id) instanceof FXObject target) {
+                animation.sampleInto(target, time);
+            }
         }
     }
 

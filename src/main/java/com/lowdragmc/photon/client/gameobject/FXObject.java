@@ -27,11 +27,12 @@ import net.minecraft.world.level.Level;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.function.Consumer;
 
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 @Getter
-public class FXObject extends Particle implements IFXObject {
+public abstract class FXObject extends Particle implements IFXObject {
     @Setter
     @Configurable(name = "photon.fx_object.name")
     public String name = name();
@@ -62,6 +63,13 @@ public class FXObject extends Particle implements IFXObject {
     @Setter
     @Nullable
     protected Runnable onUpdateTick;
+    /**
+     * Optional per-frame callback (with partialTicks) used by {@code FXRuntime} to drive smooth,
+     * interpolated timeline animation from the always-on root. Runs before the {@code isActive()} gate.
+     */
+    @Setter
+    @Nullable
+    protected Consumer<Float> onUpdateFrame;
     @Setter
     protected boolean hasPhysics = false;
     @Nullable
@@ -204,6 +212,10 @@ public class FXObject extends Particle implements IFXObject {
 
     @Override
     public void updateFrame(float partialTicks) {
+        // drive the timeline's per-frame animation pass (root only), before the active gate
+        if (onUpdateFrame != null) {
+            onUpdateFrame.accept(partialTicks);
+        }
         if (!isActive()) {
             return;
         }

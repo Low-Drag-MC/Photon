@@ -1,26 +1,19 @@
 package com.lowdragmc.photon.gui.editor.view;
 
 import com.lowdragmc.lowdraglib2.configurator.EditAction;
-import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
-import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
-import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
-import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
+import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.ScrollDisplay;
 import com.lowdragmc.lowdraglib2.gui.ui.data.ScrollerMode;
-import com.lowdragmc.lowdraglib2.gui.ui.data.TextWrap;
-import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Scroller;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.ScrollerView;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.SplitView;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.TextElement;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
 import com.lowdragmc.lowdraglib2.gui.ui.event.CommandEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
@@ -28,33 +21,39 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.PhotonRegistries;
+import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
-import com.lowdragmc.photon.client.fx.timeline.ControlTrack;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.gui.editor.FXEditor;
+import com.lowdragmc.photon.gui.editor.view.timeline.ClipTrackEditor;
+import com.lowdragmc.photon.gui.editor.view.timeline.TimelineContext;
+import com.lowdragmc.photon.gui.editor.view.timeline.TrackEditor;
+import com.lowdragmc.photon.gui.editor.view.timeline.TrackUIState;
+import dev.vfyjxf.taffy.style.AlignItems;
 import dev.vfyjxf.taffy.style.FlexDirection;
-import dev.vfyjxf.taffy.style.TaffyPosition;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
- * Unity/Premiere-style timeline editor panel. A {@link SplitView} separates a left header panel
- * (add-track button over a list of track headers) from a right timeline panel (ruler over clip
- * lanes). The two track lists live in separate {@link ScrollerView}s whose vertical scroll is kept
- * in sync (the left scrollbars are hidden). Horizontal navigation is a zoomable scale +
- * {@code scrollTicks} offset driven by a proportional scrollbar and mouse-wheel zoom.
+ * Unity/Premiere-style timeline editor panel and the generic host for the extensible track framework.
+ * The chrome (transport, {@link SplitView}, two synced {@link ScrollerView}s, ruler, h-scroll,
+ * zoom/scroll, reorder, selection, history) lives here; all type-specific UI/behavior is delegated to a
+ * {@link TrackEditor} resolved from the {@code photon:track_editor} registry by track name. This class
+ * implements {@link TimelineContext} — the seam editors talk to.
  */
-public class FXTimelineView extends View {
-    public static final int ROW_HEIGHT = 20;
+public class FXTimelineView extends View implements TimelineContext {
     public static final int RULER_HEIGHT = 14;
     public static final int HSCROLL_HEIGHT = 8;
     public static final float DEFAULT_SCALE = 2.0f;
@@ -62,19 +61,15 @@ public class FXTimelineView extends View {
     public static final float MAX_SCALE = 50.0f;
     /** Trailing padding (ticks) added past the last clip so you can scroll a little beyond it. */
     public static final int CONTENT_PAD = 10;
-    /** Pixels from a clip edge that count as a resize grab zone. */
-    public static final float EDGE_PX = 4;
     /** Snap threshold in screen pixels (scale-independent, so zooming gives finer control). */
     public static final float SNAP_PX = 6;
+    /** Minimum height of an expanded panel when dragging its resize handle. */
+    public static final int MIN_EXPANDED = 32;
 
-    private static final int DRAG_MOVE = 0;
-    private static final int DRAG_LEFT = 1;
-    private static final int DRAG_RIGHT = 2;
-
+    /** A clip's view element, kept so horizontal scroll/zoom can reposition without a full rebuild. */
+    private record ClipView(Clip clip, UIElement element) {}
     /** Drag payload used to reorder tracks by their header. */
     private record TrackDrag(Track track) {}
-    /** A clip's view element, kept so horizontal scroll/zoom can reposition without a full rebuild. */
-    private record ClipView(Clip clip, UIElement element, UIElement lane) {}
 
     public final FXEditor fxEditor;
     private final Button playButton = new Button();
@@ -86,6 +81,9 @@ public class FXTimelineView extends View {
     private final Scroller hScroll = new Scroller.Horizontal();
     private final List<ClipView> clipViews = new ArrayList<>();
 
+    /** Per-track UI state (editors are reused directly from the registry). */
+    private final Map<Track, TrackUIState> states = new HashMap<>();
+
     /** Horizontal scale (pixels per tick) and left-most visible tick. */
     private float scale = DEFAULT_SCALE;
     private float scrollTicks = 0;
@@ -94,33 +92,20 @@ public class FXTimelineView extends View {
     // drag/scrub state
     private boolean wasPlaying = false;
     private long previewTime = 0;
-    private double grabOffsetTicks = 0;
-    /** The clip being dragged (for the cross-track snap guide), and the drag mode + history snapshot. */
     @Nullable
-    private Clip draggingClip;
-    private int clipDragMode = DRAG_MOVE;
-    private double dragFixedEnd = 0;
-    private double dragBeforeStart = 0;
-    private double dragBeforeDuration = 0;
-    /** True while the dragged clip currently overlaps another (drawn red, reverted on release). */
-    private boolean dragInvalid = false;
-    /** Track header currently targeted by a reorder drag, and whether to insert after it. */
+    private Clip dragGuideClip;
     @Nullable
     private Track reorderTarget;
     private boolean reorderBelow = false;
 
-    // selection (mutually exclusive with the hierarchy fx-object selection via the inspector onClose)
+    // selection
     @Nullable
     private Clip selectedClip;
     @Nullable
     private Track selectedClipTrack;
     @Nullable
     private Track selectedTrack;
-    /** Control track currently being renamed (its header shows a TextField instead of a Label). */
-    @Nullable
-    private Track editingNameTrack;
-    /** Name before the current rename edit (for the undo entry). */
-    private String editingNameBefore = "";
+
     /** Clipboards for copy/paste (deep copies), shared across the panel. */
     @Nullable
     private static Track clipboardTrack;
@@ -139,15 +124,54 @@ public class FXTimelineView extends View {
         addChild(createTransportBar());
         addChild(createSplit());
 
-        // NB: do NOT focus() on MOUSE_DOWN — the framework already focuses the nearest focusable
-        // ancestor on click (ModularUI), and re-grabbing focus here would steal it from a context
-        // menu opened during the same click and immediately close it (Menu.onBlur auto-closes).
         addEventListener(UIEvents.KEY_DOWN, this::onKeyDown);
-        // command events (undo/redo/copy/paste) target the focused element WITHOUT bubbling, so the
-        // editor-level HistoryView never sees them while the timeline is focused — handle them here.
         addEventListener(UIEvents.EXECUTE_COMMAND, this::onCommand);
-        // keep the horizontal scrollbar in step with the viewport size each frame
         addEventListener(UIEvents.TICK, e -> updateHScroller());
+    }
+
+    // ------------------------------------------------------------------ TimelineContext
+
+    @Override public FXEditor editor() { return fxEditor; }
+    @Override @Nullable public FXRuntime runtime() { return fxEditor.runtime; }
+    @Override public float scale() { return scale; }
+    @Override public float scrollTicks() { return scrollTicks; }
+    @Override public long currentTimeTicks() { return fxEditor.sceneView.particleManager.getRealTime(); }
+    @Override public void pushEdit(String name, Runnable doFn, Runnable undoFn) {
+        fxEditor.historyView.pushHistory(Component.translatable(name), EditAction.of(doFn, undoFn));
+    }
+    @Override public void pushApplied(String name, Runnable redo, Runnable undo) {
+        fxEditor.historyView.pushHistory(Component.translatable(name), EditAction.of(redo, undo), false);
+    }
+    @Override public void refreshPreview() { fxEditor.sceneView.simulateTo(currentTimeTicks()); }
+    @Override public void openMenu(float x, float y, TreeBuilder.Menu menu) { fxEditor.openMenu(x, y, menu); }
+    @Override public void requestRebuild() { rebuild(); }
+    @Override public boolean isTrackSelected(Track track) { return selectedTrack == track; }
+    @Override @Nullable public Clip selectedClip() { return selectedClip; }
+    @Override @Nullable public Track selectedClipTrack() { return selectedClipTrack; }
+    @Override public boolean isClipSelected(Clip clip) { return selectedClip == clip; }
+    @Override public void registerClipView(Clip clip, UIElement element) { clipViews.add(new ClipView(clip, element)); }
+    @Override public void setDragGuide(@Nullable Clip clip) { dragGuideClip = clip; }
+    @Override public void zoom(UIEvent event) { onZoom(event); }
+
+    @Override
+    public void drawPlayhead(GuiGraphics graphics, float x, float y, float width, float height, float partialTick) {
+        var playheadX = originX() + (fxEditor.sceneView.particleManager.getRealTime(partialTick) - scrollTicks) * scale;
+        if (playheadX < x || playheadX > x + width) return;
+        DrawerHelper.drawSolidRect(graphics, playheadX, y, 1, height, ColorPattern.RED.color);
+    }
+
+    @Override
+    public void beginScrub() {
+        var pm = fxEditor.sceneView.particleManager;
+        wasPlaying = pm.isPlaying();
+        previewTime = pm.getRealTime();
+        pm.pause();
+    }
+
+    @Override
+    public void endScrub() {
+        fxEditor.sceneView.simulateTo(previewTime);
+        if (wasPlaying) fxEditor.sceneView.particleManager.play();
     }
 
     // ------------------------------------------------------------------ layout
@@ -163,10 +187,9 @@ public class FXTimelineView extends View {
         playButton.setId("timeline.play").layout(layout -> layout.width(46))
                 .addEventListener(UIEvents.TICK, e -> playButton.text.setText(Component.translatable(
                         isPlaying() ? "photon.gui.editor.timeline.pause" : "photon.gui.editor.timeline.play")));
-        var stopButton = new Button().setText("photon.gui.editor.timeline.stop")
-                .setOnClick(e -> stop());
+        var stopButton = new Button().setText("photon.gui.editor.timeline.stop").setOnClick(e -> stop());
         stopButton.setId("timeline.stop").layout(layout -> layout.width(46));
-        var timeLabel = new Label().setText("0.0s").layout(layout -> layout.flex(1))
+        var timeLabel = new Label().setText("0.0s").layout(layout -> layout.flex(1).alignSelf(AlignItems.CENTER))
                 .addEventListener(UIEvents.TICK, e -> ((Label) e.currentElement)
                         .setText("%.2fs".formatted(currentTimeTicks() / 20f)));
         return bar.addChildren(playButton, stopButton, timeLabel);
@@ -189,7 +212,6 @@ public class FXTimelineView extends View {
             layout.heightPercent(100);
             layout.flexDirection(FlexDirection.COLUMN);
         });
-        // header: + add-track button
         var header = new UIElement().setId("timeline.addTrackBar").layout(layout -> {
             layout.widthPercent(100);
             layout.height(RULER_HEIGHT);
@@ -199,7 +221,6 @@ public class FXTimelineView extends View {
         addBtn.setId("timeline.addTrack").layout(layout -> layout.width(14).height(RULER_HEIGHT))
                 .style(style -> style.tooltips("photon.gui.editor.timeline.add_track"));
         header.addChild(addBtn);
-        // headers scroller (vertical only, scrollbars hidden)
         leftScroller.setId("timeline.headers");
         leftScroller.getLayout().widthPercent(100);
         leftScroller.getLayout().flex(1);
@@ -210,9 +231,12 @@ public class FXTimelineView extends View {
             layout.flexDirection(FlexDirection.COLUMN);
             layout.gapAll(1);
         });
+        // right-click anywhere in the left panel (incl. empty space below the tracks) to add a track
+        leftScroller.addEventListener(UIEvents.MOUSE_DOWN, e -> {
+            if (e.button == 1) { openAddTrackMenu(e.x, e.y); e.stopPropagation(); }
+        });
         leftScroller.addScrollViewChild(headersContainer);
         leftScroller.verticalScroller.setOnValueChanged(v -> syncScroll(leftScroller, rightScroller));
-        // bottom spacer so rows align with the right column (which has the h-scrollbar there)
         var spacer = new UIElement().layout(layout -> layout.widthPercent(100).height(HSCROLL_HEIGHT));
         return column.addChildren(header, leftScroller, spacer);
     }
@@ -227,10 +251,7 @@ public class FXTimelineView extends View {
             layout.widthPercent(100);
             layout.height(RULER_HEIGHT);
         }).setOverflowVisible(false).style(style -> style.backgroundTexture(this::drawRuler))
-                .addEventListener(UIEvents.MOUSE_DOWN, e -> {
-                    e.currentElement.startDrag(null, null);
-                    scrubTo(e);
-                })
+                .addEventListener(UIEvents.MOUSE_DOWN, e -> { e.currentElement.startDrag(null, null); scrubTo(e); })
                 .addEventListener(UIEvents.DRAG_SOURCE_UPDATE, this::scrubTo)
                 .addEventListener(UIEvents.MOUSE_WHEEL, this::onZoom);
         rightScroller.setId("timeline.lanes");
@@ -243,11 +264,11 @@ public class FXTimelineView extends View {
             layout.flexDirection(FlexDirection.COLUMN);
             layout.gapAll(1);
         });
-        // cross-track snap guides: vertical lines at the dragged clip's edges spanning all lanes
+        // cross-track snap guides at the dragged clip's edges spanning all lanes
         lanesContainer.style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
-            if (draggingClip == null) return;
-            drawGuideLine(graphics, draggingClip.start(), x, y, w, h);
-            drawGuideLine(graphics, draggingClip.end(), x, y, w, h);
+            if (dragGuideClip == null) return;
+            drawGuideLine(graphics, dragGuideClip.start(), x, y, w, h);
+            drawGuideLine(graphics, dragGuideClip.end(), x, y, w, h);
         }));
         rightScroller.addScrollViewChild(lanesContainer);
         rightScroller.verticalScroller.setOnValueChanged(v -> syncScroll(rightScroller, leftScroller));
@@ -257,30 +278,16 @@ public class FXTimelineView extends View {
         hScroll.tailButton.setDisplay(false);
         hScroll.setRange(0, 0.0001f).setValue(0f, false)
                 .setOnValueChanged(v -> {
-                    // a full-width bar over an empty range can yield NaN/Inf; keep scrollTicks sane
                     scrollTicks = Float.isFinite(v) ? Math.max(0, v) : 0;
                     repositionClips();
                 }).layout(layout -> layout.widthPercent(100).height(HSCROLL_HEIGHT));
         return column.addChildren(ruler, rightScroller, hScroll);
     }
 
-    /**
-     * The shared horizontal origin (screen x of tick {@code scrollTicks}) = the lanes' viewport content
-     * origin. The ruler draws against this so it lines up with the (possibly padded) lane content.
-     */
-    private float originX() {
+    @Override
+    public float originX() {
         var x = rightScroller.viewPort.getContentX();
         return x != 0 ? x : ruler.getContentX();
-    }
-
-    /** Record an undoable edit that is executed now. */
-    private void pushEdit(String name, Runnable doFn, Runnable undoFn) {
-        fxEditor.historyView.pushHistory(Component.translatable(name), EditAction.of(doFn, undoFn));
-    }
-
-    /** Record an undoable edit whose effect is already applied (e.g. a finished drag). */
-    private void pushApplied(String name, Runnable redo, Runnable undo) {
-        fxEditor.historyView.pushHistory(Component.translatable(name), EditAction.of(redo, undo), false);
     }
 
     private void syncScroll(ScrollerView from, ScrollerView to) {
@@ -292,7 +299,6 @@ public class FXTimelineView extends View {
 
     // ------------------------------------------------------------------ horizontal scale / scroll
 
-    /** Right-panel viewport width in px (used to compute how many ticks are visible). */
     private float viewWidth() {
         var w = rightScroller.viewPort.getContentWidth();
         return w > 1 ? w : ruler.getContentWidth();
@@ -303,14 +309,12 @@ public class FXTimelineView extends View {
         if (runtime == null) return 0;
         double max = 0;
         for (var track : runtime.fxData.timeline().tracks()) {
-            for (var clip : track.clips()) {
-                max = Math.max(max, clip.end());
-            }
+            var editor = editorFor(track);
+            if (editor != null) max = Math.max(max, editor.contentMaxTick(track));
         }
         return max;
     }
 
-    /** Recompute the proportional horizontal scrollbar from scale, content extent and viewport. */
     private void updateHScroller() {
         var viewW = viewWidth();
         if (viewW <= 1) return;
@@ -318,7 +322,7 @@ public class FXTimelineView extends View {
         var contentMax = contentMaxTick();
         double total;
         if (contentMax <= visibleTicks) {
-            total = visibleTicks; // content fits: thumb full, empty space past content stays visible
+            total = visibleTicks;
             scrollTicks = 0;
         } else {
             total = contentMax + CONTENT_PAD;
@@ -326,7 +330,6 @@ public class FXTimelineView extends View {
         if (total < 1) total = 1;
         var maxScroll = (float) Math.max(0, total - visibleTicks);
         scrollTicks = Math.max(0, Math.min(scrollTicks, maxScroll));
-        // never let min==max (NaN normalized value) and keep the thumb < 100% so drag math stays finite
         hScroll.setRange(0, maxScroll > 0 ? maxScroll : 0.0001f);
         hScroll.setValue(scrollTicks, false);
         hScroll.setScrollBarSize((float) Math.max(5, Math.min(99, visibleTicks / total * 100)));
@@ -344,12 +347,13 @@ public class FXTimelineView extends View {
         event.stopPropagation();
     }
 
-    /** Local x within a lane for a tick (relative to the lane content origin == {@link #originX()}). */
-    private float tickToLocalX(double tick) {
+    @Override
+    public float tickToLocalX(double tick) {
         return (float) ((tick - scrollTicks) * scale);
     }
 
-    private double xToTick(float mouseX) {
+    @Override
+    public double xToTick(float mouseX) {
         return (mouseX - originX()) / scale + scrollTicks;
     }
 
@@ -366,12 +370,11 @@ public class FXTimelineView extends View {
 
     private void drawRuler(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTick) {
         DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
-        var origin = originX(); // align ruler ticks to the (possibly padded) lane content
+        var origin = originX();
         var visibleTicks = width / scale;
         var major = niceInterval(60 / scale);
         var minor = major / 5;
         var endTick = scrollTicks + visibleTicks;
-        // minor ticks (clamped to the ruler bounds so they don't bleed into the left panel)
         if (minor * scale >= 4) {
             for (double t = Math.floor(scrollTicks / minor) * minor; t <= endTick; t += minor) {
                 if (t < 0) continue;
@@ -380,7 +383,6 @@ public class FXTimelineView extends View {
                 DrawerHelper.drawSolidRect(graphics, mx, y + height * 0.6f, 1, height * 0.4f, ColorPattern.T_GRAY.color);
             }
         }
-        // major ticks + labels
         for (double t = Math.floor(scrollTicks / major) * major; t <= endTick; t += major) {
             if (t < 0) continue;
             var mx = origin + (float) ((t - scrollTicks) * scale);
@@ -391,7 +393,6 @@ public class FXTimelineView extends View {
         drawPlayhead(graphics, x, y, width, height, partialTick);
     }
 
-    /** Round to a "nice" 1/2/5×10ⁿ interval (min 1 tick) for ~60px major spacing. */
     private double niceInterval(double raw) {
         if (raw < 1) return 1;
         var pow = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -400,15 +401,24 @@ public class FXTimelineView extends View {
         return nice * pow;
     }
 
-    private void drawPlayhead(GuiGraphics graphics, float contentX, float y, float width, float height, float partialTick) {
-        var playheadX = originX() + (currentTimeTicks(partialTick) - scrollTicks) * scale;
-        if (playheadX < contentX || playheadX > contentX + width) return;
-        DrawerHelper.drawSolidRect(graphics, playheadX, y, 1, height, ColorPattern.RED.color);
+    private void drawGuideLine(GuiGraphics graphics, double tick, float x, float y, float width, float height) {
+        var lx = originX() + (float) ((tick - scrollTicks) * scale);
+        if (lx < x || lx > x + width) return;
+        DrawerHelper.drawSolidRect(graphics, lx, y, 1, height, ColorPattern.YELLOW.color);
     }
 
-    // ------------------------------------------------------------------ track rows
+    // ------------------------------------------------------------------ track rows (generic host)
 
-    /** Rebuild the whole track list UI from the model. Call after structural edits. */
+    @Nullable
+    private TrackEditor editorFor(Track track) {
+        return track.type() == null ? null : track.type().editor();
+    }
+
+    private TrackUIState stateFor(Track track, TrackEditor editor) {
+        return states.computeIfAbsent(track, t -> editor.createState());
+    }
+
+    /** Rebuild the whole track list UI from the model. Per-track UI state (expand/selection) is kept. */
     public void rebuild() {
         headersContainer.clearAllChildren();
         lanesContainer.clearAllChildren();
@@ -416,24 +426,63 @@ public class FXTimelineView extends View {
         var runtime = fxEditor.runtime;
         if (runtime == null) return;
         for (var track : runtime.fxData.timeline().tracks()) {
-            headersContainer.addChild(createTrackHeader(runtime, track));
-            lanesContainer.addChild(createTrackLane(runtime, track));
+            var editor = editorFor(track);
+            if (editor == null) {
+                Photon.LOGGER.warn("No track editor registered for '{}'", track.name());
+                continue;
+            }
+            var state = stateFor(track, editor);
+            UIElement leftWrapper = null;
+            UIElement rightWrapper = null;
+            if (editor.isExpandable()) {
+                leftWrapper = new UIElement().setId("timeline.expandLeft").layout(layout ->
+                        layout.widthPercent(100).height(state.expandedHeight).flexDirection(FlexDirection.COLUMN));
+                var left = editor.buildExpandedLeft(this, track, state);
+                if (left != null) leftWrapper.addChild(left.layout(l -> l.flex(1)));
+                leftWrapper.setDisplay(state.expanded);
+
+                rightWrapper = new UIElement().setId("timeline.expandRight").layout(layout ->
+                        layout.widthPercent(100).height(state.expandedHeight).flexDirection(FlexDirection.COLUMN));
+                var right = editor.buildExpandedRight(this, track, state);
+                if (right != null) rightWrapper.addChild(right.layout(l -> l.flex(1)));
+                rightWrapper.addChild(createResizeHandle(state, leftWrapper, rightWrapper));
+                rightWrapper.setDisplay(state.expanded);
+            }
+            headersContainer.addChild(createTrackHeader(track, editor, state, leftWrapper, rightWrapper));
+            lanesContainer.addChild(editor.buildLane(this, track, state));
+            if (leftWrapper != null) {
+                headersContainer.addChild(leftWrapper);
+                lanesContainer.addChild(rightWrapper);
+            }
         }
         updateHScroller();
     }
 
-    private UIElement createTrackHeader(FXRuntime runtime, Track track) {
-        var isControl = track instanceof ControlTrack;
+    private UIElement createResizeHandle(TrackUIState state, UIElement leftWrapper, UIElement rightWrapper) {
+        var handle = new UIElement().setId("timeline.expandResize").layout(layout -> layout.widthPercent(100).height(4))
+                .style(style -> style.backgroundTexture((graphics, mx, my, x, y, w, h, pt) ->
+                        DrawerHelper.drawSolidRect(graphics, x + w / 2 - 6, y + h / 2f, 12, 1, ColorPattern.GRAY.color)));
+        handle.addEventListener(UIEvents.MOUSE_DOWN, e -> { handle.startDrag(null, null); e.stopPropagation(); });
+        handle.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
+            var newH = Math.max(MIN_EXPANDED, Math.round(e.y - rightWrapper.getPositionY()));
+            state.expandedHeight = newH;
+            leftWrapper.layout(l -> l.height(newH));
+            rightWrapper.layout(l -> l.height(newH));
+        });
+        return handle;
+    }
+
+    private UIElement createTrackHeader(Track track, TrackEditor editor, TrackUIState state,
+                                       @Nullable UIElement leftWrapper, @Nullable UIElement rightWrapper) {
         var header = new UIElement().setId("timeline.trackHeader").layout(layout -> {
             layout.widthPercent(100);
-            layout.height(ROW_HEIGHT);
+            layout.height(TimelineContext.ROW_HEIGHT);
             layout.flexDirection(FlexDirection.ROW);
             layout.gapAll(2);
             layout.paddingAll(2);
         }).style(style -> style.backgroundTexture((graphics, mx, my, x, y, w, h, pt) ->
                         DrawerHelper.drawSolidRect(graphics, x, y, w, h,
                                 selectedTrack == track ? ColorPattern.GRAY.color : ColorPattern.T_GRAY.color))
-                // reorder insertion line (above/below) while dragging a track header
                 .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     if (reorderTarget == track) {
                         DrawerHelper.drawSolidRect(graphics, x, reorderBelow ? y + h - 1 : y, w, 1, ColorPattern.WHITE.color);
@@ -443,25 +492,37 @@ public class FXTimelineView extends View {
         header.addEventListener(UIEvents.DRAG_ENTER, e -> updateReorderTarget(header, track, e));
         header.addEventListener(UIEvents.DRAG_UPDATE, e -> updateReorderTarget(header, track, e));
         header.addEventListener(UIEvents.DRAG_LEAVE, e -> { if (reorderTarget == track) reorderTarget = null; });
-        header.addEventListener(UIEvents.MOUSE_DOWN, e -> {
-            if (e.button == 0) selectTrack(track);
-        });
+        header.addEventListener(UIEvents.MOUSE_DOWN, e -> { if (e.button == 0) selectTrack(track); });
 
         var chip = new UIElement().setId("timeline.trackHeader.chip").layout(layout -> {
             layout.width(4);
             layout.heightPercent(100);
-        }).style(style -> style.backgroundTexture(
-                (isControl ? ColorPattern.CYAN : ColorPattern.GREEN).rectTexture()));
+        }).style(style -> style.backgroundTexture(editor.chipColor().rectTexture()));
         chip.addEventListener(UIEvents.MOUSE_DOWN, e -> {
-            chip.startDrag(new TrackDrag(track), new TextTexture(trackTitle(runtime, track)));
+            chip.startDrag(new TrackDrag(track), new TextTexture(trackTitle(track)));
             e.stopPropagation();
         });
 
-        var content = createTrackHeaderContent(runtime, track, isControl);
+        UIElement expand = null;
+        if (editor.isExpandable() && leftWrapper != null) {
+            final var lw = leftWrapper;
+            final var rw = rightWrapper;
+            var toggle = new Toggle().noText().setOn(state.expanded)
+                    .setOnToggleChanged(on -> { // no rebuild: just flip the panels' display
+                        state.expanded = on;
+                        lw.setDisplay(on);
+                        rw.setDisplay(on);
+                    });
+            toggle.getToggleStyle().baseTexture(IGuiTexture.EMPTY).hoverTexture(IGuiTexture.EMPTY)
+                    .markTexture(Icons.DOWN_ARROW_NO_BAR_S_LIGHT).unmarkTexture(Icons.RIGHT_ARROW_NO_BAR_S_LIGHT);
+            toggle.setId("timeline.trackHeader.expand").layout(layout -> layout.width(10).height(10).alignSelf(AlignItems.CENTER))
+                    .style(style -> style.tooltips("photon.gui.editor.timeline.expand"));
+            expand = toggle;
+        }
 
-        // apply immediately (the toggle already reflects the new state); record history with
-        // execute=false so undo/redo rebuild later without destroying the toggle during its own click
-        var muteToggle = new Toggle().setText("M").setOn(track.mute())
+        var content = editor.buildHeaderContent(this, track, state);
+
+        var muteToggle = new Toggle().noText().setOn(track.mute())
                 .setOnToggleChanged(on -> {
                     track.mute(on);
                     refreshPreview();
@@ -469,234 +530,85 @@ public class FXTimelineView extends View {
                             () -> { track.mute(on); rebuild(); refreshPreview(); },
                             () -> { track.mute(!on); rebuild(); refreshPreview(); });
                 });
-        muteToggle.setId("timeline.trackHeader.mute").layout(layout -> layout.width(12).heightPercent(100))
+        muteToggle.getToggleStyle().markTexture(Icons.EYE_OFF.copy().scale(0.8f)).unmarkTexture(Icons.EYE.copy().setColor(0xff222222).scale(0.8f));
+        muteToggle.setId("timeline.trackHeader.mute").layout(layout -> layout.aspectRatio(1).heightPercent(100))
                 .style(style -> style.tooltips("photon.gui.editor.timeline.mute"));
-        var lockToggle = new Toggle().setText("L").setOn(track.lock())
+        var lockToggle = new Toggle().noText().setOn(track.lock())
                 .setOnToggleChanged(on -> {
                     track.lock(on);
                     pushApplied("photon.gui.editor.timeline.lock",
                             () -> { track.lock(on); rebuild(); },
                             () -> { track.lock(!on); rebuild(); });
                 });
-        lockToggle.setId("timeline.trackHeader.lock").layout(layout -> layout.width(12).heightPercent(100))
+        lockToggle.getToggleStyle().markTexture(PhotonIcons.LOCK.copy().scale(0.8f)).unmarkTexture(PhotonIcons.UNLOCK.copy().setColor(0xff222222).scale(0.8f));
+        lockToggle.setId("timeline.trackHeader.lock").layout(layout -> layout.aspectRatio(1).heightPercent(100))
                 .style(style -> style.tooltips("photon.gui.editor.timeline.lock"));
 
-        var menu = new Button().setText("...").setOnClick(e -> openTrackMenu(track, e.x, e.y));
-        menu.setId("timeline.trackHeader.menu").layout(layout -> layout.width(12).heightPercent(100));
-        return header.addChildren(chip, content, muteToggle, lockToggle, menu);
+        var menu = new Button().setText("...").setOnClick(e -> openTrackMenu(track, editor, e.x, e.y));
+        menu.setId("timeline.trackHeader.menu").layout(layout -> layout.aspectRatio(1).heightPercent(100));
+        header.addChild(chip);
+        if (expand != null) header.addChild(expand);
+        return header.addChildren(content, muteToggle, lockToggle, menu);
     }
 
-    private UIElement createTrackHeaderContent(FXRuntime runtime, Track track, boolean isControl) {
-        if (isControl) {
-            if (editingNameTrack == track) {
-                var field = new TextField().setText(track.displayName(), false).setTextResponder(track::displayName);
-                field.setId("timeline.trackHeader.name").layout(layout -> layout.flex(1).heightPercent(100));
-                field.addEventListener(UIEvents.FOCUS_OUT, e -> commitRename(track));
-                var focused = new boolean[]{false};
-                field.addEventListener(UIEvents.TICK, e -> {
-                    if (!focused[0]) { focused[0] = true; field.focus(); }
-                });
-                return field;
-            }
-            var label = new Label().setText(track.displayName().isEmpty() ? "Control" : track.displayName());
-            styleLabel(label);
-            label.setId("timeline.trackHeader.name").layout(layout -> layout.flex(1).heightPercent(100));
-            label.addEventListener(UIEvents.DOUBLE_CLICK, e -> {
-                editingNameBefore = track.displayName();
-                editingNameTrack = track;
-                rebuild();
-            });
-            return label;
+    private String trackTitle(Track track) {
+        if (!track.displayName().isEmpty()) return track.displayName();
+        var runtime = fxEditor.runtime;
+        var bound = (runtime == null || track.targetId() == null) ? null : runtime.objects.get(track.targetId());
+        return bound == null ? "None" : bound.getName();
+    }
+
+    // ------------------------------------------------------------------ menus / reorder
+
+    private void openAddTrackMenu(float x, float y) {
+        var runtime = fxEditor.runtime;
+        if (runtime == null) return;
+        var menu = TreeBuilder.Menu.start();
+        for (var type : PhotonRegistries.TIMELINE_TRACKS) {
+            menu.leaf(Component.translatable("photon.timeline_track." + type.name()),
+                    () -> addTrack(type.create(), runtime.fxData.timeline().tracks().size()));
         }
-        var bound = track.targetId() == null ? null : runtime.objects.get(track.targetId());
-        var slot = new UIElement().setId("timeline.trackHeader.target").layout(layout -> layout.flex(1).heightPercent(100))
-                .style(style -> style.backgroundTexture(ColorPattern.BLACK.rectTexture()));
-        var label = new Label().setText(bound == null ? "None" : bound.getName());
-        styleLabel(label);
-        label.layout(layout -> layout.flex(1).heightPercent(100));
-        slot.addChild(label);
-        slot.addEventListener(UIEvents.MOUSE_DOWN, e -> {
-            if (e.button == 0) openObjectPicker(runtime, track, e.x, e.y);
-        });
-        slot.addEventListener(UIEvents.DRAG_PERFORM, e -> onBindDrop(e, track));
-        return slot;
-    }
-
-    /** Vertically center a label, clip overflow, and roll long text on hover. */
-    private static void styleLabel(TextElement label) {
-        label.textStyle(style -> style.textAlignVertical(Vertical.CENTER).textWrap(TextWrap.HOVER_ROLL));
-        label.setOverflowVisible(false);
-    }
-
-    private UIElement createTrackLane(FXRuntime runtime, Track track) {
-        var isControl = track instanceof ControlTrack;
-        var lane = new UIElement().setId("timeline.trackLane").layout(layout -> {
-            layout.widthPercent(100);
-            layout.height(ROW_HEIGHT);
-        }).setOverflowVisible(false).style(style -> style
-                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
-                    DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
-                    if (selectedTrack == track) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
-                    }
-                })
-                // playhead in the overlay so it draws on top of the clips
-                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> drawPlayhead(graphics, x, y, w, h, pt)));
-        lane.addEventListener(UIEvents.MOUSE_WHEEL, this::onZoom);
-        lane.addEventListener(UIEvents.MOUSE_DOWN, e -> {
-            if (e.button == 0) {
-                selectTrack(track); // empty area (clips stopPropagation and select themselves)
-            } else if (e.button == 1 && !isControl && !track.lock()) {
-                openAddClipMenu(track, e.x, e.y); // right-click an activator lane to add a clip
-            }
-        });
-        if (isControl) {
-            lane.addEventListener(UIEvents.DRAG_PERFORM, e -> onControlClipDrop(e, track));
-        } else {
-            lane.addEventListener(UIEvents.DOUBLE_CLICK, e -> {
-                if (track.lock()) return;
-                addClip(track, new Clip(Math.max(0, Math.round(xToTick(e.x))),
-                        defaultClipDuration(track.targetId()), 1.0f));
-            });
+        if (clipboardTrack != null) {
+            menu.leaf("ldlib.gui.editor.menu.paste", () -> addTrack(clipboardTrack.copy(), runtime.fxData.timeline().tracks().size()));
         }
-        for (var clip : track.clips()) {
-            lane.addChild(createClipElement(runtime, track, clip, lane));
+        fxEditor.openMenu(x, y, menu);
+    }
+
+    private void openTrackMenu(Track track, TrackEditor editor, float x, float y) {
+        var runtime = fxEditor.runtime;
+        if (runtime == null) return;
+        var tracks = runtime.fxData.timeline().tracks();
+        var menu = TreeBuilder.Menu.start();
+        editor.buildTrackMenu(menu, this, track);
+        menu.leaf("ldlib.gui.editor.menu.copy", () -> clipboardTrack = track.copy());
+        menu.leaf("photon.gui.editor.timeline.duplicate", () -> addTrack(track.copy(), tracks.indexOf(track) + 1));
+        if (clipboardTrack != null) {
+            menu.leaf("ldlib.gui.editor.menu.paste", () -> addTrack(clipboardTrack.copy(), tracks.size()));
         }
-        return lane;
+        menu.leaf("ldlib.gui.editor.menu.remove", () -> removeTrack(track));
+        fxEditor.openMenu(x, y, menu);
     }
 
-    private UIElement createClipElement(FXRuntime runtime, Track track, Clip clip, UIElement lane) {
-        var isControl = track instanceof ControlTrack;
-        var baseColor = isControl ? ColorPattern.CYAN : ColorPattern.GREEN;
-        var fillColor = isControl ? ColorPattern.T_CYAN : ColorPattern.T_GREEN;
-        var clipHeight = ROW_HEIGHT - 6;
-        var element = new UIElement().setId("timeline.clip").layout(layout -> {
-            layout.positionType(TaffyPosition.ABSOLUTE);
-            layout.left(tickToLocalX(clip.start()));
-            layout.top((ROW_HEIGHT - clipHeight) / 2f); // vertically centered in the lane
-            layout.width((float) Math.max(2, clip.duration() * scale));
-            layout.height(clipHeight);
-            layout.paddingAll(2);
-        }).style(style -> style
-                // body + border drawn 1px inside the element box so abutting clips don't overlap;
-                // a clip overlapping another while dragged is shown red (and reverted on release)
-                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
-                    var invalid = draggingClip == clip && dragInvalid;
-                    DrawerHelper.drawSolidRect(graphics, x + 1, y, Math.max(1, w - 2), h,
-                            (invalid ? ColorPattern.T_RED : fillColor).color);
-                })
-                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
-                    var bx = x + 1;
-                    var bw = Math.max(1, w - 2);
-                    var invalid = draggingClip == clip && dragInvalid;
-                    DrawerHelper.drawBorder(graphics, bx, y, bw, h, (invalid ? ColorPattern.RED : baseColor).color, 1);
-                    if (selectedClip == clip && !invalid) {
-                        DrawerHelper.drawBorder(graphics, bx, y, bw, h, ColorPattern.WHITE.color, 1);
-                    }
-                    // draw a resize arrow at the cursor when hovering an edge
-                    if (!track.lock() && my >= y && my <= y + h && (mx <= bx + EDGE_PX || mx >= bx + bw - EDGE_PX)
-                            && mx >= bx && mx <= bx + bw) {
-                        Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
-                    }
-                }));
-        if (selectedClip == clip) {
-            element.addClass("__selected__");
+    private void updateReorderTarget(UIElement header, Track track, UIEvent event) {
+        if (event.dragHandler.getDraggingObject() instanceof TrackDrag) {
+            reorderTarget = track;
+            reorderBelow = event.y > header.getPositionY() + header.getSizeHeight() / 2f;
         }
-        clipViews.add(new ClipView(clip, element, lane));
+    }
 
-        if (isControl && clip.targetId() != null) {
-            var bound = runtime.objects.get(clip.targetId());
-            var label = new Label().setText(bound == null ? "?" : bound.getName());
-            styleLabel(label);
-            label.layout(layout -> layout.flex(1).heightPercent(100));
-            element.addChild(label);
+    private void onReorderDrop(UIEvent event, Track target) {
+        var below = reorderBelow;
+        reorderTarget = null;
+        if (event.dragHandler.getDraggingObject() instanceof TrackDrag(var dragged) && dragged != target) {
+            reorderTrack(dragged, target, below);
+            event.stopPropagation();
         }
-
-        element.addEventListener(UIEvents.MOUSE_DOWN, e -> {
-            if (e.button == 1) {
-                selectClip(track, clip);
-                if (!track.lock()) openClipMenu(track, clip, e.x, e.y);
-                e.stopPropagation();
-                return;
-            }
-            selectClip(track, clip);
-            if (track.lock()) { // locked: select but don't edit
-                e.stopPropagation();
-                return;
-            }
-            var localX = e.x - element.getPositionX();
-            var w = element.getSizeWidth();
-            clipDragMode = localX <= EDGE_PX ? DRAG_LEFT : (localX >= w - EDGE_PX ? DRAG_RIGHT : DRAG_MOVE);
-            grabOffsetTicks = xToTick(e.x) - clip.start();
-            dragFixedEnd = clip.end();
-            dragBeforeStart = clip.start();
-            dragBeforeDuration = clip.duration();
-            draggingClip = clip;
-            dragInvalid = false;
-            beginScrub();
-            element.startDrag(null, null);
-            e.stopPropagation();
-        });
-        element.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
-            var ctrl = e.isCtrlDown();
-            var cursorTick = xToTick(e.x);
-            if (clipDragMode == DRAG_RIGHT) {
-                var end = snapTick(cursorTick, clip, ctrl);
-                clip.duration(Math.max(1, Math.round(end - clip.start())));
-            } else if (clipDragMode == DRAG_LEFT) {
-                var start = snapTick(cursorTick - grabOffsetTicks, clip, ctrl);
-                start = Math.max(0, Math.min(start, dragFixedEnd - 1));
-                clip.start(Math.round(start));
-                clip.duration(Math.max(1, Math.round(dragFixedEnd - clip.start())));
-            } else {
-                var start = snapMoveStart(cursorTick - grabOffsetTicks, clip.duration(), clip, ctrl);
-                clip.start(Math.max(0, Math.round(start)));
-            }
-            dragInvalid = overlaps(track, clip);
-            applyClipLayout(element, clip);
-            refreshPreview();
-        });
-        element.addEventListener(UIEvents.DRAG_END, e -> {
-            draggingClip = null;
-            endScrub();
-            var beforeStart = dragBeforeStart;
-            var beforeDuration = dragBeforeDuration;
-            if (dragInvalid) {
-                // overlapping is invalid: snap back to where the drag started
-                dragInvalid = false;
-                clip.start(beforeStart).duration(beforeDuration);
-                applyClipLayout(element, clip);
-                refreshPreview();
-            } else {
-                var afterStart = clip.start();
-                var afterDuration = clip.duration();
-                if (beforeStart != afterStart || beforeDuration != afterDuration) {
-                    pushApplied("photon.gui.editor.timeline.edit_clip",
-                            () -> { clip.start(afterStart).duration(afterDuration); repositionClips(); refreshPreview(); },
-                            () -> { clip.start(beforeStart).duration(beforeDuration); repositionClips(); refreshPreview(); });
-                }
-            }
-            // the inspector configurators use forceUpdate=true, so they re-sync from the model on their own
-        });
-
-        return element;
     }
 
-    private void applyClipLayout(UIElement element, Clip clip) {
-        element.layout(layout -> {
-            layout.left(tickToLocalX(clip.start()));
-            layout.width((float) Math.max(2, clip.duration() * scale));
-        });
-    }
+    // ------------------------------------------------------------------ snapping (cross-track)
 
-    private void drawGuideLine(GuiGraphics graphics, double tick, float x, float y, float width, float height) {
-        var lx = originX() + (float) ((tick - scrollTicks) * scale);
-        if (lx < x || lx > x + width) return;
-        DrawerHelper.drawSolidRect(graphics, lx, y, 1, height, ColorPattern.YELLOW.color);
-    }
-
-    /** Nearest clip/0/playhead boundary within {@link #SNAP_PX} screen px of {@code tick} (Ctrl disables). */
-    private double snapTick(double tick, @Nullable Clip exclude, boolean ctrl) {
+    @Override
+    public double snapTick(double tick, @Nullable Clip exclude, boolean ctrl) {
         if (ctrl) return tick;
         var runtime = fxEditor.runtime;
         if (runtime == null) return tick;
@@ -719,8 +631,8 @@ public class FXTimelineView extends View {
         return best;
     }
 
-    /** Snap a moving clip by whichever of its two edges is closest to a boundary. */
-    private double snapMoveStart(double start, double duration, Clip exclude, boolean ctrl) {
+    @Override
+    public double snapMoveStart(double start, double duration, @Nullable Clip exclude, boolean ctrl) {
         if (ctrl) return start;
         var snapStart = snapTick(start, exclude, false);
         var snapEndStart = snapTick(start + duration, exclude, false) - duration;
@@ -730,110 +642,6 @@ public class FXTimelineView extends View {
             return snapStart;
         }
         return rightSnapped ? snapEndStart : start;
-    }
-
-    // ------------------------------------------------------------------ menus / binding / reorder
-
-    private void openAddTrackMenu(float x, float y) {
-        var runtime = fxEditor.runtime;
-        if (runtime == null) return;
-        var menu = TreeBuilder.Menu.start();
-        for (var holder : PhotonRegistries.TIMELINE_TRACKS) {
-            var typeName = holder.annotation().name();
-            menu.leaf(Component.translatable("photon.timeline_track." + typeName),
-                    () -> addTrack(holder.value().get(), runtime.fxData.timeline().tracks().size()));
-        }
-        fxEditor.openMenu(x, y, menu);
-    }
-
-    private void openObjectPicker(FXRuntime runtime, Track track, float x, float y) {
-        var menu = TreeBuilder.Menu.start();
-        menu.leaf("None", () -> bind(track, null));
-        for (var object : runtime.objects.values()) {
-            // root may be bound by activator/control tracks (only the future animation track excludes it)
-            var id = object.transform().id();
-            menu.leaf(object.getName(), () -> bind(track, id));
-        }
-        fxEditor.openMenu(x, y, menu);
-    }
-
-    private void openTrackMenu(Track track, float x, float y) {
-        var runtime = fxEditor.runtime;
-        if (runtime == null) return;
-        var tracks = runtime.fxData.timeline().tracks();
-        var menu = TreeBuilder.Menu.start();
-        menu.leaf("ldlib.gui.editor.menu.copy", () -> clipboardTrack = track.copy());
-        menu.leaf("photon.gui.editor.timeline.duplicate", () -> addTrack(track.copy(), tracks.indexOf(track) + 1));
-        if (clipboardTrack != null) {
-            menu.leaf("ldlib.gui.editor.menu.paste", () -> addTrack(clipboardTrack.copy(), tracks.size()));
-        }
-        menu.leaf("ldlib.gui.editor.menu.remove", () -> removeTrack(track));
-        fxEditor.openMenu(x, y, menu);
-    }
-
-    private void openAddClipMenu(Track track, float x, float y) {
-        var startTick = Math.max(0, Math.round(xToTick(x)));
-        var menu = TreeBuilder.Menu.start();
-        menu.leaf("photon.gui.editor.timeline.add_clip",
-                () -> addClip(track, new Clip(startTick, defaultClipDuration(track.targetId()), 1.0f)));
-        fxEditor.openMenu(x, y, menu);
-    }
-
-    private void openClipMenu(Track track, Clip clip, float x, float y) {
-        var menu = TreeBuilder.Menu.start();
-        if (track instanceof ControlTrack) {
-            menu.leaf(Component.translatable(clip.randomSeed()
-                    ? "photon.gui.editor.timeline.seed_random_on" : "photon.gui.editor.timeline.seed_random_off"), () -> {
-                var old = clip.randomSeed();
-                pushEdit("photon.gui.editor.timeline.edit_clip",
-                        () -> { clip.randomSeed(!old); rebuild(); refreshPreview(); },
-                        () -> { clip.randomSeed(old); rebuild(); refreshPreview(); });
-            });
-            menu.leaf(Component.translatable("photon.gui.editor.timeline.reseed"), () -> {
-                var oldSeed = clip.seed();
-                var oldRandom = clip.randomSeed();
-                var newSeed = new java.util.Random().nextLong();
-                pushEdit("photon.gui.editor.timeline.edit_clip",
-                        () -> { clip.seed(newSeed).randomSeed(false); refreshPreview(); },
-                        () -> { clip.seed(oldSeed).randomSeed(oldRandom); refreshPreview(); });
-            });
-        }
-        menu.leaf("ldlib.gui.editor.menu.copy", () -> clipboardClip = clip.copy());
-        menu.leaf("ldlib.gui.editor.menu.remove", () -> removeClip(track, clip));
-        fxEditor.openMenu(x, y, menu);
-    }
-
-    private void onBindDrop(UIEvent event, Track track) {
-        if (fxEditor.runtime == null) return;
-        if (event.dragHandler.getDraggingObject() instanceof FXHierarchyView.DraggingNode(var node)) {
-            bind(track, node.getKey().transform().id());
-            event.stopPropagation();
-        }
-    }
-
-    private void onControlClipDrop(UIEvent event, Track track) {
-        if (fxEditor.runtime == null || track.lock()) return;
-        if (event.dragHandler.getDraggingObject() instanceof FXHierarchyView.DraggingNode(var node)) {
-            var id = node.getKey().transform().id();
-            addClip(track, new Clip(Math.max(0, Math.round(xToTick(event.x))), defaultClipDuration(id), 1.0f).targetId(id));
-            event.stopPropagation();
-        }
-    }
-
-    private void updateReorderTarget(UIElement header, Track track, UIEvent event) {
-        if (event.dragHandler.getDraggingObject() instanceof TrackDrag) {
-            reorderTarget = track;
-            reorderBelow = event.y > header.getPositionY() + header.getSizeHeight() / 2f;
-        }
-    }
-
-    private void onReorderDrop(UIEvent event, Track target) {
-        var below = reorderBelow;
-        reorderTarget = null;
-        if (event.dragHandler.getDraggingObject() instanceof TrackDrag(var dragged) && dragged != target) {
-            reorderTrack(dragged, target, below);
-            event.stopPropagation();
-        }
     }
 
     // ------------------------------------------------------------------ undoable mutations
@@ -850,10 +658,14 @@ public class FXTimelineView extends View {
         if (fxEditor.runtime == null) return;
         var tracks = fxEditor.runtime.fxData.timeline().tracks();
         var index = tracks.indexOf(track);
+        var editor = editorFor(track);
         pushEdit("photon.gui.editor.timeline.remove_track",
                 () -> {
                     tracks.remove(track);
                     if (selectedTrack == track) selectedTrack = null;
+                    if (selectedClipTrack == track) { selectedClip = null; selectedClipTrack = null; }
+                    if (editor != null) editor.onRemoved(this, track, stateFor(track, editor));
+                    states.remove(track);
                     rebuild();
                     refreshPreview();
                 },
@@ -882,8 +694,8 @@ public class FXTimelineView extends View {
                 });
     }
 
-    /** Default new-clip duration from the bound object's subtree lifetime (falls back to 40 ticks). */
-    private double defaultClipDuration(@Nullable UUID objectId) {
+    @Override
+    public double defaultClipDuration(@Nullable UUID objectId) {
         if (objectId != null && fxEditor.runtime != null
                 && fxEditor.runtime.objects.get(objectId) instanceof FXObject object) {
             var life = subtreeLifetime(object);
@@ -893,9 +705,7 @@ public class FXTimelineView extends View {
     }
 
     private int subtreeLifetime(FXObject object) {
-        // include the emitter's start delay so the default clip covers delay + lifetime
-        var max = object instanceof Emitter emitter
-                ? Math.max(0, emitter.getStartDelay() + emitter.getLifetime()) : 0;
+        var max = object instanceof Emitter emitter ? Math.max(0, emitter.getStartDelay() + emitter.getLifetime()) : 0;
         for (var child : object.transform().children()) {
             if (child.sceneObject() instanceof FXObject childObject) {
                 max = Math.max(max, subtreeLifetime(childObject));
@@ -904,25 +714,15 @@ public class FXTimelineView extends View {
         return max;
     }
 
-    /** Whether {@code clip} overlaps another clip on {@code track} (same target for control tracks). */
-    private boolean overlaps(Track track, Clip clip) {
-        for (var other : track.clips()) {
-            if (other == clip) continue;
-            var sameTarget = !(track instanceof ControlTrack) || java.util.Objects.equals(other.targetId(), clip.targetId());
-            if (sameTarget && clip.start() < other.end() && other.start() < clip.end()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private void addClip(Track track, Clip clip) {
+    @Override
+    public void addClip(Track track, Clip clip) {
         pushEdit("photon.gui.editor.timeline.add_clip",
                 () -> { track.clips().add(clip); rebuild(); refreshPreview(); },
                 () -> { track.clips().remove(clip); rebuild(); refreshPreview(); });
     }
 
-    private void removeClip(Track track, Clip clip) {
+    @Override
+    public void removeClip(Track track, Clip clip) {
         var index = track.clips().indexOf(clip);
         pushEdit("photon.gui.editor.timeline.remove_clip",
                 () -> {
@@ -934,76 +734,31 @@ public class FXTimelineView extends View {
                 () -> { track.clips().add(Math.min(index, track.clips().size()), clip); rebuild(); refreshPreview(); });
     }
 
-    private void bind(Track track, @Nullable UUID targetId) {
+    @Override
+    public void bind(Track track, @Nullable UUID targetId) {
         var old = track.targetId();
+        var editor = editorFor(track);
         pushEdit("photon.gui.editor.timeline.bind",
-                () -> { track.targetId(targetId); rebuild(); refreshPreview(); },
-                () -> { track.targetId(old); rebuild(); refreshPreview(); });
-    }
-
-    private void setDisplayName(Track track, String name) {
-        track.displayName(name);
-        rebuild(); // refresh the header label (the inspector field auto-syncs via forceUpdate)
+                () -> { if (editor != null) editor.onTargetWillChange(this, track, old); track.targetId(targetId); rebuild(); refreshPreview(); },
+                () -> { if (editor != null) editor.onTargetWillChange(this, track, targetId); track.targetId(old); rebuild(); refreshPreview(); });
     }
 
     // ------------------------------------------------------------------ transport / preview / keys
 
-    private String trackTitle(FXRuntime runtime, Track track) {
-        if (track instanceof ControlTrack) {
-            return track.displayName().isEmpty() ? "Control" : track.displayName();
-        }
-        var bound = track.targetId() == null ? null : runtime.objects.get(track.targetId());
-        return bound == null ? "None" : bound.getName();
-    }
-
-    private boolean isPlaying() {
-        return fxEditor.sceneView.particleManager.isPlaying();
-    }
+    private boolean isPlaying() { return fxEditor.sceneView.particleManager.isPlaying(); }
 
     private void togglePlay() {
         var pm = fxEditor.sceneView.particleManager;
-        if (pm.isPlaying()) {
-            pm.pause();
-        } else {
-            pm.play();
-        }
+        if (pm.isPlaying()) pm.pause();
+        else pm.play();
     }
 
-    /** Stop = pause and re-arm at t=0 (clears particles, re-emits, resets the timeline clock). */
     private void stop() {
         var pm = fxEditor.sceneView.particleManager;
         pm.pause();
         fxEditor.sceneView.reset();
         if (fxEditor.runtime != null) {
             fxEditor.runtime.emmit(fxEditor.sceneView.effect);
-        }
-    }
-
-    private long currentTimeTicks() {
-        return fxEditor.sceneView.particleManager.getRealTime();
-    }
-
-    private float currentTimeTicks(float partialTick) {
-        return fxEditor.sceneView.particleManager.getRealTime(partialTick);
-    }
-
-    /** Re-simulate up to the current playhead with the edited timeline, keeping the playhead. */
-    private void refreshPreview() {
-        fxEditor.sceneView.simulateTo(fxEditor.sceneView.particleManager.getRealTime());
-    }
-
-    /** Pause and remember the play state while dragging, so we can live-preview without resetting. */
-    private void beginScrub() {
-        var pm = fxEditor.sceneView.particleManager;
-        wasPlaying = pm.isPlaying();
-        previewTime = pm.getRealTime();
-        pm.pause();
-    }
-
-    private void endScrub() {
-        fxEditor.sceneView.simulateTo(previewTime);
-        if (wasPlaying) {
-            fxEditor.sceneView.particleManager.play();
         }
     }
 
@@ -1022,7 +777,6 @@ public class FXTimelineView extends View {
         }
     }
 
-    /** Editor commands routed to the focused timeline (they don't bubble to the editor's HistoryView). */
     private void onCommand(UIEvent event) {
         if (CommandEvents.UNDO.equals(event.command)) {
             fxEditor.historyView.undo();
@@ -1057,31 +811,20 @@ public class FXTimelineView extends View {
         }
     }
 
-    private void commitRename(Track track) {
-        var before = editingNameBefore;
-        var after = track.displayName();
-        editingNameTrack = null;
-        rebuild(); // swap the header TextField back to a Label (inspector name auto-syncs via forceUpdate)
-        if (!before.equals(after)) {
-            pushApplied("photon.gui.editor.timeline.rename",
-                    () -> setDisplayName(track, after),
-                    () -> setDisplayName(track, before));
-        }
-    }
-
     // ------------------------------------------------------------------ selection / inspector
 
-    /** Deselect any fx object (gizmo + hierarchy tree + info). The reverse is automatic: selecting
-     *  an fx object re-inspects, which fires our clip/track inspector onClose. */
     private void clearFxObjectSelection() {
         fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
         fxEditor.hierarchyView.treeList.setSelected(java.util.Collections.emptySet(), false);
         fxEditor.sceneView.fxObjectInfoView.clear();
     }
 
-    private void selectClip(Track track, Clip clip) {
+    @Override
+    public void selectClip(Track track, Clip clip) {
+        var editor = editorFor(track);
+        if (!(editor instanceof ClipTrackEditor cte)) return;
         clearFxObjectSelection();
-        fxEditor.inspectorView.inspect(clipConfigurable(track, clip), null, () -> {
+        fxEditor.inspectorView.inspect(cte.clipConfigurator(this, track, clip), null, () -> {
             if (selectedClip == clip) {
                 selectedClip = null;
                 selectedClipTrack = null;
@@ -1090,11 +833,10 @@ public class FXTimelineView extends View {
         });
         selectedClip = clip;
         selectedClipTrack = track;
-        selectedTrack = null;
+        selectedTrack = track; // so the track highlights and Delete dispatches to its editor
         applyClipSelectionClasses();
     }
 
-    /** Toggle the built-in {@code __selected__} class on clip elements (stylesheet hook). */
     private void applyClipSelectionClasses() {
         for (var view : clipViews) {
             if (view.clip() == selectedClip) {
@@ -1105,68 +847,36 @@ public class FXTimelineView extends View {
         }
     }
 
-    private void selectTrack(Track track) {
+    @Override
+    public void selectTrack(Track track) {
+        if (selectedTrack == track && selectedClip == null) return; // already selected
+        var editor = editorFor(track);
+        if (editor == null) return;
         clearFxObjectSelection();
-        fxEditor.inspectorView.inspect(trackConfigurable(track), null, () -> {
-            if (selectedTrack == track) {
-                selectedTrack = null;
-            }
+        fxEditor.inspectorView.inspect(editor.trackConfigurator(this, track), null, () -> {
+            if (selectedTrack == track) selectedTrack = null;
         });
         selectedTrack = track;
         selectedClip = null;
         selectedClipTrack = null;
-    }
-
-    private IConfigurable clipConfigurable(Track track, Clip clip) {
-        // forceUpdate=true so the widgets poll the model each tick and stay in sync after a drag
-        return IConfigurable.create(group -> {
-            group.addConfigurator(new NumberConfigurator("start", clip::start,
-                    v -> { clip.start(Math.max(0, v.doubleValue())); repositionClips(); refreshPreview(); },
-                    clip.start(), true).setRange(0, 1_000_000));
-            group.addConfigurator(new NumberConfigurator("duration", clip::duration,
-                    v -> { clip.duration(Math.max(1, v.doubleValue())); repositionClips(); refreshPreview(); },
-                    clip.duration(), true).setRange(1, 1_000_000));
-            if (track instanceof ControlTrack) {
-                group.addConfigurator(new BooleanConfigurator("randomSeed", clip::randomSeed,
-                        v -> { clip.randomSeed(v); refreshPreview(); }, clip.randomSeed(), true));
-                group.addConfigurator(new NumberConfigurator("seed", () -> (double) clip.seed(),
-                        v -> { clip.seed(v.longValue()); refreshPreview(); }, (double) clip.seed(), true));
-            }
-        });
-    }
-
-    private IConfigurable trackConfigurable(Track track) {
-        return IConfigurable.create(group -> {
-            if (track instanceof ControlTrack) {
-                group.addConfigurator(new StringConfigurator("name", track::displayName,
-                        v -> { track.displayName(v); rebuild(); }, track.displayName(), true));
-            }
-            group.addConfigurator(new BooleanConfigurator("mute", track::mute,
-                    v -> { track.mute(v); rebuild(); refreshPreview(); }, track.mute(), true));
-            group.addConfigurator(new BooleanConfigurator("lock", track::lock,
-                    v -> { track.lock(v); rebuild(); }, track.lock(), true));
-        });
+        applyClipSelectionClasses();
     }
 
     private void deleteSelection() {
-        if (selectedClip != null && selectedClipTrack != null) {
-            if (selectedClipTrack.lock()) return;
-            // capture first: inspectorView.clear() fires the clip onClose which nulls the selection
-            var track = selectedClipTrack;
-            var clip = selectedClip;
-            fxEditor.inspectorView.clear();
-            removeClip(track, clip);
-        } else if (selectedTrack != null) {
-            var track = selectedTrack;
-            fxEditor.inspectorView.clear();
-            removeTrack(track);
-        }
+        var track = selectedTrack;
+        if (track == null) return;
+        var editor = editorFor(track);
+        if (editor != null && editor.deleteSelection(this, track, stateFor(track, editor))) return;
+        // no sub-selection consumed → remove the whole track
+        fxEditor.inspectorView.clear();
+        removeTrack(track);
     }
 
     public void clear() {
         headersContainer.clearAllChildren();
         lanesContainer.clearAllChildren();
         clipViews.clear();
+        states.clear();
         selectedClip = null;
         selectedClipTrack = null;
         selectedTrack = null;

@@ -60,12 +60,12 @@ public class Timeline implements INBTSerializable<CompoundTag> {
         for (var element : tag.getList("tracks", Tag.TAG_COMPOUND)) {
             if (element instanceof CompoundTag entry) {
                 var type = entry.getString("type");
-                var holder = PhotonRegistries.TIMELINE_TRACKS.get(type);
-                if (holder == null) {
+                var trackType = PhotonRegistries.TIMELINE_TRACKS.get(type);
+                if (trackType == null) {
                     Photon.LOGGER.warn("Unknown timeline track type '{}' skipped while loading", type);
                     continue;
                 }
-                var track = holder.value().get();
+                var track = trackType.create();
                 track.readData(provider, entry.getCompound("data"));
                 tracks.add(track);
             }

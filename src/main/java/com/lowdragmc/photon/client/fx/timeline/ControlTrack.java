@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
-import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
@@ -14,7 +13,6 @@ import java.util.UUID;
  * clip start and keeps it running for the clip's span. Outside its clips the object is not running.
  */
 @OnlyIn(Dist.CLIENT)
-@LDLRegisterClient(name = "control", registry = "photon:timeline_track")
 public class ControlTrack extends Track {
 
     public ControlTrack() {

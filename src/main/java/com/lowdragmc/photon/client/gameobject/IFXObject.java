@@ -4,10 +4,8 @@ import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
-import com.lowdragmc.lowdraglib2.registry.ILDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.LDLibExtraCodecs;
-import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
@@ -26,17 +24,19 @@ import org.joml.Vector3f;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.function.Supplier;
+import java.util.Optional;
 
 /**
  * FXObject is a scene object that is used for FXRuntime.
  * <br>
  * e.g. {@link Emitter}
  */
-public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfigurable, ILDLRegisterClient<IFXObject, Supplier<IFXObject>> {
-
-    Codec<IFXObject> CODEC = PhotonRegistries.FX_OBJECTS.optionalCodec().dispatch(ILDLRegisterClient::getRegistryHolderOptional,
-            optional -> optional.map(holder -> PersistedParser.createCodec(holder.value()).fieldOf("data"))
+public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfigurable {
+    // dispatch on the object's FXObjectType; the discriminator is the type's registry name, and each
+    // type owns its own (versioned) serialization via FXObjectType#codec().
+    Codec<IFXObject> CODEC = PhotonRegistries.FX_OBJECTS.optionalCodec().dispatch(
+            obj -> Optional.ofNullable(obj.getFXObjectType()),
+            optional -> optional.map(type -> type.codec().fieldOf("data"))
                     .orElseGet(LDLibExtraCodecs::errorDecoder));
 
 
@@ -53,6 +53,17 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
     default IGuiTexture getIcon() {
         return IGuiTexture.EMPTY;
     }
+
+    /** This object's registry type name (from its {@link FXObjectType}). */
+    default String name() {
+        return getFXObjectType().name();
+    }
+
+    /**
+     * The invariant, type-level definition for this object kind (creator + icon + animatable properties).
+     * Each concrete fx-object class returns its own registered {@link FXObjectType} singleton.
+     */
+    FXObjectType getFXObjectType();
 
     /**
      * emitter name unique for one project

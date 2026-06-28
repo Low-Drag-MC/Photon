@@ -290,8 +290,8 @@ public class FXHierarchyView extends View {
             // add fx objects
             menu.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.new", m -> {
                 for (var fx : PhotonRegistries.FX_OBJECTS) {
-                    m.leaf(fx.annotation().name(), () -> {
-                        var fxObject = fx.value().get();
+                    m.leaf(fx.icon(), fx.name(), () -> {
+                        var fxObject = fx.create();
                         var father = treeList.getSelected().stream().findFirst()
                                 .map(FXObjectTreeNode::getKey)
                                 .map(ISceneObject::transform)

@@ -38,6 +38,12 @@ public class FXRuntime implements IScene {
                     timelinePlayer.tick();
                 }
             });
+            // and the per-frame animation pass for smooth (interpolated) transform animation
+            fxRoot.setOnUpdateFrame(partialTicks -> {
+                if (!timelinePlayer.isEmpty()) {
+                    timelinePlayer.frame(partialTicks);
+                }
+            });
         }
     }
 

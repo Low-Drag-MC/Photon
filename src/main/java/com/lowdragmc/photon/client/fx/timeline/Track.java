@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
-import com.lowdragmc.lowdraglib2.registry.ILDLRegisterClient;
+import com.lowdragmc.photon.gui.editor.view.timeline.TrackType;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -10,18 +10,20 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.function.Supplier;
 
 /**
  * A timeline track bound to a single FX object (a child of root), holding an ordered list of
- * {@link Clip}s. Tracks are polymorphic via the {@code photon:timeline_track} registry so future
- * track types (animation, audio, group) can be added.
+ * {@link Clip}s. Tracks are created by a registered {@link TrackType} ({@code photon:timeline_track}),
+ * which also supplies the track's UI editor; the track keeps a back-reference to its type.
  * <p>
  * Serialization is done manually here (rather than via {@code @Persisted}/codec dispatch) so the
  * timing-critical {@link Clip} stays free of any {@code net.minecraft} dependency and can be
  * unit-tested. Subclasses add per-track / per-clip data through the {@code *Extra} hooks.
  */
-public abstract class Track implements ILDLRegisterClient<Track, Supplier<Track>> {
+public abstract class Track {
+    /** The type that created this track (set by {@link TrackType#create()}); drives name()/copy(). */
+    @Nullable
+    protected TrackType type;
     /** The bound object's transform id ({@code transform().id()}); {@code null} when unbound. */
     @Nullable
     protected UUID targetId;
@@ -32,6 +34,20 @@ public abstract class Track implements ILDLRegisterClient<Track, Supplier<Track>
     /** Locked tracks cannot be edited in the UI (clips can't be added/moved/resized/removed). */
     protected boolean lock = false;
     protected final List<Clip> clips = new ArrayList<>();
+
+    @Nullable
+    public TrackType type() {
+        return type;
+    }
+
+    public void setType(TrackType type) {
+        this.type = type;
+    }
+
+    /** This track's registry name (from its {@link TrackType}); empty if somehow untyped. */
+    public String name() {
+        return type == null ? "" : type.name();
+    }
 
     public String displayName() {
         return displayName;
@@ -85,9 +101,10 @@ public abstract class Track implements ILDLRegisterClient<Track, Supplier<Track>
      * so it can be used from {@code FXData.copy(boolean)}.
      */
     public Track copy() {
-        var holder = getRegistryHolderOptional().orElseThrow(
-                () -> new IllegalStateException("Track type not registered: " + getClass()));
-        var track = holder.value().get();
+        if (type == null) {
+            throw new IllegalStateException("Track has no type: " + getClass());
+        }
+        var track = type.create();
         track.targetId = this.targetId;
         track.displayName = this.displayName;
         track.mute = this.mute;
