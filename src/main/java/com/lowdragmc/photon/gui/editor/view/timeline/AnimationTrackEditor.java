@@ -11,11 +11,14 @@ import com.lowdragmc.lowdraglib2.gui.ui.data.ScrollerMode;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.ScrollerView;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
+import dev.vfyjxf.taffy.style.TaffyPosition;
+import org.lwjgl.glfw.GLFW;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
@@ -218,23 +221,42 @@ public class AnimationTrackEditor extends TrackEditor {
             var actual = type.capture(target);
             var last = st.recordLast.get(type);
             if (last == null) { st.recordLast.put(type, actual); continue; }
-            if (!channelsDiffer(actual, last)) continue; // no new edit since the last poll
+            if (!channelsDiffer(actual, last)) continue; // nothing changed since the last poll (also absorbs roundtrip)
             var property = animation.property(type);
+            // The value the animation system itself produces here. A change that still matches this curve
+            // output was caused by editing the curve / scrubbing — NOT a manual target edit — so skip it
+            // (this is what stops curve-drags from spawning keys at the playhead).
+            var curve = property != null ? property.sample(time) : last;
+            if (property != null && !channelsDiffer(actual, curve)) {
+                st.recordLast.put(type, actual);
+                continue;
+            }
             if (property == null) {
+                // moved a not-yet-animated property → create it, seeded at the current pose and keyed here
                 property = type.create(target);
                 for (int c = 0; c < property.channelCount(); c++) {
                     property.moveKey(c, 0, ftime, property.key(c, 0).y); // relocate the seed key to the record time
                 }
                 animation.properties().add(property);
+                fitRangeToKeys(property);
                 structural = true;
+                changed = true;
+                continue; // the seed already holds the override value at this time
             }
+            // Angular (rotation) channels are a coupled euler decomposition of one quaternion, so a partial
+            // write (only the deviating channels) reconstructs a different orientation and feeds back into a
+            // drifting pose. Record all channels of an angular property together (matches Unity).
+            var coupled = type.angular();
+            boolean wrote = false;
             for (int c = 0; c < actual.length; c++) {
-                var prev = c < last.length ? last[c] : actual[c];
-                if (Math.abs(actual[c] - prev) > REC_EPS) {
+                var ref = c < curve.length ? curve[c] : actual[c];
+                if (coupled || Math.abs(actual[c] - ref) > REC_EPS) {
                     property.putKey(c, ftime, actual[c]);
                     changed = true;
+                    wrote = true;
                 }
             }
+            if (wrote) fitRangeToKeys(property); // keep the new keyframe within the visible range
         }
         if (changed) {
             st.recordDirty = true;
@@ -299,7 +321,34 @@ public class AnimationTrackEditor extends TrackEditor {
         lane.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) ctx.selectTrack(track);
         });
+        var st = (AnimationTrackUIState) state;
+        lane.addEventListener(UIEvents.DOUBLE_CLICK, e -> onLaneDoubleClick(ctx, animation, st, e));
         return lane;
+    }
+
+    /** Double-clicking a lane keyframe dot expands the track and selects that property's keyframe. */
+    private void onLaneDoubleClick(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st, UIEvent e) {
+        AnimatedProperty bestProp = null;
+        int bestAxis = -1, bestKey = -1;
+        float bestDist = TimelineContext.KEY_HIT_PX + 1;
+        for (var property : track.properties()) {
+            for (int axis = 0; axis < property.channelCount(); axis++) {
+                var count = property.keyCount(axis);
+                for (int k = 0; k < count; k++) {
+                    var kx = ctx.originX() + (float) ((property.key(axis, k).x - ctx.scrollTicks()) * ctx.scale());
+                    var d = Math.abs(e.x - kx);
+                    if (d < bestDist) { bestDist = d; bestProp = property; bestAxis = axis; bestKey = k; }
+                }
+            }
+        }
+        if (bestProp == null) return;
+        st.expanded = true;
+        selectProperty(ctx, track, st, bestProp, -1);
+        st.selKeyAxis = bestAxis;
+        st.selKeyIndex = bestKey;
+        st.explicitSelection = true;
+        ctx.requestRebuild();
+        e.stopPropagation();
     }
 
     private void drawKeyframeDots(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
@@ -386,7 +435,10 @@ public class AnimationTrackEditor extends TrackEditor {
         container.addChild(new UIElement().layout(layout -> layout.widthPercent(100).heightPercent(100))
                 .style(style -> style
                         .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> drawCurveEditor(ctx, graphics, animation, st, x, y, w, h))
-                        .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> ctx.drawPlayhead(graphics, x, y, w, h, pt))));
+                        .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                            ctx.drawPlayhead(graphics, x, y, w, h, pt);
+                            drawKeyTooltip(ctx, graphics, animation, st, mx, my, x, y, w, h);
+                        })));
         container.addEventListener(UIEvents.MOUSE_DOWN, e -> onCurveMouseDown(ctx, e, animation, st));
         container.addEventListener(UIEvents.DOUBLE_CLICK, e -> onCurveDoubleClick(ctx, e, animation, st));
         container.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onCurveDrag(ctx, e, st));
@@ -560,6 +612,22 @@ public class AnimationTrackEditor extends TrackEditor {
         return new float[]{min, max};
     }
 
+    /** Grow the display range (never shrink) so every keyframe value of {@code property} stays visible. */
+    private void fitRangeToKeys(AnimatedProperty property) {
+        float dataMin = Float.MAX_VALUE, dataMax = -Float.MAX_VALUE;
+        for (int axis = 0; axis < property.channelCount(); axis++) {
+            var count = property.keyCount(axis);
+            for (int k = 0; k < count; k++) {
+                var v = property.key(axis, k).y;
+                dataMin = Math.min(dataMin, v);
+                dataMax = Math.max(dataMax, v);
+            }
+        }
+        if (dataMin > dataMax) return; // no keys
+        var pad = Math.max(0.5f, (dataMax - dataMin) * 0.1f);
+        property.setRange(Math.min(property.rangeMin(), dataMin - pad), Math.max(property.rangeMax(), dataMax + pad));
+    }
+
     private int[] activeAxes(AnimationTrackUIState st) {
         if (st.selectedAxis >= 0) return new int[]{st.selectedAxis};
         var n = st.selectedProperty == null ? 0 : st.selectedProperty.channelCount();
@@ -591,13 +659,14 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void drawCurveEditor(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, AnimationTrackUIState st, float x, float y, float width, float height) {
         DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
+        drawCurveGrid(ctx, graphics, x, y, width, height);
         var property = st.selectedProperty;
         if (property == null || !track.properties().contains(property)) return;
         var range = effectiveRange(property);
         var min = range[0];
         var max = range[1];
-        DrawerHelper.drawText(graphics, "%.1f".formatted(max), x + 2, y + 1, 0.5f, ColorPattern.GRAY.color);
-        DrawerHelper.drawText(graphics, "%.1f".formatted(min), x + 2, y + height - 6, 0.5f, ColorPattern.GRAY.color);
+        DrawerHelper.drawText(graphics, "%.1f".formatted(max), x + 2, y + 1, 0.5f, ColorPattern.WHITE.color);
+        DrawerHelper.drawText(graphics, "%.1f".formatted(min), x + 2, y + height - 6, 0.5f, ColorPattern.WHITE.color);
         for (var axis : activeAxes(st)) {
             var channel = property.channel(axis);
             var points = new ArrayList<Vector2f>();
@@ -625,6 +694,37 @@ public class AnimationTrackEditor extends TrackEditor {
             drawHandle(ctx, graphics, property.inHandle(st.selKeyAxis, st.selKeyIndex), kx, ky, x, y, height, min, max);
             drawHandle(ctx, graphics, property.outHandle(st.selKeyAxis, st.selKeyIndex), kx, ky, x, y, height, min, max);
         }
+    }
+
+    /** Vertical gridlines aligned to the ruler's major ticks (+ a faint horizontal mid-line). */
+    private void drawCurveGrid(TimelineContext ctx, GuiGraphics graphics, float x, float y, float width, float height) {
+        var major = ctx.majorTickInterval();
+        if (major > 0) {
+            var endTick = ctx.scrollTicks() + width / ctx.scale();
+            for (double t = Math.floor(ctx.scrollTicks() / major) * major; t <= endTick; t += major) {
+                if (t < 0) continue;
+                var gx = tickToCurveX(ctx, (float) t, x);
+                if (gx < x || gx > x + width) continue;
+                DrawerHelper.drawSolidRect(graphics, gx, y, 1, height, ColorPattern.T_GRAY.color);
+            }
+        }
+        DrawerHelper.drawSolidRect(graphics, x, y + height / 2f, width, 1, ColorPattern.T_DARK_GRAY.color);
+    }
+
+    /** When hovering a keyframe, draw a small "(time, value)" tooltip near the cursor. */
+    private void drawKeyTooltip(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, AnimationTrackUIState st,
+                               float mx, float my, float x, float y, float width, float height) {
+        var property = st.selectedProperty;
+        if (property == null || !track.properties().contains(property)) return;
+        var hit = hitKey(ctx, st, property, x, y, height, effectiveRange(property), mx, my);
+        if (hit == null) return;
+        var key = property.key(hit[0], hit[1]);
+        var text = "(%.0f, %.2f)".formatted(key.x, key.y);
+        var tw = net.minecraft.client.Minecraft.getInstance().font.width(text) * 0.5f;
+        var tx = mx + 6 + tw > x + width ? mx - 6 - tw : mx + 6;
+        var ty = Math.max(y, my - 9);
+        DrawerHelper.drawSolidRect(graphics, tx - 1, ty - 1, tw + 2, 8, ColorPattern.BLACK.color);
+        DrawerHelper.drawText(graphics, text, tx, ty, 0.5f, ColorPattern.WHITE.color);
     }
 
     private void drawHandle(TimelineContext ctx, GuiGraphics graphics, @Nullable Vector2f handle, float kx, float ky,
@@ -677,11 +777,17 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void onCurveDoubleClick(TimelineContext ctx, UIEvent e, AnimationTrack track, AnimationTrackUIState st) {
         var property = st.selectedProperty;
-        if (property == null || !track.properties().contains(property) || track.lock()) return;
+        if (property == null || !track.properties().contains(property)) return;
         var el = e.currentElement;
         var bx = el.getContentX();
         var by = el.getContentY();
         var bh = el.getContentHeight();
+        // double-click the range numbers (top-left = max, bottom-left = min) to edit them inline
+        if (e.x >= bx && e.x <= bx + 34) {
+            if (e.y <= by + 9) { openRangeEditor(ctx, el, property, true, bh); e.stopPropagation(); return; }
+            if (e.y >= by + bh - 9) { openRangeEditor(ctx, el, property, false, bh); e.stopPropagation(); return; }
+        }
+        if (track.lock()) return;
         var range = effectiveRange(property);
         var tick = Math.max(0, curveXToTick(ctx, e.x, bx));
         var cursorValue = curveYToValue(e.y, by, bh, range[0], range[1]);
@@ -709,6 +815,58 @@ public class AnimationTrackEditor extends TrackEditor {
                 () -> { property.restoreChannels(before); ctx.refreshPreview(); });
         ctx.refreshPreview();
         e.stopPropagation();
+    }
+
+    /** Inline editor (a temporary {@link TextField}) for a curve's display min/max. */
+    private void openRangeEditor(TimelineContext ctx, UIElement container, AnimatedProperty property, boolean editingMax, float boxH) {
+        var current = editingMax ? property.rangeMax() : property.rangeMin();
+        var field = new TextField();
+        field.setAnyString();
+        field.setText("%.3f".formatted(current), false);
+        field.layout(l -> l.positionType(TaffyPosition.ABSOLUTE).left(2).top(editingMax ? 1 : boxH - 9).width(44).height(9));
+        var committed = new boolean[]{false};
+        Runnable commit = () -> {
+            if (committed[0]) return;
+            committed[0] = true;
+            applyRangeEdit(ctx, property, editingMax, field.getValue());
+            container.removeChild(field);
+        };
+        field.addEventListener(UIEvents.KEY_DOWN, ev -> {
+            if (ev.keyCode == GLFW.GLFW_KEY_ENTER || ev.keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                commit.run();
+                ev.stopPropagation();
+            } else if (ev.keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                committed[0] = true;
+                container.removeChild(field);
+                ev.stopPropagation();
+            }
+        });
+        field.addEventListener(UIEvents.BLUR, ev -> commit.run());
+        container.addChild(field);
+        field.focus();
+    }
+
+    private void applyRangeEdit(TimelineContext ctx, AnimatedProperty property, boolean editingMax, String raw) {
+        float v;
+        try {
+            v = Float.parseFloat(raw.trim());
+        } catch (Exception ex) {
+            return; // invalid input → keep the old range
+        }
+        var oldMin = property.rangeMin();
+        var oldMax = property.rangeMax();
+        float nmin = editingMax ? oldMin : v;
+        float nmax = editingMax ? v : oldMax;
+        if (nmax < nmin) { var t = nmin; nmin = nmax; nmax = t; } // new max below min → swap so min <= max
+        if (nmax == nmin) nmax = nmin + 1;                        // avoid a zero-width range
+        if (nmin == oldMin && nmax == oldMax) return;
+        var fMin = nmin;
+        var fMax = nmax;
+        property.setRange(fMin, fMax);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { property.setRange(fMin, fMax); ctx.refreshPreview(); },
+                () -> { property.setRange(oldMin, oldMax); ctx.refreshPreview(); });
+        ctx.refreshPreview();
     }
 
     private void beginCurveDrag(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, int axis, int key, int handle) {

@@ -48,6 +48,9 @@ public interface TimelineContext {
 
     long currentTimeTicks();
 
+    /** The ruler's current major-tick interval (ticks), so panels can align gridlines to the ruler. */
+    double majorTickInterval();
+
     void drawPlayhead(GuiGraphics graphics, float x, float y, float width, float height, float partialTick);
 
     /** Mouse-wheel zoom anchored at the cursor (shared by ruler/lanes/curve panels). */

@@ -141,6 +141,7 @@ public class FXTimelineView extends View implements TimelineContext {
     @Override public float scale() { return scale; }
     @Override public float scrollTicks() { return scrollTicks; }
     @Override public long currentTimeTicks() { return fxEditor.sceneView.particleManager.getRealTime(); }
+    @Override public double majorTickInterval() { return niceInterval(60 / scale); }
     @Override public void pushEdit(String name, Runnable doFn, Runnable undoFn) {
         fxEditor.historyView.pushHistory(Component.translatable(name), EditAction.of(doFn, undoFn));
     }
@@ -400,9 +401,22 @@ public class FXTimelineView extends View implements TimelineContext {
             var mx = origin + (float) ((t - scrollTicks) * scale);
             if (mx < x || mx > x + width) continue;
             DrawerHelper.drawSolidRect(graphics, mx, y, 1, height, ColorPattern.GRAY.color);
-            DrawerHelper.drawText(graphics, String.valueOf(Math.round(t)), mx + 2, y + 3, 0.5f, ColorPattern.GRAY.color);
+            DrawerHelper.drawText(graphics, String.valueOf(Math.round(t)), mx + 2, y + 3, 0.5f, ColorPattern.WHITE.color);
         }
+        drawContentExtent(graphics, x, y, width, height);
         drawPlayhead(graphics, x, y, width, height, partialTick);
+    }
+
+    /** A 1px blue bar along the ruler's bottom edge, spanning tick 0 to the furthest content
+     *  (last keyframe / last clip end), so authors can see the effect's total extent at a glance. */
+    private void drawContentExtent(GuiGraphics graphics, float x, float y, float width, float height) {
+        var contentMax = contentMaxTick();
+        if (contentMax <= 0) return;
+        var origin = originX();
+        var startX = Math.max(x, origin + (float) ((0 - scrollTicks) * scale));
+        var endX = Math.min(x + width, origin + (float) ((contentMax - scrollTicks) * scale));
+        if (endX <= startX) return;
+        DrawerHelper.drawSolidRect(graphics, startX, y + height - 1, endX - startX, 1, ColorPattern.BLUE.color);
     }
 
     private double niceInterval(double raw) {
@@ -937,6 +951,12 @@ public class FXTimelineView extends View implements TimelineContext {
 
     private void pollRecording() {
         if (recordingTrack == null) return;
+        var runtime = fxEditor.runtime;
+        if (runtime != null) {
+            // freeze the per-frame re-apply only while paused (so manual edits persist); during playback
+            // leave it on so animation still interpolates smoothly between ticks.
+            runtime.timelinePlayer.setRecording(!fxEditor.sceneView.particleManager.isPlaying());
+        }
         var editor = editorFor(recordingTrack);
         if (editor != null) editor.pollRecording(this, recordingTrack, stateFor(recordingTrack, editor));
     }
