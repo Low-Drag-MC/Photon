@@ -49,7 +49,9 @@ public class AnimationTrackEditor extends TrackEditor {
     public static class AnimationTrackUIState extends TrackUIState {
         @Nullable AnimatedProperty selectedProperty;
         int selectedAxis = -1;            // -1 = all channels, else a single channel
-        int selKeyAxis = -1, selKeyIndex = -1;
+        int selKeyAxis = -1, selKeyIndex = -1; // the "primary" key (tangent handles show only for size 1)
+        /** Multi-selected keyframes of {@link #selectedProperty}, encoded as {@code axis<<32 | index}. */
+        final Set<Long> selectedKeys = new HashSet<>();
         /** True once the user explicitly clicked a property/keyframe/curve (vs the auto-select on expand);
          *  used so an animation track still highlights when its header/lane is clicked. */
         boolean explicitSelection = false;
@@ -58,6 +60,12 @@ public class AnimationTrackEditor extends TrackEditor {
         @Nullable AnimatedProperty dragProperty;
         int dragAxis = -1, dragKey = -1, dragHandle = 0; // handle: 0 point, 1 in, 2 out
         @Nullable ECBCurves[] dragSnapshot;
+        // group keyframe drag (size > 1): original (tick,value) of each selected key
+        boolean keyGroupDrag;
+        final Map<Long, Vector2f> keyDragOrigins = new HashMap<>();
+        // keyframe marquee (rubber-band) inside the curve box
+        boolean keyMarquee, keyMarqueeAdditive;
+        float kmX0, kmY0, kmX1, kmY1;
         // record mode
         /** Last captured value per type (the reference the poll diffs against). Re-read after every write
          *  so a capture/apply round-trip (e.g. euler↔quaternion) is absorbed and never re-triggers. */
@@ -133,8 +141,8 @@ public class AnimationTrackEditor extends TrackEditor {
     @Override
     public boolean deleteSelection(TimelineContext ctx, Track track, TrackUIState state) {
         var st = (AnimationTrackUIState) state;
-        if (st.selectedProperty != null && st.selKeyAxis >= 0 && st.selKeyIndex >= 0) {
-            if (!track.lock()) removeKeyframe(ctx, track, st, st.selectedProperty, st.selKeyAxis, st.selKeyIndex);
+        if (st.selectedProperty != null && !st.selectedKeys.isEmpty()) {
+            if (!track.lock()) removeSelectedKeys(ctx, st, st.selectedProperty);
             return true;
         }
         return false;
@@ -152,6 +160,7 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selectedAxis = -1;
         st.selKeyAxis = -1;
         st.selKeyIndex = -1;
+        st.selectedKeys.clear();
         st.explicitSelection = false;
     }
 
@@ -346,6 +355,8 @@ public class AnimationTrackEditor extends TrackEditor {
         selectProperty(ctx, track, st, bestProp, -1);
         st.selKeyAxis = bestAxis;
         st.selKeyIndex = bestKey;
+        st.selectedKeys.clear();
+        st.selectedKeys.add(encodeKey(bestAxis, bestKey));
         st.explicitSelection = true;
         ctx.requestRebuild();
         e.stopPropagation();
@@ -438,11 +449,17 @@ public class AnimationTrackEditor extends TrackEditor {
                         .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
                             ctx.drawPlayhead(graphics, x, y, w, h, pt);
                             drawKeyTooltip(ctx, graphics, animation, st, mx, my, x, y, w, h);
+                            if (st.keyMarquee) drawKeyMarquee(graphics, st);
                         })));
         container.addEventListener(UIEvents.MOUSE_DOWN, e -> onCurveMouseDown(ctx, e, animation, st));
         container.addEventListener(UIEvents.DOUBLE_CLICK, e -> onCurveDoubleClick(ctx, e, animation, st));
-        container.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onCurveDrag(ctx, e, st));
-        container.addEventListener(UIEvents.DRAG_END, e -> onCurveDragEnd(ctx, st));
+        container.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
+            if (st.keyMarquee) { st.kmX1 = e.x; st.kmY1 = e.y; } else onCurveDrag(ctx, e, st);
+        });
+        container.addEventListener(UIEvents.DRAG_END, e -> {
+            if (st.keyMarquee) finishKeyMarquee(ctx, animation, st, e.currentElement);
+            else onCurveDragEnd(ctx, st);
+        });
         container.addEventListener(UIEvents.MOUSE_WHEEL, e -> onCurveWheel(ctx, e, st));
         return container;
     }
@@ -558,6 +575,7 @@ public class AnimationTrackEditor extends TrackEditor {
             st.selectedAxis = -1;
             st.selKeyAxis = -1;
             st.selKeyIndex = -1;
+            st.selectedKeys.clear();
         }
         st.expandedProperties.remove(property);
     }
@@ -577,6 +595,7 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selectedAxis = axis;
         st.selKeyAxis = -1;
         st.selKeyIndex = -1;
+        st.selectedKeys.clear();
     }
 
     /** Inspect a property's configurator (e.g. rotation interp mode); falls back to the track config.
@@ -602,6 +621,10 @@ public class AnimationTrackEditor extends TrackEditor {
     private static ColorPattern channelColor(int axis) {
         return CHANNEL_COLORS[axis % CHANNEL_COLORS.length];
     }
+
+    private static long encodeKey(int axis, int index) { return ((long) axis << 32) | (index & 0xffffffffL); }
+    private static int keyAxis(long id) { return (int) (id >>> 32); }
+    private static int keyIndex(long id) { return (int) id; }
 
     // ------------------------------------------------------------------ curve editor
 
@@ -665,8 +688,8 @@ public class AnimationTrackEditor extends TrackEditor {
         var range = effectiveRange(property);
         var min = range[0];
         var max = range[1];
-        DrawerHelper.drawText(graphics, "%.1f".formatted(max), x + 2, y + 1, 0.5f, ColorPattern.WHITE.color);
-        DrawerHelper.drawText(graphics, "%.1f".formatted(min), x + 2, y + height - 6, 0.5f, ColorPattern.WHITE.color);
+        DrawerHelper.drawText(graphics, "%.1f".formatted(max), x + 2, y + 1, 1f, ColorPattern.WHITE.color);
+        DrawerHelper.drawText(graphics, "%.1f".formatted(min), x + 2, y + height - 9, 1f, ColorPattern.WHITE.color);
         for (var axis : activeAxes(st)) {
             var channel = property.channel(axis);
             var points = new ArrayList<Vector2f>();
@@ -683,11 +706,13 @@ public class AnimationTrackEditor extends TrackEditor {
                 var kx = tickToCurveX(ctx, key.x, x);
                 if (kx < x - 2 || kx > x + width + 2) continue;
                 var ky = valueToCurveY(key.y, y, height, min, max);
-                var selected = st.selKeyAxis == axis && st.selKeyIndex == k;
+                var selected = st.selectedKeys.contains(encodeKey(axis, k));
                 DrawerHelper.drawSolidRect(graphics, kx - 2, ky - 2, 4, 4, (selected ? ColorPattern.WHITE : ColorPattern.ORANGE).color);
             }
         }
-        if (st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis) && st.selKeyIndex >= 0 && st.selKeyIndex < property.keyCount(st.selKeyAxis)) {
+        // tangent handles only when exactly one key is selected
+        if (st.selectedKeys.size() == 1 && st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)
+                && st.selKeyIndex >= 0 && st.selKeyIndex < property.keyCount(st.selKeyAxis)) {
             var key = property.key(st.selKeyAxis, st.selKeyIndex);
             var kx = tickToCurveX(ctx, key.x, x);
             var ky = valueToCurveY(key.y, y, height, min, max);
@@ -720,11 +745,11 @@ public class AnimationTrackEditor extends TrackEditor {
         if (hit == null) return;
         var key = property.key(hit[0], hit[1]);
         var text = "(%.0f, %.2f)".formatted(key.x, key.y);
-        var tw = net.minecraft.client.Minecraft.getInstance().font.width(text) * 0.5f;
+        var tw = net.minecraft.client.Minecraft.getInstance().font.width(text);
         var tx = mx + 6 + tw > x + width ? mx - 6 - tw : mx + 6;
-        var ty = Math.max(y, my - 9);
-        DrawerHelper.drawSolidRect(graphics, tx - 1, ty - 1, tw + 2, 8, ColorPattern.BLACK.color);
-        DrawerHelper.drawText(graphics, text, tx, ty, 0.5f, ColorPattern.WHITE.color);
+        var ty = Math.max(y, my - 10);
+        DrawerHelper.drawSolidRect(graphics, tx - 1, ty - 1, tw + 2, 10, ColorPattern.BLACK.color);
+        DrawerHelper.drawText(graphics, text, tx, ty, 1f, ColorPattern.WHITE.color);
     }
 
     private void drawHandle(TimelineContext ctx, GuiGraphics graphics, @Nullable Vector2f handle, float kx, float ky,
@@ -753,7 +778,8 @@ public class AnimationTrackEditor extends TrackEditor {
             return;
         }
         if (e.button != 0 || track.lock()) return;
-        if (st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)) {
+        // tangent handle drag (only when exactly one key is selected)
+        if (st.selectedKeys.size() == 1 && st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)) {
             var which = hitHandle(ctx, property, st.selKeyAxis, st.selKeyIndex, bx, by, bh, range, e.x, e.y);
             if (which != 0) {
                 beginCurveDrag(ctx, st, property, st.selKeyAxis, st.selKeyIndex, which);
@@ -764,14 +790,28 @@ public class AnimationTrackEditor extends TrackEditor {
         }
         var hit = hitKey(ctx, st, property, bx, by, bh, range, e.x, e.y);
         if (hit != null) {
+            var id = encodeKey(hit[0], hit[1]);
+            if (e.isShiftDown()) { // toggle membership, no drag
+                if (!st.selectedKeys.remove(id)) st.selectedKeys.add(id);
+                st.selKeyAxis = hit[0];
+                st.selKeyIndex = hit[1];
+                e.stopPropagation();
+                return;
+            }
+            if (!st.selectedKeys.contains(id)) { st.selectedKeys.clear(); st.selectedKeys.add(id); }
             st.selKeyAxis = hit[0];
             st.selKeyIndex = hit[1];
             beginCurveDrag(ctx, st, property, hit[0], hit[1], 0);
             el.startDrag(null, null);
             e.stopPropagation();
         } else {
-            st.selKeyAxis = -1;
-            st.selKeyIndex = -1;
+            // empty press → start a keyframe marquee
+            st.keyMarquee = true;
+            st.keyMarqueeAdditive = e.isShiftDown();
+            st.kmX0 = st.kmX1 = e.x;
+            st.kmY0 = st.kmY1 = e.y;
+            el.startDrag(null, null);
+            e.stopPropagation();
         }
     }
 
@@ -809,6 +849,8 @@ public class AnimationTrackEditor extends TrackEditor {
         if (newIndex < 0) return;
         st.selKeyAxis = axis;
         st.selKeyIndex = newIndex;
+        st.selectedKeys.clear();
+        st.selectedKeys.add(encodeKey(axis, newIndex));
         var after = property.snapshotChannels();
         ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
                 () -> { property.restoreChannels(after); ctx.refreshPreview(); },
@@ -875,6 +917,13 @@ public class AnimationTrackEditor extends TrackEditor {
         st.dragKey = key;
         st.dragHandle = handle;
         st.dragSnapshot = property.snapshotChannels();
+        st.keyGroupDrag = handle == 0 && st.selectedKeys.size() > 1;
+        st.keyDragOrigins.clear();
+        if (st.keyGroupDrag) {
+            for (var id : st.selectedKeys) {
+                st.keyDragOrigins.put(id, new Vector2f(property.key(keyAxis(id), keyIndex(id))));
+            }
+        }
         ctx.beginScrub();
     }
 
@@ -888,6 +937,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var axis = st.dragAxis;
         var k = st.dragKey;
         var range = effectiveRange(property);
+        if (st.dragHandle == 0 && st.keyGroupDrag) { groupMoveKeys(ctx, e, st, property, bx, by, bh, range); return; }
         var tick = Math.max(0, curveXToTick(ctx, e.x, bx));
         var value = curveYToValue(e.y, by, bh, range[0], range[1]);
         if (st.dragHandle == 0) {
@@ -912,6 +962,8 @@ public class AnimationTrackEditor extends TrackEditor {
         var after = property.snapshotChannels();
         st.dragProperty = null;
         st.dragSnapshot = null;
+        st.keyGroupDrag = false;
+        st.keyDragOrigins.clear();
         ctx.endScrub();
         ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
                 () -> { property.restoreChannels(after); ctx.refreshPreview(); },
@@ -965,11 +1017,108 @@ public class AnimationTrackEditor extends TrackEditor {
         var before = property.snapshotChannels();
         property.removeKey(axis, k);
         var after = property.snapshotChannels();
+        st.selectedKeys.remove(encodeKey(axis, k));
         st.selKeyAxis = -1;
         st.selKeyIndex = -1;
         ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
                 () -> { property.restoreChannels(after); ctx.refreshPreview(); },
                 () -> { property.restoreChannels(before); ctx.refreshPreview(); });
         ctx.refreshPreview();
+    }
+
+    /** Remove every selected keyframe (descending per channel so indices stay valid), one undo. */
+    private void removeSelectedKeys(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property) {
+        var before = property.snapshotChannels();
+        var byAxis = new HashMap<Integer, List<Integer>>();
+        for (var id : st.selectedKeys) byAxis.computeIfAbsent(keyAxis(id), a -> new ArrayList<>()).add(keyIndex(id));
+        for (var entry : byAxis.entrySet()) {
+            entry.getValue().sort(java.util.Comparator.reverseOrder());
+            for (var k : entry.getValue()) property.removeKey(entry.getKey(), k);
+        }
+        var after = property.snapshotChannels();
+        st.selectedKeys.clear();
+        st.selKeyAxis = -1;
+        st.selKeyIndex = -1;
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { property.restoreChannels(after); ctx.refreshPreview(); },
+                () -> { property.restoreChannels(before); ctx.refreshPreview(); });
+        ctx.refreshPreview();
+    }
+
+    /** Move every selected key by the same (Δtick, Δvalue), clamped so the group stays ordered between
+     *  its non-selected neighbours. Restores the drag snapshot each frame to avoid compounding. */
+    private void groupMoveKeys(TimelineContext ctx, UIEvent e, AnimationTrackUIState st, AnimatedProperty property,
+                              float bx, float by, float bh, float[] range) {
+        var anchorOrig = st.keyDragOrigins.get(encodeKey(st.dragAxis, st.dragKey));
+        if (anchorOrig == null) return;
+        var cursorTick = Math.max(0, curveXToTick(ctx, e.x, bx));
+        var cursorValue = curveYToValue(e.y, by, bh, range[0], range[1]);
+        var snapped = (float) ctx.snapKeyTick(cursorTick, e.isCtrlDown());
+        float dTick = snapped - anchorOrig.x;
+        float dVal = cursorValue - anchorOrig.y;
+        property.restoreChannels(st.dragSnapshot);
+        float lo = -Float.MAX_VALUE, hi = Float.MAX_VALUE;
+        for (var id : st.selectedKeys) {
+            var axis = keyAxis(id);
+            var k = keyIndex(id);
+            var orig = st.keyDragOrigins.get(id);
+            if (orig == null) continue;
+            lo = Math.max(lo, -orig.x); // keep tick >= 0
+            if (k - 1 >= 0 && !st.selectedKeys.contains(encodeKey(axis, k - 1))) {
+                lo = Math.max(lo, property.key(axis, k - 1).x + 0.001f - orig.x);
+            }
+            if (k + 1 < property.keyCount(axis) && !st.selectedKeys.contains(encodeKey(axis, k + 1))) {
+                hi = Math.min(hi, property.key(axis, k + 1).x - 0.001f - orig.x);
+            }
+        }
+        dTick = lo <= hi ? Math.max(lo, Math.min(hi, dTick)) : lo;
+        for (var id : st.selectedKeys) {
+            var orig = st.keyDragOrigins.get(id);
+            if (orig != null) property.moveKey(keyAxis(id), keyIndex(id), orig.x + dTick, orig.y + dVal);
+        }
+        ctx.refreshPreview();
+        e.stopPropagation();
+    }
+
+    private void drawKeyMarquee(GuiGraphics graphics, AnimationTrackUIState st) {
+        var x = Math.min(st.kmX0, st.kmX1);
+        var y = Math.min(st.kmY0, st.kmY1);
+        var w = Math.abs(st.kmX1 - st.kmX0);
+        var h = Math.abs(st.kmY1 - st.kmY0);
+        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
+        DrawerHelper.drawBorder(graphics, x, y, w, h, ColorPattern.WHITE.color, 1);
+    }
+
+    private void finishKeyMarquee(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st, UIElement box) {
+        st.keyMarquee = false;
+        var property = st.selectedProperty;
+        if (property == null || !track.properties().contains(property)) return;
+        var x0 = Math.min(st.kmX0, st.kmX1);
+        var y0 = Math.min(st.kmY0, st.kmY1);
+        var x1 = Math.max(st.kmX0, st.kmX1);
+        var y1 = Math.max(st.kmY0, st.kmY1);
+        if (x1 - x0 < 3 && y1 - y0 < 3) { // a click → clear (unless additive)
+            if (!st.keyMarqueeAdditive) { st.selectedKeys.clear(); st.selKeyAxis = -1; st.selKeyIndex = -1; }
+            return;
+        }
+        var bx = box.getContentX();
+        var by = box.getContentY();
+        var bh = box.getContentHeight();
+        var range = effectiveRange(property);
+        if (!st.keyMarqueeAdditive) st.selectedKeys.clear();
+        for (var axis : activeAxes(st)) {
+            var count = property.keyCount(axis);
+            for (int k = 0; k < count; k++) {
+                var key = property.key(axis, k);
+                var kx = tickToCurveX(ctx, key.x, bx);
+                var ky = valueToCurveY(key.y, by, bh, range[0], range[1]);
+                if (kx >= x0 && kx <= x1 && ky >= y0 && ky <= y1) st.selectedKeys.add(encodeKey(axis, k));
+            }
+        }
+        if (st.selectedKeys.size() == 1) {
+            var id = st.selectedKeys.iterator().next();
+            st.selKeyAxis = keyAxis(id);
+            st.selKeyIndex = keyIndex(id);
+        }
     }
 }

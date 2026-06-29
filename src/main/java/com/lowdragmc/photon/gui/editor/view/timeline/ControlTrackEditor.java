@@ -79,15 +79,9 @@ public class ControlTrackEditor extends ClipTrackEditor {
     }
 
     @Override
-    protected boolean overlaps(Track track, Clip clip) {
-        for (var other : track.clips()) {
-            if (other == clip) continue;
-            if (java.util.Objects.equals(other.targetId(), clip.targetId())
-                    && clip.start() < other.end() && other.start() < clip.end()) {
-                return true;
-            }
-        }
-        return false;
+    public boolean clipsConflict(Clip a, Clip b) {
+        // control clips only conflict when they drive the same target
+        return java.util.Objects.equals(a.targetId(), b.targetId()) && super.clipsConflict(a, b);
     }
 
     @Override

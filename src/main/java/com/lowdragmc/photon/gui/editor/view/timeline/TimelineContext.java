@@ -101,9 +101,28 @@ public interface TimelineContext {
 
     boolean isClipSelected(Clip clip);
 
+    /** The full multi-selection set of clips (read-only view). */
+    java.util.Set<Clip> selectedClips();
+
+    /** Replace (or add to, when {@code additive}) the multi-selection with {@code clips}. */
+    void selectClips(java.util.Collection<Clip> clips, boolean additive);
+
+    /** Toggle one clip's membership in the multi-selection (Ctrl/Shift-click). */
+    void toggleClipSelection(Track track, Clip clip);
+
+    /** Whether the in-progress clip group drag is currently invalid (overlap / bad destination). */
+    boolean isClipGroupDragInvalid();
+
+    // ---- multi-clip group drag (driven from a clip element, owned by the host) ----
+    void beginClipGroupDrag(Clip anchor, double grabOffsetTicks);
+
+    void updateClipGroupDrag(float cursorX, float cursorY, boolean ctrl);
+
+    void endClipGroupDrag(boolean commit);
+
     // ---- clip helpers (shared by clip-based tracks) ----
-    /** Register a clip's element so horizontal scroll/zoom repositions it without a rebuild. */
-    void registerClipView(Clip clip, com.lowdragmc.lowdraglib2.gui.ui.UIElement element);
+    /** Register a clip's element (and its track) so scroll/zoom + marquee + group-drag can find it. */
+    void registerClipView(Track track, Clip clip, com.lowdragmc.lowdraglib2.gui.ui.UIElement element);
 
     double snapTick(double tick, @Nullable Clip exclude, boolean ctrl);
 
@@ -119,6 +138,9 @@ public interface TimelineContext {
     void addClip(Track track, Clip clip);
 
     void removeClip(Track track, Clip clip);
+
+    /** Add {@code child} as a new track inside {@code group} (undoable). */
+    void addChildTrack(com.lowdragmc.photon.client.fx.timeline.TrackGroup group, Track child);
 
     void bind(Track track, @Nullable UUID targetId);
 

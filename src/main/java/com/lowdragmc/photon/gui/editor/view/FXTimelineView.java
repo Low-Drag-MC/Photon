@@ -27,7 +27,10 @@ import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
+import com.lowdragmc.photon.client.fx.timeline.SignalTrack;
+import com.lowdragmc.photon.client.fx.timeline.Timeline;
 import com.lowdragmc.photon.client.fx.timeline.Track;
+import com.lowdragmc.photon.client.fx.timeline.TrackGroup;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.gui.editor.FXEditor;
@@ -68,10 +71,12 @@ public class FXTimelineView extends View implements TimelineContext {
     /** Minimum height of an expanded panel when dragging its resize handle. */
     public static final int MIN_EXPANDED = 32;
 
-    /** A clip's view element, kept so horizontal scroll/zoom can reposition without a full rebuild. */
-    private record ClipView(Clip clip, UIElement element) {}
+    /** A clip's view element + track, kept so scroll/zoom, marquee and group-drag can find it. */
+    private record ClipView(Track track, Clip clip, UIElement element) {}
     /** Drag payload used to reorder tracks by their header. */
     private record TrackDrag(Track track) {}
+    /** A clip's track + start at the beginning of a group drag, for live move + undo. */
+    private record ClipDragOrigin(Track track, Clip clip, double start, int row) {}
 
     public final FXEditor fxEditor;
     private final Button playButton = new Button();
@@ -99,14 +104,33 @@ public class FXTimelineView extends View implements TimelineContext {
     @Nullable
     private Track reorderTarget;
     private boolean reorderBelow = false;
+    /** When dragging a header over a group's middle zone: drop the dragged track inside the group. */
+    private boolean reorderInto = false;
 
     // selection
     @Nullable
     private Clip selectedClip;
     @Nullable
     private Track selectedClipTrack;
+    /** Full multi-selection of clips (primary = {@link #selectedClip}). */
+    private final java.util.LinkedHashSet<Clip> selectedClips = new java.util.LinkedHashSet<>();
     @Nullable
     private Track selectedTrack;
+    /** Lane element per track (recorded each rebuild) so a screen-Y maps to a destination row. */
+    private final Map<Track, UIElement> laneViews = new java.util.LinkedHashMap<>();
+
+    // marquee (rubber-band) selection on the lanes
+    private boolean marqueeActive;
+    private boolean marqueeAdditive;
+    private float marqueeX0, marqueeY0, marqueeX1, marqueeY1;
+
+    // clip group drag
+    private final List<ClipDragOrigin> groupDrag = new ArrayList<>();
+    @Nullable
+    private Clip groupAnchor;
+    private double groupGrabOffset;
+    private int groupRowOffset;
+    private boolean groupInvalid;
     /** The track currently in record mode (Unity-style), or null. */
     @Nullable
     private Track recordingTrack;
@@ -114,8 +138,9 @@ public class FXTimelineView extends View implements TimelineContext {
     /** Clipboards for copy/paste (deep copies), shared across the panel. */
     @Nullable
     private static Track clipboardTrack;
-    @Nullable
-    private static Clip clipboardClip;
+    /** Multi-clip clipboard: each entry keeps its source track + start offset from the earliest clip. */
+    private record ClipboardEntry(Track track, Clip clip, double startOffset) {}
+    private static final List<ClipboardEntry> clipboardClips = new ArrayList<>();
 
     public FXTimelineView(FXEditor fxEditor) {
         super("editor.timeline", new TextTexture("TL"));
@@ -131,7 +156,7 @@ public class FXTimelineView extends View implements TimelineContext {
 
         addEventListener(UIEvents.KEY_DOWN, this::onKeyDown);
         addEventListener(UIEvents.EXECUTE_COMMAND, this::onCommand);
-        addEventListener(UIEvents.TICK, e -> { updateHScroller(); pollRecording(); });
+        addEventListener(UIEvents.TICK, e -> { updateHScroller(); pollRecording(); syncSignalDispatch(); });
     }
 
     // ------------------------------------------------------------------ TimelineContext
@@ -161,8 +186,9 @@ public class FXTimelineView extends View implements TimelineContext {
     }
     @Override @Nullable public Clip selectedClip() { return selectedClip; }
     @Override @Nullable public Track selectedClipTrack() { return selectedClipTrack; }
-    @Override public boolean isClipSelected(Clip clip) { return selectedClip == clip; }
-    @Override public void registerClipView(Clip clip, UIElement element) { clipViews.add(new ClipView(clip, element)); }
+    @Override public boolean isClipSelected(Clip clip) { return selectedClips.contains(clip); }
+    @Override public java.util.Set<Clip> selectedClips() { return selectedClips; }
+    @Override public void registerClipView(Track track, Clip clip, UIElement element) { clipViews.add(new ClipView(track, clip, element)); }
     @Override public void setDragGuide(@Nullable Clip clip) { dragGuideClip = clip; }
     @Override public void zoom(UIEvent event) { onZoom(event); }
 
@@ -277,12 +303,37 @@ public class FXTimelineView extends View implements TimelineContext {
             layout.flexDirection(FlexDirection.COLUMN);
             layout.gapAll(1);
         });
-        // cross-track snap guides at the dragged clip's edges spanning all lanes
+        // cross-track snap guides at the dragged clip's edges + the marquee box, spanning all lanes
         lanesContainer.style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
-            if (dragGuideClip == null) return;
-            drawGuideLine(graphics, dragGuideClip.start(), x, y, w, h);
-            drawGuideLine(graphics, dragGuideClip.end(), x, y, w, h);
+            drawGroupDragGuide(graphics);
+            if (dragGuideClip != null) {
+                drawGuideLine(graphics, dragGuideClip.start(), x, y, w, h);
+                drawGuideLine(graphics, dragGuideClip.end(), x, y, w, h);
+            }
+            if (marqueeActive) drawMarquee(graphics);
         }));
+        // marquee multi-select: a press-drag on empty lane area (clips stopPropagation so a box never
+        // starts on a clip). bubbles here from the lanes.
+        lanesContainer.addEventListener(UIEvents.MOUSE_DOWN, e -> {
+            if (e.button != 0) return;
+            marqueeActive = true;
+            marqueeAdditive = e.isShiftDown();
+            marqueeX0 = marqueeX1 = e.x;
+            marqueeY0 = marqueeY1 = e.y;
+            lanesContainer.startDrag(null, null);
+        });
+        lanesContainer.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
+            if (!marqueeActive) return;
+            marqueeX1 = e.x;
+            marqueeY1 = e.y;
+        });
+        lanesContainer.addEventListener(UIEvents.DRAG_END, e -> {
+            if (!marqueeActive) return;
+            marqueeActive = false;
+            // a click-sized box is just a click → leave the per-lane selectTrack result alone
+            if (Math.abs(marqueeX1 - marqueeX0) < 3 && Math.abs(marqueeY1 - marqueeY0) < 3) return;
+            selectClipsInMarquee(marqueeAdditive);
+        });
         rightScroller.addScrollViewChild(lanesContainer);
         rightScroller.verticalScroller.setOnValueChanged(v -> syncScroll(rightScroller, leftScroller));
 
@@ -321,7 +372,7 @@ public class FXTimelineView extends View implements TimelineContext {
         var runtime = fxEditor.runtime;
         if (runtime == null) return 0;
         double max = 0;
-        for (var track : runtime.fxData.timeline().tracks()) {
+        for (var track : runtime.fxData.timeline().leafTracks(true)) {
             var editor = editorFor(track);
             if (editor != null) max = Math.max(max, editor.contentMaxTick(track));
         }
@@ -401,7 +452,7 @@ public class FXTimelineView extends View implements TimelineContext {
             var mx = origin + (float) ((t - scrollTicks) * scale);
             if (mx < x || mx > x + width) continue;
             DrawerHelper.drawSolidRect(graphics, mx, y, 1, height, ColorPattern.GRAY.color);
-            DrawerHelper.drawText(graphics, String.valueOf(Math.round(t)), mx + 2, y + 3, 0.5f, ColorPattern.WHITE.color);
+            DrawerHelper.drawText(graphics, String.valueOf(Math.round(t)), mx + 2, y + 3, 1f, ColorPattern.WHITE.color);
         }
         drawContentExtent(graphics, x, y, width, height);
         drawPlayhead(graphics, x, y, width, height, partialTick);
@@ -433,6 +484,192 @@ public class FXTimelineView extends View implements TimelineContext {
         DrawerHelper.drawSolidRect(graphics, lx, y, 1, height, ColorPattern.YELLOW.color);
     }
 
+    private void drawMarquee(GuiGraphics graphics) {
+        var x = Math.min(marqueeX0, marqueeX1);
+        var y = Math.min(marqueeY0, marqueeY1);
+        var w = Math.abs(marqueeX1 - marqueeX0);
+        var h = Math.abs(marqueeY1 - marqueeY0);
+        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
+        DrawerHelper.drawBorder(graphics, x, y, w, h, ColorPattern.WHITE.color, 1);
+    }
+
+    /** Select every clip whose element overlaps the marquee box (screen space). */
+    private void selectClipsInMarquee(boolean additive) {
+        var x0 = Math.min(marqueeX0, marqueeX1);
+        var y0 = Math.min(marqueeY0, marqueeY1);
+        var x1 = Math.max(marqueeX0, marqueeX1);
+        var y1 = Math.max(marqueeY0, marqueeY1);
+        var hits = new ArrayList<Clip>();
+        for (var view : clipViews) {
+            var el = view.element();
+            var ex = el.getPositionX();
+            var ey = el.getPositionY();
+            if (ex < x1 && ex + el.getSizeWidth() > x0 && ey < y1 && ey + el.getSizeHeight() > y0) {
+                hits.add(view.clip());
+            }
+        }
+        selectClips(hits, additive);
+    }
+
+    // ------------------------------------------------------------------ clip group drag (multi-move)
+
+    /** The tracks in the order they're rendered as rows (root + expanded children), for cross-row moves. */
+    private List<Track> visibleRows() {
+        return new ArrayList<>(laneViews.keySet());
+    }
+
+    @Override
+    public void beginClipGroupDrag(Clip anchor, double grabOffsetTicks) {
+        if (fxEditor.runtime == null) return;
+        var rows = visibleRows();
+        groupDrag.clear();
+        for (var clip : selectedClips) {
+            var t = trackOf(clip);
+            if (t != null) groupDrag.add(new ClipDragOrigin(t, clip, clip.start(), rows.indexOf(t)));
+        }
+        groupAnchor = anchor;
+        groupGrabOffset = grabOffsetTicks;
+        groupRowOffset = 0;
+        groupInvalid = false;
+        beginScrub();
+        // note: the alignment guide is set in updateClipGroupDrag (on real movement), not here, so a
+        // plain click doesn't draw guides.
+    }
+
+    @Override
+    public void updateClipGroupDrag(float cursorX, float cursorY, boolean ctrl) {
+        if (groupAnchor == null || fxEditor.runtime == null) return;
+        var rows = visibleRows();
+        var anchorOrigin = originOf(groupAnchor);
+        if (anchorOrigin == null) return;
+        setDragGuide(groupAnchor); // first real movement → show the alignment guides (persist until drag end)
+        // horizontal: snap the grabbed clip, derive one uniform delta, clamp so nothing goes below 0
+        var desiredAnchorStart = snapMoveStart(xToTick(cursorX) - groupGrabOffset, groupAnchor.duration(), groupAnchor, ctrl);
+        double delta = Math.round(desiredAnchorStart) - anchorOrigin.start();
+        double minStart = Double.MAX_VALUE;
+        for (var o : groupDrag) minStart = Math.min(minStart, o.start() + delta);
+        if (minStart < 0) delta -= minStart;
+        for (var o : groupDrag) o.clip().start(o.start() + delta);
+        // vertical: destination row under the cursor (relative to the grabbed clip's row)
+        var destRow = rowAtY(cursorY);
+        groupRowOffset = destRow < 0 ? 0 : destRow - anchorOrigin.row();
+        groupInvalid = !groupMoveValid(rows);
+        repositionSelectedClips();
+        refreshPreview();
+    }
+
+    @Override
+    public void endClipGroupDrag(boolean commit) {
+        if (groupAnchor == null) return;
+        endScrub();
+        setDragGuide(null);
+        var runtime = fxEditor.runtime;
+        var tracks = runtime == null ? null : visibleRows();
+        var rowOffset = groupRowOffset;
+        // did anything actually move? a plain click is a zero-distance drag — keep the mousedown
+        // selection, push no history, and don't rebuild (rebuilding + re-inspecting would clear it).
+        boolean moved = rowOffset != 0;
+        for (var o : groupDrag) if (o.clip().start() != o.start()) { moved = true; break; }
+        if (!moved) {
+            groupAnchor = null; groupDrag.clear(); groupRowOffset = 0; groupInvalid = false;
+            return;
+        }
+        if (!commit || tracks == null || groupInvalid || !groupMoveValid(tracks)) {
+            for (var o : groupDrag) o.clip().start(o.start()); // revert live starts
+            groupAnchor = null; groupDrag.clear(); groupRowOffset = 0; groupInvalid = false;
+            rebuild();
+            applyClipSelectionClasses();
+            refreshPreview();
+            return;
+        }
+        // capture the result, then revert the live model so the undo entry is the single source of truth
+        var moves = new ArrayList<ClipMove>();
+        for (var o : groupDrag) {
+            var newTrack = tracks.get(o.row() + rowOffset);
+            moves.add(new ClipMove(o.clip(), o.track(), o.start(), newTrack, o.clip().start()));
+        }
+        for (var o : groupDrag) o.clip().start(o.start());
+        groupAnchor = null; groupDrag.clear(); groupRowOffset = 0; groupInvalid = false;
+        // re-highlight via classes (not selectClips) so we don't trigger a stale inspector onClose
+        pushEdit("photon.gui.editor.timeline.edit_clip",
+                () -> {
+                    for (var m : moves) { m.oldTrack().clips().remove(m.clip()); m.clip().start(m.newStart()); m.newTrack().clips().add(m.clip()); }
+                    rebuild(); applyClipSelectionClasses(); refreshPreview();
+                },
+                () -> {
+                    for (var m : moves) { m.newTrack().clips().remove(m.clip()); m.clip().start(m.oldStart()); m.oldTrack().clips().add(m.clip()); }
+                    rebuild(); applyClipSelectionClasses(); refreshPreview();
+                });
+    }
+
+    private record ClipMove(Clip clip, Track oldTrack, double oldStart, Track newTrack, double newStart) {}
+
+    @Nullable
+    private ClipDragOrigin originOf(Clip clip) {
+        for (var o : groupDrag) if (o.clip() == clip) return o;
+        return null;
+    }
+
+    private void repositionSelectedClips() {
+        for (var view : clipViews) {
+            if (selectedClips.contains(view.clip())) {
+                view.element().layout(l -> {
+                    l.left(tickToLocalX(view.clip().start()));
+                    l.width((float) Math.max(2, view.clip().duration() * scale));
+                });
+            }
+        }
+    }
+
+    private int rowAtY(float y) {
+        var rows = visibleRows();
+        for (int i = 0; i < rows.size(); i++) {
+            var el = laneViews.get(rows.get(i));
+            if (el == null) continue;
+            var ey = el.getPositionY();
+            if (y >= ey && y <= ey + el.getSizeHeight()) return i;
+        }
+        return -1;
+    }
+
+    /** Valid iff every selected clip lands on an existing, same-type track without overlapping a
+     *  non-selected clip (or another moving clip landing on the same track). */
+    private boolean groupMoveValid(List<Track> tracks) {
+        for (var o : groupDrag) {
+            var destRow = o.row() + groupRowOffset;
+            if (destRow < 0 || destRow >= tracks.size()) return false;
+            if (tracks.get(destRow).type() != o.track().type()) return false;
+        }
+        for (var o : groupDrag) {
+            var dest = tracks.get(o.row() + groupRowOffset);
+            if (!(editorFor(dest) instanceof ClipTrackEditor cte)) return false;
+            for (var other : dest.clips()) {
+                if (selectedClips.contains(other)) continue;
+                if (cte.clipsConflict(o.clip(), other)) return false;
+            }
+            for (var o2 : groupDrag) {
+                if (o2 == o) continue;
+                if (tracks.get(o2.row() + groupRowOffset) != dest) continue;
+                if (cte.clipsConflict(o.clip(), o2.clip())) return false;
+            }
+        }
+        return true;
+    }
+
+    private void drawGroupDragGuide(GuiGraphics graphics) {
+        if (groupAnchor == null || groupRowOffset == 0 || fxEditor.runtime == null) return;
+        var tracks = visibleRows();
+        var color = groupInvalid ? ColorPattern.T_RED.color : ColorPattern.T_GREEN.color;
+        for (var o : groupDrag) {
+            var destRow = o.row() + groupRowOffset;
+            if (destRow < 0 || destRow >= tracks.size()) continue;
+            var lane = laneViews.get(tracks.get(destRow));
+            if (lane != null) {
+                DrawerHelper.drawSolidRect(graphics, lane.getPositionX(), lane.getPositionY(), lane.getSizeWidth(), lane.getSizeHeight(), color);
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ track rows (generic host)
 
     @Nullable
@@ -449,42 +686,57 @@ public class FXTimelineView extends View implements TimelineContext {
         headersContainer.clearAllChildren();
         lanesContainer.clearAllChildren();
         clipViews.clear();
+        laneViews.clear();
         var runtime = fxEditor.runtime;
         if (runtime == null) return;
+        syncSignalDispatch();
         for (var track : runtime.fxData.timeline().tracks()) {
-            var editor = editorFor(track);
-            if (editor == null) {
-                Photon.LOGGER.warn("No track editor registered for '{}'", track.name());
-                continue;
-            }
-            var state = stateFor(track, editor);
-            UIElement leftWrapper = null;
-            UIElement rightWrapper = null;
-            if (editor.isExpandable()) {
-                leftWrapper = new UIElement().setId("timeline.expandLeft").layout(layout ->
-                        layout.widthPercent(100).height(state.expandedHeight).flexDirection(FlexDirection.COLUMN));
-                var left = editor.buildExpandedLeft(this, track, state);
-                if (left != null) leftWrapper.addChild(left.layout(l -> l.flex(1)));
-
-                rightWrapper = new UIElement().setId("timeline.expandRight").layout(layout ->
-                        layout.widthPercent(100).height(state.expandedHeight).flexDirection(FlexDirection.COLUMN));
-                var right = editor.buildExpandedRight(this, track, state);
-                if (right != null) rightWrapper.addChild(right.layout(l -> l.flex(1)));
-
-                // a resize grip at the bottom of both panels (drag either to set the lane height)
-                leftWrapper.addChild(createResizeHandle(state, leftWrapper, rightWrapper));
-                rightWrapper.addChild(createResizeHandle(state, leftWrapper, rightWrapper));
-                leftWrapper.setDisplay(state.expanded);
-                rightWrapper.setDisplay(state.expanded);
-            }
-            headersContainer.addChild(createTrackHeader(track, editor, state, leftWrapper, rightWrapper));
-            lanesContainer.addChild(editor.buildLane(this, track, state));
-            if (leftWrapper != null) {
-                headersContainer.addChild(leftWrapper);
-                lanesContainer.addChild(rightWrapper);
-            }
+            addTrackRow(track, 0);
         }
         updateHScroller();
+    }
+
+    /** Render one track row (header + lane), recursing into expanded {@link TrackGroup}s (indented). */
+    private void addTrackRow(Track track, int depth) {
+        var editor = editorFor(track);
+        if (editor == null) {
+            Photon.LOGGER.warn("No track editor registered for '{}'", track.name());
+            return;
+        }
+        var state = stateFor(track, editor);
+        UIElement leftWrapper = null;
+        UIElement rightWrapper = null;
+        if (editor.isExpandable()) {
+            leftWrapper = new UIElement().setId("timeline.expandLeft").layout(layout ->
+                    layout.widthPercent(100).height(state.expandedHeight).flexDirection(FlexDirection.COLUMN));
+            var left = editor.buildExpandedLeft(this, track, state);
+            if (left != null) leftWrapper.addChild(left.layout(l -> l.flex(1)));
+
+            rightWrapper = new UIElement().setId("timeline.expandRight").layout(layout ->
+                    layout.widthPercent(100).height(state.expandedHeight).flexDirection(FlexDirection.COLUMN));
+            var right = editor.buildExpandedRight(this, track, state);
+            if (right != null) rightWrapper.addChild(right.layout(l -> l.flex(1)));
+
+            // a resize grip at the bottom of both panels (drag either to set the lane height)
+            leftWrapper.addChild(createResizeHandle(state, leftWrapper, rightWrapper));
+            rightWrapper.addChild(createResizeHandle(state, leftWrapper, rightWrapper));
+            leftWrapper.setDisplay(state.expanded);
+            rightWrapper.setDisplay(state.expanded);
+        }
+        headersContainer.addChild(createTrackHeader(track, editor, state, leftWrapper, rightWrapper, depth));
+        var laneEl = editor.buildLane(this, track, state);
+        laneViews.put(track, laneEl);
+        lanesContainer.addChild(laneEl);
+        if (leftWrapper != null) {
+            headersContainer.addChild(leftWrapper);
+            lanesContainer.addChild(rightWrapper);
+        }
+        // groups: when expanded, render their children as nested (indented) rows
+        if (track instanceof TrackGroup group && state.expanded) {
+            for (var child : group.children()) {
+                addTrackRow(child, depth + 1);
+            }
+        }
     }
 
     private UIElement createResizeHandle(TrackUIState state, UIElement leftWrapper, UIElement rightWrapper) {
@@ -502,13 +754,14 @@ public class FXTimelineView extends View implements TimelineContext {
     }
 
     private UIElement createTrackHeader(Track track, TrackEditor editor, TrackUIState state,
-                                       @Nullable UIElement leftWrapper, @Nullable UIElement rightWrapper) {
+                                       @Nullable UIElement leftWrapper, @Nullable UIElement rightWrapper, int depth) {
         var header = new UIElement().setId("timeline.trackHeader").layout(layout -> {
             layout.widthPercent(100);
             layout.height(TimelineContext.ROW_HEIGHT);
             layout.flexDirection(FlexDirection.ROW);
             layout.gapAll(2);
             layout.paddingAll(2);
+            layout.paddingLeft(2 + depth * 10f); // indent nested (grouped) tracks
         }).style(style -> style.backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     DrawerHelper.drawSolidRect(graphics, x, y, w, h,
                             isTrackSelected(track) ? ColorPattern.GRAY.color : ColorPattern.T_GRAY.color);
@@ -520,7 +773,11 @@ public class FXTimelineView extends View implements TimelineContext {
                 })
                 .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     if (reorderTarget == track) {
-                        DrawerHelper.drawSolidRect(graphics, x, reorderBelow ? y + h - 1 : y, w, 1, ColorPattern.WHITE.color);
+                        if (reorderInto) {
+                            DrawerHelper.drawBorder(graphics, x, y, w, h, ColorPattern.WHITE.color, 1);
+                        } else {
+                            DrawerHelper.drawSolidRect(graphics, x, reorderBelow ? y + h - 1 : y, w, 1, ColorPattern.WHITE.color);
+                        }
                     }
                 }));
         header.addEventListener(UIEvents.DRAG_PERFORM, e -> onReorderDrop(e, track));
@@ -628,17 +885,25 @@ public class FXTimelineView extends View implements TimelineContext {
     }
 
     private void updateReorderTarget(UIElement header, Track track, UIEvent event) {
-        if (event.dragHandler.getDraggingObject() instanceof TrackDrag) {
-            reorderTarget = track;
-            reorderBelow = event.y > header.getPositionY() + header.getSizeHeight() / 2f;
+        if (!(event.dragHandler.getDraggingObject() instanceof TrackDrag)) return;
+        reorderTarget = track;
+        var rel = (event.y - header.getPositionY()) / Math.max(1, header.getSizeHeight());
+        if (track instanceof TrackGroup) { // 3 zones: before / into / after
+            reorderInto = rel > 0.25f && rel < 0.75f;
+            reorderBelow = rel >= 0.75f;
+        } else {
+            reorderInto = false;
+            reorderBelow = rel > 0.5f;
         }
     }
 
     private void onReorderDrop(UIEvent event, Track target) {
         var below = reorderBelow;
+        var into = reorderInto;
         reorderTarget = null;
+        reorderInto = false;
         if (event.dragHandler.getDraggingObject() instanceof TrackDrag(var dragged) && dragged != target) {
-            reorderTrack(dragged, target, below);
+            reorderTrack(dragged, target, below, into);
             event.stopPropagation();
         }
     }
@@ -653,7 +918,7 @@ public class FXTimelineView extends View implements TimelineContext {
         double threshold = SNAP_PX / scale;
         double best = tick;
         double bestDist = threshold;
-        for (var track : runtime.fxData.timeline().tracks()) {
+        for (var track : runtime.fxData.timeline().leafTracks(true)) {
             for (var other : track.clips()) {
                 if (other == exclude) continue;
                 for (var cand : new double[]{other.start(), other.end()}) {
@@ -677,7 +942,7 @@ public class FXTimelineView extends View implements TimelineContext {
         double threshold = SNAP_PX / scale;
         double best = tick;
         double bestDist = threshold;
-        for (var track : runtime.fxData.timeline().tracks()) {
+        for (var track : runtime.fxData.timeline().leafTracks(true)) {
             for (var clip : track.clips()) {
                 for (var cand : new double[]{clip.start(), clip.end()}) {
                     var d = Math.abs(cand - tick);
@@ -690,6 +955,11 @@ public class FXTimelineView extends View implements TimelineContext {
                         var d = Math.abs(t - tick);
                         if (d < bestDist) { bestDist = d; best = t; }
                     }
+                }
+            } else if (track instanceof SignalTrack signalTrack) {
+                for (var signal : signalTrack.signals()) {
+                    var d = Math.abs(signal.time() - tick);
+                    if (d < bestDist) { bestDist = d; best = signal.time(); }
                 }
             }
         }
@@ -723,45 +993,77 @@ public class FXTimelineView extends View implements TimelineContext {
                 () -> { tracks.remove(track); rebuild(); refreshPreview(); });
     }
 
-    private void removeTrack(Track track) {
-        if (fxEditor.runtime == null) return;
-        var tracks = fxEditor.runtime.fxData.timeline().tracks();
-        var index = tracks.indexOf(track);
-        var editor = editorFor(track);
-        pushEdit("photon.gui.editor.timeline.remove_track",
+    @Override
+    public void addChildTrack(TrackGroup group, Track child) {
+        pushEdit("photon.gui.editor.timeline.add_track",
                 () -> {
-                    tracks.remove(track);
-                    if (selectedTrack == track) selectedTrack = null;
-                    if (selectedClipTrack == track) { selectedClip = null; selectedClipTrack = null; }
-                    if (recordingTrack == track) {
-                        recordingTrack = null;
-                        if (fxEditor.runtime != null) fxEditor.runtime.timelinePlayer.setRecording(false);
-                    }
-                    if (editor != null) editor.onRemoved(this, track, stateFor(track, editor));
-                    states.remove(track);
-                    rebuild();
-                    refreshPreview();
+                    group.children().add(child);
+                    var editor = editorFor(group);
+                    if (editor != null) stateFor(group, editor).expanded = true; // reveal the new child
+                    rebuild(); refreshPreview();
                 },
-                () -> { tracks.add(Math.min(index, tracks.size()), track); rebuild(); refreshPreview(); });
+                () -> { group.children().remove(child); rebuild(); refreshPreview(); });
     }
 
-    private void reorderTrack(Track dragged, Track target, boolean below) {
+    private void removeTrack(Track track) {
         if (fxEditor.runtime == null) return;
-        var tracks = fxEditor.runtime.fxData.timeline().tracks();
-        var oldIndex = tracks.indexOf(dragged);
+        var timeline = fxEditor.runtime.fxData.timeline();
+        var list = timeline.parentListOf(track);
+        if (list == null) return;
+        var index = list.indexOf(track);
+        var subtree = new ArrayList<Track>();
+        collectSubtree(track, subtree);
+        pushEdit("photon.gui.editor.timeline.remove_track",
+                () -> {
+                    list.remove(track);
+                    for (var t : subtree) {
+                        selectedClips.removeIf(t.clips()::contains);
+                        if (selectedTrack == t) selectedTrack = null;
+                        if (selectedClipTrack == t) { selectedClip = null; selectedClipTrack = null; }
+                        if (recordingTrack == t) {
+                            recordingTrack = null;
+                            if (fxEditor.runtime != null) fxEditor.runtime.timelinePlayer.setRecording(false);
+                        }
+                        var ed = editorFor(t);
+                        if (ed != null) ed.onRemoved(this, t, stateFor(t, ed));
+                        states.remove(t);
+                    }
+                    rebuild();
+                    refreshPreview();
+                },
+                () -> { list.add(Math.min(index, list.size()), track); rebuild(); refreshPreview(); });
+    }
+
+    private void collectSubtree(Track track, List<Track> out) {
+        out.add(track);
+        if (track instanceof TrackGroup group) {
+            for (var child : group.children()) collectSubtree(child, out);
+        }
+    }
+
+    private void reorderTrack(Track dragged, Track target, boolean below, boolean into) {
+        if (fxEditor.runtime == null) return;
+        var timeline = fxEditor.runtime.fxData.timeline();
+        if (Timeline.isDescendant(dragged, target)) return; // can't drop a group into itself/its subtree
+        var fromList = timeline.parentListOf(dragged);
+        if (fromList == null) return;
+        var oldIndex = fromList.indexOf(dragged);
+        var toList = (into && target instanceof TrackGroup group) ? group.children() : timeline.parentListOf(target);
+        if (toList == null) return;
         pushEdit("photon.gui.editor.timeline.reorder_track",
                 () -> {
-                    tracks.remove(dragged);
-                    var i = tracks.indexOf(target);
-                    if (i < 0) i = tracks.size();
+                    fromList.remove(dragged);
+                    var i = toList.indexOf(target); // target is the group itself when dropping "into" → -1 → append
+                    if (i < 0) i = toList.size();
                     else if (below) i += 1;
-                    tracks.add(Math.min(i, tracks.size()), dragged);
+                    toList.add(Math.min(i, toList.size()), dragged);
                     rebuild();
                     refreshPreview();
                 },
                 () -> {
-                    tracks.remove(dragged);
-                    tracks.add(Math.min(oldIndex, tracks.size()), dragged);
+                    var cur = timeline.parentListOf(dragged);
+                    if (cur != null) cur.remove(dragged);
+                    fromList.add(Math.min(oldIndex, fromList.size()), dragged);
                     rebuild();
                     refreshPreview();
                 });
@@ -800,6 +1102,7 @@ public class FXTimelineView extends View implements TimelineContext {
         pushEdit("photon.gui.editor.timeline.remove_clip",
                 () -> {
                     track.clips().remove(clip);
+                    selectedClips.remove(clip);
                     if (selectedClip == clip) { selectedClip = null; selectedClipTrack = null; }
                     rebuild();
                     refreshPreview();
@@ -819,6 +1122,13 @@ public class FXTimelineView extends View implements TimelineContext {
     // ------------------------------------------------------------------ transport / preview / keys
 
     private boolean isPlaying() { return fxEditor.sceneView.particleManager.isPlaying(); }
+
+    /** Signals fire only during live forward playback — keep the player gated to {@link #isPlaying()} so
+     *  scrub/preview replays (which re-run from tick 0) never spam listeners. */
+    private void syncSignalDispatch() {
+        var runtime = fxEditor.runtime;
+        if (runtime != null) runtime.timelinePlayer.setSignalDispatch(isPlaying());
+    }
 
     private void togglePlay() {
         var pm = fxEditor.sceneView.particleManager;
@@ -867,8 +1177,14 @@ public class FXTimelineView extends View implements TimelineContext {
     }
 
     private void copySelection() {
-        if (selectedClip != null) {
-            clipboardClip = selectedClip.copy();
+        if (!selectedClips.isEmpty()) {
+            double minStart = Double.MAX_VALUE;
+            for (var clip : selectedClips) minStart = Math.min(minStart, clip.start());
+            clipboardClips.clear();
+            for (var clip : selectedClips) {
+                var t = trackOf(clip);
+                if (t != null) clipboardClips.add(new ClipboardEntry(t, clip.copy(), clip.start() - minStart));
+            }
         } else if (selectedTrack != null) {
             clipboardTrack = selectedTrack.copy();
         }
@@ -876,9 +1192,21 @@ public class FXTimelineView extends View implements TimelineContext {
 
     private void pasteClipboard() {
         if (fxEditor.runtime == null) return;
-        var targetTrack = selectedClipTrack != null ? selectedClipTrack : selectedTrack;
-        if (clipboardClip != null && targetTrack != null) {
-            addClip(targetTrack, clipboardClip.copy().start(Math.max(0, currentTimeTicks())));
+        if (!clipboardClips.isEmpty()) {
+            var timeline = fxEditor.runtime.fxData.timeline();
+            var playhead = Math.max(0, currentTimeTicks());
+            var pasted = new ArrayList<Clip>();
+            var pairs = new ArrayList<Map.Entry<Track, Clip>>();
+            for (var entry : clipboardClips) {
+                if (timeline.parentListOf(entry.track()) == null) continue; // source track gone (incl. nested)
+                var copy = entry.clip().copy().start(playhead + entry.startOffset());
+                pairs.add(Map.entry(entry.track(), copy));
+                pasted.add(copy);
+            }
+            if (pairs.isEmpty()) return;
+            pushEdit("photon.gui.editor.timeline.add_clip",
+                    () -> { for (var p : pairs) p.getKey().clips().add(p.getValue()); rebuild(); selectClips(pasted, false); refreshPreview(); },
+                    () -> { for (var p : pairs) p.getKey().clips().remove(p.getValue()); rebuild(); refreshPreview(); });
         } else if (clipboardTrack != null) {
             addTrack(clipboardTrack.copy(), fxEditor.runtime.fxData.timeline().tracks().size());
         }
@@ -897,13 +1225,11 @@ public class FXTimelineView extends View implements TimelineContext {
         var editor = editorFor(track);
         if (!(editor instanceof ClipTrackEditor cte)) return;
         clearFxObjectSelection();
-        fxEditor.inspectorView.inspect(cte.clipConfigurator(this, track, clip), null, () -> {
-            if (selectedClip == clip) {
-                selectedClip = null;
-                selectedClipTrack = null;
-                applyClipSelectionClasses();
-            }
-        });
+        // empty onClose: re-selecting / clearing the inspector (e.g. a subsequent shift-click that grows
+        // the selection) must not fire a stale callback that wipes the multi-selection.
+        fxEditor.inspectorView.inspect(cte.clipConfigurator(this, track, clip), null, () -> {});
+        selectedClips.clear();
+        selectedClips.add(clip);
         selectedClip = clip;
         selectedClipTrack = track;
         selectedTrack = track; // active track for Delete-routing/paste (highlight suppressed: selectedClip != null)
@@ -911,8 +1237,56 @@ public class FXTimelineView extends View implements TimelineContext {
     }
 
     @Override
+    public void selectClips(java.util.Collection<Clip> clips, boolean additive) {
+        if (!additive) selectedClips.clear();
+        selectedClips.addAll(clips);
+        // primary = a single selected clip (so the inspector + Delete routing still work for size 1)
+        if (selectedClips.size() == 1) {
+            selectedClip = selectedClips.iterator().next();
+            selectedClipTrack = trackOf(selectedClip);
+            selectedTrack = selectedClipTrack;
+            var editor = selectedClipTrack == null ? null : editorFor(selectedClipTrack);
+            if (editor instanceof ClipTrackEditor cte) {
+                clearFxObjectSelection();
+                fxEditor.inspectorView.inspect(cte.clipConfigurator(this, selectedClipTrack, selectedClip), null, () -> {});
+            }
+        } else if (!selectedClips.isEmpty()) {
+            selectedClip = selectedClips.iterator().next(); // a primary for Delete/paste; inspector cleared
+            selectedClipTrack = trackOf(selectedClip);
+            selectedTrack = selectedClipTrack;
+            fxEditor.inspectorView.clear();
+        } else {
+            selectedClip = null;
+            selectedClipTrack = null;
+            fxEditor.inspectorView.clear();
+        }
+        applyClipSelectionClasses();
+    }
+
+    @Override
+    public void toggleClipSelection(Track track, Clip clip) {
+        var set = new java.util.LinkedHashSet<>(selectedClips);
+        if (!set.remove(clip)) set.add(clip);
+        selectClips(set, false);
+    }
+
+    @Override
+    public boolean isClipGroupDragInvalid() {
+        return groupAnchor != null && groupInvalid;
+    }
+
+    @Nullable
+    private Track trackOf(Clip clip) {
+        for (var view : clipViews) {
+            if (view.clip() == clip) return view.track();
+        }
+        return null;
+    }
+
+    @Override
     public void setActiveTrack(Track track) {
         selectedTrack = track;
+        selectedClips.clear();
         selectedClip = null;
         selectedClipTrack = null;
         applyClipSelectionClasses();
@@ -963,7 +1337,7 @@ public class FXTimelineView extends View implements TimelineContext {
 
     private void applyClipSelectionClasses() {
         for (var view : clipViews) {
-            if (view.clip() == selectedClip) {
+            if (selectedClips.contains(view.clip())) {
                 view.element().addClass("__selected__");
             } else {
                 view.element().removeClass("__selected__");
@@ -982,16 +1356,17 @@ public class FXTimelineView extends View implements TimelineContext {
             if (selectedTrack == track) selectedTrack = null;
         });
         selectedTrack = track;
+        selectedClips.clear();
         selectedClip = null;
         selectedClipTrack = null;
         applyClipSelectionClasses();
     }
 
     private void deleteSelection() {
-        // a selected clip first (its track may differ from the active track)
-        if (selectedClip != null && selectedClipTrack != null) {
-            var clipEditor = editorFor(selectedClipTrack);
-            if (clipEditor != null && clipEditor.deleteSelection(this, selectedClipTrack, stateFor(selectedClipTrack, clipEditor))) return;
+        // selected clips first (may span several tracks)
+        if (!selectedClips.isEmpty()) {
+            deleteSelectedClips();
+            return;
         }
         var track = selectedTrack;
         if (track == null) return;
@@ -1002,14 +1377,40 @@ public class FXTimelineView extends View implements TimelineContext {
         removeTrack(track);
     }
 
+    private void deleteSelectedClips() {
+        if (fxEditor.runtime == null) return;
+        var removed = new ArrayList<Map.Entry<Track, Clip>>();
+        for (var clip : selectedClips) {
+            var t = trackOf(clip);
+            if (t != null && !t.lock()) removed.add(Map.entry(t, clip));
+        }
+        if (removed.isEmpty()) return;
+        fxEditor.inspectorView.clear();
+        pushEdit("photon.gui.editor.timeline.remove_clip",
+                () -> {
+                    for (var r : removed) r.getKey().clips().remove(r.getValue());
+                    selectedClips.clear(); selectedClip = null; selectedClipTrack = null;
+                    rebuild(); refreshPreview();
+                },
+                () -> {
+                    for (var r : removed) r.getKey().clips().add(r.getValue());
+                    rebuild(); refreshPreview();
+                });
+    }
+
     public void clear() {
         headersContainer.clearAllChildren();
         lanesContainer.clearAllChildren();
         clipViews.clear();
+        laneViews.clear();
         states.clear();
+        selectedClips.clear();
         selectedClip = null;
         selectedClipTrack = null;
         selectedTrack = null;
         recordingTrack = null;
+        groupDrag.clear();
+        groupAnchor = null;
+        marqueeActive = false;
     }
 }

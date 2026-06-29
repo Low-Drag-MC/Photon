@@ -41,6 +41,10 @@ public class TimelinePlayer {
     /** When recording (editor only), the per-frame re-apply is frozen so gizmo/inspector edits to the
      *  target persist between ticks instead of being stomped by the sampled pose. */
     private boolean recording = false;
+    /** Whether signal tracks fire. Default true (in-world); the editor gates it to live playback only. */
+    private boolean dispatchSignals = true;
+    /** Highest tick already dispatched signals for, so a forward window never re-fires (reset on begin). */
+    private double lastSignalTick = -1;
 
     public TimelinePlayer(FXRuntime runtime, Timeline timeline) {
         this.runtime = runtime;
@@ -55,6 +59,7 @@ public class TimelinePlayer {
     public void begin(IEffectExecutor effect) {
         this.effect = effect;
         this.localTime = 0;
+        this.lastSignalTick = -1;
         this.lastControlClip.clear();
         this.lastControlled.clear();
         // apply the t=0 state before any object ticks (avoids a one-tick artifact)
@@ -83,9 +88,15 @@ public class TimelinePlayer {
         this.recording = recording;
     }
 
+    /** Editor gate: only dispatch signals during live forward playback (not scrub/preview replays). */
+    public void setSignalDispatch(boolean dispatchSignals) {
+        this.dispatchSignals = dispatchSignals;
+    }
+
     private void evaluate(long time) {
         lastEvalTime = time;
-        var controlled = controlledObjectIds();
+        var leaves = timeline.leafTracks(false);
+        var controlled = controlledObjectIds(leaves);
         // revert objects that are no longer controlled (e.g. their track/clip was deleted)
         for (var id : lastControlled) {
             if (!controlled.contains(id) && runtime.objects.get(id) instanceof FXObject object) {
@@ -105,7 +116,7 @@ public class TimelinePlayer {
             boolean activatorActive = false;
             boolean hasControl = false;
             Clip controlClip = null;
-            for (var track : timeline.tracks()) {
+            for (var track : leaves) {
                 if (track.mute()) {
                     continue;
                 }
@@ -144,6 +155,27 @@ public class TimelinePlayer {
         }
 
         applyAnimations(time);
+        dispatchSignals(leaves, time);
+    }
+
+    /**
+     * Fire every signal whose tick falls in the forward window {@code (lastSignalTick, time]}. Gated to
+     * live playback by {@link #setSignalDispatch}; the monotonic window + {@link #begin} reset prevent
+     * any double-fire (the {@code evaluate(0)} repeat, or a replay seek).
+     */
+    private void dispatchSignals(java.util.List<Track> leaves, double time) {
+        if (!dispatchSignals || time <= lastSignalTick) return;
+        for (var track : leaves) {
+            if (track.mute() || !(track instanceof SignalTrack signalTrack)) continue;
+            var channel = signalTrack.displayName();
+            for (var signal : signalTrack.signals()) {
+                if (signal.time() > lastSignalTick && signal.time() <= time) {
+                    if (effect != null) effect.onTimelineSignal(channel, signal.name(), signal.data(), signal.time());
+                    PhotonSignals.fire(effect, channel, signal.name(), signal.data(), signal.time());
+                }
+            }
+        }
+        lastSignalTick = time;
     }
 
     /**
@@ -152,7 +184,7 @@ public class TimelinePlayer {
      * not gate active/visible, so it is a separate pass from {@link #controlledObjectIds()}.
      */
     private void applyAnimations(double time) {
-        for (var track : timeline.tracks()) {
+        for (var track : timeline.leafTracks(false)) {
             if (track.mute() || !(track instanceof AnimationTrack animation)) {
                 continue;
             }
@@ -183,9 +215,9 @@ public class TimelinePlayer {
     }
 
     /** Union of all objects referenced by activator track targets and control clip targets. */
-    private Set<UUID> controlledObjectIds() {
+    private Set<UUID> controlledObjectIds(java.util.List<Track> leaves) {
         var ids = new HashSet<UUID>();
-        for (var track : timeline.tracks()) {
+        for (var track : leaves) {
             if (track.mute()) {
                 continue;
             }

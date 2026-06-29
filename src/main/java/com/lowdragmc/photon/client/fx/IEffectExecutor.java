@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.photon.client.gameobject.IFXObject;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.RandomSource;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -38,5 +39,17 @@ public interface IEffectExecutor {
 
     default RandomSource getRandomSource() {
         return getLevel().random;
+    }
+
+    /**
+     * Called when a timeline {@code signal} track fires a signal during live forward playback. Override
+     * to react per-effect; global subscribers can also listen via {@code PhotonSignals}.
+     *
+     * @param channel the signal track's display name (channel)
+     * @param name    the signal's name (may repeat across signals)
+     * @param data    the signal's custom data
+     * @param time    the master-clock tick at which it fired
+     */
+    default void onTimelineSignal(String channel, String name, CompoundTag data, double time) {
     }
 }

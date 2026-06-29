@@ -33,6 +33,8 @@ public abstract class ClipTrackEditor extends TrackEditor {
         int dragMode = DRAG_MOVE;
         double grabOffsetTicks, dragFixedEnd, dragBeforeStart, dragBeforeDuration;
         boolean dragInvalid;
+        /** True while this clip element drives a host group drag (multi-selection move). */
+        boolean groupDrag;
     }
 
     @Override
@@ -112,7 +114,7 @@ public abstract class ClipTrackEditor extends TrackEditor {
         lane.addEventListener(UIEvents.MOUSE_WHEEL, ctx::zoom);
         lane.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) {
-                ctx.selectTrack(track);
+                if (!e.isShiftDown()) ctx.selectTrack(track); // shift = additive marquee (don't clear)
             } else if (e.button == 1 && !track.lock()) {
                 onLaneRightClick(ctx, track, e.x, e.y);
             }
@@ -140,14 +142,14 @@ public abstract class ClipTrackEditor extends TrackEditor {
             layout.paddingAll(2);
         }).style(style -> style
                 .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
-                    var invalid = st.draggingClip == clip && st.dragInvalid;
+                    var invalid = clipDragInvalid(ctx, st, clip);
                     DrawerHelper.drawSolidRect(graphics, x + 1, y, Math.max(1, w - 2), h,
                             (invalid ? ColorPattern.T_RED : fillColor).color);
                 })
                 .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     var bx = x + 1;
                     var bw = Math.max(1, w - 2);
-                    var invalid = st.draggingClip == clip && st.dragInvalid;
+                    var invalid = clipDragInvalid(ctx, st, clip);
                     DrawerHelper.drawBorder(graphics, bx, y, bw, h, (invalid ? ColorPattern.RED : baseColor).color, 1);
                     if (ctx.isClipSelected(clip) && !invalid) {
                         DrawerHelper.drawBorder(graphics, bx, y, bw, h, ColorPattern.WHITE.color, 1);
@@ -157,7 +159,7 @@ public abstract class ClipTrackEditor extends TrackEditor {
                         Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
                     }
                 }));
-        ctx.registerClipView(clip, element);
+        ctx.registerClipView(track, clip, element);
 
         var label = clipLabel(ctx, track, clip);
         if (label != null) {
@@ -179,7 +181,15 @@ public abstract class ClipTrackEditor extends TrackEditor {
                 e.stopPropagation();
                 return;
             }
-            ctx.selectClip(track, clip);
+            // Ctrl/Shift-click toggles this clip in the multi-selection (no drag)
+            if (e.isShiftDown() || e.isCtrlDown()) {
+                ctx.toggleClipSelection(track, clip);
+                e.stopPropagation();
+                return;
+            }
+            // keep the multi-selection when grabbing one of its members; otherwise select just this clip
+            var inGroup = ctx.selectedClips().size() > 1 && ctx.selectedClips().contains(clip);
+            if (!inGroup) ctx.selectClip(track, clip);
             if (track.lock()) {
                 e.stopPropagation();
                 return;
@@ -187,7 +197,15 @@ public abstract class ClipTrackEditor extends TrackEditor {
             var localX = e.x - element.getPositionX();
             var w = element.getSizeWidth();
             st.dragMode = localX <= TimelineContext.EDGE_PX ? DRAG_LEFT : (localX >= w - TimelineContext.EDGE_PX ? DRAG_RIGHT : DRAG_MOVE);
-            st.grabOffsetTicks = ctx.xToTick(e.x) - clip.start();
+            var grab = ctx.xToTick(e.x) - clip.start();
+            if (st.dragMode == DRAG_MOVE) { // unified: single or multi move goes through the host group drag
+                st.groupDrag = true;
+                ctx.beginClipGroupDrag(clip, grab);
+                element.startDrag(null, null);
+                e.stopPropagation();
+                return;
+            }
+            st.grabOffsetTicks = grab;
             st.dragFixedEnd = clip.end();
             st.dragBeforeStart = clip.start();
             st.dragBeforeDuration = clip.duration();
@@ -199,6 +217,7 @@ public abstract class ClipTrackEditor extends TrackEditor {
             e.stopPropagation();
         });
         element.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
+            if (st.groupDrag) { ctx.updateClipGroupDrag(e.x, e.y, e.isCtrlDown()); e.stopPropagation(); return; }
             var ctrl = e.isCtrlDown();
             var cursorTick = ctx.xToTick(e.x);
             if (st.dragMode == DRAG_RIGHT) {
@@ -218,6 +237,7 @@ public abstract class ClipTrackEditor extends TrackEditor {
             ctx.refreshPreview();
         });
         element.addEventListener(UIEvents.DRAG_END, e -> {
+            if (st.groupDrag) { st.groupDrag = false; ctx.endClipGroupDrag(true); e.stopPropagation(); return; }
             st.draggingClip = null;
             ctx.setDragGuide(null);
             ctx.endScrub();
@@ -241,14 +261,24 @@ public abstract class ClipTrackEditor extends TrackEditor {
         return element;
     }
 
-    /** Whether {@code clip} overlaps another clip on the same lane. Activator: any overlap; control
-     *  overrides to only conflict with same-target clips. */
+    /** Red-feedback flag for a clip: a single-clip resize that overlaps, or a member of an invalid
+     *  group drag. (MOVE drags are unified through the host group path, single = a 1-clip group.) */
+    private boolean clipDragInvalid(TimelineContext ctx, ClipTrackUIState st, Clip clip) {
+        if (st.draggingClip == clip && st.dragInvalid) return true;
+        return ctx.isClipGroupDragInvalid() && ctx.isClipSelected(clip);
+    }
+
+    /** Whether two clips conflict on the same lane. Base = any time-overlap; control overrides to only
+     *  conflict with same-target clips. Shared by single-clip resize and group-move validation. */
+    public boolean clipsConflict(Clip a, Clip b) {
+        return a.start() < b.end() && b.start() < a.end();
+    }
+
+    /** Whether {@code clip} overlaps another clip on the same lane. */
     protected boolean overlaps(Track track, Clip clip) {
         for (var other : track.clips()) {
             if (other == clip) continue;
-            if (clip.start() < other.end() && other.start() < clip.end()) {
-                return true;
-            }
+            if (clipsConflict(clip, other)) return true;
         }
         return false;
     }
