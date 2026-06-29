@@ -106,14 +106,14 @@ public class AraTrailEmitter extends Emitter {
     }
 
     @Override
-    protected void update() {
+    protected void update(float dt) {
         if (trailParticle.isAlive()) {
-            trailParticle.updateTick();
+            trailParticle.updateTick(dt);
         } else {
             remove();
         }
 
-        super.update();
+        super.update(dt);
     }
 
     @Override

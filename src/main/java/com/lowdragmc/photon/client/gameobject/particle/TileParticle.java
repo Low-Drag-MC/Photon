@@ -69,7 +69,7 @@ public class TileParticle implements IParticle {
     @Setter @Getter
     protected int delay;
     @Setter @Getter
-    protected int age;
+    protected float age;
     @Setter @Getter
     protected int lifetime;
     @Setter @Getter
@@ -139,7 +139,7 @@ public class TileParticle implements IParticle {
         setSize(initialSize);
         setRotation(initialRotation);
         setColor(initialColor);
-        update();
+        update(1f);
         updateOrigin();
 
         if (config.trails.isEnable() && emitter instanceof ParticleEmitter particleEmitter) {
@@ -367,38 +367,42 @@ u     */
     /**
      * should always be called per tick
      */
-    public void updateTick() {
+    public void updateTick(float dt) {
         if (delay > 0) {
             delay--;
             return;
         }
-
-        // update origin data
-        updateOrigin();
 
         if (this.age == 0 && config.subEmitters.isEnable()) {
             config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Birth);
         }
 
         // update life cycle
-        if (this.age++ >= this.lifetime && lifetime > 0) {
+        if (this.age >= this.lifetime && lifetime > 0) {
+            this.age += dt;
             setRemoved(true);
             if (config.subEmitters.isEnable()) {
                 config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
             }
             return;
         }
+        this.age += dt;
 
         // update data
-        update();
+        update(dt);
 
         if (config.subEmitters.isEnable()) {
             config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Tick);
         }
 
         if (lifetime > 0) {
-            t = 1.0f * age / lifetime;
+            t = age / lifetime;
         }
+    }
+
+    @Override
+    public void syncOrigin() {
+        updateOrigin();
     }
 
     protected void updateOrigin() {
@@ -417,23 +421,26 @@ u     */
         this.ao = this.a;
     }
 
-    protected void update() {
-        updateChanges();
+    protected void update(float dt) {
+        updateChanges(dt);
     }
 
-    protected void updateChanges() {
-        this.updatePositionAndInternalVelocity();
+    protected void updateChanges(float dt) {
+        this.updatePositionAndInternalVelocity(dt);
         this.updateColor();
         this.updateSize();
         this.updateRotation();
         this.updateLight();
     }
 
-    protected void updatePositionAndInternalVelocity() {
-        var velocity = getRealVelocity();
-        var moveX = velocity.x;
-        var moveY = velocity.y;
-        var moveZ = velocity.z;
+    protected void updatePositionAndInternalVelocity(float dt) {
+        var velocity = getRealVelocity();           // per-tick velocity (rate)
+        var desiredX = velocity.x * dt;             // displacement this step
+        var desiredY = velocity.y * dt;
+        var desiredZ = velocity.z * dt;
+        var moveX = desiredX;
+        var moveY = desiredY;
+        var moveZ = desiredZ;
 
         var level = emitter.getLevel();
         if (config.physics.isEnable() && config.physics.isHasCollision() && level != null &&
@@ -452,31 +459,32 @@ u     */
 
         // update internal velocity
         if (!config.physics.isEnable()) return;
+        // detect collision by comparing the desired displacement vs the collided one (dt-independent)
         if (config.physics.isHasCollision() && !this.collided) {
             var bounceChance = config.physics.getBounceChance(this);
             var bounceRate = config.physics.getBounceRate(this);
             var bounceSpreadRate = config.physics.getBounceSpreadRate(this);
-            if (Math.abs(velocity.x) / Math.abs(moveX) > 1.001) {
+            if (Math.abs(desiredX) / Math.abs(moveX) > 1.001) {
                 updateCollisionBounce(bounceChance, velocity, bounceRate, bounceSpreadRate, Direction.Axis.X);
-            } else if (Math.abs(velocity.y) / Math.abs(moveY) > 1.001) {
+            } else if (Math.abs(desiredY) / Math.abs(moveY) > 1.001) {
                 updateCollisionBounce(bounceChance, velocity, bounceRate, bounceSpreadRate, Direction.Axis.Y);
-            } else if (Math.abs(velocity.z) / Math.abs(moveZ) > 1.001) {
+            } else if (Math.abs(desiredZ) / Math.abs(moveZ) > 1.001) {
                 updateCollisionBounce(bounceChance, velocity, bounceRate, bounceSpreadRate, Direction.Axis.Z);
             }
         }
 
         var gravity = config.physics.getGravity(this);
         if (gravity != 0) {
-            this.addInternalVelocity(getSpaceTransformInverse().transformDirection(new Vector3f(0, -gravity * 0.04f, 0)));
+            this.addInternalVelocity(getSpaceTransformInverse().transformDirection(new Vector3f(0, -gravity * 0.04f * dt, 0)));
         }
 
-        var friction = config.physics.getFriction(this);
+        var friction = (float) Math.pow(config.physics.getFriction(this), dt);
         this.velocityX *= friction;
         this.velocityY *= friction;
         this.velocityZ *= friction;
 
         if (this.collided) {
-            var collidedFriction = config.physics.getCollidedFriction(this);
+            var collidedFriction = (float) Math.pow(config.physics.getCollidedFriction(this), dt);
             this.velocityX *= collidedFriction;
             this.velocityY *= collidedFriction;
             this.velocityZ *= collidedFriction;

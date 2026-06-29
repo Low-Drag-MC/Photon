@@ -42,7 +42,7 @@ public class ParticleAdditionalGPUDataSetting extends AdditionalGPUDataSetting {
                     1, (particle, buffer, partialTick) -> buffer.put(particle.getT(partialTick))),
             new ParticleDataProvider("addition_gpu_data.age",
                     Component.translatable("addition_gpu_data.type.int"),
-                    1, (particle, buffer, partialTick) -> buffer.put(Float.intBitsToFloat(particle.getAge()))),
+                    1, (particle, buffer, partialTick) -> buffer.put(Float.intBitsToFloat((int) particle.getAge()))),
             new ParticleDataProvider("addition_gpu_data.lifetime", Component.translatable("addition_gpu_data.type.int"),
                     1, (particle, buffer, partialTick) -> buffer.put(Float.intBitsToFloat(particle.getLifetime()))),
             new ParticleDataProvider("addition_gpu_data.position", Component.translatable("addition_gpu_data.type.vec3"),

@@ -156,7 +156,7 @@ public class AraTrailParticle implements IParticle {
     }
 
     private float getDeltaTime() {
-        return emitter.getDeltaTime() / 20;
+        return emitter.getDeltaTime() * emitter.timeScale() / 20; // speed track scales the render-driven trail
 //        return timescale == Timescale.Unscaled ? Time.getUnscaledDeltaTime() : Time.getDeltaTime();
     }
 
@@ -166,6 +166,7 @@ public class AraTrailParticle implements IParticle {
     }
 
     public Matrix4f getWorldToTrail() {
+        if (config.space == null) return new Matrix4f(); // null = World (identity); guards a bad/legacy config
         return switch (config.space) {
             case World -> new Matrix4f(); // identity matrix
             case Local -> getTransform().worldToLocalMatrix();
@@ -240,18 +241,18 @@ public class AraTrailParticle implements IParticle {
     }
 
     @Override
-    public void updateTick() {
-        updatePhysics();
+    public void updateTick(float dt) {
+        updatePhysics(dt);
     }
 
     /**
      * Updates point physics.
      */
-    private void updatePhysics() {
+    private void updatePhysics(float dt) {
         if (onUpdate != null) onUpdate.run();
         if (!config.physicsSetting.isEnable())
             return;
-        physicsStep(0.02f);
+        physicsStep(0.02f * dt);
     }
 
     private void emissionStep(float time) {

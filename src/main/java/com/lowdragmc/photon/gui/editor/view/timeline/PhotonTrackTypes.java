@@ -5,6 +5,7 @@ import com.lowdragmc.photon.client.fx.timeline.ActivatorTrack;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
 import com.lowdragmc.photon.client.fx.timeline.ControlTrack;
 import com.lowdragmc.photon.client.fx.timeline.SignalTrack;
+import com.lowdragmc.photon.client.fx.timeline.SpeedTrack;
 import com.lowdragmc.photon.client.fx.timeline.TrackGroup;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -32,4 +33,7 @@ public class PhotonTrackTypes {
 
     @LDLRegisterClient(name = "group", registry = "photon:timeline_track")
     public static final TrackType GROUP = new TrackType(TrackGroup.class, TrackGroup::new, new TrackGroupEditor());
+
+    @LDLRegisterClient(name = "speed", registry = "photon:timeline_track")
+    public static final TrackType SPEED = new TrackType(SpeedTrack.class, SpeedTrack::new, new SpeedTrackEditor());
 }

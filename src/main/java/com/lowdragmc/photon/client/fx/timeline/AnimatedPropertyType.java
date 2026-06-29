@@ -56,6 +56,11 @@ public interface AnimatedPropertyType {
         return false;
     }
 
+    /** Clamp a keyframe value to this type's valid range (e.g. speed {@code >= 0}). Default: no clamp. */
+    default float clampValue(float value) {
+        return value;
+    }
+
     /** Sample all channels at {@code time} (ticks). Default = raw per-channel curve sampling. */
     default float[] sample(AnimatedProperty property, float time) {
         var values = new float[channelCount()];

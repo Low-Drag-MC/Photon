@@ -120,6 +120,26 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
 
     boolean isSelfActive();
 
+    /** This node's own playback-speed multiplier (timeline-driven by the speed track, not persisted,
+     *  default 1). Clamped {@code >=0} when composed; {@code 0} freezes the node. */
+    void setSelfTimeScale(float timeScale);
+
+    float getSelfTimeScale();
+
+    /**
+     * Hierarchical playback speed: this node's own scale times every ancestor's. Drives the per-tick
+     * simulation {@code dt} (see {@code FXObject.tick}); inherited by descendants exactly like
+     * {@link #isActive()}/{@link #isVisible()}.
+     */
+    default float timeScale() {
+        var self = Math.max(0, getSelfTimeScale());
+        var parent = transform().parent();
+        if (parent != null && parent.sceneObject() instanceof IFXObject ifxObject) {
+            return self * ifxObject.timeScale();
+        }
+        return self;
+    }
+
     /** set/get this node's own timeline-visibility flag (timeline-driven, not persisted). */
     void setSelfTimelineVisible(boolean visible);
 

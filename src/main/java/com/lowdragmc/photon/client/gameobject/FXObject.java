@@ -53,6 +53,11 @@ public abstract class FXObject extends Particle implements IFXObject {
     /** Timeline active flag (this node only; see hierarchical {@link #isActive()}). Default active. */
     @Setter
     protected boolean selfActive = true;
+    /** Timeline playback-speed flag (this node only; see hierarchical {@link #timeScale()}). Default 1. */
+    @Setter
+    protected float selfTimeScale = 1;
+    /** Max sim sub-steps per tick (bounds cost at extreme speed; speed>this is capped per tick). */
+    private static final int MAX_SUBSTEPS = 16;
     /** Timeline visibility flag (this node only; folded into hierarchical {@link #isVisible()}). */
     @Setter
     protected boolean selfTimelineVisible = true;
@@ -132,6 +137,7 @@ public abstract class FXObject extends Particle implements IFXObject {
         // (objects that stop being timeline-controlled must fall back to active/visible.)
         this.selfActive = true;
         this.selfTimelineVisible = true;
+        this.selfTimeScale = 1;
     }
 
     @Nullable
@@ -179,13 +185,33 @@ public abstract class FXObject extends Particle implements IFXObject {
         if (!isActive()) {
             return;
         }
-        // effect first
-        updateTick();
+        // snapshot the render origin (xo=x) ONCE per tick, before sub-stepping, so a frozen object holds
+        // still (no xo!=x jitter) and a sped-up one interpolates the whole tick (not just the last step).
+        onTickBegin();
+        // advance the simulation by this tick's scaled dt (speed track). dt is sampled from the master
+        // clock so it stays reproducible under simulateTo; default timeScale()==1 => one updateTick(1f).
+        float owed = timeScale();
+        int guard = 0;
+        while (owed > 1e-6f && guard++ < MAX_SUBSTEPS) {
+            float step = Math.min(owed, 1f); // <=1 keeps integration/collision stable at high speed
+            updateTick(step);
+            owed -= step;
+        }
+    }
+
+    /** Per-tick render-origin snapshot (xo=x), run once before sub-stepping. Emitters override to snapshot
+     *  their own and their particles' origins; default no-op. */
+    protected void onTickBegin() {
     }
 
     @Override
     public void updateTick() {
-        if (effectExecutor != null) {
+        updateTick(1f);
+    }
+
+    /** Advance this object's simulation by {@code dt} ticks (1 = a full game tick). */
+    public void updateTick(float dt) {
+        if (dt > 0 && effectExecutor != null) {
             effectExecutor.updateFXObjectTick(this);
         }
     }

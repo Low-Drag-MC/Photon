@@ -89,7 +89,7 @@ public class TrailParticle implements IParticle {
     public void setup() {
         this.setDelay(config.getStartDelay());
         this.lifetimeSupplier = () -> (float) config.getTime();
-        update();
+        update(1f);
         updateOrigin();
         tails.clear();
         rawTails.clear();
@@ -168,14 +168,18 @@ public class TrailParticle implements IParticle {
     }
 
     @Override
-    public void updateTick() {
+    public void updateTick(float dt) {
         if (delay > 0) {
             delay--;
             return;
         }
 
+        update(dt);
+    }
+
+    @Override
+    public void syncOrigin() {
         updateOrigin();
-        update();
     }
 
     protected void updateOrigin() {
@@ -185,15 +189,15 @@ public class TrailParticle implements IParticle {
         this.ao = this.a;
     }
 
-    protected void update() {
-        updateChanges();
+    protected void update(float dt) {
+        updateChanges(dt);
         if (onUpdate != null) {
             onUpdate.run();
         }
     }
 
-    protected void updateChanges() {
-        updateTails();
+    protected void updateChanges(float dt) {
+        updateTails(dt);
         updateRawTailsProperties();
         if (config.isSmoothInterpolation()) {
             this.tails = generateSmoothPath(rawTails, this.tails, config.getMinVertexDistance());
@@ -203,10 +207,10 @@ public class TrailParticle implements IParticle {
         this.updateLight();
     }
 
-    protected void updateTails() {
+    protected void updateTails(float dt) {
 
         for (int i = 0; i < rawTails.size(); i++) {
-            rawTails.lifeTime[i] -= 1;
+            rawTails.lifeTime[i] -= dt;
         }
 
         TailArray newRawTails = new TailArray();

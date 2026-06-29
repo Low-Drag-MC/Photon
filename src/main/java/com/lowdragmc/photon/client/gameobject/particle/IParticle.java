@@ -27,7 +27,17 @@ public interface IParticle {
 
     float getMemRandom(Object object, Function<RandomSource, Float> randomFunc);
 
-    void updateTick();
+    /** Advance this particle's simulation by {@code dt} ticks (1 = a full game tick). */
+    void updateTick(float dt);
+
+    default void updateTick() {
+        updateTick(1f);
+    }
+
+    /** Snapshot the render origin (xo=x) once per tick, before any sub-step advance (driven by the
+     *  owning emitter's {@code onTickBegin}); keeps frozen/sped-up particles from jittering. */
+    default void syncOrigin() {
+    }
 
     void render(VertexConsumer buffer, Camera camera, float pPartialTicks);
 

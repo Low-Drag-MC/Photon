@@ -33,6 +33,8 @@ public class TimelinePlayer {
     private final Map<UUID, Clip> lastControlClip = new HashMap<>();
     /** Objects controlled on the previous evaluation, to revert ones that stop being controlled. */
     private final Set<UUID> lastControlled = new HashSet<>();
+    /** Objects speed-controlled on the previous evaluation, to revert ones that stop (back to speed 1). */
+    private final Set<UUID> lastSpeedControlled = new HashSet<>();
     @Nullable
     private IEffectExecutor effect;
     private long localTime = 0;
@@ -62,6 +64,7 @@ public class TimelinePlayer {
         this.lastSignalTick = -1;
         this.lastControlClip.clear();
         this.lastControlled.clear();
+        this.lastSpeedControlled.clear();
         // apply the t=0 state before any object ticks (avoids a one-tick artifact)
         evaluate(0);
     }
@@ -155,7 +158,32 @@ public class TimelinePlayer {
         }
 
         applyAnimations(time);
+        applySpeed(leaves, time);
         dispatchSignals(leaves, time);
+    }
+
+    /**
+     * Drive speed-track targets' {@code selfTimeScale} (children inherit via hierarchical
+     * {@code timeScale()}). Runs before the objects' own {@code tick()} consume the scale; objects that
+     * stop being speed-controlled (track removed/muted/rebound) revert to 1.
+     */
+    private void applySpeed(java.util.List<Track> leaves, double time) {
+        var controlled = new HashSet<UUID>();
+        for (var track : leaves) {
+            if (track.mute() || !(track instanceof SpeedTrack speed)) continue;
+            var id = speed.targetId();
+            if (id != null && runtime.objects.get(id) instanceof FXObject target) {
+                target.setSelfTimeScale(speed.sampleSpeed(time));
+                controlled.add(id);
+            }
+        }
+        for (var id : lastSpeedControlled) {
+            if (!controlled.contains(id) && runtime.objects.get(id) instanceof FXObject target) {
+                target.setSelfTimeScale(1f);
+            }
+        }
+        lastSpeedControlled.clear();
+        lastSpeedControlled.addAll(controlled);
     }
 
     /**
@@ -185,7 +213,8 @@ public class TimelinePlayer {
      */
     private void applyAnimations(double time) {
         for (var track : timeline.leafTracks(false)) {
-            if (track.mute() || !(track instanceof AnimationTrack animation)) {
+            // SpeedTrack is an AnimationTrack subclass but drives timeScale (see applySpeed), not transform
+            if (track.mute() || !(track instanceof AnimationTrack animation) || track instanceof SpeedTrack) {
                 continue;
             }
             var id = animation.targetId();

@@ -30,6 +30,9 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     protected Vector3f velocity = new Vector3f();
     @Getter
     protected float t;
+    /** Fractional simulation age (ticks). Replaces the integer {@code age} so the speed track can advance
+     *  it by a fractional {@code dt}; {@link #getAge()} exposes the rounded value for display/emission. */
+    protected float ageF = 0;
     @Getter
     protected ConcurrentHashMap<Object, Float> memRandom = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<BlockPos, Integer> lightCache = new ConcurrentHashMap<>();
@@ -43,20 +46,26 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     }
 
     @Override
-    public final void updateTick() {
-        super.updateTick();
+    protected void onTickBegin() {
         if (!isAlive()) {
             return;
         }
-
         if (previousPosition != null) {
             velocity = transform.position().sub(previousPosition, new Vector3f());
         }
         previousPosition = transform.position();
 
         lightCache.clear();
-        updateOrigin();
-        update();
+        updateOrigin(); // snapshot render origin once per tick (see FXObject.tick)
+    }
+
+    @Override
+    public final void updateTick(float dt) {
+        super.updateTick(dt);
+        if (!isAlive()) {
+            return;
+        }
+        update(dt);
     }
 
     @Override
@@ -71,16 +80,17 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         return new Vector3f(velocity);
     }
 
-    protected void update() {
-        this.age++;
-        if (this.age >= getLifetime() && !isLooping()) {
+    protected void update(float dt) {
+        this.ageF += dt;
+        this.age = (int) this.ageF;
+        if (this.ageF >= getLifetime() && !isLooping()) {
             this.remove(false);
         }
         if (getLifetime() > 0) {
             if(isLooping())
-                t = (this.age % getLifetime()) * 1f / getLifetime();
+                t = (this.ageF % getLifetime()) / getLifetime();
             else
-                t = Math.clamp(this.age * 1f / getLifetime(), 0f, 1f);
+                t = Math.clamp(this.ageF / getLifetime(), 0f, 1f);
         }
     }
 
@@ -124,6 +134,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         this.previousPosition = null;
         this.velocity.zero();
         this.t = 0;
+        this.ageF = 0;
     }
 
     public boolean useTranslucentPipeline() {
@@ -160,10 +171,16 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     }
 
     public int getAge() {
-        return age;
+        return (int) ageF;
+    }
+
+    /** Fractional simulation age (ticks), used by dt-aware emission cadence. */
+    public float getAgeF() {
+        return ageF;
     }
 
     public void setAge(int age) {
+        this.ageF = age;
         this.age = age;
     }
 

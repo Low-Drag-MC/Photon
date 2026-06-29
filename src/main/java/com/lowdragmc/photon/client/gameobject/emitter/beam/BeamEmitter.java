@@ -116,15 +116,21 @@ public class BeamEmitter extends Emitter {
     //////////////////////////////////////
 
     @Override
-    protected void update() {
+    protected void onTickBegin() {
+        super.onTickBegin();
+        if (beamParticle != null) beamParticle.syncOrigin();
+    }
+
+    @Override
+    protected void update(float dt) {
         if (beamParticle.isAlive()) {
-            beamParticle.updateTick();
-            if(beamParticle.getDelay() > 0) age = 0;
+            beamParticle.updateTick(dt);
+            if(beamParticle.getDelay() > 0) { age = 0; ageF = 0; }
         } else {
             remove();
         }
 
-        super.update();
+        super.update(dt);
     }
 
     @Override

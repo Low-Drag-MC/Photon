@@ -72,14 +72,18 @@ public class BeamParticle implements IParticle {
     }
 
     @Override
-    public void updateTick() {
+    public void updateTick(float dt) {
         if (delay > 0) {
             delay--;
             return;
         }
 
-        updateOrigin();
         update();
+    }
+
+    @Override
+    public void syncOrigin() {
+        updateOrigin();
     }
 
     protected void updateOrigin() {

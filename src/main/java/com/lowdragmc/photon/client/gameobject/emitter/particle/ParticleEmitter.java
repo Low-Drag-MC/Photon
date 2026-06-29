@@ -58,6 +58,9 @@ public class ParticleEmitter extends Emitter {
     protected boolean hasFirstUpdate = false;
     @Getter @Setter
     protected float accumulatedDistance = 0;
+    /** Fractional carry of the time-based emission rate, so a scaled {@code dt} emits whole particles. */
+    @Getter @Setter
+    protected float emissionRateAccum = 0;
     @Getter
     protected final Map<PhotonFXRenderPass, Queue<IParticle>> particles = new LinkedHashMap<>();
     public final Queue<IParticle> waitToAdded = Queues.newArrayDeque();
@@ -98,30 +101,40 @@ public class ParticleEmitter extends Emitter {
     }
 
     @Override
-    public void update() {
+    protected void onTickBegin() {
+        super.onTickBegin();
+        for (var queue : particles.values()) {
+            for (var particle : queue) {
+                particle.syncOrigin();
+            }
+        }
+    }
+
+    @Override
+    public void update(float dt) {
         if (!hasFirstUpdate) {
             hasFirstUpdate = true;
             if (config.prewarm > 0) {
                 for (int i = 0; i < config.prewarm; i++) {
-                    emitParticle();
-                    super.update();
+                    emitParticle(1f); // prewarm always simulates whole ticks
+                    super.update(1f);
                     if (removed) {
                         return;
                     }
                 }
             }
         }
-        emitParticle();
-        super.update();
+        emitParticle(dt);
+        super.update(dt);
     }
 
-    public void emitParticle() {
-        // calculate distance
-        accumulatedDistance += getVelocity().length();
+    public void emitParticle(float dt) {
+        // calculate distance (scaled by this step's dt)
+        accumulatedDistance += getVelocity().length() * dt;
         // emit new particle
         var available = config.maxParticles - getParticleAmount();
         if (!removed && getParticleAmount() < config.maxParticles) {
-            var emissionCount = config.emission.getEmissionCount(this, getRandomSource());
+            var emissionCount = config.emission.getEmissionCount(this, getRandomSource(), dt);
             available = Math.min(emissionCount, available);
             particleBatchCount = Math.max(1, available);
             particleBatchCursor = 0;
@@ -141,7 +154,7 @@ public class ParticleEmitter extends Emitter {
         for (var queue : particles.values()) {
             if (config.parallelUpdate && (!config.physics.isEnable() || !config.physics.isHasCollision())) { // parallel stream for particles tick.
                 queue.removeIf(p -> !p.isAlive());
-                queue.parallelStream().forEach(IParticle::updateTick);
+                queue.parallelStream().forEach(p -> p.updateTick(dt));
             } else {
                 var iter = queue.iterator();
                 while (iter.hasNext()) {
@@ -149,7 +162,7 @@ public class ParticleEmitter extends Emitter {
                     if (!particle.isAlive()) {
                         iter.remove();
                     } else {
-                        particle.updateTick();
+                        particle.updateTick(dt);
                     }
                 }
             }
@@ -183,6 +196,8 @@ public class ParticleEmitter extends Emitter {
         this.hasFirstUpdate = false;
         this.particleBatchCount = 1;
         this.particleBatchCursor = 0;
+        this.accumulatedDistance = 0;
+        this.emissionRateAccum = 0;
     }
 
     @Override

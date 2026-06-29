@@ -46,6 +46,8 @@
   "photon.timeline_track.animation": "动画轨道",
   "photon.timeline_track.signal": "信号轨道",
   "photon.timeline_track.group": "轨道组",
+  "photon.timeline_track.speed": "速度轨道",
+  "photon.gui.editor.timeline.property.speed": "速度",
   "photon.gui.editor.timeline.add_signal": "添加信号",
   "photon.gui.editor.timeline.add_child_track": "添加子轨道",
   "photon.gui.editor.timeline.signal_name": "名称",

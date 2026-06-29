@@ -96,7 +96,17 @@ public class AnimationTrackEditor extends TrackEditor {
 
     @Override
     public UIElement buildHeaderContent(TimelineContext ctx, Track track, TrackUIState state) {
-        return buildTargetSlot(ctx, track, false); // animation cannot target root
+        return buildTargetSlot(ctx, track, allowRootTarget());
+    }
+
+    /** Whether this track may bind the root object. Animation excludes it; the speed track allows it. */
+    protected boolean allowRootTarget() {
+        return false;
+    }
+
+    /** Whether the user can add/remove properties. The speed track locks its single auto property. */
+    protected boolean canEditProperties() {
+        return true;
     }
 
     @Override
@@ -323,7 +333,7 @@ public class AnimationTrackEditor extends TrackEditor {
                     }
                 })
                 .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
-                    drawKeyframeDots(ctx, graphics, animation, x, y, w, h);
+                    drawLaneContent(ctx, graphics, animation, x, y, w, h);
                     ctx.drawPlayhead(graphics, x, y, w, h, pt);
                 }));
         lane.addEventListener(UIEvents.MOUSE_WHEEL, ctx::zoom);
@@ -360,6 +370,12 @@ public class AnimationTrackEditor extends TrackEditor {
         st.explicitSelection = true;
         ctx.requestRebuild();
         e.stopPropagation();
+    }
+
+    /** Lane content drawn under the playhead (default: keyframe dots). The speed track overrides to draw
+     *  a curve preview. */
+    protected void drawLaneContent(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
+        drawKeyframeDots(ctx, graphics, track, x, y, width, height);
     }
 
     private void drawKeyframeDots(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
@@ -406,7 +422,7 @@ public class AnimationTrackEditor extends TrackEditor {
         for (var property : animation.properties()) {
             list.addChild(createPropertyGroup(ctx, animation, st, property));
         }
-        if (!track.lock()) {
+        if (!track.lock() && canEditProperties()) {
             var addBtn = new Button().setText("photon.gui.editor.timeline.add_property_button")
                     .setOnClick(e -> openAddPropertyMenu(ctx, animation, st, e.x, e.y));
             addBtn.setId("timeline.animProperty.add").layout(layout -> layout.widthPercent(100));
@@ -496,9 +512,13 @@ public class AnimationTrackEditor extends TrackEditor {
         var label = new Label().setText(Component.translatable(propertyKey(property.type())).getString());
         TimelineContext.styleLabel(label);
         label.layout(layout -> layout.flex(1).heightPercent(100));
-        var remove = new Button().setText("×").setOnClick(e -> removeProperty(ctx, track, st, property));
-        remove.layout(layout -> layout.aspectRatio(1).heightPercent(100));
-        return row.addChildren(toggle, label, remove);
+        row.addChildren(toggle, label);
+        if (canEditProperties()) {
+            var remove = new Button().setText("×").setOnClick(e -> removeProperty(ctx, track, st, property));
+            remove.layout(layout -> layout.aspectRatio(1).heightPercent(100));
+            row.addChild(remove);
+        }
+        return row;
     }
 
     private UIElement createSubPropertyRow(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st, AnimatedProperty property, int axis) {
@@ -845,7 +865,7 @@ public class AnimationTrackEditor extends TrackEditor {
         }
         if (axis < 0) return;
         var before = property.snapshotChannels();
-        var newIndex = property.addKey(axis, tick, cursorValue);
+        var newIndex = property.addKey(axis, tick, property.type().clampValue(cursorValue));
         if (newIndex < 0) return;
         st.selKeyAxis = axis;
         st.selKeyIndex = newIndex;
@@ -945,7 +965,7 @@ public class AnimationTrackEditor extends TrackEditor {
             var count = property.keyCount(axis);
             var lo = k > 0 ? property.key(axis, k - 1).x + 0.001f : 0;
             var hi = k < count - 1 ? property.key(axis, k + 1).x - 0.001f : Float.MAX_VALUE;
-            property.moveKey(axis, k, Math.max(lo, Math.min(hi, tick)), value);
+            property.moveKey(axis, k, Math.max(lo, Math.min(hi, tick)), property.type().clampValue(value));
         } else if (st.dragHandle == 1) {
             property.setInHandle(axis, k, Math.min(tick, property.key(axis, k).x), value);
         } else {
@@ -1074,7 +1094,7 @@ public class AnimationTrackEditor extends TrackEditor {
         dTick = lo <= hi ? Math.max(lo, Math.min(hi, dTick)) : lo;
         for (var id : st.selectedKeys) {
             var orig = st.keyDragOrigins.get(id);
-            if (orig != null) property.moveKey(keyAxis(id), keyIndex(id), orig.x + dTick, orig.y + dVal);
+            if (orig != null) property.moveKey(keyAxis(id), keyIndex(id), orig.x + dTick, property.type().clampValue(orig.y + dVal));
         }
         ctx.refreshPreview();
         e.stopPropagation();

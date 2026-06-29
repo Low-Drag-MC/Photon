@@ -126,7 +126,7 @@ public class SubEmittersSetting extends ToggleGroup {
                 for (var value : runtime.objects.values()) {
                     if (value instanceof IParticleEmitter particleEmitter) {
                         if (inheritLifetime) {
-                            particleEmitter.setAge(father.getAge());
+                            particleEmitter.setAge((int) father.getAge());
                         }
                         if (inheritDuration) {
                             particleEmitter.self().setLifetime(father.getLifetime());
