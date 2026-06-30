@@ -15,6 +15,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.OreSprites;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import dev.vfyjxf.taffy.style.TaffyPosition;
@@ -390,16 +391,22 @@ public class AnimationTrackEditor extends TrackEditor {
 
     // ------------------------------------------------------------------ expanded panels
 
+    /** Auto-select the first property (state-only) so the curve panel isn't blank when expanded. */
+    protected void autoSelectFirstProperty(AnimationTrackUIState st, AnimationTrack animation) {
+        if (st.selectedProperty == null && !animation.properties().isEmpty()) {
+            selectPropertyState(st, animation.properties().getFirst(), -1);
+        }
+    }
+
     @Override
     public UIElement buildExpandedLeft(TimelineContext ctx, Track track, TrackUIState state) {
         var animation = (AnimationTrack) track;
         var st = (AnimationTrackUIState) state;
         // auto-select the first property so the curve panel isn't blank when expanded
-        if (st.selectedProperty == null && !animation.properties().isEmpty()) {
-            selectPropertyState(st, animation.properties().getFirst(), -1);
-        }
+        autoSelectFirstProperty(st, animation);
         var scroller = new ScrollerView();
         scroller.setId("timeline.animProperties");
+        scroller.viewPort.getStyle().background(OreSprites.RECT2);
         scroller.getLayout().widthPercent(100); // height comes from the host wrapper's flex(1)
         scroller.scrollerStyle(s -> s.mode(ScrollerMode.VERTICAL)
                 .verticalScrollDisplay(ScrollDisplay.AUTO).horizontalScrollDisplay(ScrollDisplay.NEVER));
@@ -649,7 +656,8 @@ public class AnimationTrackEditor extends TrackEditor {
     // ------------------------------------------------------------------ curve editor
 
     private float[] effectiveRange(AnimatedProperty property) {
-        var min = property.rangeMin();
+        var fixedMin = property.type().fixedRangeMin();
+        var min = fixedMin != null ? fixedMin : property.rangeMin(); // pinned bottom (e.g. speed's 0)
         var max = property.rangeMax();
         if (max <= min) max = min + 1;
         return new float[]{min, max};
@@ -700,6 +708,21 @@ public class AnimationTrackEditor extends TrackEditor {
         return min + (max - min) * (1 - (mouseY - boxY) / boxH);
     }
 
+    /** Ticks for a curve polyline: uniform across {@code [startTick, endTick]} PLUS each keyframe's exact
+     *  tick, so a near-vertical jump (adjacent keys are clamped ~0.001 ticks apart) renders vertical instead
+     *  of slanted across the 2px sampling step. Sorted ascending, de-duplicated. */
+    protected List<Float> curvePolylineTicks(AnimatedProperty property, int axis, float startTick, float endTick, float stepTicks) {
+        var set = new java.util.TreeSet<Float>();
+        for (float t = startTick; t <= endTick; t += stepTicks) set.add(t);
+        set.add(endTick);
+        var count = property.keyCount(axis);
+        for (int k = 0; k < count; k++) {
+            var kx = property.key(axis, k).x;
+            if (kx >= startTick && kx <= endTick) set.add(kx);
+        }
+        return new ArrayList<>(set);
+    }
+
     private void drawCurveEditor(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, AnimationTrackUIState st, float x, float y, float width, float height) {
         DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
         drawCurveGrid(ctx, graphics, x, y, width, height);
@@ -710,12 +733,13 @@ public class AnimationTrackEditor extends TrackEditor {
         var max = range[1];
         DrawerHelper.drawText(graphics, "%.1f".formatted(max), x + 2, y + 1, 1f, ColorPattern.WHITE.color);
         DrawerHelper.drawText(graphics, "%.1f".formatted(min), x + 2, y + height - 9, 1f, ColorPattern.WHITE.color);
+        var scroll = ctx.scrollTicks();
+        var endTick = scroll + width / ctx.scale();
         for (var axis : activeAxes(st)) {
             var channel = property.channel(axis);
             var points = new ArrayList<Vector2f>();
-            for (float px = 0; px <= width; px += 2) {
-                var tick = ctx.scrollTicks() + px / ctx.scale();
-                points.add(new Vector2f(x + px, valueToCurveY(AnimatedProperty.sampleChannel(channel, tick), y, height, min, max)));
+            for (var t : curvePolylineTicks(property, axis, scroll, endTick, 2 / ctx.scale())) {
+                points.add(new Vector2f(x + (t - scroll) * ctx.scale(), valueToCurveY(AnimatedProperty.sampleChannel(channel, t), y, height, min, max)));
             }
             DrawerHelper.drawLines(graphics, points, channelColor(axis).color, channelColor(axis).color, 0.5f);
         }
@@ -845,7 +869,8 @@ public class AnimationTrackEditor extends TrackEditor {
         // double-click the range numbers (top-left = max, bottom-left = min) to edit them inline
         if (e.x >= bx && e.x <= bx + 34) {
             if (e.y <= by + 9) { openRangeEditor(ctx, el, property, true, bh); e.stopPropagation(); return; }
-            if (e.y >= by + bh - 9) { openRangeEditor(ctx, el, property, false, bh); e.stopPropagation(); return; }
+            // a pinned bottom bound (e.g. speed's 0) is not editable
+            if (property.type().fixedRangeMin() == null && e.y >= by + bh - 9) { openRangeEditor(ctx, el, property, false, bh); e.stopPropagation(); return; }
         }
         if (track.lock()) return;
         var range = effectiveRange(property);
@@ -917,10 +942,16 @@ public class AnimationTrackEditor extends TrackEditor {
         }
         var oldMin = property.rangeMin();
         var oldMax = property.rangeMax();
+        var fixedMin = property.type().fixedRangeMin();
         float nmin = editingMax ? oldMin : v;
         float nmax = editingMax ? v : oldMax;
-        if (nmax < nmin) { var t = nmin; nmin = nmax; nmax = t; } // new max below min → swap so min <= max
-        if (nmax == nmin) nmax = nmin + 1;                        // avoid a zero-width range
+        if (fixedMin != null) {
+            nmin = fixedMin;                       // bottom is pinned
+            if (nmax <= nmin) nmax = nmin + 1;
+        } else {
+            if (nmax < nmin) { var t = nmin; nmin = nmax; nmax = t; } // new max below min → swap so min <= max
+            if (nmax == nmin) nmax = nmin + 1;                        // avoid a zero-width range
+        }
         if (nmin == oldMin && nmax == oldMax) return;
         var fMin = nmin;
         var fMax = nmax;
@@ -992,10 +1023,18 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void onCurveWheel(TimelineContext ctx, UIEvent e, AnimationTrackUIState st) {
         if (e.isShiftDown() && st.selectedProperty != null) {
-            var range = effectiveRange(st.selectedProperty);
-            var center = (range[0] + range[1]) / 2f;
-            var half = Math.max(1e-3f, (range[1] - range[0]) / 2f * (e.deltaY > 0 ? 1 / 1.1f : 1.1f));
-            st.selectedProperty.setRange(center - half, center + half);
+            var property = st.selectedProperty;
+            var range = effectiveRange(property);
+            var factor = e.deltaY > 0 ? 1 / 1.1f : 1.1f;
+            var fixedMin = property.type().fixedRangeMin();
+            if (fixedMin != null) {
+                // pinned bottom (e.g. speed): scroll scales only the top bound
+                property.setRange(fixedMin, fixedMin + Math.max(1e-3f, (range[1] - fixedMin) * factor));
+            } else {
+                var center = (range[0] + range[1]) / 2f;
+                var half = Math.max(1e-3f, (range[1] - range[0]) / 2f * factor);
+                property.setRange(center - half, center + half);
+            }
             e.stopPropagation();
         } else {
             ctx.zoom(e);

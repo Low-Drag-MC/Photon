@@ -22,7 +22,7 @@ import java.util.UUID;
  */
 public interface TimelineContext {
     int ROW_HEIGHT = 20;
-    int EXPANDED_HEIGHT = 80;
+    int EXPANDED_HEIGHT = 50;
     /** Pixels from a clip edge that count as a resize grab zone. */
     float EDGE_PX = 4;
     /** Pixel radius for clicking a keyframe point / tangent handle in the curve editor. */

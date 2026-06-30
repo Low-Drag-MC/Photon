@@ -61,6 +61,13 @@ public interface AnimatedPropertyType {
         return value;
     }
 
+    /** A pinned lower bound for the curve's display range (e.g. speed's 0): the bottom bound can't be
+     *  scrolled or edited below it and the range editor scales only the top. Null = free range. */
+    @Nullable
+    default Float fixedRangeMin() {
+        return null;
+    }
+
     /** Sample all channels at {@code time} (ticks). Default = raw per-channel curve sampling. */
     default float[] sample(AnimatedProperty property, float time) {
         var values = new float[channelCount()];

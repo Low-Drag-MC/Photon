@@ -2,12 +2,17 @@ package com.lowdragmc.photon.gui.editor.view.timeline;
 
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.data.Horizontal;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
+import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.OreSprites;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
 import com.lowdragmc.photon.client.fx.timeline.SpeedTrack;
 import com.lowdragmc.photon.client.fx.timeline.Track;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -45,6 +50,23 @@ public class SpeedTrackEditor extends AnimationTrackEditor {
         return null; // no record toggle for speed
     }
 
+    /** No property list / selection UI — just a centered "speed" label; the curve panel (expanded right)
+     *  edits the single speed property directly. */
+    @Override
+    public UIElement buildExpandedLeft(TimelineContext ctx, Track track, TrackUIState state) {
+        var st = (AnimationTrackUIState) state;
+        autoSelectFirstProperty(st, (AnimationTrack) track); // so the curve panel always edits the speed curve
+        var container = new UIElement().setId("timeline.speedLabel").layout(layout ->
+                layout.widthPercent(100).paddingAll(4)); // height from the host wrapper's flex(1)
+        container.getStyle().background(OreSprites.RECT2);
+        var label = new Label().setText(Component.translatable("photon.gui.editor.timeline.property.speed").getString());
+        label.getTextStyle().textAlignHorizontal(Horizontal.CENTER);
+        TimelineContext.styleLabel(label); // vertically centered
+        label.layout(l -> l.flex(1).heightPercent(100));
+        container.addChild(label);
+        return container;
+    }
+
     /** Draw a preview of the speed curve (+ keyframe dots) in the lane row. */
     @Override
     protected void drawLaneContent(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
@@ -60,13 +82,14 @@ public class SpeedTrackEditor extends AnimationTrackEditor {
         var pad = 2f;
         var inner = Math.max(1f, height - 2 * pad);
         var channel = property.channel(0);
-        // curve polyline (sampled across the visible width)
+        // curve polyline: uniform samples + each keyframe's exact tick (so vertical jumps stay vertical)
+        var scroll = ctx.scrollTicks();
+        var endTick = scroll + width / ctx.scale();
         var points = new ArrayList<Vector2f>();
-        for (float px = 0; px <= width; px += 2) {
-            var tick = ctx.scrollTicks() + px / ctx.scale();
-            var v = AnimatedProperty.sampleChannel(channel, tick);
+        for (var t : curvePolylineTicks(property, 0, scroll, endTick, 2 / ctx.scale())) {
+            var v = AnimatedProperty.sampleChannel(channel, t);
             var ny = Mth.clamp(y + pad + inner * (1 - (v - min) / (max - min)), y, y + height);
-            points.add(new Vector2f(x + px, ny));
+            points.add(new Vector2f(x + (t - scroll) * ctx.scale(), ny));
         }
         if (points.size() > 1) {
             DrawerHelper.drawLines(graphics, points, ColorPattern.LIGHT_BLUE.color, ColorPattern.LIGHT_BLUE.color, 0.5f);

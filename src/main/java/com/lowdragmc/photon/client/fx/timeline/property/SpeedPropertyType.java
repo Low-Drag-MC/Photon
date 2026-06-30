@@ -45,4 +45,9 @@ public class SpeedPropertyType implements AnimatedPropertyType {
     public float clampValue(float value) {
         return Math.max(0, value); // speed can't go negative
     }
+
+    @Override
+    public Float fixedRangeMin() {
+        return 0f; // bottom of the range is pinned at 0
+    }
 }
