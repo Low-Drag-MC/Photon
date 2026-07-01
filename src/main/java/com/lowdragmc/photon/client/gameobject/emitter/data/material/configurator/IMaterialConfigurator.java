@@ -5,8 +5,11 @@ import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.*;
 import com.lowdragmc.lowdraglib2.gui.ui.Style;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
+import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
+import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Setter;
 import lombok.experimental.Accessors;
@@ -45,6 +48,8 @@ public class IMaterialConfigurator extends ValueConfigurator<IMaterial> {
                     layout.heightPercent(100);
                 }).style(style -> style.backgroundTexture(DynamicTexture.of(() -> value.preview())))));
 
+        preview.addEventListener(UIEvents.MOUSE_DOWN, this::showMaterialDialog);
+
         setPastable(IMaterial.class, pasted -> {
             if (pasted != null && filter.test(pasted)) {
                 onPaste(pasted);
@@ -52,6 +57,20 @@ public class IMaterialConfigurator extends ValueConfigurator<IMaterial> {
         });
         setCopiable(IMaterial::copy);
         setCanDropPredicate(obj -> obj instanceof IMaterial && filter.test((IMaterial) obj));
+    }
+
+    protected void showMaterialDialog(UIEvent event) {
+        var previous = getValue();
+        MaterialResource.INSTANCE.getResourceInstance().createSelectorDialog(event.x, event.y, material -> {
+            if (material != null && filter.test(material)) {
+                onValueUpdatePassively(material.copy()); // copy: don't mutate the shared resource instance
+                updateValue();
+            }
+        }, () -> {
+            if (previous == null) return;
+            onValueUpdatePassively(previous);
+            updateValue();
+        }).show(getModularUI());
     }
 
     @Override

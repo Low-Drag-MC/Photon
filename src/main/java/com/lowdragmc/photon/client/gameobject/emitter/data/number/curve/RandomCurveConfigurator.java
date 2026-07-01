@@ -3,12 +3,16 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.number.curve;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.photon.gui.editor.resource.CurveResource;
+import com.lowdragmc.photon.gui.editor.resource.ResourceDialogs;
+import org.jetbrains.annotations.Nullable;
 import net.minecraft.util.Mth;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.TaffyPosition;
@@ -25,6 +29,8 @@ public class RandomCurveConfigurator extends ValueConfigurator<RandomCurve> {
     public final UIElement dialog = new UIElement();
     public final RandomCurveGraph curveGraph = new RandomCurveGraph();
     public final UIElement curvePreview = new UIElement();
+    // keep the floating editor open while a resource load/save dialog is on top
+    protected boolean keepOpen = false;
 
     public RandomCurveConfigurator(String name, Supplier<RandomCurve> supplier, Consumer<RandomCurve> onUpdate, @Nonnull RandomCurve defaultValue, boolean forceUpdate) {
         super(name, supplier, onUpdate, defaultValue, forceUpdate);
@@ -61,6 +67,8 @@ public class RandomCurveConfigurator extends ValueConfigurator<RandomCurve> {
             layout.height(14);
             layout.paddingAll(3);
         }).style(style -> style.backgroundTexture(Sprites.RECT_RD_SOLID))
+                .moveInlineAsDefault()
+                .addClass("configurator_preview_bg")
                 .addChildren(new UIElement()
                         .layout(layout -> layout.heightPercent(100))
                         .style(style -> style.backgroundTexture(DynamicTexture.of(() -> new RandomCurveTexture(value.getCurves0(), value.getCurves1()))))
@@ -82,10 +90,57 @@ public class RandomCurveConfigurator extends ValueConfigurator<RandomCurve> {
         }).addChildren(upperBound, lowerBound), curveGraph.layout(layout -> {
             layout.heightPercent(100);
             layout.flex(1);
-        }));
+        }), createResourceButtons());
         this.dialog.setFocusable(true);
-        this.dialog.setEnforceFocus(e -> hide());
+        this.dialog.setEnforceFocus(e -> {
+            if (!keepOpen) hide();
+        });
         this.dialog.addEventListener(UIEvents.LAYOUT_CHANGED, e -> dialog.adaptPositionToScreen());
+        this.dialog.moveInlineAsDefault().addClass("panel_bg");
+    }
+
+    protected UIElement createResourceButtons() {
+        return new UIElement().layout(layout -> {
+            layout.heightPercent(100);
+            layout.width(14);
+            layout.marginLeft(2);
+            layout.flexDirection(FlexDirection.COLUMN);
+            layout.gapAll(2);
+        }).addChildren(
+                ResourceDialogs.iconButton(Icons.IMPORT, "photon.resource.load_from_resource", this::onLoadFromResource)
+                        .layout(layout -> layout.widthPercent(100)),
+                ResourceDialogs.iconButton(Icons.SAVE, "photon.resource.save_to_resource", this::onSaveToResource)
+                        .layout(layout -> layout.widthPercent(100)));
+    }
+
+    protected void onLoadFromResource(UIEvent event) {
+        keepOpen = true;
+        holdOpen(ResourceDialogs.showLoadDialog(CurveResource.INSTANCE, getModularUI(), event.x, event.y, curves -> {
+            if (curves.curves1 == null || value == null) return;
+            value.getCurves0().deserializeNBT(Platform.getFrozenRegistry(), curves.curves0.serializeNBT(Platform.getFrozenRegistry()));
+            value.getCurves1().deserializeNBT(Platform.getFrozenRegistry(), curves.curves1.serializeNBT(Platform.getFrozenRegistry()));
+            this.curveGraph.setValue(new Pair<>(value.getCurves0(), value.getCurves1()), false);
+            updateValue();
+        }));
+    }
+
+    protected void onSaveToResource(UIEvent event) {
+        keepOpen = true;
+        holdOpen(ResourceDialogs.showSaveDialog(CurveResource.INSTANCE, getModularUI(), event.x, event.y, () -> {
+            var pair = curveGraph.getValue();
+            return new CurveResource.Curves(pair.getA().copy(), pair.getB().copy());
+        }));
+    }
+
+    private void holdOpen(@Nullable Dialog sub) {
+        if (sub == null) {
+            keepOpen = false;
+            return;
+        }
+        sub.setOnClose(() -> {
+            keepOpen = false;
+            this.dialog.focus();
+        });
     }
 
     @Override

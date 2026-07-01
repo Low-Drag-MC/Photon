@@ -2,17 +2,23 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.number.color;
 
 import com.lowdragmc.lowdraglib2.client.shader.LDLibRenderTypes;
 import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.photon.gui.editor.resource.GradientResource;
+import com.lowdragmc.photon.gui.editor.resource.ResourceDialogs;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
+import dev.vfyjxf.taffy.style.AlignContent;
+import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.TaffyPosition;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.Nonnull;
 import java.util.function.Consumer;
@@ -21,6 +27,8 @@ import java.util.function.Supplier;
 public class GradientColorConfigurator extends ValueConfigurator<GradientColor> {
     public final GradientColorSelector gradientSelector;
     public final UIElement colorPreview;
+    // keep the floating editor open while a resource load/save dialog is on top
+    protected boolean keepOpen = false;
 
     public GradientColorConfigurator(String name, Supplier<GradientColor> supplier, Consumer<GradientColor> onUpdate, @Nonnull GradientColor defaultValue, boolean forceUpdate) {
         super(name, supplier, onUpdate, defaultValue, forceUpdate);
@@ -38,21 +46,73 @@ public class GradientColorConfigurator extends ValueConfigurator<GradientColor> 
             layout.minWidth(100);
             layout.paddingAll(4);
         });
+        this.gradientSelector.moveInlineAsDefault().addClass("panel_bg");
         this.gradientSelector.setOnColorGradientChangeListener(this::updateValueActively);
         this.gradientSelector.setFocusable(true);
-        this.gradientSelector.setEnforceFocus(e -> hide());
+        this.gradientSelector.setEnforceFocus(e -> {
+            if (!keepOpen) hide();
+        });
         this.gradientSelector.addEventListener(UIEvents.LAYOUT_CHANGED, e -> gradientSelector.adaptPositionToScreen());
+        this.gradientSelector.addChild(createResourceButtons());
 
         inlineContainer.addChildren(colorPreview = new UIElement().layout(layout -> {
             layout.height(14);
             layout.paddingAll(3);
         }).style(style -> style.backgroundTexture(Sprites.RECT_RD_SOLID))
+                .moveInlineAsDefault()
+                .addClass("configurator_preview_bg")
                 .addChildren(new UIElement()
                         .layout(layout -> layout.heightPercent(100))
                         .style(style -> style.backgroundTexture(this::drawColorPreview))
                         .addEventListener(UIEvents.MOUSE_DOWN, this::onClick)));
 
         this.gradientSelector.setValue(value, false);
+    }
+
+    protected UIElement createResourceButtons() {
+        return new UIElement().layout(layout -> {
+            layout.widthPercent(100);
+            layout.flexDirection(FlexDirection.ROW);
+            layout.justifyContent(AlignContent.FLEX_END);
+            layout.gapAll(2);
+            layout.marginTop(2);
+        }).addChildren(
+                ResourceDialogs.iconButton(Icons.IMPORT, "photon.resource.load_from_resource", this::onLoadFromResource)
+                        .layout(layout -> {
+                            layout.width(14);
+                            layout.height(14);
+                        }),
+                ResourceDialogs.iconButton(Icons.SAVE, "photon.resource.save_to_resource", this::onSaveToResource)
+                        .layout(layout -> {
+                            layout.width(14);
+                            layout.height(14);
+                        }));
+    }
+
+    protected void onLoadFromResource(UIEvent event) {
+        keepOpen = true;
+        holdOpen(ResourceDialogs.showLoadDialog(GradientResource.INSTANCE, getModularUI(), event.x, event.y, gradients -> {
+            if (value == null) return;
+            onValueUpdatePassively(gradients.gradient0.copy());
+            updateValue();
+        }));
+    }
+
+    protected void onSaveToResource(UIEvent event) {
+        keepOpen = true;
+        holdOpen(ResourceDialogs.showSaveDialog(GradientResource.INSTANCE, getModularUI(), event.x, event.y,
+                () -> new GradientResource.Gradients(gradientSelector.getValue().copy())));
+    }
+
+    private void holdOpen(@Nullable Dialog sub) {
+        if (sub == null) {
+            keepOpen = false;
+            return;
+        }
+        sub.setOnClose(() -> {
+            keepOpen = false;
+            this.gradientSelector.focus();
+        });
     }
 
     @Override
