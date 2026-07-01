@@ -155,11 +155,6 @@ public class AraTrailParticle implements IParticle {
         return new Vector3f(prevPosition);
     }
 
-    private float getDeltaTime() {
-        return emitter.getDeltaTime() * emitter.timeScale() / 20; // speed track scales the render-driven trail
-//        return timescale == Timescale.Unscaled ? Time.getUnscaledDeltaTime() : Time.getDeltaTime();
-    }
-
     private float getFixedDeltaTime() {
 //        return timescale == Timescale.Unscaled ? Time.getFixedUnscaledDeltaTime() : Time.getFixedDeltaTime();
         return 0.05f; // 1 / 20f;
@@ -240,19 +235,28 @@ public class AraTrailParticle implements IParticle {
         prevPosition = getWorldPosition();
     }
 
+    /**
+     * Advances the whole trail simulation in the deterministic fixed-tick path (so {@code simulateTo}
+     * reproduces it exactly — seek == play — unlike the old render-driven emission). Runs once per tick,
+     * aligned to MC's 20 TPS like every other particle; {@code dt} is in ticks and already carries the
+     * speed-track {@code timeScale}. Samples the emitter's current-tick pose ({@code partialTicks} 1) and
+     * mirrors {@link #warmup()}'s step order.
+     */
     @Override
     public void updateTick(float dt) {
-        updatePhysics(dt);
-    }
-
-    /**
-     * Updates point physics.
-     */
-    private void updatePhysics(float dt) {
+        if (dt <= 0) return;
         if (onUpdate != null) onUpdate.run();
-        if (!config.physicsSetting.isEnable())
-            return;
-        physicsStep(0.02f * dt);
+        float timeStep = dt / 20f;      // 1/20 s per tick, already timeScale-scaled via dt
+        updateDynamicData(1);           // current-tick emitter pose (no head lag)
+        if (!isRemoved) {
+            updateVelocity(timeStep);
+            if (config.physicsSetting.isEnable()) physicsStep(timeStep);
+            emissionStep(timeStep);
+            snapLastPointToTransform();
+        } else if (config.physicsSetting.isEnable()) {
+            physicsStep(timeStep);
+        }
+        updatePointsLifecycle(timeStep);
     }
 
     private void emissionStep(float time) {
@@ -555,16 +559,8 @@ public class AraTrailParticle implements IParticle {
      */
     @Override
     public void render(VertexConsumer buffer, Camera camera, float partialTicks) {
-        var deltaTime = getDeltaTime();
+        // Draw-only: the trail is simulated deterministically in updateTick(), never here (see class notes).
         updateDynamicData(partialTicks);
-        if (deltaTime > EPSILON) {
-            if(!isRemoved){
-                updateVelocity(deltaTime);
-                emissionStep(deltaTime);
-                snapLastPointToTransform();
-            }
-            updatePointsLifecycle(deltaTime);
-        }
         clearMeshData();
 
         // We need at least two points to create a trail mesh.
@@ -572,19 +568,57 @@ public class AraTrailParticle implements IParticle {
             var worldToTrail = getWorldToTrail();
             Vector3f localCamPosition = worldToTrail.transformPosition(camera.getPosition().toVector3f());
 
-            // get discontinuous point indices:
-            discontinuities.clear();
-            for (int i = 0; i < points.size(); ++i)
-                if (points.get(i).discontinuous || i == points.size() - 1) discontinuities.add(i);
-
-            // generate mesh for each trail segment:
-            int start = 0;
-            for (int i = 0; i < discontinuities.size(); ++i) {
-                updateSegmentMesh(start, discontinuities.getInt(i), localCamPosition, partialTicks);
-                start = discontinuities.getInt(i) + 1;
+            // ---- per-frame tail smoothing (render-only, non-destructive; restored in finally) ----
+            // The sim removes points at the 20 TPS tick, so the tail would pop a whole segment each 0.05s.
+            // Here we "age" the trail by the current frame fraction so the tail recedes continuously between
+            // ticks: (1) subtract the elapsed life from every point (the smoothness>1 spline then trims dying
+            // sub-points via its life-cull, and segment-over-time tapers advance smoothly), and (2) for the
+            // flat smoothness<=1 path, geometrically retract the oldest point toward the next as it dies so its
+            // last segment shrinks to zero instead of vanishing. All reverted after the mesh build.
+            float ageAmt = partialTicks * emitter.timeScale() / 20f;   // life (seconds) elapsed since last tick
+            float[] savedLives = new float[points.size()];
+            for (int i = 0; i < points.size(); ++i) {
+                savedLives[i] = points.get(i).life;
+                points.get(i).life -= ageAmt;
+            }
+            Point tail = points.getFirst();
+            Vector3f savedTail = null;
+            if (config.smoothness <= 1 && !tail.discontinuous && tail.life < 0) {
+                var next = points.get(1);
+                float lerpDur = next.life - tail.life;   // segment life span (aging cancels in the difference)
+                if (lerpDur > EPSILON) {
+                    float f = Mth.clamp(-tail.life / lerpDur, 0f, 1f);
+                    savedTail = new Vector3f(tail.position);
+                    tail.position = new Vector3f(savedTail).lerp(next.position, f);
+                }
             }
 
-            renderMesh(buffer, camera);
+            // Keep the head smooth between ticks: move the stored last point to the partial-tick-interpolated
+            // emitter position for the mesh build only, then restore it so the tick sim never sees it (render
+            // and tick are both on the client thread, sequential — no concurrent observation).
+            Point head = (!isRemoved && config.emit && !points.getLast().discontinuous) ? points.getLast() : null;
+            Vector3f savedHead = head == null ? null : new Vector3f(head.position);
+            if (head != null) head.position = worldToTrail.transformPosition(getWorldPosition());
+
+            try {
+                // get discontinuous point indices:
+                discontinuities.clear();
+                for (int i = 0; i < points.size(); ++i)
+                    if (points.get(i).discontinuous || i == points.size() - 1) discontinuities.add(i);
+
+                // generate mesh for each trail segment:
+                int start = 0;
+                for (int i = 0; i < discontinuities.size(); ++i) {
+                    updateSegmentMesh(start, discontinuities.getInt(i), localCamPosition, partialTicks);
+                    start = discontinuities.getInt(i) + 1;
+                }
+
+                renderMesh(buffer, camera);
+            } finally {
+                for (int i = 0; i < points.size(); ++i) points.get(i).life = savedLives[i];
+                if (savedTail != null) tail.position = savedTail;
+                if (head != null) head.position = savedHead; // restore before any tick observes it
+            }
         }
     }
 
