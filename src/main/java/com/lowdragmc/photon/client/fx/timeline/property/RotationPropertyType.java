@@ -73,6 +73,7 @@ public class RotationPropertyType extends TransformPropertyType {
         var rotation = new RotationAnimatedProperty(this, fixedBase, channels,
                 tag.getFloat("rangeMin"), tag.getFloat("rangeMax"));
         rotation.interpMode(InterpMode.byOrdinal(tag.getInt("interp")));
+        AnimatedProperty.readModes(tag, rotation);
         return rotation;
     }
 
@@ -94,6 +95,10 @@ public class RotationPropertyType extends TransformPropertyType {
                 && rotation.interpMode() == InterpMode.SHORTEST;
         var values = new float[channelCount()];
         for (int i = 0; i < values.length; i++) {
+            if (property.isExpression(i)) {
+                values[i] = property.sampleChannelValue(i, time); // expression channels bypass angle-unwrap
+                continue;
+            }
             var channel = shortest ? unwrap(property.channel(i)) : property.channel(i);
             values[i] = AnimatedProperty.sampleChannel(channel, time);
         }

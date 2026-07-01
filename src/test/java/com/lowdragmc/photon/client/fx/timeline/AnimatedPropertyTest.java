@@ -31,4 +31,23 @@ class AnimatedPropertyTest {
         assertEquals(2, p.keyCount(0), "re-keying the same tick reuses it");
         assertEquals(7f, p.key(0, i).y, 1e-4);
     }
+
+    @Test
+    void expressionChannelSamplesFunctionOfTime() {
+        var p = singleChannelAt(0);
+        p.setMode(0, AnimatedProperty.ChannelMode.EXPRESSION);
+        p.setExpression(0, "t * 2 + 1");
+        assertNull(p.exprError(0), "a valid expression has no error");
+        assertEquals(1f, p.sampleChannelValue(0, 0), 1e-4);
+        assertEquals(7f, p.sampleChannelValue(0, 3), 1e-4);
+    }
+
+    @Test
+    void invalidExpressionReportsErrorAndFallsBackToBase() {
+        var p = singleChannelAt(5); // base value 5
+        p.setMode(0, AnimatedProperty.ChannelMode.EXPRESSION);
+        p.setExpression(0, "sin("); // malformed
+        assertNotNull(p.exprError(0), "a malformed expression reports a syntax error");
+        assertEquals(5f, p.sampleChannelValue(0, 2), 1e-4, "falls back to the captured base value");
+    }
 }

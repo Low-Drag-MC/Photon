@@ -6,7 +6,6 @@ import com.lowdragmc.lowdraglib2.gui.ui.data.Horizontal;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.OreSprites;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
-import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
 import com.lowdragmc.photon.client.fx.timeline.SpeedTrack;
 import com.lowdragmc.photon.client.fx.timeline.Track;
@@ -81,13 +80,12 @@ public class SpeedTrackEditor extends AnimationTrackEditor {
         if (max <= min) max = min + 1;
         var pad = 2f;
         var inner = Math.max(1f, height - 2 * pad);
-        var channel = property.channel(0);
         // curve polyline: uniform samples + each keyframe's exact tick (so vertical jumps stay vertical)
         var scroll = ctx.scrollTicks();
         var endTick = scroll + width / ctx.scale();
         var points = new ArrayList<Vector2f>();
         for (var t : curvePolylineTicks(property, 0, scroll, endTick, 2 / ctx.scale())) {
-            var v = AnimatedProperty.sampleChannel(channel, t);
+            var v = property.sampleChannelValue(0, t);
             var ny = Mth.clamp(y + pad + inner * (1 - (v - min) / (max - min)), y, y + height);
             points.add(new Vector2f(x + (t - scroll) * ctx.scale(), ny));
         }

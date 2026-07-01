@@ -2,6 +2,8 @@ package com.lowdragmc.photon.gui.editor.view.timeline;
 
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
@@ -613,7 +615,7 @@ public class AnimationTrackEditor extends TrackEditor {
         selectPropertyState(st, property, axis);
         st.explicitSelection = true;
         ctx.setActiveTrack(track);
-        inspectProperty(ctx, track, property);
+        inspectChannel(ctx, track, property, axis);
     }
 
     /** State-only selection (used on rebuild auto-select; does not touch the inspector or active track). */
@@ -625,11 +627,15 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selectedKeys.clear();
     }
 
-    /** Inspect a property's configurator (e.g. rotation interp mode); falls back to the track config.
-     *  Inspector edits are made undoable via property copy/restoreFrom snapshots. */
-    private void inspectProperty(TimelineContext ctx, AnimationTrack track, AnimatedProperty property) {
+    /** Inspect the channel a selection controls: a per-channel curve/expression mode switch (+ the
+     *  expression text field when in expression mode), plus the property type's own config (e.g. rotation
+     *  interp mode) or the track config. The controlled channel is the selected sub-axis, or channel 0 for a
+     *  single-channel property, or none (-1) for a multi-channel property row. Edits are undoable via the
+     *  property copy/restoreFrom snapshot pattern. */
+    private void inspectChannel(TimelineContext ctx, AnimationTrack track, AnimatedProperty property, int axis) {
+        var channel = axis >= 0 ? axis : (property.channelCount() == 1 ? 0 : -1);
         var before = new AnimatedProperty[]{property.copy()};
-        var cfg = property.inspect(() -> {
+        Runnable onChanged = () -> {
             var prev = before[0];
             var after = property.copy();
             before[0] = after;
@@ -637,8 +643,45 @@ public class AnimationTrackEditor extends TrackEditor {
                     () -> { property.restoreFrom(after); ctx.refreshPreview(); },
                     () -> { property.restoreFrom(prev); ctx.refreshPreview(); });
             ctx.refreshPreview();
+        };
+        var cfg = IConfigurable.create(group -> {
+            if (channel >= 0 && canEditProperties()) {
+                // the expression field is always built but only shown in expression mode (toggled in place,
+                // so the mode selector's own callback never has to rebuild the live inspector)
+                var exprField = new StringConfigurator(
+                        "photon.gui.editor.timeline.property.expression",
+                        () -> property.expression(channel),
+                        expr -> { property.setExpression(channel, expr); onChanged.run(); },
+                        "", true).setTips(
+                        Component.translatable("photon.gui.editor.timeline.property.expression.tips.0"),
+                        Component.translatable("photon.gui.editor.timeline.property.expression.tips.1"),
+                        Component.translatable("photon.gui.editor.timeline.property.expression.tips.2"));
+                exprField.setDisplay(property.isExpression(channel));
+                group.addConfigurator(new SelectorConfigurator<>(
+                        "photon.gui.editor.timeline.channel_mode",
+                        () -> property.mode(channel),
+                        mode -> {
+                            property.setMode(channel, mode);
+                            onChanged.run();
+                            exprField.setDisplay(mode == AnimatedProperty.ChannelMode.EXPRESSION);
+                        },
+                        property.mode(channel), true,
+                        List.of(AnimatedProperty.ChannelMode.values()),
+                        mode -> Component.translatable(channelModeKey(mode)).getString()));
+                group.addConfigurator(exprField);
+            }
+            var typeCfg = property.inspect(onChanged);
+            if (typeCfg != null) {
+                typeCfg.buildConfigurator(group);
+            } else if (channel < 0) {
+                trackConfigurator(ctx, track).buildConfigurator(group);
+            }
         });
-        ctx.inspectProperty(track, cfg != null ? cfg : trackConfigurator(ctx, track));
+        ctx.inspectProperty(track, cfg);
+    }
+
+    private static String channelModeKey(AnimatedProperty.ChannelMode mode) {
+        return "photon.gui.editor.timeline.channel_mode." + mode.name().toLowerCase();
     }
 
     private static String propertyKey(AnimatedPropertyType type) {
@@ -735,15 +778,31 @@ public class AnimationTrackEditor extends TrackEditor {
         DrawerHelper.drawText(graphics, "%.1f".formatted(min), x + 2, y + height - 9, 1f, ColorPattern.WHITE.color);
         var scroll = ctx.scrollTicks();
         var endTick = scroll + width / ctx.scale();
-        for (var axis : activeAxes(st)) {
-            var channel = property.channel(axis);
+        var axes = activeAxes(st);
+        // a single selected expression channel with a syntax error: show the message instead of a curve
+        if (axes.length == 1 && property.isExpression(axes[0]) && property.exprError(axes[0]) != null) {
+            DrawerHelper.drawText(graphics, Component.translatable("photon.gui.editor.timeline.expression_error").getString(),
+                    x + 4, y + height / 2f - 4, 1f, ColorPattern.RED.color);
+            return;
+        }
+        var step = 2 / ctx.scale();
+        for (var axis : axes) {
             var points = new ArrayList<Vector2f>();
-            for (var t : curvePolylineTicks(property, axis, scroll, endTick, 2 / ctx.scale())) {
-                points.add(new Vector2f(x + (t - scroll) * ctx.scale(), valueToCurveY(AnimatedProperty.sampleChannel(channel, t), y, height, min, max)));
+            if (property.isExpression(axis)) {
+                // expression preview: read-only, uniform sampling (no keyframe ticks)
+                for (float t = scroll; t <= endTick; t += step) {
+                    points.add(new Vector2f(x + (t - scroll) * ctx.scale(), valueToCurveY(property.sampleChannelValue(axis, t), y, height, min, max)));
+                }
+            } else {
+                var channel = property.channel(axis);
+                for (var t : curvePolylineTicks(property, axis, scroll, endTick, step)) {
+                    points.add(new Vector2f(x + (t - scroll) * ctx.scale(), valueToCurveY(AnimatedProperty.sampleChannel(channel, t), y, height, min, max)));
+                }
             }
             DrawerHelper.drawLines(graphics, points, channelColor(axis).color, channelColor(axis).color, 0.5f);
         }
-        for (var axis : activeAxes(st)) {
+        for (var axis : axes) {
+            if (property.isExpression(axis)) continue; // expression channels have no keyframes
             var count = property.keyCount(axis);
             for (int k = 0; k < count; k++) {
                 var key = property.key(axis, k);
@@ -754,8 +813,9 @@ public class AnimationTrackEditor extends TrackEditor {
                 DrawerHelper.drawSolidRect(graphics, kx - 2, ky - 2, 4, 4, (selected ? ColorPattern.WHITE : ColorPattern.ORANGE).color);
             }
         }
-        // tangent handles only when exactly one key is selected
+        // tangent handles only when exactly one key is selected (curve channels only)
         if (st.selectedKeys.size() == 1 && st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)
+                && !property.isExpression(st.selKeyAxis)
                 && st.selKeyIndex >= 0 && st.selKeyIndex < property.keyCount(st.selKeyAxis)) {
             var key = property.key(st.selKeyAxis, st.selKeyIndex);
             var kx = tickToCurveX(ctx, key.x, x);
@@ -883,12 +943,13 @@ public class AnimationTrackEditor extends TrackEditor {
         } else {
             var best = Float.MAX_VALUE;
             for (var a : axes) {
+                if (property.isExpression(a)) continue; // can't add keys to an expression channel
                 var cy = valueToCurveY(AnimatedProperty.sampleChannel(property.channel(a), tick), by, bh, range[0], range[1]);
                 var d = Math.abs(e.y - cy);
                 if (d < best) { best = d; axis = a; }
             }
         }
-        if (axis < 0) return;
+        if (axis < 0 || property.isExpression(axis)) return; // expression channels are non-interactive
         var before = property.snapshotChannels();
         var newIndex = property.addKey(axis, tick, property.type().clampValue(cursorValue));
         if (newIndex < 0) return;
@@ -1044,6 +1105,7 @@ public class AnimationTrackEditor extends TrackEditor {
     @Nullable
     private int[] hitKey(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, float bx, float by, float bh, float[] range, float mx, float my) {
         for (var axis : activeAxes(st)) {
+            if (property.isExpression(axis)) continue; // expression channels are non-interactive
             var count = property.keyCount(axis);
             for (int k = 0; k < count; k++) {
                 var key = property.key(axis, k);
@@ -1166,6 +1228,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var range = effectiveRange(property);
         if (!st.keyMarqueeAdditive) st.selectedKeys.clear();
         for (var axis : activeAxes(st)) {
+            if (property.isExpression(axis)) continue; // expression channels have no keyframes
             var count = property.keyCount(axis);
             for (int k = 0; k < count; k++) {
                 var key = property.key(axis, k);

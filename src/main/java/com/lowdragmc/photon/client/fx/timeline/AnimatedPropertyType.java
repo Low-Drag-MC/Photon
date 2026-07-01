@@ -68,11 +68,11 @@ public interface AnimatedPropertyType {
         return null;
     }
 
-    /** Sample all channels at {@code time} (ticks). Default = raw per-channel curve sampling. */
+    /** Sample all channels at {@code time} (ticks). Default = per-channel value (curve or expression). */
     default float[] sample(AnimatedProperty property, float time) {
         var values = new float[channelCount()];
         for (int i = 0; i < values.length; i++) {
-            values[i] = AnimatedProperty.sampleChannel(property.channel(i), time);
+            values[i] = property.sampleChannelValue(i, time);
         }
         return values;
     }
@@ -100,6 +100,7 @@ public interface AnimatedPropertyType {
         tag.put("channels", chs);
         tag.putFloat("rangeMin", property.rangeMin());
         tag.putFloat("rangeMax", property.rangeMax());
+        AnimatedProperty.writeModes(tag, property);
         return tag;
     }
 
@@ -110,7 +111,9 @@ public interface AnimatedPropertyType {
         // tolerate a base shorter/longer than the current channel count (type changed)
         var fixedBase = new float[channelCount()];
         System.arraycopy(base, 0, fixedBase, 0, Math.min(base.length, fixedBase.length));
-        return new AnimatedProperty(this, fixedBase, channels, tag.getFloat("rangeMin"), tag.getFloat("rangeMax"));
+        var property = new AnimatedProperty(this, fixedBase, channels, tag.getFloat("rangeMin"), tag.getFloat("rangeMax"));
+        AnimatedProperty.readModes(tag, property);
+        return property;
     }
 
     /** Build an inspector configurator for {@code property} (e.g. rotation interp mode), or {@code null}.

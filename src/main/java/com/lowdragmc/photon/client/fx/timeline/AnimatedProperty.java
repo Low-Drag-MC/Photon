@@ -5,16 +5,24 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
+import expr.Expr;
+import expr.Parser;
+import expr.SyntaxException;
+import expr.Variable;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
+import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import org.joml.Vector2f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.TreeSet;
 
 /**
@@ -33,11 +41,34 @@ import java.util.TreeSet;
  * {@code com.lowdragmc.photon.client.fx.timeline.property.RotationAnimatedProperty}).
  */
 public class AnimatedProperty {
+    /** How a single channel produces its value: keyframe {@link ECBCurves} or a {@code y = f(t)} expression. */
+    public enum ChannelMode {
+        CURVE, EXPRESSION;
+
+        public static ChannelMode byOrdinal(int ordinal) {
+            var values = values();
+            return ordinal >= 0 && ordinal < values.length ? values[ordinal] : CURVE;
+        }
+    }
+
+    /** Expression variables (interned, shared across all properties — eval is synchronous so this is safe). */
+    private static final Variable T = Variable.make("t");
+    private static final Variable PI = Variable.make("PI");
+    static {
+        PI.setValue(Math.PI);
+    }
+
     protected final AnimatedPropertyType type;
     private final float[] base;          // captured authored value, one per channel
     private final ECBCurves[] channels;  // one keyframe curve per channel
+    private final ChannelMode[] modes;   // per-channel source (curve / expression), default CURVE
+    private final String[] expressions;  // per-channel y=f(t) source (used when mode == EXPRESSION)
     private float rangeMin;              // shared display value range (one Y axis for all channels)
     private float rangeMax;
+    // transient expression parse cache (rebuilt lazily, never serialized/copied)
+    private final transient Expr[] exprCache;
+    private final transient String[] exprErrorCache;
+    private final transient String[] exprParsedInput;
 
     public AnimatedProperty(AnimatedPropertyType type, float[] base, ECBCurves[] channels,
                             float rangeMin, float rangeMax) {
@@ -46,6 +77,14 @@ public class AnimatedProperty {
         this.channels = channels;
         this.rangeMin = rangeMin;
         this.rangeMax = rangeMax;
+        var n = channels.length;
+        this.modes = new ChannelMode[n];
+        Arrays.fill(this.modes, ChannelMode.CURVE);
+        this.expressions = new String[n];
+        Arrays.fill(this.expressions, "");
+        this.exprCache = new Expr[n];
+        this.exprErrorCache = new String[n];
+        this.exprParsedInput = new String[n];
     }
 
     /** Seed one zero-width (single-keyframe) channel per base value. */
@@ -80,6 +119,64 @@ public class AnimatedProperty {
 
     public ECBCurves channel(int axis) {
         return channels[axis];
+    }
+
+    // ------------------------------------------------------------------ per-channel mode / expression
+
+    public ChannelMode mode(int axis) {
+        return modes[axis];
+    }
+
+    public void setMode(int axis, ChannelMode mode) {
+        modes[axis] = mode;
+    }
+
+    public boolean isExpression(int axis) {
+        return modes[axis] == ChannelMode.EXPRESSION;
+    }
+
+    public String expression(int axis) {
+        return expressions[axis];
+    }
+
+    public void setExpression(int axis, String expression) {
+        expressions[axis] = expression == null ? "" : expression;
+    }
+
+    /** (Re)parse the channel's expression when its source changed, caching the {@link Expr} or the error. */
+    private void ensureParsed(int axis) {
+        if (Objects.equals(exprParsedInput[axis], expressions[axis])) return;
+        exprParsedInput[axis] = expressions[axis];
+        try {
+            exprCache[axis] = Parser.parse(expressions[axis]);
+            exprErrorCache[axis] = null;
+        } catch (SyntaxException e) {
+            exprCache[axis] = null;
+            exprErrorCache[axis] = e.getMessage();
+        }
+    }
+
+    /** Sample one channel at {@code time} (ticks), honoring its {@link ChannelMode}. Expression channels
+     *  evaluate {@code y = f(t)}; a parse/eval failure falls back to the captured base value. */
+    public float sampleChannelValue(int axis, float time) {
+        if (modes[axis] == ChannelMode.EXPRESSION) {
+            ensureParsed(axis);
+            if (exprCache[axis] != null) {
+                T.setValue(time);
+                var v = exprCache[axis].value();
+                if (Double.isFinite(v)) return (float) v;
+            }
+            return base[axis];
+        }
+        return sampleChannel(channels[axis], time);
+    }
+
+    /** The channel's expression syntax error (null if curve mode or the expression parses). */
+    @Nullable
+    public String exprError(int axis) {
+        if (modes[axis] != ChannelMode.EXPRESSION) return null;
+        ensureParsed(axis);
+        return exprErrorCache[axis];
     }
 
     public float rangeMin() {
@@ -127,11 +224,13 @@ public class AnimatedProperty {
         type.apply(target, base());
     }
 
-    /** Distinct keyframe times (segment endpoints) across all channels, for the collapsed-lane dots. */
+    /** Distinct keyframe times (segment endpoints) across all curve channels, for the collapsed-lane dots.
+     *  Expression channels have no keyframes, so they're skipped (no misleading dots / track length). */
     public List<Double> keyframeTimes() {
         var times = new TreeSet<Double>();
-        for (var channel : channels) {
-            for (var segment : channel.getSegments()) {
+        for (int axis = 0; axis < channels.length; axis++) {
+            if (isExpression(axis)) continue;
+            for (var segment : channels[axis].getSegments()) {
                 times.add((double) segment.p0.x);
                 times.add((double) segment.p1.x);
             }
@@ -303,11 +402,20 @@ public class AnimatedProperty {
         }
     }
 
-    /** Restore channels + range (+ subclass extras) from another property (for inspector-edit undo). */
+    /** Restore channels + range + per-channel modes (+ subclass extras) from another property (undo). */
     public void restoreFrom(AnimatedProperty other) {
         restoreChannels(other.snapshotChannels());
         setRange(other.rangeMin, other.rangeMax);
+        restoreModesFrom(other);
         restoreExtraFrom(other);
+    }
+
+    /** Copy per-channel mode + expression source from {@code other} into this property. */
+    protected void restoreModesFrom(AnimatedProperty other) {
+        for (int i = 0; i < modes.length && i < other.modes.length; i++) {
+            modes[i] = other.modes[i];
+            expressions[i] = other.expressions[i];
+        }
     }
 
     /** Hook for subclasses to restore their extra state (e.g. rotation interp mode). */
@@ -315,7 +423,9 @@ public class AnimatedProperty {
     }
 
     public AnimatedProperty copy() {
-        return new AnimatedProperty(type, base.clone(), snapshotChannels(), rangeMin, rangeMax);
+        var copy = new AnimatedProperty(type, base.clone(), snapshotChannels(), rangeMin, rangeMax);
+        copy.restoreModesFrom(this);
+        return copy;
     }
 
     /** Build a configurator for this property's inspector (e.g. rotation interp mode), or {@code null}. */
@@ -373,5 +483,28 @@ public class AnimatedProperty {
             }
         }
         return channels;
+    }
+
+    /** Write the per-channel modes + expression sources (counterpart of {@link #readModes}). */
+    public static void writeModes(CompoundTag tag, AnimatedProperty property) {
+        var modes = new ListTag();
+        var exprs = new ListTag();
+        for (int i = 0; i < property.channelCount(); i++) {
+            modes.add(IntTag.valueOf(property.mode(i).ordinal()));
+            exprs.add(StringTag.valueOf(property.expression(i)));
+        }
+        tag.put("modes", modes);
+        tag.put("exprs", exprs);
+    }
+
+    /** Read the per-channel modes + expression sources onto {@code property} (tolerant of missing/short
+     *  lists from old saves → channels default to {@link ChannelMode#CURVE}). */
+    public static void readModes(CompoundTag tag, AnimatedProperty property) {
+        var modes = tag.getList("modes", Tag.TAG_INT);
+        var exprs = tag.getList("exprs", Tag.TAG_STRING);
+        for (int i = 0; i < property.channelCount(); i++) {
+            if (i < modes.size()) property.setMode(i, ChannelMode.byOrdinal(modes.getInt(i)));
+            if (i < exprs.size()) property.setExpression(i, exprs.getString(i));
+        }
     }
 }
