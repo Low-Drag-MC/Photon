@@ -654,9 +654,12 @@ public class AraTrailParticle implements IParticle {
 
             totalLength = Math.max(totalLength, EPSILON);
             float partialLength = 0;
+            // U runs along the trail length. Anchor U at the head (newest point) and decrease toward the
+            // tail so the direction matches TrailParticle: head -> U=1, tail -> U=0 (WorldTile derives U
+            // from texcoord below and is unaffected).
             float vCoord = config.textureMode == AraTrailConfig.TextureMode.Stretch ?
-                    0 :
-                    -config.uvFactor * totalLength * config.tileAnchor;
+                    config.uvFactor :
+                    config.uvFactor * totalLength * (1 - config.tileAnchor);
 
             if (config.sorting == AraTrailConfig.TrailSorting.NewerOnTop)
                 vCoord = 1 - vCoord;
@@ -759,7 +762,7 @@ public class AraTrailParticle implements IParticle {
 
                 // Update vcoord:
                 float uvDelta = (config.textureMode == AraTrailConfig.TextureMode.Stretch ? sectionLength / totalLength : sectionLength);
-                vCoord += config.uvFactor * (config.sorting == AraTrailConfig.TrailSorting.NewerOnTop ? -uvDelta : uvDelta);
+                vCoord += config.uvFactor * (config.sorting == AraTrailConfig.TrailSorting.NewerOnTop ? uvDelta : -uvDelta);
             }
         }
     }
