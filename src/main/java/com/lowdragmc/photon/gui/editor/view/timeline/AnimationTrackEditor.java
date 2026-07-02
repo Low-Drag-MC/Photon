@@ -2,7 +2,6 @@ package com.lowdragmc.photon.gui.editor.view.timeline;
 
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
-import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -25,6 +24,7 @@ import org.lwjgl.glfw.GLFW;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
+import com.lowdragmc.photon.client.fx.timeline.ExprClip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
@@ -63,6 +63,14 @@ public class AnimationTrackEditor extends TrackEditor {
         @Nullable AnimatedProperty dragProperty;
         int dragAxis = -1, dragKey = -1, dragHandle = 0; // handle: 0 point, 1 in, 2 out
         @Nullable ECBCurves[] dragSnapshot;
+        // expr clips
+        /** Selected expression clips of {@link #selectedProperty} (references; interaction is single-axis). */
+        final Set<ExprClip> selectedExprClips = new HashSet<>();
+        @Nullable ExprClip dragClip;
+        int dragClipAxis = -1, dragClipMode = 0; // 0 move, 1 resize-start, 2 resize-end
+        double dragClipGrabOffset;               // cursor tick - anchor start, captured at drag begin
+        @Nullable List<ExprClip> dragClipSnapshot;
+        final Map<ExprClip, double[]> clipDragOrigins = new HashMap<>(); // clip -> {start, duration}
         // group keyframe drag (size > 1): original (tick,value) of each selected key
         boolean keyGroupDrag;
         final Map<Long, Vector2f> keyDragOrigins = new HashMap<>();
@@ -81,6 +89,12 @@ public class AnimationTrackEditor extends TrackEditor {
 
     /** Per-channel value difference (degrees / blocks) above which record mode writes a keyframe. */
     private static final float REC_EPS = 1e-4f;
+    /** Screen-pixel width of an expr clip's start/end resize zones. */
+    private static final float CLIP_EDGE_PX = 4;
+    /** Default duration (ticks) of a newly added expression clip. */
+    private static final double DEFAULT_EXPR_CLIP_TICKS = 20;
+    /** Minimum duration (ticks) an expression clip can be resized to. */
+    private static final double MIN_EXPR_CLIP_TICKS = 1e-3;
 
     @Override
     public AnimationTrackUIState createState() {
@@ -154,7 +168,12 @@ public class AnimationTrackEditor extends TrackEditor {
     @Override
     public boolean deleteSelection(TimelineContext ctx, Track track, TrackUIState state) {
         var st = (AnimationTrackUIState) state;
-        if (st.selectedProperty != null && !st.selectedKeys.isEmpty()) {
+        if (st.selectedProperty == null) return false;
+        if (!st.selectedExprClips.isEmpty()) {
+            if (!track.lock()) removeSelectedExprClips(ctx, st, st.selectedProperty);
+            return true;
+        }
+        if (!st.selectedKeys.isEmpty()) {
             if (!track.lock()) removeSelectedKeys(ctx, st, st.selectedProperty);
             return true;
         }
@@ -174,6 +193,7 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selKeyAxis = -1;
         st.selKeyIndex = -1;
         st.selectedKeys.clear();
+        st.selectedExprClips.clear();
         st.explicitSelection = false;
     }
 
@@ -348,8 +368,28 @@ public class AnimationTrackEditor extends TrackEditor {
         return lane;
     }
 
-    /** Double-clicking a lane keyframe dot expands the track and selects that property's keyframe. */
+    /** Double-clicking a lane expr-clip bar expands the track and selects that clip; otherwise a keyframe
+     *  dot expands + selects that property's keyframe. */
     private void onLaneDoubleClick(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st, UIEvent e) {
+        // expr clip bars take priority (they cover a range, keyframes are points)
+        for (var property : track.properties()) {
+            for (int axis = 0; axis < property.channelCount(); axis++) {
+                for (var clip : property.exprClips(axis)) {
+                    var x0 = ctx.originX() + (float) ((clip.start() - ctx.scrollTicks()) * ctx.scale());
+                    var x1 = ctx.originX() + (float) ((clip.end() - ctx.scrollTicks()) * ctx.scale());
+                    if (e.x >= x0 && e.x <= x1) {
+                        st.expanded = true;
+                        selectProperty(ctx, track, st, property, axis);
+                        st.selectedExprClips.clear();
+                        st.selectedExprClips.add(clip);
+                        inspectExprClip(ctx, track, property, axis, clip);
+                        ctx.requestRebuild();
+                        e.stopPropagation();
+                        return;
+                    }
+                }
+            }
+        }
         AnimatedProperty bestProp = null;
         int bestAxis = -1, bestKey = -1;
         float bestDist = TimelineContext.KEY_HIT_PX + 1;
@@ -375,10 +415,34 @@ public class AnimationTrackEditor extends TrackEditor {
         e.stopPropagation();
     }
 
-    /** Lane content drawn under the playhead (default: keyframe dots). The speed track overrides to draw
-     *  a curve preview. */
+    /** Lane content drawn under the playhead (default: expr clip bars + keyframe dots). The speed track
+     *  overrides to draw a curve preview. */
     protected void drawLaneContent(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
+        drawExprClipBars(ctx, graphics, track, x, y, width, height);
         drawKeyframeDots(ctx, graphics, track, x, y, width, height);
+    }
+
+    /** Draw each property's expression clips as thin channel-colored bars across the collapsed lane. */
+    private void drawExprClipBars(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
+        var barH = 4f;
+        var by = y + height / 2f - barH / 2f;
+        for (var property : track.properties()) {
+            for (int axis = 0; axis < property.channelCount(); axis++) {
+                for (var clip : property.exprClips(axis)) {
+                    var x0 = ctx.originX() + (float) ((clip.start() - ctx.scrollTicks()) * ctx.scale());
+                    var x1 = ctx.originX() + (float) ((clip.end() - ctx.scrollTicks()) * ctx.scale());
+                    if (x1 < x || x0 > x + width) continue;
+                    var cx0 = Math.max(x, x0);
+                    var cx1 = Math.min(x + width, x1);
+                    var color = clip.error() != null ? ColorPattern.RED.color : channelColor(axis).color;
+                    DrawerHelper.drawSolidRect(graphics, cx0, by, Math.max(1, cx1 - cx0), barH, withAlpha(color, 0xAA));
+                }
+            }
+        }
+    }
+
+    private static int withAlpha(int argb, int alpha) {
+        return (argb & 0x00FFFFFF) | (alpha << 24);
     }
 
     private void drawKeyframeDots(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
@@ -479,10 +543,13 @@ public class AnimationTrackEditor extends TrackEditor {
         container.addEventListener(UIEvents.MOUSE_DOWN, e -> onCurveMouseDown(ctx, e, animation, st));
         container.addEventListener(UIEvents.DOUBLE_CLICK, e -> onCurveDoubleClick(ctx, e, animation, st));
         container.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
-            if (st.keyMarquee) { st.kmX1 = e.x; st.kmY1 = e.y; } else onCurveDrag(ctx, e, st);
+            if (st.keyMarquee) { st.kmX1 = e.x; st.kmY1 = e.y; }
+            else if (st.dragClip != null) onClipDrag(ctx, e, st);
+            else onCurveDrag(ctx, e, st);
         });
         container.addEventListener(UIEvents.DRAG_END, e -> {
             if (st.keyMarquee) finishKeyMarquee(ctx, animation, st, e.currentElement);
+            else if (st.dragClip != null) onClipDragEnd(ctx, st);
             else onCurveDragEnd(ctx, st);
         });
         container.addEventListener(UIEvents.MOUSE_WHEEL, e -> onCurveWheel(ctx, e, st));
@@ -605,6 +672,7 @@ public class AnimationTrackEditor extends TrackEditor {
             st.selKeyAxis = -1;
             st.selKeyIndex = -1;
             st.selectedKeys.clear();
+            st.selectedExprClips.clear();
         }
         st.expandedProperties.remove(property);
     }
@@ -625,11 +693,11 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selKeyAxis = -1;
         st.selKeyIndex = -1;
         st.selectedKeys.clear();
+        st.selectedExprClips.clear();
     }
 
-    /** Inspect the channel a selection controls: a per-channel curve/expression mode switch (+ the
-     *  expression text field when in expression mode), plus the property type's own config (e.g. rotation
-     *  interp mode) or the track config. The controlled channel is the selected sub-axis, or channel 0 for a
+    /** Inspect the channel a selection controls: the property type's own config (e.g. rotation interp
+     *  mode) or the track config. The controlled channel is the selected sub-axis, or channel 0 for a
      *  single-channel property, or none (-1) for a multi-channel property row. Edits are undoable via the
      *  property copy/restoreFrom snapshot pattern. */
     private void inspectChannel(TimelineContext ctx, AnimationTrack track, AnimatedProperty property, int axis) {
@@ -645,31 +713,6 @@ public class AnimationTrackEditor extends TrackEditor {
             ctx.refreshPreview();
         };
         var cfg = IConfigurable.create(group -> {
-            if (channel >= 0 && canEditProperties()) {
-                // the expression field is always built but only shown in expression mode (toggled in place,
-                // so the mode selector's own callback never has to rebuild the live inspector)
-                var exprField = new StringConfigurator(
-                        "photon.gui.editor.timeline.property.expression",
-                        () -> property.expression(channel),
-                        expr -> { property.setExpression(channel, expr); onChanged.run(); },
-                        "", true).setTips(
-                        Component.translatable("photon.gui.editor.timeline.property.expression.tips.0"),
-                        Component.translatable("photon.gui.editor.timeline.property.expression.tips.1"),
-                        Component.translatable("photon.gui.editor.timeline.property.expression.tips.2"));
-                exprField.setDisplay(property.isExpression(channel));
-                group.addConfigurator(new SelectorConfigurator<>(
-                        "photon.gui.editor.timeline.channel_mode",
-                        () -> property.mode(channel),
-                        mode -> {
-                            property.setMode(channel, mode);
-                            onChanged.run();
-                            exprField.setDisplay(mode == AnimatedProperty.ChannelMode.EXPRESSION);
-                        },
-                        property.mode(channel), true,
-                        List.of(AnimatedProperty.ChannelMode.values()),
-                        mode -> Component.translatable(channelModeKey(mode)).getString()));
-                group.addConfigurator(exprField);
-            }
             var typeCfg = property.inspect(onChanged);
             if (typeCfg != null) {
                 typeCfg.buildConfigurator(group);
@@ -680,8 +723,30 @@ public class AnimationTrackEditor extends TrackEditor {
         ctx.inspectProperty(track, cfg);
     }
 
-    private static String channelModeKey(AnimatedProperty.ChannelMode mode) {
-        return "photon.gui.editor.timeline.channel_mode." + mode.name().toLowerCase();
+    /** Inspect a selected expression clip: its {@code y = f(t)} source (t clip-local). Edits are undoable
+     *  by snapshotting the clip's expression. */
+    private void inspectExprClip(TimelineContext ctx, AnimationTrack track, AnimatedProperty property, int axis, ExprClip clip) {
+        var before = new String[]{clip.expression()};
+        var cfg = IConfigurable.create(group -> {
+            var exprField = new StringConfigurator(
+                    "photon.gui.editor.timeline.property.expression",
+                    clip::expression,
+                    expr -> {
+                        var prev = before[0];
+                        clip.expression(expr);
+                        before[0] = expr;
+                        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                                () -> { clip.expression(expr); ctx.refreshPreview(); },
+                                () -> { clip.expression(prev); ctx.refreshPreview(); });
+                        ctx.refreshPreview();
+                    },
+                    "", true).setTips(
+                    Component.translatable("photon.gui.editor.timeline.property.expression.tips.0"),
+                    Component.translatable("photon.gui.editor.timeline.property.expression.tips.1"),
+                    Component.translatable("photon.gui.editor.timeline.property.expression.tips.2"));
+            group.addConfigurator(exprField);
+        });
+        ctx.inspectProperty(track, cfg);
     }
 
     private static String propertyKey(AnimatedPropertyType type) {
@@ -763,7 +828,45 @@ public class AnimationTrackEditor extends TrackEditor {
             var kx = property.key(axis, k).x;
             if (kx >= startTick && kx <= endTick) set.add(kx);
         }
+        // expr clip edges (sampled on both sides so a curve↔expression discontinuity renders vertical)
+        for (var clip : property.exprClips(axis)) {
+            for (var edge : new float[]{(float) clip.start(), (float) clip.end()}) {
+                if (edge >= startTick && edge <= endTick) {
+                    set.add(edge);
+                    set.add(Math.nextDown(edge));
+                    set.add(Math.nextUp(edge));
+                }
+            }
+        }
         return new ArrayList<>(set);
+    }
+
+    /** Draw the active axes' expression clips as translucent full-height regions (channel color, brighter
+     *  when selected, red on a syntax error) with edge-resize borders. */
+    private void drawExprClips(TimelineContext ctx, GuiGraphics graphics, AnimationTrackUIState st, AnimatedProperty property,
+                               float x, float y, float width, float height) {
+        for (var axis : activeAxes(st)) {
+            for (var clip : property.exprClips(axis)) {
+                var x0 = tickToCurveX(ctx, (float) clip.start(), x);
+                var x1 = tickToCurveX(ctx, (float) clip.end(), x);
+                if (x1 < x || x0 > x + width) continue;
+                var cx0 = Math.max(x, x0);
+                var cx1 = Math.min(x + width, x1);
+                var cw = Math.max(1, cx1 - cx0);
+                var error = clip.error() != null;
+                var selected = st.selectedExprClips.contains(clip);
+                var base = error ? ColorPattern.RED.color : channelColor(axis).color;
+                DrawerHelper.drawSolidRect(graphics, cx0, y, cw, height, withAlpha(base, selected ? 0x66 : 0x33));
+                DrawerHelper.drawBorder(graphics, cx0, y, cw, height, selected ? ColorPattern.WHITE.color : base, 1);
+                if (cw > 20) {
+                    var text = error ? Component.translatable("photon.gui.editor.timeline.expression_error").getString()
+                            : clip.expression();
+                    if (text != null && !text.isBlank()) {
+                        DrawerHelper.drawText(graphics, text, cx0 + 2, y + 1, 1f, (error ? ColorPattern.RED : ColorPattern.WHITE).color);
+                    }
+                }
+            }
+        }
     }
 
     private void drawCurveEditor(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, AnimationTrackUIState st, float x, float y, float width, float height) {
@@ -779,30 +882,19 @@ public class AnimationTrackEditor extends TrackEditor {
         var scroll = ctx.scrollTicks();
         var endTick = scroll + width / ctx.scale();
         var axes = activeAxes(st);
-        // a single selected expression channel with a syntax error: show the message instead of a curve
-        if (axes.length == 1 && property.isExpression(axes[0]) && property.exprError(axes[0]) != null) {
-            DrawerHelper.drawText(graphics, Component.translatable("photon.gui.editor.timeline.expression_error").getString(),
-                    x + 4, y + height / 2f - 4, 1f, ColorPattern.RED.color);
-            return;
-        }
         var step = 2 / ctx.scale();
+        // expression clip regions (translucent, under the line)
+        drawExprClips(ctx, graphics, st, property, x, y, width, height);
         for (var axis : axes) {
+            // effective value = expression clip override where present, else the keyframe curve; clip
+            // boundaries are folded into the tick set so a curve↔expression jump renders cleanly
             var points = new ArrayList<Vector2f>();
-            if (property.isExpression(axis)) {
-                // expression preview: read-only, uniform sampling (no keyframe ticks)
-                for (float t = scroll; t <= endTick; t += step) {
-                    points.add(new Vector2f(x + (t - scroll) * ctx.scale(), valueToCurveY(property.sampleChannelValue(axis, t), y, height, min, max)));
-                }
-            } else {
-                var channel = property.channel(axis);
-                for (var t : curvePolylineTicks(property, axis, scroll, endTick, step)) {
-                    points.add(new Vector2f(x + (t - scroll) * ctx.scale(), valueToCurveY(AnimatedProperty.sampleChannel(channel, t), y, height, min, max)));
-                }
+            for (var t : curvePolylineTicks(property, axis, scroll, endTick, step)) {
+                points.add(new Vector2f(x + (t - scroll) * ctx.scale(), valueToCurveY(property.sampleChannelValue(axis, t), y, height, min, max)));
             }
             DrawerHelper.drawLines(graphics, points, channelColor(axis).color, channelColor(axis).color, 0.5f);
         }
         for (var axis : axes) {
-            if (property.isExpression(axis)) continue; // expression channels have no keyframes
             var count = property.keyCount(axis);
             for (int k = 0; k < count; k++) {
                 var key = property.key(axis, k);
@@ -813,9 +905,8 @@ public class AnimationTrackEditor extends TrackEditor {
                 DrawerHelper.drawSolidRect(graphics, kx - 2, ky - 2, 4, 4, (selected ? ColorPattern.WHITE : ColorPattern.ORANGE).color);
             }
         }
-        // tangent handles only when exactly one key is selected (curve channels only)
+        // tangent handles only when exactly one key is selected
         if (st.selectedKeys.size() == 1 && st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)
-                && !property.isExpression(st.selKeyAxis)
                 && st.selKeyIndex >= 0 && st.selKeyIndex < property.keyCount(st.selKeyAxis)) {
             var key = property.key(st.selKeyAxis, st.selKeyIndex);
             var kx = tickToCurveX(ctx, key.x, x);
@@ -877,7 +968,16 @@ public class AnimationTrackEditor extends TrackEditor {
         var range = effectiveRange(property);
         if (e.button == 1) {
             var hit = hitKey(ctx, st, property, bx, by, bh, range, e.x, e.y);
-            if (hit != null && !track.lock()) removeKeyframe(ctx, track, st, property, hit[0], hit[1]);
+            if (hit != null) {
+                if (!track.lock()) removeKeyframe(ctx, track, st, property, hit[0], hit[1]);
+                e.stopPropagation();
+                return;
+            }
+            if (!track.lock()) {
+                var clipHit = hitExprClip(ctx, st, property, bx, by, bh, e.x, e.y);
+                if (clipHit != null) openExprClipMenu(ctx, track, st, property, clipHit.axis(), clipHit.clip(), e.x, e.y);
+                else openAddExprClipMenu(ctx, track, st, property, bx, e);
+            }
             e.stopPropagation();
             return;
         }
@@ -908,15 +1008,49 @@ public class AnimationTrackEditor extends TrackEditor {
             beginCurveDrag(ctx, st, property, hit[0], hit[1], 0);
             el.startDrag(null, null);
             e.stopPropagation();
-        } else {
-            // empty press → start a keyframe marquee
-            st.keyMarquee = true;
-            st.keyMarqueeAdditive = e.isShiftDown();
-            st.kmX0 = st.kmX1 = e.x;
-            st.kmY0 = st.kmY1 = e.y;
+            return;
+        }
+        // expr clip body/edge → select (+ begin move / resize)
+        var clipHit = hitExprClip(ctx, st, property, bx, by, bh, e.x, e.y);
+        if (clipHit != null) {
+            selectExprClip(ctx, track, st, property, clipHit.axis(), clipHit.clip(), e.isShiftDown());
+            beginClipDrag(ctx, st, property, clipHit.axis(), clipHit.clip(), clipHit.mode(),
+                    curveXToTick(ctx, e.x, bx));
             el.startDrag(null, null);
             e.stopPropagation();
+            return;
         }
+        // empty press → clear clip selection and start a keyframe marquee
+        if (!e.isShiftDown()) st.selectedExprClips.clear();
+        st.keyMarquee = true;
+        st.keyMarqueeAdditive = e.isShiftDown();
+        st.kmX0 = st.kmX1 = e.x;
+        st.kmY0 = st.kmY1 = e.y;
+        el.startDrag(null, null);
+        e.stopPropagation();
+    }
+
+    /** A hit against an expression clip: which axis/clip and whether the start edge (1), end edge (2), or
+     *  body (0) was grabbed. */
+    private record ExprClipHit(int axis, ExprClip clip, int mode) {}
+
+    /** Hit-test the active axes' expression clips (single-axis interaction only). Earliest clip wins. */
+    @Nullable
+    private ExprClipHit hitExprClip(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property,
+                                    float bx, float by, float bh, float mx, float my) {
+        var axes = activeAxes(st);
+        if (axes.length != 1) return null; // clips are interactive only when a single sub-property is selected
+        if (my < by || my > by + bh) return null;
+        var axis = axes[0];
+        for (var clip : property.exprClips(axis)) {
+            var x0 = tickToCurveX(ctx, (float) clip.start(), bx);
+            var x1 = tickToCurveX(ctx, (float) clip.end(), bx);
+            if (mx < x0 - CLIP_EDGE_PX || mx > x1 + CLIP_EDGE_PX) continue;
+            if (Math.abs(mx - x0) <= CLIP_EDGE_PX) return new ExprClipHit(axis, clip, 1);
+            if (Math.abs(mx - x1) <= CLIP_EDGE_PX) return new ExprClipHit(axis, clip, 2);
+            if (mx >= x0 && mx <= x1) return new ExprClipHit(axis, clip, 0);
+        }
+        return null;
     }
 
     private void onCurveDoubleClick(TimelineContext ctx, UIEvent e, AnimationTrack track, AnimationTrackUIState st) {
@@ -943,13 +1077,12 @@ public class AnimationTrackEditor extends TrackEditor {
         } else {
             var best = Float.MAX_VALUE;
             for (var a : axes) {
-                if (property.isExpression(a)) continue; // can't add keys to an expression channel
                 var cy = valueToCurveY(AnimatedProperty.sampleChannel(property.channel(a), tick), by, bh, range[0], range[1]);
                 var d = Math.abs(e.y - cy);
                 if (d < best) { best = d; axis = a; }
             }
         }
-        if (axis < 0 || property.isExpression(axis)) return; // expression channels are non-interactive
+        if (axis < 0) return;
         var before = property.snapshotChannels();
         var newIndex = property.addKey(axis, tick, property.type().clampValue(cursorValue));
         if (newIndex < 0) return;
@@ -1021,6 +1154,174 @@ public class AnimationTrackEditor extends TrackEditor {
                 () -> { property.setRange(fMin, fMax); ctx.refreshPreview(); },
                 () -> { property.setRange(oldMin, oldMax); ctx.refreshPreview(); });
         ctx.refreshPreview();
+    }
+
+    // ------------------------------------------------------------------ expression clips
+
+    /** Select an expression clip (shift toggles membership) and inspect it. */
+    private void selectExprClip(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
+                                AnimatedProperty property, int axis, ExprClip clip, boolean additive) {
+        st.explicitSelection = true;
+        ctx.setActiveTrack(track);
+        st.selectedKeys.clear();
+        st.selKeyAxis = -1;
+        st.selKeyIndex = -1;
+        if (additive) {
+            if (!st.selectedExprClips.remove(clip)) st.selectedExprClips.add(clip);
+        } else if (!st.selectedExprClips.contains(clip)) {
+            st.selectedExprClips.clear();
+            st.selectedExprClips.add(clip);
+        }
+        inspectExprClip(ctx, track, property, axis, clip);
+    }
+
+    private void beginClipDrag(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property,
+                               int axis, ExprClip clip, int mode, float grabTick) {
+        st.dragProperty = property;
+        st.dragClip = clip;
+        st.dragClipAxis = axis;
+        st.dragClipMode = mode;
+        st.dragClipGrabOffset = grabTick - clip.start();
+        st.dragClipSnapshot = property.snapshotExprClips(axis);
+        st.clipDragOrigins.clear();
+        if (mode == 0) { // group move: capture every selected clip's origin
+            for (var c : st.selectedExprClips) st.clipDragOrigins.put(c, new double[]{c.start(), c.duration()});
+        } else {
+            st.clipDragOrigins.put(clip, new double[]{clip.start(), clip.duration()});
+        }
+        ctx.beginScrub();
+    }
+
+    private void onClipDrag(TimelineContext ctx, UIEvent e, AnimationTrackUIState st) {
+        if (st.dragClip == null || st.dragProperty == null || st.dragClipSnapshot == null) return;
+        var property = st.dragProperty;
+        var axis = st.dragClipAxis;
+        var bx = e.currentElement.getContentX();
+        var cursorTick = Math.max(0, curveXToTick(ctx, e.x, bx));
+        var anchorOrig = st.clipDragOrigins.get(st.dragClip);
+        if (anchorOrig == null) return;
+        property.restoreExprClips(axis, st.dragClipSnapshot); // reset then re-apply (no compounding)
+        var ctrl = e.isCtrlDown();
+        if (st.dragClipMode == 0) {
+            // move the whole selection by a common Δtick, snapping the anchor's start/end, clamping tick >= 0
+            var target = snapClipStart(ctx, cursorTick - st.dragClipGrabOffset, anchorOrig[1], ctrl);
+            double dTick = target - anchorOrig[0];
+            double lo = -Double.MAX_VALUE;
+            for (var origin : st.clipDragOrigins.values()) lo = Math.max(lo, -origin[0]); // keep every start >= 0
+            dTick = Math.max(dTick, lo);
+            for (var entry : st.clipDragOrigins.entrySet()) {
+                entry.getKey().start(entry.getValue()[0] + dTick);
+            }
+        } else if (st.dragClipMode == 1) {
+            var origEnd = anchorOrig[0] + anchorOrig[1];
+            var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl)), origEnd - MIN_EXPR_CLIP_TICKS);
+            st.dragClip.start(newStart).duration(origEnd - newStart);
+        } else {
+            var newEnd = Math.max(anchorOrig[0] + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
+            st.dragClip.duration(newEnd - anchorOrig[0]);
+        }
+        ctx.refreshPreview();
+        e.stopPropagation();
+    }
+
+    private void onClipDragEnd(TimelineContext ctx, AnimationTrackUIState st) {
+        var property = st.dragProperty;
+        var axis = st.dragClipAxis;
+        var before = st.dragClipSnapshot;
+        st.dragClip = null;
+        st.dragProperty = null;
+        st.dragClipSnapshot = null;
+        st.clipDragOrigins.clear();
+        ctx.endScrub();
+        if (property == null || before == null) return;
+        var after = property.snapshotExprClips(axis);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { property.restoreExprClips(axis, after); ctx.refreshPreview(); },
+                () -> { property.restoreExprClips(axis, before); ctx.refreshPreview(); });
+    }
+
+    /** Snap a moving clip's start, preferring whichever of its start/end lands on a snap target closer. */
+    private double snapClipStart(TimelineContext ctx, double start, double duration, boolean ctrl) {
+        var snapStart = ctx.snapKeyTick(start, ctrl);
+        var snapEnd = ctx.snapKeyTick(start + duration, ctrl) - duration;
+        var leftSnapped = snapStart != start;
+        var rightSnapped = snapEnd != start;
+        if (leftSnapped && (!rightSnapped || Math.abs(snapStart - start) <= Math.abs(snapEnd - start))) return snapStart;
+        return rightSnapped ? snapEnd : start;
+    }
+
+    private void openAddExprClipMenu(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
+                                     AnimatedProperty property, float bx, UIEvent e) {
+        if (activeAxes(st).length != 1) return; // add on a single selected sub-property only
+        var axis = activeAxes(st)[0];
+        var startTick = Math.max(0, curveXToTick(ctx, e.x, bx));
+        var snapped = ctx.snapKeyTick(startTick, e.isCtrlDown());
+        var menu = TreeBuilder.Menu.start();
+        menu.leaf(Component.translatable("photon.gui.editor.timeline.expr_clip.add"),
+                () -> addExprClip(ctx, track, st, property, axis, snapped));
+        ctx.openMenu(e.x, e.y, menu);
+    }
+
+    private void openExprClipMenu(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
+                                  AnimatedProperty property, int axis, ExprClip clip, float x, float y) {
+        var menu = TreeBuilder.Menu.start();
+        menu.leaf(Component.translatable("photon.gui.editor.timeline.expr_clip.remove"),
+                () -> removeExprClipEdit(ctx, st, property, axis, clip));
+        ctx.openMenu(x, y, menu);
+    }
+
+    private void addExprClip(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
+                             AnimatedProperty property, int axis, double startTick) {
+        var before = property.snapshotExprClips(axis);
+        var clip = new ExprClip(startTick, DEFAULT_EXPR_CLIP_TICKS, "");
+        property.addExprClip(axis, clip);
+        var after = property.snapshotExprClips(axis);
+        st.selectedKeys.clear();
+        st.selectedExprClips.clear();
+        st.selectedExprClips.add(clip);
+        inspectExprClip(ctx, track, property, axis, clip);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { property.restoreExprClips(axis, after); ctx.refreshPreview(); },
+                () -> { property.restoreExprClips(axis, before); ctx.refreshPreview(); });
+        ctx.refreshPreview();
+    }
+
+    private void removeExprClipEdit(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, int axis, ExprClip clip) {
+        var before = property.snapshotExprClips(axis);
+        property.removeExprClip(axis, clip);
+        var after = property.snapshotExprClips(axis);
+        st.selectedExprClips.remove(clip);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { property.restoreExprClips(axis, after); ctx.refreshPreview(); },
+                () -> { property.restoreExprClips(axis, before); ctx.refreshPreview(); });
+        ctx.refreshPreview();
+    }
+
+    /** Remove every selected expression clip (grouped by axis), one undo. */
+    private void removeSelectedExprClips(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property) {
+        var byAxis = new HashMap<Integer, List<ExprClip>>();
+        for (var clip : st.selectedExprClips) {
+            var axis = findClipAxis(property, clip);
+            if (axis >= 0) byAxis.computeIfAbsent(axis, a -> new ArrayList<>()).add(clip);
+        }
+        if (byAxis.isEmpty()) return;
+        var beforeByAxis = new HashMap<Integer, List<ExprClip>>();
+        for (var axis : byAxis.keySet()) beforeByAxis.put(axis, property.snapshotExprClips(axis));
+        byAxis.forEach((axis, clips) -> clips.forEach(clip -> property.removeExprClip(axis, clip)));
+        var afterByAxis = new HashMap<Integer, List<ExprClip>>();
+        for (var axis : byAxis.keySet()) afterByAxis.put(axis, property.snapshotExprClips(axis));
+        st.selectedExprClips.clear();
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { afterByAxis.forEach(property::restoreExprClips); ctx.refreshPreview(); },
+                () -> { beforeByAxis.forEach(property::restoreExprClips); ctx.refreshPreview(); });
+        ctx.refreshPreview();
+    }
+
+    private static int findClipAxis(AnimatedProperty property, ExprClip clip) {
+        for (int axis = 0; axis < property.channelCount(); axis++) {
+            if (property.exprClips(axis).contains(clip)) return axis;
+        }
+        return -1;
     }
 
     private void beginCurveDrag(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, int axis, int key, int handle) {
@@ -1105,7 +1406,6 @@ public class AnimationTrackEditor extends TrackEditor {
     @Nullable
     private int[] hitKey(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, float bx, float by, float bh, float[] range, float mx, float my) {
         for (var axis : activeAxes(st)) {
-            if (property.isExpression(axis)) continue; // expression channels are non-interactive
             var count = property.keyCount(axis);
             for (int k = 0; k < count; k++) {
                 var key = property.key(axis, k);
@@ -1228,7 +1528,6 @@ public class AnimationTrackEditor extends TrackEditor {
         var range = effectiveRange(property);
         if (!st.keyMarqueeAdditive) st.selectedKeys.clear();
         for (var axis : activeAxes(st)) {
-            if (property.isExpression(axis)) continue; // expression channels have no keyframes
             var count = property.keyCount(axis);
             for (int k = 0; k < count; k++) {
                 var key = property.key(axis, k);

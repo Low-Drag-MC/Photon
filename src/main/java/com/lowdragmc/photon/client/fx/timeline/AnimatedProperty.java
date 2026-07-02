@@ -5,14 +5,11 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
-import expr.Expr;
-import expr.Parser;
-import expr.SyntaxException;
 import expr.Variable;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.DoubleTag;
 import net.minecraft.nbt.FloatTag;
-import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
@@ -20,9 +17,7 @@ import org.joml.Vector2f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.TreeSet;
 
 /**
@@ -41,16 +36,6 @@ import java.util.TreeSet;
  * {@code com.lowdragmc.photon.client.fx.timeline.property.RotationAnimatedProperty}).
  */
 public class AnimatedProperty {
-    /** How a single channel produces its value: keyframe {@link ECBCurves} or a {@code y = f(t)} expression. */
-    public enum ChannelMode {
-        CURVE, EXPRESSION;
-
-        public static ChannelMode byOrdinal(int ordinal) {
-            var values = values();
-            return ordinal >= 0 && ordinal < values.length ? values[ordinal] : CURVE;
-        }
-    }
-
     /** Expression variables (interned, shared across all properties — eval is synchronous so this is safe). */
     private static final Variable T = Variable.make("t");
     private static final Variable PI = Variable.make("PI");
@@ -61,15 +46,13 @@ public class AnimatedProperty {
     protected final AnimatedPropertyType type;
     private final float[] base;          // captured authored value, one per channel
     private final ECBCurves[] channels;  // one keyframe curve per channel
-    private final ChannelMode[] modes;   // per-channel source (curve / expression), default CURVE
-    private final String[] expressions;  // per-channel y=f(t) source (used when mode == EXPRESSION)
+    /** Per-channel expression clips: while the playhead is inside a clip, its {@code y=f(t)} value
+     *  (t clip-local) overrides the curve; a parse/eval failure falls back to the curve. */
+    private final List<ExprClip>[] exprClips;
     private float rangeMin;              // shared display value range (one Y axis for all channels)
     private float rangeMax;
-    // transient expression parse cache (rebuilt lazily, never serialized/copied)
-    private final transient Expr[] exprCache;
-    private final transient String[] exprErrorCache;
-    private final transient String[] exprParsedInput;
 
+    @SuppressWarnings("unchecked")
     public AnimatedProperty(AnimatedPropertyType type, float[] base, ECBCurves[] channels,
                             float rangeMin, float rangeMax) {
         this.type = type;
@@ -78,13 +61,8 @@ public class AnimatedProperty {
         this.rangeMin = rangeMin;
         this.rangeMax = rangeMax;
         var n = channels.length;
-        this.modes = new ChannelMode[n];
-        Arrays.fill(this.modes, ChannelMode.CURVE);
-        this.expressions = new String[n];
-        Arrays.fill(this.expressions, "");
-        this.exprCache = new Expr[n];
-        this.exprErrorCache = new String[n];
-        this.exprParsedInput = new String[n];
+        this.exprClips = (List<ExprClip>[]) new List[n];
+        for (int i = 0; i < n; i++) this.exprClips[i] = new ArrayList<>();
     }
 
     /** Seed one zero-width (single-keyframe) channel per base value. */
@@ -121,62 +99,49 @@ public class AnimatedProperty {
         return channels[axis];
     }
 
-    // ------------------------------------------------------------------ per-channel mode / expression
+    // ------------------------------------------------------------------ per-channel expression clips
 
-    public ChannelMode mode(int axis) {
-        return modes[axis];
+    /** The (mutable) list of expression clips on {@code axis} (may be empty). */
+    public List<ExprClip> exprClips(int axis) {
+        return exprClips[axis];
     }
 
-    public void setMode(int axis, ChannelMode mode) {
-        modes[axis] = mode;
+    public void addExprClip(int axis, ExprClip clip) {
+        exprClips[axis].add(clip);
     }
 
-    public boolean isExpression(int axis) {
-        return modes[axis] == ChannelMode.EXPRESSION;
+    public void removeExprClip(int axis, ExprClip clip) {
+        exprClips[axis].remove(clip);
     }
 
-    public String expression(int axis) {
-        return expressions[axis];
-    }
-
-    public void setExpression(int axis, String expression) {
-        expressions[axis] = expression == null ? "" : expression;
-    }
-
-    /** (Re)parse the channel's expression when its source changed, caching the {@link Expr} or the error. */
-    private void ensureParsed(int axis) {
-        if (Objects.equals(exprParsedInput[axis], expressions[axis])) return;
-        exprParsedInput[axis] = expressions[axis];
-        try {
-            exprCache[axis] = Parser.parse(expressions[axis]);
-            exprErrorCache[axis] = null;
-        } catch (SyntaxException e) {
-            exprCache[axis] = null;
-            exprErrorCache[axis] = e.getMessage();
-        }
-    }
-
-    /** Sample one channel at {@code time} (ticks), honoring its {@link ChannelMode}. Expression channels
-     *  evaluate {@code y = f(t)}; a parse/eval failure falls back to the captured base value. */
-    public float sampleChannelValue(int axis, float time) {
-        if (modes[axis] == ChannelMode.EXPRESSION) {
-            ensureParsed(axis);
-            if (exprCache[axis] != null) {
-                T.setValue(time);
-                var v = exprCache[axis].value();
-                if (Double.isFinite(v)) return (float) v;
-            }
-            return base[axis];
-        }
-        return sampleChannel(channels[axis], time);
-    }
-
-    /** The channel's expression syntax error (null if curve mode or the expression parses). */
+    /** The expression clip active at {@code time} on {@code axis} (earliest wins on overlap), or null. */
     @Nullable
-    public String exprError(int axis) {
-        if (modes[axis] != ChannelMode.EXPRESSION) return null;
-        ensureParsed(axis);
-        return exprErrorCache[axis];
+    public ExprClip activeExprClip(int axis, float time) {
+        for (var clip : exprClips[axis]) {
+            if (clip.contains(time)) return clip;
+        }
+        return null;
+    }
+
+    /** The expression override for {@code axis} at {@code time}: the value of the active clip's {@code
+     *  y = f(t)} (t clip-local) when it compiles and evaluates finite, else {@code null} so the caller
+     *  falls back to the keyframe curve. */
+    @Nullable
+    public Float evalExpr(int axis, float time) {
+        var clip = activeExprClip(axis, time);
+        if (clip == null) return null;
+        var expr = clip.compiled();
+        if (expr == null) return null;
+        T.setValue(time - clip.start());
+        var v = expr.value();
+        return Double.isFinite(v) ? (float) v : null;
+    }
+
+    /** Sample one channel at {@code time} (ticks): the active expression clip's value if any, otherwise
+     *  the keyframe curve. */
+    public float sampleChannelValue(int axis, float time) {
+        var e = evalExpr(axis, time);
+        return e != null ? e : sampleChannel(channels[axis], time);
     }
 
     public float rangeMin() {
@@ -224,12 +189,10 @@ public class AnimatedProperty {
         type.apply(target, base());
     }
 
-    /** Distinct keyframe times (segment endpoints) across all curve channels, for the collapsed-lane dots.
-     *  Expression channels have no keyframes, so they're skipped (no misleading dots / track length). */
+    /** Distinct keyframe times (segment endpoints) across all channels, for the collapsed-lane dots. */
     public List<Double> keyframeTimes() {
         var times = new TreeSet<Double>();
         for (int axis = 0; axis < channels.length; axis++) {
-            if (isExpression(axis)) continue;
             for (var segment : channels[axis].getSegments()) {
                 times.add((double) segment.p0.x);
                 times.add((double) segment.p1.x);
@@ -402,19 +365,43 @@ public class AnimatedProperty {
         }
     }
 
-    /** Restore channels + range + per-channel modes (+ subclass extras) from another property (undo). */
+    /** Restore channels + range + per-channel expression clips (+ subclass extras) from another
+     *  property (undo). */
     public void restoreFrom(AnimatedProperty other) {
         restoreChannels(other.snapshotChannels());
         setRange(other.rangeMin, other.rangeMax);
-        restoreModesFrom(other);
+        restoreExprClipsFrom(other);
         restoreExtraFrom(other);
     }
 
-    /** Copy per-channel mode + expression source from {@code other} into this property. */
-    protected void restoreModesFrom(AnimatedProperty other) {
-        for (int i = 0; i < modes.length && i < other.modes.length; i++) {
-            modes[i] = other.modes[i];
-            expressions[i] = other.expressions[i];
+    /** Copy per-channel expression clips (deep) from {@code other} into this property. */
+    protected void restoreExprClipsFrom(AnimatedProperty other) {
+        for (int i = 0; i < exprClips.length && i < other.exprClips.length; i++) {
+            exprClips[i].clear();
+            for (var clip : other.exprClips[i]) exprClips[i].add(clip.copy());
+        }
+    }
+
+    /** Deep copy of one channel's expression clips, for undo snapshots. */
+    public List<ExprClip> snapshotExprClips(int axis) {
+        var copy = new ArrayList<ExprClip>();
+        for (var clip : exprClips[axis]) copy.add(clip.copy());
+        return copy;
+    }
+
+    /** Restore one channel's expression clips from a {@link #snapshotExprClips(int)} snapshot. When the
+     *  clip count matches, existing clips are mutated in place (references stay valid across a drag);
+     *  otherwise the list is rebuilt. */
+    public void restoreExprClips(int axis, List<ExprClip> snapshot) {
+        var list = exprClips[axis];
+        if (list.size() == snapshot.size()) {
+            for (int i = 0; i < list.size(); i++) {
+                var src = snapshot.get(i);
+                list.get(i).start(src.start()).duration(src.duration()).expression(src.expression());
+            }
+        } else {
+            list.clear();
+            for (var clip : snapshot) list.add(clip.copy());
         }
     }
 
@@ -424,7 +411,7 @@ public class AnimatedProperty {
 
     public AnimatedProperty copy() {
         var copy = new AnimatedProperty(type, base.clone(), snapshotChannels(), rangeMin, rangeMax);
-        copy.restoreModesFrom(this);
+        copy.restoreExprClipsFrom(this);
         return copy;
     }
 
@@ -485,26 +472,49 @@ public class AnimatedProperty {
         return channels;
     }
 
-    /** Write the per-channel modes + expression sources (counterpart of {@link #readModes}). */
-    public static void writeModes(CompoundTag tag, AnimatedProperty property) {
-        var modes = new ListTag();
-        var exprs = new ListTag();
-        for (int i = 0; i < property.channelCount(); i++) {
-            modes.add(IntTag.valueOf(property.mode(i).ordinal()));
-            exprs.add(StringTag.valueOf(property.expression(i)));
+    /** Write the per-channel expression clips as an {@code "exprClips"} list-of-lists (counterpart of
+     *  {@link #readExprClips}). */
+    public static void writeExprClips(CompoundTag tag, AnimatedProperty property) {
+        var channels = new ListTag();
+        for (int axis = 0; axis < property.channelCount(); axis++) {
+            var clips = new ListTag();
+            for (var clip : property.exprClips(axis)) {
+                var clipTag = new CompoundTag();
+                clipTag.put("start", DoubleTag.valueOf(clip.start()));
+                clipTag.put("duration", DoubleTag.valueOf(clip.duration()));
+                clipTag.put("expr", StringTag.valueOf(clip.expression()));
+                clips.add(clipTag);
+            }
+            channels.add(clips);
         }
-        tag.put("modes", modes);
-        tag.put("exprs", exprs);
+        tag.put("exprClips", channels);
     }
 
-    /** Read the per-channel modes + expression sources onto {@code property} (tolerant of missing/short
-     *  lists from old saves → channels default to {@link ChannelMode#CURVE}). */
-    public static void readModes(CompoundTag tag, AnimatedProperty property) {
+    /** Read the per-channel expression clips onto {@code property}. Tolerant of missing lists. Also
+     *  migrates the legacy {@code "modes"}/{@code "exprs"} format (an {@code EXPRESSION} channel, ordinal
+     *  1) into one full-span clip starting at tick 0 — with clip-local {@code t} and start 0 this
+     *  reproduces the old absolute-{@code t} behavior. */
+    public static void readExprClips(CompoundTag tag, AnimatedProperty property) {
+        if (tag.contains("exprClips", Tag.TAG_LIST)) {
+            var channels = tag.getList("exprClips", Tag.TAG_LIST);
+            for (int axis = 0; axis < property.channelCount() && axis < channels.size(); axis++) {
+                var clips = channels.getList(axis);
+                for (int i = 0; i < clips.size(); i++) {
+                    var clipTag = clips.getCompound(i);
+                    property.addExprClip(axis, new ExprClip(
+                            clipTag.getDouble("start"), clipTag.getDouble("duration"), clipTag.getString("expr")));
+                }
+            }
+            return;
+        }
+        // legacy migration: EXPRESSION-mode channels become a single full-span clip
         var modes = tag.getList("modes", Tag.TAG_INT);
         var exprs = tag.getList("exprs", Tag.TAG_STRING);
-        for (int i = 0; i < property.channelCount(); i++) {
-            if (i < modes.size()) property.setMode(i, ChannelMode.byOrdinal(modes.getInt(i)));
-            if (i < exprs.size()) property.setExpression(i, exprs.getString(i));
+        for (int axis = 0; axis < property.channelCount(); axis++) {
+            if (axis < modes.size() && modes.getInt(axis) == 1) {
+                var expr = axis < exprs.size() ? exprs.getString(axis) : "";
+                property.addExprClip(axis, new ExprClip(0, 1e9, expr));
+            }
         }
     }
 }

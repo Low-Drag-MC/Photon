@@ -55,7 +55,7 @@ public class RotationAnimatedProperty extends AnimatedProperty {
     public AnimatedProperty copy() {
         var copy = new RotationAnimatedProperty(type, base(), snapshotChannels(), rangeMin(), rangeMax());
         copy.interpMode = this.interpMode;
-        copy.restoreModesFrom(this);
+        copy.restoreExprClipsFrom(this);
         return copy;
     }
 }

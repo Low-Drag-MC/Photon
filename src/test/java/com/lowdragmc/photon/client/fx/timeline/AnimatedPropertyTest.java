@@ -33,21 +33,23 @@ class AnimatedPropertyTest {
     }
 
     @Test
-    void expressionChannelSamplesFunctionOfTime() {
-        var p = singleChannelAt(0);
-        p.setMode(0, AnimatedProperty.ChannelMode.EXPRESSION);
-        p.setExpression(0, "t * 2 + 1");
-        assertNull(p.exprError(0), "a valid expression has no error");
-        assertEquals(1f, p.sampleChannelValue(0, 0), 1e-4);
-        assertEquals(7f, p.sampleChannelValue(0, 3), 1e-4);
+    void exprClipOverridesCurveInsideRange() {
+        var p = singleChannelAt(0); // curve is a constant 0
+        p.addExprClip(0, new ExprClip(2, 4, "t * 2 + 1")); // clip [2, 6), t is clip-local
+        assertNull(p.exprClips(0).getFirst().error(), "a valid expression has no error");
+        // outside the clip → the curve
+        assertEquals(0f, p.sampleChannelValue(0, 0), 1e-4);
+        assertEquals(0f, p.sampleChannelValue(0, 6), 1e-4, "end is exclusive → curve again");
+        // inside the clip → the expression, with clip-local t
+        assertEquals(1f, p.sampleChannelValue(0, 2), 1e-4, "local t=0 → 1");
+        assertEquals(7f, p.sampleChannelValue(0, 5), 1e-4, "local t=3 → 7");
     }
 
     @Test
-    void invalidExpressionReportsErrorAndFallsBackToBase() {
-        var p = singleChannelAt(5); // base value 5
-        p.setMode(0, AnimatedProperty.ChannelMode.EXPRESSION);
-        p.setExpression(0, "sin("); // malformed
-        assertNotNull(p.exprError(0), "a malformed expression reports a syntax error");
-        assertEquals(5f, p.sampleChannelValue(0, 2), 1e-4, "falls back to the captured base value");
+    void invalidExprClipFallsBackToCurve() {
+        var p = singleChannelAt(5); // curve is a constant 5
+        p.addExprClip(0, new ExprClip(0, 10, "sin(")); // malformed
+        assertNotNull(p.exprClips(0).getFirst().error(), "a malformed expression reports a syntax error");
+        assertEquals(5f, p.sampleChannelValue(0, 2), 1e-4, "falls back to the underlying curve");
     }
 }

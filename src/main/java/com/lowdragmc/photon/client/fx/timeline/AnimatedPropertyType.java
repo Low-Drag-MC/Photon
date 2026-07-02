@@ -100,7 +100,7 @@ public interface AnimatedPropertyType {
         tag.put("channels", chs);
         tag.putFloat("rangeMin", property.rangeMin());
         tag.putFloat("rangeMax", property.rangeMax());
-        AnimatedProperty.writeModes(tag, property);
+        AnimatedProperty.writeExprClips(tag, property);
         return tag;
     }
 
@@ -112,7 +112,7 @@ public interface AnimatedPropertyType {
         var fixedBase = new float[channelCount()];
         System.arraycopy(base, 0, fixedBase, 0, Math.min(base.length, fixedBase.length));
         var property = new AnimatedProperty(this, fixedBase, channels, tag.getFloat("rangeMin"), tag.getFloat("rangeMax"));
-        AnimatedProperty.readModes(tag, property);
+        AnimatedProperty.readExprClips(tag, property);
         return property;
     }
 
