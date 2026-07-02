@@ -384,10 +384,13 @@ public class AraTrailParticle implements IParticle {
             if (point.life <= 0)
             {
 
-                // Unsmoothed trails delete points as soon as they die.
+                // Unsmoothed trails: wait until the next (newer) point is also dead, so the render-time tail
+                // retract can shrink this segment to zero (f reaches 1 only when next.life hits 0) before
+                // removal. Removing at life<=0 would pop a whole segment when the emission interval > 1 tick.
                 if (config.smoothness <= 1)
                 {
-                    points.removeAt(i);
+                    if (points.get(Math.min(i + 1, points.size() - 1)).life <= 0)
+                        points.removeAt(i);
                 }
                 // Smoothed trails however, should wait until the next 2 points are dead too. This ensures spline continuity.
                 else
@@ -599,7 +602,6 @@ public class AraTrailParticle implements IParticle {
             Point head = (!isRemoved && config.emit && !points.getLast().discontinuous) ? points.getLast() : null;
             Vector3f savedHead = head == null ? null : new Vector3f(head.position);
             if (head != null) head.position = worldToTrail.transformPosition(getWorldPosition());
-
             try {
                 // get discontinuous point indices:
                 discontinuities.clear();
@@ -723,8 +725,15 @@ public class AraTrailParticle implements IParticle {
 
                 float sectionLength = nextIndex == i ? prevV.length() : nextV.length();
 
-                nextV.normalize();
-                prevV.normalize();
+                // Guard the trail ends: nextIndex/prevIndex clamp to i there, so one neighbour vector is
+                // (0,0,0), and normalize((0,0,0)) yields NaN which poisons the tangent/bitangent -> NaN
+                // end-cap vertices. Fall back to the available direction so the end cap keeps a valid frame.
+                boolean nextZero = nextV.lengthSquared() < EPSILON;
+                boolean prevZero = prevV.lengthSquared() < EPSILON;
+                if (!nextZero) nextV.normalize();
+                if (!prevZero) prevV.normalize();
+                if (nextZero) nextV.set(prevV);   // tail end: reuse the (normalized) prev direction
+                if (prevZero) prevV.set(nextV);   // head end: reuse the (normalized) next direction
 
                 // Calculate tangent vector:
                 if (config.alignment == AraTrailConfig.TrailAlignment.Local)
