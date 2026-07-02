@@ -3,13 +3,19 @@ package com.lowdragmc.photon.client.fx.timeline;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
 import com.lowdragmc.photon.client.gameobject.FXObject;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /**
  * Master-clock driver for a {@link Timeline}. Advanced once per tick from the always-on root object
@@ -47,6 +53,14 @@ public class TimelinePlayer {
     private boolean dispatchSignals = true;
     /** Highest tick already dispatched signals for, so a forward window never re-fires (reset on begin). */
     private double lastSignalTick = -1;
+    /** Per-audio-track currently-playing sound instance and the clip that spawned it. */
+    private final Map<AudioTrack, TimelineSoundInstance> audioInstances = new HashMap<>();
+    private final Map<AudioTrack, AudioClip> audioClips = new HashMap<>();
+    /** Whether audio tracks play. Default true (in-world); the editor gates it to live playback only. */
+    private boolean audioEnabled = true;
+    /** Editor preview: force non-positional audio so 3D/attenuated clips are still audible in the editor
+     *  (the preview listener isn't at the clip's world position). Stays false in-world for real 3D. */
+    private boolean editorPreview = false;
 
     public TimelinePlayer(FXRuntime runtime, Timeline timeline) {
         this.runtime = runtime;
@@ -65,6 +79,7 @@ public class TimelinePlayer {
         this.lastControlClip.clear();
         this.lastControlled.clear();
         this.lastSpeedControlled.clear();
+        stopAllAudio();
         // apply the t=0 state before any object ticks (avoids a one-tick artifact)
         evaluate(0);
     }
@@ -94,6 +109,18 @@ public class TimelinePlayer {
     /** Editor gate: only dispatch signals during live forward playback (not scrub/preview replays). */
     public void setSignalDispatch(boolean dispatchSignals) {
         this.dispatchSignals = dispatchSignals;
+    }
+
+    /** Editor gate: only play audio during live forward playback. Turning it off stops all sounds now. */
+    public void setAudioDispatch(boolean audioEnabled) {
+        if (this.audioEnabled == audioEnabled) return;
+        this.audioEnabled = audioEnabled;
+        if (!audioEnabled) stopAllAudio();
+    }
+
+    /** Editor-only: force non-positional playback so 3D clips are still audible in the preview. */
+    public void setEditorPreview(boolean editorPreview) {
+        this.editorPreview = editorPreview;
     }
 
     private void evaluate(long time) {
@@ -160,6 +187,86 @@ public class TimelinePlayer {
         applyAnimations(time);
         applySpeed(leaves, time);
         dispatchSignals(leaves, time);
+        applyAudio(leaves, time);
+    }
+
+    /**
+     * Drive audio-track clips: start a looping {@link TimelineSoundInstance} on clip enter/switch, stop
+     * it on exit, and push live volume/pitch (and a moving target's position) while a clip stays active.
+     * Gated to live playback by {@link #setAudioDispatch}; a clip shorter than its sound is cut off at
+     * the clip end, a longer clip loops (the sound engine handles the looping).
+     */
+    private void applyAudio(List<Track> leaves, double time) {
+        if (!audioEnabled) {
+            stopAllAudio();
+            return;
+        }
+        var soundManager = Minecraft.getInstance().getSoundManager();
+        var seen = new HashSet<AudioTrack>();
+        for (var track : leaves) {
+            if (track.mute() || !(track instanceof AudioTrack audioTrack)) {
+                continue;
+            }
+            seen.add(audioTrack);
+            var clip = audioTrack.clipAt(time) instanceof AudioClip ac ? ac : null;
+            var previous = audioClips.get(audioTrack);
+            var instance = audioInstances.get(audioTrack);
+            if (clip != previous) {
+                if (instance != null) {
+                    instance.requestStop();
+                    audioInstances.remove(audioTrack);
+                }
+                audioClips.put(audioTrack, clip);
+                if (clip != null && clip.sound() != null) {
+                    var soundEvent = BuiltInRegistries.SOUND_EVENT.get(clip.sound());
+                    if (soundEvent != null) {
+                        var supplier = attenuatedSupplier(audioTrack, clip);
+                        var newInstance = new TimelineSoundInstance(soundEvent, clip.category(), clip.volume(),
+                                clip.pitch(), supplier != null, supplier);
+                        soundManager.queueTickingSound(newInstance);
+                        audioInstances.put(audioTrack, newInstance);
+                    }
+                }
+            } else if (instance != null && clip != null) {
+                instance.update(clip.volume(), clip.pitch(), attenuatedSupplier(audioTrack, clip));
+            }
+        }
+        // stop instances whose track was removed / muted since last evaluation
+        if (audioInstances.size() > seen.size()) {
+            for (var track : new ArrayList<>(audioInstances.keySet())) {
+                if (!seen.contains(track)) {
+                    var instance = audioInstances.remove(track);
+                    if (instance != null) instance.requestStop();
+                    audioClips.remove(track);
+                }
+            }
+        }
+    }
+
+    /**
+     * A world-position source for positional (attenuated) playback, or null when the clip isn't
+     * attenuated / has no bound target, or when in editor preview (forced non-positional so it stays
+     * audible). A null supplier makes the sound play non-positional at the listener.
+     */
+    @Nullable
+    private Supplier<Vector3f> attenuatedSupplier(AudioTrack track, AudioClip clip) {
+        if (editorPreview || !clip.attenuation() || track.targetId() == null) {
+            return null;
+        }
+        var id = track.targetId();
+        return () -> {
+            var object = runtime.objects.get(id);
+            return object == null ? null : object.transform().position();
+        };
+    }
+
+    /** Stop and forget every playing audio instance (on reset / pause / dispose). */
+    public void stopAllAudio() {
+        for (var instance : audioInstances.values()) {
+            instance.requestStop();
+        }
+        audioInstances.clear();
+        audioClips.clear();
     }
 
     /**
@@ -209,7 +316,7 @@ public class TimelinePlayer {
     /**
      * Drive animation-track targets' local transforms. Runs after the active/control resolution (so a
      * control restart's reset pose is overwritten by the animation for the same tick). Animation does
-     * not gate active/visible, so it is a separate pass from {@link #controlledObjectIds()}.
+     * not gate active/visible, so it is a separate pass from {@link #controlledObjectIds(List)} ()}.
      */
     private void applyAnimations(double time) {
         for (var track : timeline.leafTracks(false)) {
@@ -244,7 +351,7 @@ public class TimelinePlayer {
     }
 
     /** Union of all objects referenced by activator track targets and control clip targets. */
-    private Set<UUID> controlledObjectIds(java.util.List<Track> leaves) {
+    private Set<UUID> controlledObjectIds(List<Track> leaves) {
         var ids = new HashSet<UUID>();
         for (var track : leaves) {
             if (track.mute()) {

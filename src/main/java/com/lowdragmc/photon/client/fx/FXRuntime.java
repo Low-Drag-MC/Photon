@@ -118,6 +118,7 @@ public class FXRuntime implements IScene {
         for (var fxObject : objects.values()) {
             fxObject.remove(force);
         }
+        timelinePlayer.stopAllAudio();
     }
 
     @Nullable

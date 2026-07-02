@@ -14,6 +14,7 @@ import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.TaffyPosition;
+import net.minecraft.client.gui.GuiGraphics;
 
 import javax.annotation.Nullable;
 
@@ -70,6 +71,12 @@ public abstract class ClipTrackEditor extends TrackEditor {
     /** Extra clip inspector configurators (e.g. control seed/randomSeed). */
     protected void buildClipConfigurator(com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup group,
                                          TimelineContext ctx, Track track, Clip clip) {
+    }
+
+    /** Draw extra decoration inside a clip (over the fill/border), e.g. audio loop sub-divisions.
+     *  {@code x/y/w/h} are the clip's inner rect. Default no-op. */
+    protected void drawClipDecoration(GuiGraphics graphics, TimelineContext ctx, Track track, Clip clip,
+                                      float x, float y, float w, float h, float pt) {
     }
 
     @Override
@@ -154,6 +161,7 @@ public abstract class ClipTrackEditor extends TrackEditor {
                     if (ctx.isClipSelected(clip) && !invalid) {
                         DrawerHelper.drawBorder(graphics, bx, y, bw, h, ColorPattern.WHITE.color, 1);
                     }
+                    drawClipDecoration(graphics, ctx, track, clip, bx, y, bw, h, pt);
                     if (!track.lock() && my >= y && my <= y + h && (mx <= bx + TimelineContext.EDGE_PX || mx >= bx + bw - TimelineContext.EDGE_PX)
                             && mx >= bx && mx <= bx + bw) {
                         Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
@@ -161,9 +169,14 @@ public abstract class ClipTrackEditor extends TrackEditor {
                 }));
         ctx.registerClipView(track, clip, element);
 
-        var label = clipLabel(ctx, track, clip);
-        if (label != null) {
-            var labelEl = new com.lowdragmc.lowdraglib2.gui.ui.elements.Label().setText(label);
+        if (clipLabel(ctx, track, clip) != null) {
+            // bind to a live data source so the label follows the latest value (e.g. a changed sound)
+            // without needing a rebuild; a supplier that returns null keeps the last shown text
+            var labelEl = new com.lowdragmc.lowdraglib2.gui.ui.elements.Label().bindDataSource(
+                    com.lowdragmc.lowdraglib2.gui.sync.bindings.impl.SupplierDataSource.of(() -> {
+                        var text = clipLabel(ctx, track, clip);
+                        return net.minecraft.network.chat.Component.literal(text == null ? "" : text);
+                    }));
             TimelineContext.styleLabel(labelEl);
             labelEl.layout(layout -> layout.flex(1).heightPercent(100));
             element.addChild(labelEl);

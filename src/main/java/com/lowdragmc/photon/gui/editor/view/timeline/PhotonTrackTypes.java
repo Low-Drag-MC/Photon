@@ -3,6 +3,7 @@ package com.lowdragmc.photon.gui.editor.view.timeline;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.client.fx.timeline.ActivatorTrack;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
+import com.lowdragmc.photon.client.fx.timeline.AudioTrack;
 import com.lowdragmc.photon.client.fx.timeline.ControlTrack;
 import com.lowdragmc.photon.client.fx.timeline.SignalTrack;
 import com.lowdragmc.photon.client.fx.timeline.SpeedTrack;
@@ -36,4 +37,7 @@ public class PhotonTrackTypes {
 
     @LDLRegisterClient(name = "speed", registry = "photon:timeline_track")
     public static final TrackType SPEED = new TrackType(SpeedTrack.class, SpeedTrack::new, new SpeedTrackEditor());
+
+    @LDLRegisterClient(name = "audio", registry = "photon:timeline_track")
+    public static final TrackType AUDIO = new TrackType(AudioTrack.class, AudioTrack::new, new AudioTrackEditor());
 }

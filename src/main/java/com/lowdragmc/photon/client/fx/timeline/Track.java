@@ -120,6 +120,14 @@ public abstract class Track {
     protected void copyExtra(Track target) {
     }
 
+    /**
+     * Factory for a clip of this track's kind, used by {@link #readData} so subclasses deserialize
+     * their own {@link Clip} subtype (e.g. an audio clip). Base returns a plain {@link Clip}.
+     */
+    protected Clip createClip(double start, double duration, float speed) {
+        return new Clip(start, duration, speed);
+    }
+
     public CompoundTag writeData(HolderLookup.Provider provider) {
         var tag = new CompoundTag();
         if (targetId != null) {
@@ -155,7 +163,7 @@ public abstract class Track {
         clips.clear();
         for (var t : tag.getList("clips", Tag.TAG_COMPOUND)) {
             if (t instanceof CompoundTag c) {
-                var clip = new Clip(c.getDouble("start"), c.getDouble("duration"), c.getFloat("speed"));
+                var clip = createClip(c.getDouble("start"), c.getDouble("duration"), c.getFloat("speed"));
                 if (c.hasUUID("clipTarget")) {
                     clip.targetId(c.getUUID("clipTarget"));
                 }

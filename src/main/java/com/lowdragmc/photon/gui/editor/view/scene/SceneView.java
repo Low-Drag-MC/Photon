@@ -117,6 +117,10 @@ public class SceneView extends View {
     }
 
     public void simulateTo(long time) {
+        // a scrub/seek/edit-preview replay (never live play): silence timeline audio so a replayed clip
+        // doesn't start (or leave) a long sound playing. syncSignalDispatch re-enables it next UI tick if
+        // playback is actually live.
+        if (fxEditor.runtime != null) fxEditor.runtime.timelinePlayer.setAudioDispatch(false);
         var curTime = particleManager.getTime();
         if (time > curTime) {
             var iter = Math.min(time - curTime, 500 * 20);

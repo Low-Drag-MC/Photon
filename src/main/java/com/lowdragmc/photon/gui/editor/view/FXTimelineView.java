@@ -1127,7 +1127,13 @@ public class FXTimelineView extends View implements TimelineContext {
      *  scrub/preview replays (which re-run from tick 0) never spam listeners. */
     private void syncSignalDispatch() {
         var runtime = fxEditor.runtime;
-        if (runtime != null) runtime.timelinePlayer.setSignalDispatch(isPlaying());
+        if (runtime != null) {
+            runtime.timelinePlayer.setSignalDispatch(isPlaying());
+            // audio is likewise live-play-only (scrub/preview replays stay silent)
+            runtime.timelinePlayer.setAudioDispatch(isPlaying());
+            // in the editor, 3D clips play non-positional so they're audible in the preview
+            runtime.timelinePlayer.setEditorPreview(true);
+        }
     }
 
     private void togglePlay() {
