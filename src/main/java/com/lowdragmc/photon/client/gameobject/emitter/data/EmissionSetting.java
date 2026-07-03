@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
+import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -29,9 +30,11 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
+ * Pure-data emission config; the emission-count behaviour lives on the co-located {@link Runtime}
+ * (its {@code emissionRate}/{@code distanceRate} are timeline-overridable slots).
+ *
  * @author KilaBash
  * @date 2023/6/1
- * @implNote EmissionSetting
  */
 @OnlyIn(Dist.CLIENT)
 @Setter
@@ -59,65 +62,86 @@ public class EmissionSetting implements IConfigurable, IPersistedSerializable {
     @ReadOnlyManaged(serializeMethod = "burstsSerialize", deserializeMethod = "burstsDeserialize")
     protected List<Burst> bursts = new ArrayList<>();
 
-    public int getEmissionCount(ParticleEmitter particleEmitter, RandomSource randomSource) {
-        return getEmissionCount(particleEmitter, randomSource, 1f);
+    public Runtime createRuntime() {
+        return new Runtime(this);
     }
 
-    /**
-     * Emission for a simulation slice of length {@code dt} ticks starting at the emitter's current age.
-     * Time-rate emission accumulates fractionally (so a scaled {@code dt} still emits whole particles);
-     * bursts fire when an integer trigger age is crossed within the slice {@code [age, age+dt)}. At
-     * {@code dt==1} on integer ages this reproduces the original per-tick cadence (bursts identical).
-     */
-    public int getEmissionCount(ParticleEmitter particleEmitter, RandomSource randomSource, float dt) {
-        var ageStart = particleEmitter.getAgeF();
-        var ageEnd = ageStart + dt;
-        var t = particleEmitter.getT();
-        var timeValue = emissionRate.get(randomSource, t).floatValue();
-        var distanceValue = distanceRate.get(randomSource, t).floatValue();
-        // time-based rate: accumulate rate*dt, emit whole particles, carry the remainder
-        var acc = particleEmitter.getEmissionRateAccum() + timeValue * dt;
-        if (emissionMode == Mode.Random) {
-            // randomized rounding of the fractional part (keeps the same expected rate)
-            var whole = (int) acc;
-            var frac = acc - whole;
-            acc -= whole;
-            if (randomSource.nextFloat() < frac) { whole += 1; acc -= 1; }
-            particleEmitter.setEmissionRateAccum(acc);
-            var n = whole;
-            return n + distanceAndBursts(particleEmitter, randomSource, t, distanceValue, ageStart, ageEnd);
-        }
-        var number = (int) acc;
-        particleEmitter.setEmissionRateAccum(acc - number);
-        return number + distanceAndBursts(particleEmitter, randomSource, t, distanceValue, ageStart, ageEnd);
-    }
+    /** Per-emitter runtime: timeline-overridable emission/distance rate slots + the emission-count logic. */
+    public static class Runtime {
+        private final EmissionSetting config;
+        public final RuntimeValue<NumberFunction> emissionRate;
+        public final RuntimeValue<NumberFunction> distanceRate;
 
-    private int distanceAndBursts(ParticleEmitter particleEmitter, RandomSource randomSource, float t,
-                                  float distanceValue, float ageStart, float ageEnd) {
-        var number = 0;
-        if (distanceValue > 0) {
-            var emitDistance = (int) (particleEmitter.getAccumulatedDistance() / distanceValue);
-            number += emitDistance;
-            particleEmitter.setAccumulatedDistance(particleEmitter.getAccumulatedDistance() - emitDistance * distanceValue);
+        public Runtime(EmissionSetting config) {
+            this.config = config;
+            this.emissionRate = new RuntimeValue<>(() -> config.emissionRate);
+            this.distanceRate = new RuntimeValue<>(() -> config.distanceRate);
         }
 
-        for (var bust : bursts) {
-            var count = bust.count.get(randomSource, t).intValue();
-            // burst trigger ages: bust.time, +interval, +2*interval, ... (limited by cycles when > 0).
-            // fire each trigger whose age lands in [ageStart, ageEnd).
-            int firstK = (int) Math.ceil((ageStart - bust.time) / bust.interval);
-            if (firstK < 0) firstK = 0;
-            for (int k = firstK; ; k++) {
-                if (bust.cycles > 0 && k >= bust.cycles) break;
-                float triggerAge = bust.time + (long) k * bust.interval;
-                if (triggerAge < ageStart) continue;
-                if (triggerAge >= ageEnd) break;
-                if (randomSource.nextFloat() < bust.probability) {
-                    number += count;
+        public int getEmissionCount(ParticleEmitter particleEmitter, RandomSource randomSource) {
+            return getEmissionCount(particleEmitter, randomSource, 1f);
+        }
+
+        /**
+         * Emission for a simulation slice of length {@code dt} ticks starting at the emitter's current age.
+         * Time-rate emission accumulates fractionally (so a scaled {@code dt} still emits whole particles);
+         * bursts fire when an integer trigger age is crossed within the slice {@code [age, age+dt)}.
+         */
+        public int getEmissionCount(ParticleEmitter particleEmitter, RandomSource randomSource, float dt) {
+            var ageStart = particleEmitter.getAgeF();
+            var ageEnd = ageStart + dt;
+            var t = particleEmitter.getT();
+            var timeValue = emissionRate.get().get(randomSource, t).floatValue();
+            var distanceValue = distanceRate.get().get(randomSource, t).floatValue();
+            // time-based rate: accumulate rate*dt, emit whole particles, carry the remainder
+            var acc = particleEmitter.getEmissionRateAccum() + timeValue * dt;
+            if (config.emissionMode == Mode.Random) {
+                // randomized rounding of the fractional part (keeps the same expected rate)
+                var whole = (int) acc;
+                var frac = acc - whole;
+                acc -= whole;
+                if (randomSource.nextFloat() < frac) { whole += 1; acc -= 1; }
+                particleEmitter.setEmissionRateAccum(acc);
+                var n = whole;
+                return n + distanceAndBursts(particleEmitter, randomSource, t, distanceValue, ageStart, ageEnd);
+            }
+            var number = (int) acc;
+            particleEmitter.setEmissionRateAccum(acc - number);
+            return number + distanceAndBursts(particleEmitter, randomSource, t, distanceValue, ageStart, ageEnd);
+        }
+
+        private int distanceAndBursts(ParticleEmitter particleEmitter, RandomSource randomSource, float t,
+                                      float distanceValue, float ageStart, float ageEnd) {
+            var number = 0;
+            if (distanceValue > 0) {
+                var emitDistance = (int) (particleEmitter.getAccumulatedDistance() / distanceValue);
+                number += emitDistance;
+                particleEmitter.setAccumulatedDistance(particleEmitter.getAccumulatedDistance() - emitDistance * distanceValue);
+            }
+
+            for (var bust : config.bursts) {
+                var count = bust.count.get(randomSource, t).intValue();
+                // burst trigger ages: bust.time, +interval, ... (limited by cycles when > 0); fire each
+                // trigger whose age lands in [ageStart, ageEnd).
+                int firstK = (int) Math.ceil((ageStart - bust.time) / bust.interval);
+                if (firstK < 0) firstK = 0;
+                for (int k = firstK; ; k++) {
+                    if (bust.cycles > 0 && k >= bust.cycles) break;
+                    float triggerAge = bust.time + (long) k * bust.interval;
+                    if (triggerAge < ageStart) continue;
+                    if (triggerAge >= ageEnd) break;
+                    if (randomSource.nextFloat() < bust.probability) {
+                        number += count;
+                    }
                 }
             }
+            return number;
         }
-        return number;
+
+        public void clear() {
+            emissionRate.clear();
+            distanceRate.clear();
+        }
     }
 
     private Configurator buildBurstConfigurator(Supplier<Burst> getter, Consumer<Burst> setter) {

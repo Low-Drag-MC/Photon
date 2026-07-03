@@ -7,6 +7,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorSelectorConfigurato
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.PhotonRegistries;
+import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
@@ -25,9 +26,11 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
 /**
+ * Pure-data spawn-shape config; value-use behaviour (setupParticle / drawGuideLines) lives on the
+ * co-located {@link Runtime}.
+ *
  * @author KilaBash
  * @date 2023/5/27
- * @implNote Shape
  */
 @OnlyIn(Dist.CLIENT)
 @Getter
@@ -49,14 +52,6 @@ public class ShapeSetting implements IConfigurable, IPersistedSerializable {
     @NumberFunction3Config(allowSeperated = false, isSeperatedDefault = true, common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1000, curveConfig = @CurveConfig(bound = {0, 3}, xAxis = "duration", yAxis = "scale")))
     private NumberFunction3 scale = new NumberFunction3(1, 1, 1);
 
-    public void setupParticle(TileParticle particle, IParticleEmitter emitter) {
-        var t = emitter.getT();
-        shape.nextPosVel(particle, emitter,
-                position.get(t, () -> emitter.getMemRandom("shape_position")),
-                new Vector3f(rotation.get(t, () -> emitter.getMemRandom("shape_rotation")).mul(Mth.TWO_PI / 360)),
-                new Vector3f(scale.get(t, () -> emitter.getMemRandom("shape_scale"))));
-    }
-
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         IConfigurable.super.buildConfigurator(father);
@@ -66,13 +61,45 @@ public class ShapeSetting implements IConfigurable, IPersistedSerializable {
                 s -> s, (shapeName, group) -> shape.buildConfigurator(group)));
     }
 
-    public void drawGuideLines(MultiBufferSource bufferSource, float partialTicks, IParticleEmitter emitter) {
-        var poseStack = new PoseStack();
-        poseStack.mulPose(emitter.transform().localToWorldMatrix());
-        var t = emitter.getT(partialTicks);
-        shape.drawGuideLines(poseStack, bufferSource, partialTicks, emitter,
-                position.get(t, () -> emitter.getMemRandom("shape_position")),
-                new Vector3f(rotation.get(t, () -> emitter.getMemRandom("shape_rotation")).mul(Mth.TWO_PI / 360)),
-                new Vector3f(scale.get(t, () -> emitter.getMemRandom("shape_scale"))));
+    public Runtime createRuntime() {
+        return new Runtime(this);
+    }
+
+    public static class Runtime {
+        private final ShapeSetting config;
+        public final RuntimeValue<NumberFunction3> position;
+        public final RuntimeValue<NumberFunction3> rotation;
+        public final RuntimeValue<NumberFunction3> scale;
+
+        public Runtime(ShapeSetting config) {
+            this.config = config;
+            this.position = new RuntimeValue<>(() -> config.position);
+            this.rotation = new RuntimeValue<>(() -> config.rotation);
+            this.scale = new RuntimeValue<>(() -> config.scale);
+        }
+
+        public void setupParticle(TileParticle particle, IParticleEmitter emitter) {
+            var t = emitter.getT();
+            config.shape.nextPosVel(particle, emitter,
+                    position.get().get(t, () -> emitter.getMemRandom("shape_position")),
+                    new Vector3f(rotation.get().get(t, () -> emitter.getMemRandom("shape_rotation")).mul(Mth.TWO_PI / 360)),
+                    new Vector3f(scale.get().get(t, () -> emitter.getMemRandom("shape_scale"))));
+        }
+
+        public void drawGuideLines(MultiBufferSource bufferSource, float partialTicks, IParticleEmitter emitter) {
+            var poseStack = new PoseStack();
+            poseStack.mulPose(emitter.transform().localToWorldMatrix());
+            var t = emitter.getT(partialTicks);
+            config.shape.drawGuideLines(poseStack, bufferSource, partialTicks, emitter,
+                    position.get().get(t, () -> emitter.getMemRandom("shape_position")),
+                    new Vector3f(rotation.get().get(t, () -> emitter.getMemRandom("shape_rotation")).mul(Mth.TWO_PI / 360)),
+                    new Vector3f(scale.get().get(t, () -> emitter.getMemRandom("shape_scale"))));
+        }
+
+        public void clear() {
+            position.clear();
+            rotation.clear();
+            scale.clear();
+        }
     }
 }

@@ -91,4 +91,13 @@ public abstract class FXObjectType {
         }
         return list;
     }
+
+    /**
+     * The timeline-animatable config values of this object kind, each bound to a named runtime slot.
+     * Base = none; object kinds with a runtime layer (e.g. ParticleEmitter) override to declare theirs.
+     * The timeline writes/clears these slots directly (no map, no reflection).
+     */
+    public List<RuntimeBinding> runtimeBindings() {
+        return List.of();
+    }
 }

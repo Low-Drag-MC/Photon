@@ -144,6 +144,25 @@ public class AnimatedProperty {
         return e != null ? e : sampleChannel(channels[axis], time);
     }
 
+    /** Step (hold) sample of one channel at {@code time} (ticks): the value of the latest keyframe whose
+     *  tick is {@code <= time} (the first keyframe's value before it), with the active expression clip
+     *  taking priority. Used by discrete (int / boolean) config channels. */
+    public float sampleChannelStepped(int axis, float time) {
+        var e = evalExpr(axis, time);
+        if (e != null) return e;
+        var count = keyCount(axis);
+        var value = key(axis, 0).y;
+        for (int k = 0; k < count; k++) {
+            var kf = key(axis, k);
+            if (kf.x <= time) {
+                value = kf.y;
+            } else {
+                break;
+            }
+        }
+        return value;
+    }
+
     public float rangeMin() {
         return rangeMin;
     }
@@ -186,7 +205,7 @@ public class AnimatedProperty {
 
     /** Restore the captured authored value (used when the property/track is removed or muted). */
     public void restoreBase(FXObject target) {
-        type.apply(target, base());
+        type.restore(target, this);
     }
 
     /** Distinct keyframe times (segment endpoints) across all channels, for the collapsed-lane dots. */

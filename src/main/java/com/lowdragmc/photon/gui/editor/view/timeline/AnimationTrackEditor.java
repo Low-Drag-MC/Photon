@@ -629,14 +629,39 @@ public class AnimationTrackEditor extends TrackEditor {
         if (runtime == null) return;
         var bound = track.targetId() == null ? null : runtime.objects.get(track.targetId());
         if (!(bound instanceof FXObject fxObject)) return;
-        var menu = TreeBuilder.Menu.start();
+        // group the not-yet-added properties into a nested tree by their dotted path() (e.g.
+        // "config.physics.friction" -> config > physics > friction), so the menu branches by category
+        var root = new MenuNode();
+        var any = false;
         for (var type : fxObject.getFXObjectType().animatableProperties()) {
-            if (track.property(type) == null) { // only show not-yet-added properties
-                menu.leaf(Component.translatable("photon.gui.editor.timeline.add_property",
-                        Component.translatable(propertyKey(type))), () -> addProperty(ctx, track, st, type));
+            if (track.property(type) != null) continue; // only show not-yet-added properties
+            any = true;
+            var segments = type.path().split("\\.");
+            var node = root;
+            for (int i = 0; i < segments.length - 1; i++) {
+                node = node.children.computeIfAbsent(segments[i], k -> new MenuNode());
             }
+            node.leaves.add(type);
         }
-        if (!menu.isEmpty()) ctx.openMenu(x, y, menu);
+        if (!any) return;
+        var menu = TreeBuilder.Menu.start();
+        emitAddPropertyMenu(menu, root, ctx, track, st);
+        ctx.openMenu(x, y, menu);
+    }
+
+    /** A node in the add-property menu tree: named sub-branches + leaf properties at this level. */
+    private static final class MenuNode {
+        final java.util.LinkedHashMap<String, MenuNode> children = new java.util.LinkedHashMap<>();
+        final List<AnimatedPropertyType> leaves = new ArrayList<>();
+    }
+
+    private void emitAddPropertyMenu(TreeBuilder.Menu menu, MenuNode node, TimelineContext ctx,
+                                     AnimationTrack track, AnimationTrackUIState st) {
+        node.children.forEach((segment, child) ->
+                menu.branch(segment, sub -> emitAddPropertyMenu(sub, child, ctx, track, st)));
+        for (var type : node.leaves) {
+            menu.leaf(Component.translatable(propertyKey(type)), () -> addProperty(ctx, track, st, type));
+        }
     }
 
     private void addProperty(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st, AnimatedPropertyType type) {
@@ -750,7 +775,7 @@ public class AnimationTrackEditor extends TrackEditor {
     }
 
     private static String propertyKey(AnimatedPropertyType type) {
-        return "photon.gui.editor.timeline.property." + type.name();
+        return type.displayNameKey();
     }
 
     private static ColorPattern channelColor(int axis) {
@@ -841,6 +866,26 @@ public class AnimationTrackEditor extends TrackEditor {
         return new ArrayList<>(set);
     }
 
+    /** Build a step (hold) staircase polyline for a discrete channel across {@code [scroll, endTick]}: a
+     *  horizontal hold at each keyframe's value with a vertical riser at the next keyframe's tick. */
+    private List<Vector2f> steppedPoints(TimelineContext ctx, AnimatedProperty property, int axis,
+                                         float scroll, float endTick, float x, float y, float height, float min, float max) {
+        var points = new ArrayList<Vector2f>();
+        var prev = property.sampleChannelStepped(axis, scroll);
+        points.add(new Vector2f(x, valueToCurveY(prev, y, height, min, max)));
+        var count = property.keyCount(axis);
+        for (int k = 0; k < count; k++) {
+            var key = property.key(axis, k);
+            if (key.x <= scroll || key.x > endTick) continue;
+            var kx = x + (key.x - scroll) * ctx.scale();
+            points.add(new Vector2f(kx, valueToCurveY(prev, y, height, min, max)));   // hold to the riser
+            points.add(new Vector2f(kx, valueToCurveY(key.y, y, height, min, max)));  // vertical jump
+            prev = key.y;
+        }
+        points.add(new Vector2f(x + (endTick - scroll) * ctx.scale(), valueToCurveY(prev, y, height, min, max)));
+        return points;
+    }
+
     /** Draw the active axes' expression clips as translucent full-height regions (channel color, brighter
      *  when selected, red on a syntax error) with edge-resize borders. */
     private void drawExprClips(TimelineContext ctx, GuiGraphics graphics, AnimationTrackUIState st, AnimatedProperty property,
@@ -885,12 +930,18 @@ public class AnimationTrackEditor extends TrackEditor {
         var step = 2 / ctx.scale();
         // expression clip regions (translucent, under the line)
         drawExprClips(ctx, graphics, st, property, x, y, width, height);
+        var stepped = property.type().stepped();
         for (var axis : axes) {
             // effective value = expression clip override where present, else the keyframe curve; clip
-            // boundaries are folded into the tick set so a curve↔expression jump renders cleanly
-            var points = new ArrayList<Vector2f>();
-            for (var t : curvePolylineTicks(property, axis, scroll, endTick, step)) {
-                points.add(new Vector2f(x + (t - scroll) * ctx.scale(), valueToCurveY(property.sampleChannelValue(axis, t), y, height, min, max)));
+            // boundaries are folded into the tick set so a curve↔expression jump renders cleanly.
+            // Discrete (int/bool) channels render as a step (hold) staircase instead of a smooth curve.
+            var points = stepped
+                    ? steppedPoints(ctx, property, axis, scroll, endTick, x, y, height, min, max)
+                    : new ArrayList<Vector2f>();
+            if (!stepped) {
+                for (var t : curvePolylineTicks(property, axis, scroll, endTick, step)) {
+                    points.add(new Vector2f(x + (t - scroll) * ctx.scale(), valueToCurveY(property.sampleChannelValue(axis, t), y, height, min, max)));
+                }
             }
             DrawerHelper.drawLines(graphics, points, channelColor(axis).color, channelColor(axis).color, 0.5f);
         }
@@ -905,8 +956,8 @@ public class AnimationTrackEditor extends TrackEditor {
                 DrawerHelper.drawSolidRect(graphics, kx - 2, ky - 2, 4, 4, (selected ? ColorPattern.WHITE : ColorPattern.ORANGE).color);
             }
         }
-        // tangent handles only when exactly one key is selected
-        if (st.selectedKeys.size() == 1 && st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)
+        // tangent handles only when exactly one key is selected (never for stepped/discrete channels)
+        if (!stepped && st.selectedKeys.size() == 1 && st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)
                 && st.selKeyIndex >= 0 && st.selKeyIndex < property.keyCount(st.selKeyAxis)) {
             var key = property.key(st.selKeyAxis, st.selKeyIndex);
             var kx = tickToCurveX(ctx, key.x, x);
@@ -982,8 +1033,8 @@ public class AnimationTrackEditor extends TrackEditor {
             return;
         }
         if (e.button != 0 || track.lock()) return;
-        // tangent handle drag (only when exactly one key is selected)
-        if (st.selectedKeys.size() == 1 && st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)) {
+        // tangent handle drag (only when exactly one key is selected; stepped channels have no handles)
+        if (!property.type().stepped() && st.selectedKeys.size() == 1 && st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)) {
             var which = hitHandle(ctx, property, st.selKeyAxis, st.selKeyIndex, bx, by, bh, range, e.x, e.y);
             if (which != 0) {
                 beginCurveDrag(ctx, st, property, st.selKeyAxis, st.selKeyIndex, which);

@@ -7,8 +7,12 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigPropertyType;
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
+import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
@@ -49,10 +53,97 @@ public class ParticleEmitter extends Emitter {
         public int version() {
             return 2;
         }
+
+        /** Transform properties (super) + the runtime-slot-bound config properties (cached). */
+        private List<AnimatedPropertyType> animatableProperties;
+
+        @Override
+        public List<AnimatedPropertyType> animatableProperties() {
+            if (animatableProperties == null) {
+                var list = new ArrayList<>(super.animatableProperties());
+                // runtime-slot-backed config properties (the timeline writes the slot directly)
+                for (var b : runtimeBindings()) {
+                    list.add(ConfigPropertyType.fromBinding(b));
+                }
+                animatableProperties = list;
+            }
+            return animatableProperties;
+        }
+
+        @Override
+        public List<RuntimeBinding> runtimeBindings() {
+            return RUNTIME_BINDINGS;
+        }
     };
+
+    /** Timeline-animatable config values backed by named {@link ParticleRuntime} slots (no map/reflection). */
+    public static final List<RuntimeBinding> RUNTIME_BINDINGS = List.of(
+            new RuntimeBinding("startDelay", "ParticleConfig.startDelay", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().startDelay),
+            new RuntimeBinding("startLifetime", "ParticleConfig.startLifetime", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().startLifetime),
+            new RuntimeBinding("startSpeed", "ParticleConfig.startSpeed", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().startSpeed),
+            new RuntimeBinding("startSize", "ParticleConfig.startSize", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().startSize),
+            new RuntimeBinding("startRotation", "ParticleConfig.startRotation", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().startRotation),
+            new RuntimeBinding("duration", "ParticleConfig.duration", ConfigValueType.INT,
+                    o -> ((ParticleEmitter) o).runtime().duration),
+            new RuntimeBinding("prewarm", "ParticleConfig.prewarm", ConfigValueType.INT,
+                    o -> ((ParticleEmitter) o).runtime().prewarm),
+            new RuntimeBinding("maxParticles", "ParticleConfig.maxParticles", ConfigValueType.INT,
+                    o -> ((ParticleEmitter) o).runtime().maxParticles),
+            new RuntimeBinding("looping", "ParticleConfig.looping", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().looping),
+            new RuntimeBinding("parallelUpdate", "ParticleConfig.parallelUpdate", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().parallelUpdate),
+            new RuntimeBinding("emission.emissionRate", "EmissionSetting.emissionRate", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().emission.emissionRate),
+            new RuntimeBinding("emission.distanceRate", "EmissionSetting.distanceRate", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().emission.distanceRate),
+            new RuntimeBinding("shape.position", "NoiseSetting.position", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().shape.position),
+            new RuntimeBinding("shape.rotation", "NoiseSetting.rotation", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().shape.rotation),
+            new RuntimeBinding("shape.scale", "ShapeSetting.scale", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().shape.scale),
+            new RuntimeBinding("physics.enable", "PhysicsSetting.enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().physics.enable),
+            new RuntimeBinding("physics.hasCollision", "PhysicsSetting.hasCollision", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().physics.hasCollision),
+            new RuntimeBinding("physics.friction", "PhysicsSetting.friction", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().physics.friction),
+            new RuntimeBinding("physics.collidedFriction", "PhysicsSetting.collidedFriction", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().physics.collidedFriction),
+            new RuntimeBinding("physics.gravity", "PhysicsSetting.gravity", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().physics.gravity),
+            new RuntimeBinding("physics.bounceChance", "PhysicsSetting.bounceChance", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().physics.bounceChance),
+            new RuntimeBinding("physics.bounceRate", "PhysicsSetting.bounceRate", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().physics.bounceRate),
+            new RuntimeBinding("physics.bounceSpreadRate", "PhysicsSetting.bounceSpreadRate", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().physics.bounceSpreadRate),
+            new RuntimeBinding("sizeOverLifetime.size", "NoiseSetting.size", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().sizeOverLifetime.size),
+            new RuntimeBinding("rotationOverLifetime.roll", "RotationBySpeedSetting.roll", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().rotationOverLifetime.roll),
+            new RuntimeBinding("rotationOverLifetime.pitch", "RotationBySpeedSetting.pitch", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().rotationOverLifetime.pitch),
+            new RuntimeBinding("rotationOverLifetime.yaw", "RotationBySpeedSetting.yaw", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().rotationOverLifetime.yaw),
+            new RuntimeBinding("forceOverLifetime.force", "ForceOverLifetimeSetting.force", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().forceOverLifetime.force),
+            new RuntimeBinding("lights.skyLight", "LightOverLifetimeSetting.skyLight", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().lights.skyLight),
+            new RuntimeBinding("lights.blockLight", "LightOverLifetimeSetting.blockLight", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().lights.blockLight));
 
     @Persisted(subPersisted = true)
     public final ParticleConfig config;
+
+    /** Per-instance runtime layer: named override slots (timeline-driven) over the immutable config. */
+    private ParticleRuntime runtime;
 
     // runtime
     protected boolean hasFirstUpdate = false;
@@ -73,6 +164,14 @@ public class ParticleEmitter extends Emitter {
 
     protected ParticleEmitter(ParticleConfig config) {
         this.config = config;
+    }
+
+    /** This emitter's per-instance runtime layer (lazily created; timeline overrides live here). */
+    public ParticleRuntime runtime() {
+        if (runtime == null) {
+            runtime = new ParticleRuntime(config);
+        }
+        return runtime;
     }
 
     @Override
@@ -114,8 +213,9 @@ public class ParticleEmitter extends Emitter {
     public void update(float dt) {
         if (!hasFirstUpdate) {
             hasFirstUpdate = true;
-            if (config.prewarm > 0) {
-                for (int i = 0; i < config.prewarm; i++) {
+            var prewarm = runtime().prewarm.get();
+            if (prewarm > 0) {
+                for (int i = 0; i < prewarm; i++) {
                     emitParticle(1f); // prewarm always simulates whole ticks
                     super.update(1f);
                     if (removed) {
@@ -131,10 +231,11 @@ public class ParticleEmitter extends Emitter {
     public void emitParticle(float dt) {
         // calculate distance (scaled by this step's dt)
         accumulatedDistance += getVelocity().length() * dt;
-        // emit new particle
-        var available = config.maxParticles - getParticleAmount();
-        if (!removed && getParticleAmount() < config.maxParticles) {
-            var emissionCount = config.emission.getEmissionCount(this, getRandomSource(), dt);
+        // emit new particle (maxParticles may be timeline-overridden; authored value is the fallback)
+        var maxParticles = runtime().maxParticles.get();
+        var available = maxParticles - getParticleAmount();
+        if (!removed && getParticleAmount() < maxParticles) {
+            var emissionCount = runtime().emission.getEmissionCount(this, getRandomSource(), dt);
             available = Math.min(emissionCount, available);
             particleBatchCount = Math.max(1, available);
             particleBatchCursor = 0;
@@ -146,13 +247,13 @@ public class ParticleEmitter extends Emitter {
         // particles life cycle
         if (!waitToAdded.isEmpty()) {
             for (var p : waitToAdded) {
-                particles.computeIfAbsent(p.getRenderType(), type -> new ArrayDeque<>(config.maxParticles)).add(p);
+                particles.computeIfAbsent(p.getRenderType(), type -> new ArrayDeque<>(maxParticles)).add(p);
             }
             waitToAdded.clear();
         }
 
         for (var queue : particles.values()) {
-            if (config.parallelUpdate && (!config.physics.isEnable() || !config.physics.isHasCollision())) { // parallel stream for particles tick.
+            if (runtime().parallelUpdate.get() && (!runtime().physics.isEnable() || !runtime().physics.hasCollision())) { // parallel stream for particles tick.
                 queue.removeIf(p -> !p.isAlive());
                 queue.parallelStream().forEach(p -> p.updateTick(dt));
             } else {
@@ -171,7 +272,7 @@ public class ParticleEmitter extends Emitter {
 
     @Override
     public boolean isLooping() {
-        return config.isLooping();
+        return runtime().looping.get();
     }
 
     public void emitParticle(IParticle particle) {
@@ -180,18 +281,21 @@ public class ParticleEmitter extends Emitter {
 
     @Override
     public int getLifetime() {
-        return config.duration;
+        return runtime().duration.get();
     }
 
     @Override
     protected void updateOrigin() {
         super.updateOrigin();
-        setLifetime(config.duration);
+        setLifetime(getLifetime());
     }
 
     @Override
     public void reset() {
         super.reset();
+        if (runtime != null) {
+            runtime.clear(); // drop timeline overrides; fall back to authored config
+        }
         this.particles.clear();
         this.hasFirstUpdate = false;
         this.particleBatchCount = 1;
@@ -239,7 +343,7 @@ public class ParticleEmitter extends Emitter {
     @Override
     public void drawEditorAfterWorld(SceneView.ParticleSceneEditor scene, MultiBufferSource bufferSource, float partialTicks) {
         if(scene.sceneView().isShapeVisible()) {
-            config.shape.drawGuideLines(bufferSource, partialTicks, this);
+            runtime().shape.drawGuideLines(bufferSource, partialTicks, this);
         }
     }
 

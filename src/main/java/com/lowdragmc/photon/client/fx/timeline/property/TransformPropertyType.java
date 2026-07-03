@@ -9,6 +9,12 @@ import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 public abstract class TransformPropertyType implements AnimatedPropertyType {
     private static final String[] KEYS = {"x", "y", "z"};
 
+    /** Group the three local-transform properties under a {@code transform} menu branch. */
+    @Override
+    public String path() {
+        return "transform." + name();
+    }
+
     @Override
     public int channelCount() {
         return 3;

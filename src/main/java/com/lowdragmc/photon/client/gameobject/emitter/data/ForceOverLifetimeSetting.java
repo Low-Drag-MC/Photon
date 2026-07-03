@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
@@ -14,9 +15,10 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
 /**
+ * Pure-data force-over-lifetime config; value-use behaviour lives on the co-located {@link Runtime}.
+ *
  * @author KilaBash
  * @date 2023/5/30
- * @implNote LifetimeByEmitterSpeed
  */
 @OnlyIn(Dist.CLIENT)
 @Setter
@@ -32,8 +34,36 @@ public class ForceOverLifetimeSetting extends ToggleGroup {
     @Configurable(name = "ForceOverLifetimeSetting.simulationSpace", tips = "photon.emitter.config.simulationSpace")
     protected ParticleConfig.Space simulationSpace = ParticleConfig.Space.Local;
 
-    public Vector3f getForce(IParticle particle) {
-        return force.get(particle.getT(), () -> particle.getMemRandom(this)).mul(0.05f);
+    public Runtime createRuntime() {
+        return new Runtime(this);
     }
 
+    public static class Runtime {
+        private final ForceOverLifetimeSetting config;
+        public final RuntimeValue<Boolean> enable;
+        public final RuntimeValue<NumberFunction3> force;
+
+        public Runtime(ForceOverLifetimeSetting config) {
+            this.config = config;
+            this.enable = new RuntimeValue<>(config::isEnable);
+            this.force = new RuntimeValue<>(() -> config.force);
+        }
+
+        public boolean isEnable() {
+            return enable.get();
+        }
+
+        public ParticleConfig.Space getSimulationSpace() {
+            return config.simulationSpace;
+        }
+
+        public Vector3f getForce(IParticle particle) {
+            return force.get().get(particle.getT(), () -> particle.getMemRandom(this)).mul(0.05f);
+        }
+
+        public void clear() {
+            enable.clear();
+            force.clear();
+        }
+    }
 }

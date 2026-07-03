@@ -28,6 +28,30 @@ public interface AnimatedPropertyType {
         return PhotonRegistries.ANIMATED_PROPERTIES.getKey(this);
     }
 
+    /** A dotted grouping/identity path (e.g. {@code "transform.position"}, {@code "config.physics.friction"}).
+     *  Used to branch the add-property menu and as the de-dup {@link #key()}. Defaults to {@link #name()}. */
+    default String path() {
+        return name();
+    }
+
+    /** A stable identity used to look up / de-duplicate a property within a track. Defaults to
+     *  {@link #path()}; parameterized types (one per config field) get a unique path. */
+    default String key() {
+        return path();
+    }
+
+    /** The i18n key for this property's display label. Defaults to the per-type timeline key; config-backed
+     *  types override it to reuse the field's {@code @Configurable} label. */
+    default String displayNameKey() {
+        return "photon.gui.editor.timeline.property." + name();
+    }
+
+    /** Whether channels are sampled/rendered as a step (hold) function rather than a smooth curve (used by
+     *  discrete int/boolean config values). */
+    default boolean stepped() {
+        return false;
+    }
+
     /** Number of independently-keyframed channels (e.g. 3 for an xyz vector, 1 for a scalar). */
     int channelCount();
 
@@ -39,6 +63,13 @@ public interface AnimatedPropertyType {
 
     /** Write a sampled value (length {@link #channelCount()}) onto the target. */
     void apply(FXObject target, float[] values);
+
+    /** Restore the target to the property's authored value when the property is removed/muted. Default
+     *  re-applies {@code base}; config-backed types instead clear their override so the authored config
+     *  value (not a constant) takes over. */
+    default void restore(FXObject target, AnimatedProperty property) {
+        apply(target, property.base());
+    }
 
     /** Default editor display range given the captured base; default spans the base values ±1. */
     default float[] defaultRange(float[] base) {

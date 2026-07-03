@@ -9,6 +9,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySettin
 import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRuntime;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
@@ -88,6 +89,9 @@ public class TileParticle implements IParticle {
     protected boolean isFirstCollision;
     @Getter
     protected ParticleConfig config;
+    /** The owning emitter's per-instance runtime layer (timeline overrides + moved value behaviour). */
+    @Getter
+    protected ParticleRuntime runtime;
     @Getter
     protected IParticleEmitter emitter;
     @Getter
@@ -102,6 +106,7 @@ public class TileParticle implements IParticle {
     public TileParticle(IParticleEmitter emitter, ParticleConfig config) {
         this.emitter = emitter;
         this.config = config;
+        this.runtime = emitter instanceof ParticleEmitter pe ? pe.runtime() : new ParticleRuntime(config);
         this.randomSource = RandomSource.create(emitter.getRandomSource().nextLong());
         setup();
     }
@@ -118,22 +123,22 @@ public class TileParticle implements IParticle {
         this.initialTransformInverse = emitter.transform().worldToLocalMatrix();
         this.initialScale = emitter.transform().scale();
         var emitterT = emitter.getT();
-
-        setDelay(config.getStartDelay().get(randomSource, emitterT).intValue());
+        // start values come from the runtime layer (timeline override if set, else authored config)
+        setDelay(runtime.startDelay.get().get(randomSource, emitterT).intValue());
         if (config.lifetimeByEmitterSpeed.isEnable()) {
             setLifetime(config.lifetimeByEmitterSpeed.getLifetime(this, emitter,
-                    config.getStartLifetime().get(randomSource, emitterT).intValue()));
+                    runtime.startLifetime.get().get(randomSource, emitterT).intValue()));
         } else {
-            setLifetime(config.getStartLifetime().get(randomSource, emitterT).intValue());
+            setLifetime(runtime.startLifetime.get().get(randomSource, emitterT).intValue());
         }
 
-        config.shape.setupParticle(this, emitter);
+        runtime.shape.setupParticle(this, emitter);
         if (config.inheritVelocity.isEnable() && config.inheritVelocity.getMode() == InheritVelocitySetting.Mode.INITIAL) {
             addInternalVelocity(getSpaceTransformInverse().transformDirection(config.inheritVelocity.getVelocity(emitter)));
         }
-        mulInternalVelocity(config.getStartSpeed().get(randomSource, emitterT).floatValue());
-        this.initialSize = config.getStartSize().get(randomSource, emitterT);
-        this.initialRotation = config.getStartRotation().get(randomSource, emitterT).mul(Mth.TWO_PI / 360);
+        mulInternalVelocity(runtime.startSpeed.get().get(randomSource, emitterT).floatValue());
+        this.initialSize = runtime.startSize.get().get(randomSource, emitterT);
+        this.initialRotation = runtime.startRotation.get().get(randomSource, emitterT).mul(Mth.TWO_PI / 360);
         var color = config.getStartColor().get(randomSource, emitterT).intValue();
         this.initialColor = new Vector4f(ColorUtils.red(color), ColorUtils.green(color), ColorUtils.blue(color), ColorUtils.alpha(color));
         setSize(initialSize);
@@ -352,8 +357,8 @@ u     */
     }
 
     public int getRealLight(float partialTicks) {
-        if (config.lights.isEnable()) {
-            return config.lights.getLight(this, partialTicks);
+        if (runtime.lights.isEnable()) {
+            return runtime.lights.getLight(this, partialTicks);
         }
         return light;
     }
@@ -443,7 +448,7 @@ u     */
         var moveZ = desiredZ;
 
         var level = emitter.getLevel();
-        if (config.physics.isEnable() && config.physics.isHasCollision() && level != null &&
+        if (runtime.physics.isEnable() && runtime.physics.hasCollision() && level != null &&
                 (moveX != 0.0 || moveY != 0.0 || moveZ != 0.0) && moveX * moveX + moveY * moveY + moveZ * moveZ < MAXIMUM_COLLISION_VELOCITY_SQUARED) {
             var vec3 = Entity.collideBoundingBox(null, new Vec3(moveX, moveY, moveZ), getRealBoundingBox(0), level, List.of());
             moveX = (float) vec3.x;
@@ -458,12 +463,12 @@ u     */
         }
 
         // update internal velocity
-        if (!config.physics.isEnable()) return;
+        if (!runtime.physics.isEnable()) return;
         // detect collision by comparing the desired displacement vs the collided one (dt-independent)
-        if (config.physics.isHasCollision() && !this.collided) {
-            var bounceChance = config.physics.getBounceChance(this);
-            var bounceRate = config.physics.getBounceRate(this);
-            var bounceSpreadRate = config.physics.getBounceSpreadRate(this);
+        if (runtime.physics.hasCollision() && !this.collided) {
+            var bounceChance = runtime.physics.getBounceChance(this);
+            var bounceRate = runtime.physics.getBounceRate(this);
+            var bounceSpreadRate = runtime.physics.getBounceSpreadRate(this);
             if (Math.abs(desiredX) / Math.abs(moveX) > 1.001) {
                 updateCollisionBounce(bounceChance, velocity, bounceRate, bounceSpreadRate, Direction.Axis.X);
             } else if (Math.abs(desiredY) / Math.abs(moveY) > 1.001) {
@@ -473,18 +478,18 @@ u     */
             }
         }
 
-        var gravity = config.physics.getGravity(this);
+        var gravity = runtime.physics.getGravity(this);
         if (gravity != 0) {
             this.addInternalVelocity(getSpaceTransformInverse().transformDirection(new Vector3f(0, -gravity * 0.04f * dt, 0)));
         }
 
-        var friction = (float) Math.pow(config.physics.getFriction(this), dt);
+        var friction = (float) Math.pow(runtime.physics.getFriction(this), dt);
         this.velocityX *= friction;
         this.velocityY *= friction;
         this.velocityZ *= friction;
 
         if (this.collided) {
-            var collidedFriction = (float) Math.pow(config.physics.getCollidedFriction(this), dt);
+            var collidedFriction = (float) Math.pow(runtime.physics.getCollidedFriction(this), dt);
             this.velocityX *= collidedFriction;
             this.velocityY *= collidedFriction;
             this.velocityZ *= collidedFriction;
@@ -508,7 +513,7 @@ u     */
             ));
             setInternalVelocity(newVelocity);
         }
-        if (config.physics.isEnable() && config.physics.isRemovedWhenCollided()) {
+        if (runtime.physics.isEnable() && runtime.physics.isRemovedWhenCollided()) {
             this.setRemoved(true);
             if (config.subEmitters.isEnable()) {
                 config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
@@ -532,8 +537,8 @@ u     */
             var velocityAddition = config.velocityOverLifetime.getVelocityAddition(this);
             velocity.add(velocityAddition);
         }
-        if (config.forceOverLifetime.isEnable() && config.forceOverLifetime.getSimulationSpace() == ParticleConfig.Space.Local) {
-            velocity.add(config.forceOverLifetime.getForce(this));
+        if (runtime.forceOverLifetime.isEnable() && runtime.forceOverLifetime.getSimulationSpace() == ParticleConfig.Space.Local) {
+            velocity.add(runtime.forceOverLifetime.getForce(this));
         }
         return velocity;
     }
@@ -543,8 +548,8 @@ u     */
      */
     public Vector3f getRealVelocity() {
         var velocity = getSpaceTransform().transformDirection(getInternalVelocity());
-        if (config.forceOverLifetime.isEnable() && config.forceOverLifetime.getSimulationSpace() == ParticleConfig.Space.World) {
-            velocity.add(config.forceOverLifetime.getForce(this));
+        if (runtime.forceOverLifetime.isEnable() && runtime.forceOverLifetime.getSimulationSpace() == ParticleConfig.Space.World) {
+            velocity.add(runtime.forceOverLifetime.getForce(this));
         }
         if (config.inheritVelocity.isEnable() && config.inheritVelocity.getMode() == InheritVelocitySetting.Mode.CURRENT) {
             velocity.add(config.inheritVelocity.getVelocity(emitter));
@@ -557,7 +562,7 @@ u     */
     }
 
     protected void updateSize() {
-        if (config.sizeBySpeed.isEnable() || config.sizeOverLifetime.isEnable() || config.noise.isEnable()) {
+        if (config.sizeBySpeed.isEnable() || runtime.sizeOverLifetime.isEnable() || config.noise.isEnable()) {
             var size = new Vector3f(initialSize);
             var mul = new Vector3f(1, 1, 1);
 
@@ -568,8 +573,8 @@ u     */
             if (config.sizeBySpeed.isEnable()) {
                 mul.mul(config.sizeBySpeed.getSize(this));
             }
-            if (config.sizeOverLifetime.isEnable()) {
-                mul.mul(config.sizeOverLifetime.getSize(this, 0));
+            if (runtime.sizeOverLifetime.isEnable()) {
+                mul.mul(runtime.sizeOverLifetime.getSize(this, 0));
             }
 
             setSize(size.mul(mul));
@@ -577,11 +582,11 @@ u     */
     }
 
     protected void updateRotation() {
-        if (config.rotationOverLifetime.isEnable() || config.rotationBySpeed.isEnable() || config.noise.isEnable()) {
+        if (runtime.rotationOverLifetime.isEnable() || config.rotationBySpeed.isEnable() || config.noise.isEnable()) {
             var rotation = new Vector3f(initialRotation);
 
-            if (config.rotationOverLifetime.isEnable()) {
-                rotation.add(config.rotationOverLifetime.getRotation(this, 0));
+            if (runtime.rotationOverLifetime.isEnable()) {
+                rotation.add(runtime.rotationOverLifetime.getRotation(this, 0));
             }
 
             if (config.rotationBySpeed.isEnable()) {
@@ -613,7 +618,7 @@ u     */
     }
 
     protected void updateLight() {
-        if (config.lights.isEnable()) return;
+        if (runtime.lights.isEnable()) return;
         light = getLightColor();
     }
 

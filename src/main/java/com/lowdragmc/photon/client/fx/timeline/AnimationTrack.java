@@ -29,11 +29,11 @@ public class AnimationTrack extends Track {
         return properties;
     }
 
-    /** The property of the given type (matched by registry name), or {@code null}. */
+    /** The property of the given type (matched by {@link AnimatedPropertyType#key()}), or {@code null}. */
     @Nullable
     public AnimatedProperty property(AnimatedPropertyType type) {
         for (var property : properties) {
-            if (property.type().name().equals(type.name())) {
+            if (property.type().key().equals(type.key())) {
                 return property;
             }
         }
