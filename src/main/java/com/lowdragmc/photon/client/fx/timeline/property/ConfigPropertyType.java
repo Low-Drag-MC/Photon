@@ -11,7 +11,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3Config;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
-import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -81,26 +80,29 @@ public class ConfigPropertyType implements AnimatedPropertyType {
     }
 
     // lazily-resolved @NumberFunctionConfig of the backing config field (for editing a curve clip's Curve
-    // with the field's real value range/axes). Coupled to ParticleConfig since config properties are
-    // ParticleEmitter-only today; returns null (→ caller uses a generic default) if not resolvable.
+    // with the field's real value range/axes). Resolved by walking the storeKey path from the target's own
+    // config class, so every fx-object kind (not just ParticleEmitter) gets its field's real range; returns
+    // null (→ caller uses a generic default) if not resolvable.
     @Nullable
     private NumberFunctionConfig numberFunctionConfig;
     private boolean nfConfigResolved;
 
     /** The backing config field's {@link NumberFunctionConfig} (a {@link NumberFunction3Config}'s common
-     *  config for NF3 fields), or {@code null} if it can't be resolved from the {@link #storeKey} path. */
+     *  config for NF3 fields), resolved from {@code target}'s config class along the {@link #storeKey} path,
+     *  or {@code null} if it can't be resolved. */
     @Nullable
-    public NumberFunctionConfig numberFunctionConfig() {
+    public NumberFunctionConfig numberFunctionConfig(FXObject target) {
         if (!nfConfigResolved) {
             nfConfigResolved = true;
-            numberFunctionConfig = resolveNumberFunctionConfig();
+            numberFunctionConfig = resolveNumberFunctionConfig(configClassOf(target));
         }
         return numberFunctionConfig;
     }
 
     @Nullable
-    private NumberFunctionConfig resolveNumberFunctionConfig() {
-        Class<?> cls = ParticleConfig.class;
+    private NumberFunctionConfig resolveNumberFunctionConfig(@Nullable Class<?> root) {
+        if (root == null) return null;
+        Class<?> cls = root;
         Field field = null;
         for (var segment : storeKey.split("\\.")) {
             field = findField(cls, segment);
@@ -112,6 +114,19 @@ public class ConfigPropertyType implements AnimatedPropertyType {
         if (nf != null) return nf;
         var nf3 = field.getAnnotation(NumberFunction3Config.class);
         return nf3 != null ? nf3.common() : null;
+    }
+
+    /** The concrete fx-object's {@code config} field type — the reflection root for the {@link #storeKey}
+     *  path (every emitter declares its immutable config as a field named {@code config}). */
+    @Nullable
+    private static Class<?> configClassOf(FXObject target) {
+        for (Class<?> c = target.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            try {
+                return c.getDeclaredField("config").getType();
+            } catch (NoSuchFieldException ignored) {
+            }
+        }
+        return null;
     }
 
     @Nullable

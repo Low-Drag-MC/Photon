@@ -2314,7 +2314,7 @@ public class AnimationTrackEditor extends TrackEditor {
             st.selectedCurveClips.clear();
             st.selectedCurveClips.add(clip);
         }
-        inspectCurveClip(ctx, track, clip, curveConfigFor(cfg));
+        inspectCurveClip(ctx, track, clip, curveConfigFor(targetObject(ctx, track), cfg));
     }
 
     /** A curve clip (f(t)->curve) as an absolute-positioned full-height child of the curve box: draws its
@@ -2442,19 +2442,28 @@ public class AnimationTrackEditor extends TrackEditor {
                 () -> { cfg.restoreCurveClips(axis, before); ctx.refreshLaneLayout(); ctx.refreshPreview(); });
     }
 
-    /** The backing config field's {@link NumberFunctionConfig} (real value range/axes), or a generic default. */
-    private static NumberFunctionConfig curveConfigFor(ConfigAnimatedProperty cfg) {
-        if (cfg.type() instanceof ConfigPropertyType cpt) {
-            var c = cpt.numberFunctionConfig();
+    /** The backing config field's {@link NumberFunctionConfig} (real value range/axes) resolved against the
+     *  track's bound fx object, or a generic default. */
+    private static NumberFunctionConfig curveConfigFor(@Nullable FXObject target, ConfigAnimatedProperty cfg) {
+        if (target != null && cfg.type() instanceof ConfigPropertyType cpt) {
+            var c = cpt.numberFunctionConfig(target);
             if (c != null) return c;
         }
         return CURVE_CLIP_CONFIG;
     }
 
+    /** The fx object this track is bound to, or {@code null} if unbound/unresolved. */
+    @Nullable
+    private static FXObject targetObject(TimelineContext ctx, Track track) {
+        var runtime = ctx.runtime();
+        return runtime != null && track.targetId() != null
+                && runtime.objects.get(track.targetId()) instanceof FXObject o ? o : null;
+    }
+
     private void addCurveClipEdit(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
                                   ConfigAnimatedProperty cfg, int axis, double startTick) {
         var curve = new Curve();
-        curve.loadConfig(curveConfigFor(cfg)); // seed the value range/default from the real config field
+        curve.loadConfig(curveConfigFor(targetObject(ctx, track), cfg)); // seed the value range/default from the real config field
         var clip = new CurveClip(startTick, DEFAULT_EXPR_CLIP_TICKS, curve);
         var before = cfg.snapshotCurveClips(axis);
         cfg.curveClips(axis).add(clip);
