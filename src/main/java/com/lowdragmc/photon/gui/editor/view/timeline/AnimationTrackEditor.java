@@ -888,13 +888,16 @@ public class AnimationTrackEditor extends TrackEditor {
         st.expandedProperties.remove(property);
     }
 
-    /** Select a property (sets the active track for delete-routing, no track highlight) and inspect it. */
+    /** Select a property (sets the active track for delete-routing, no track highlight) and inspect it.
+     *  Rebuilds the timeline so the curve/color box re-creates its per-property clip/stop child elements —
+     *  {@link #selectPropertyState} stays rebuild-free for the auto-select that runs during a build. */
     private void selectProperty(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
                                AnimatedProperty property, int axis) {
         selectPropertyState(st, property, axis);
         st.explicitSelection = true;
         ctx.setActiveTrack(track);
         inspectChannel(ctx, track, property, axis);
+        ctx.requestRebuild();
     }
 
     /** State-only selection (used on rebuild auto-select; does not touch the inspector or active track). */
@@ -1097,34 +1100,6 @@ public class AnimationTrackEditor extends TrackEditor {
         return points;
     }
 
-    /** Draw the active axes' expression clips as translucent full-height regions (channel color, brighter
-     *  when selected, red on a syntax error) with edge-resize borders. */
-    private void drawExprClips(TimelineContext ctx, GuiGraphics graphics, AnimationTrackUIState st, AnimatedProperty property,
-                               float x, float y, float width, float height) {
-        for (var axis : activeAxes(st)) {
-            for (var clip : property.exprClips(axis)) {
-                var x0 = tickToCurveX(ctx, (float) clip.start(), x);
-                var x1 = tickToCurveX(ctx, (float) clip.end(), x);
-                if (x1 < x || x0 > x + width) continue;
-                var cx0 = Math.max(x, x0);
-                var cx1 = Math.min(x + width, x1);
-                var cw = Math.max(1, cx1 - cx0);
-                var error = clip.error() != null;
-                var selected = st.selectedExprClips.contains(clip);
-                var base = error ? ColorPattern.RED.color : channelColor(axis).color;
-                DrawerHelper.drawSolidRect(graphics, cx0, y, cw, height, withAlpha(base, selected ? 0x66 : 0x33));
-                DrawerHelper.drawBorder(graphics, cx0, y, cw, height, selected ? ColorPattern.WHITE.color : base, 1);
-                if (cw > 20) {
-                    var text = error ? Component.translatable("photon.gui.editor.timeline.expression_error").getString()
-                            : clip.expression();
-                    if (text != null && !text.isBlank()) {
-                        DrawerHelper.drawText(graphics, text, cx0 + 2, y + 1, 1f, (error ? ColorPattern.RED : ColorPattern.WHITE).color);
-                    }
-                }
-            }
-        }
-    }
-
     private void drawCurveEditor(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, AnimationTrackUIState st, float x, float y, float width, float height) {
         DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
         drawCurveGrid(ctx, graphics, x, y, width, height);
@@ -1277,29 +1252,6 @@ public class AnimationTrackEditor extends TrackEditor {
         st.kmY0 = st.kmY1 = e.y;
         el.startDrag(null, null);
         e.stopPropagation();
-    }
-
-    /** A hit against an expression clip: which axis/clip and whether the start edge (1), end edge (2), or
-     *  body (0) was grabbed. */
-    private record ExprClipHit(int axis, ExprClip clip, int mode) {}
-
-    /** Hit-test the active axes' expression clips (single-axis interaction only). Earliest clip wins. */
-    @Nullable
-    private ExprClipHit hitExprClip(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property,
-                                    float bx, float by, float bh, float mx, float my) {
-        var axes = activeAxes(st);
-        if (axes.length != 1) return null; // clips are interactive only when a single sub-property is selected
-        if (my < by || my > by + bh) return null;
-        var axis = axes[0];
-        for (var clip : property.exprClips(axis)) {
-            var x0 = tickToCurveX(ctx, (float) clip.start(), bx);
-            var x1 = tickToCurveX(ctx, (float) clip.end(), bx);
-            if (mx < x0 - CLIP_EDGE_PX || mx > x1 + CLIP_EDGE_PX) continue;
-            if (Math.abs(mx - x0) <= CLIP_EDGE_PX) return new ExprClipHit(axis, clip, 1);
-            if (Math.abs(mx - x1) <= CLIP_EDGE_PX) return new ExprClipHit(axis, clip, 2);
-            if (mx >= x0 && mx <= x1) return new ExprClipHit(axis, clip, 0);
-        }
-        return null;
     }
 
     private void onCurveDoubleClick(TimelineContext ctx, UIEvent e, AnimationTrack track, AnimationTrackUIState st) {
@@ -1755,17 +1707,6 @@ public class AnimationTrackEditor extends TrackEditor {
         // gradient clips + color stops (which override the stops in their range) are real child elements now.
     }
 
-    @Nullable
-    private ColorAnimatedProperty.ColorKey hitStop(TimelineContext ctx, ColorAnimatedProperty color, float bx, float mx) {
-        ColorAnimatedProperty.ColorKey best = null;
-        var bestDist = TimelineContext.KEY_HIT_PX;
-        for (var stop : color.stops()) {
-            var d = Math.abs(mx - tickToCurveX(ctx, stop.tick, bx));
-            if (d <= bestDist) { bestDist = d; best = stop; }
-        }
-        return best;
-    }
-
     private void onColorMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, ColorAnimatedProperty color, AnimationTrackUIState st) {
         if (e.button == 0) { ctx.setActiveTrack(track); st.explicitSelection = true; }
         // gradient clips + stops are real elements now; the box only opens the empty-space add menu.
@@ -1773,25 +1714,6 @@ public class AnimationTrackEditor extends TrackEditor {
             openColorClipMenu(ctx, track, color, st, e.currentElement.getContentX(), e);
             e.stopPropagation();
         }
-    }
-
-    /** A hit against a gradient clip: which clip and whether the start edge (1), end edge (2) or body (0). */
-    private record GradientClipHit(GradientClip clip, int mode) {}
-
-    @Nullable
-    private GradientClipHit hitGradientClip(TimelineContext ctx, ColorAnimatedProperty color, float bx, float by, float bh, float mx, float my) {
-        var bandTop = colorBandTop(by);
-        var bandH = colorBandH(bh);
-        if (my < bandTop || my > bandTop + bandH) return null; // clips are interactive only within the band
-        for (var clip : color.gradientClips()) {
-            var x0 = tickToCurveX(ctx, (float) clip.start(), bx);
-            var x1 = tickToCurveX(ctx, (float) clip.end(), bx);
-            if (mx < x0 - CLIP_EDGE_PX || mx > x1 + CLIP_EDGE_PX) continue;
-            if (Math.abs(mx - x0) <= CLIP_EDGE_PX) return new GradientClipHit(clip, 1);
-            if (Math.abs(mx - x1) <= CLIP_EDGE_PX) return new GradientClipHit(clip, 2);
-            if (mx >= x0 && mx <= x1) return new GradientClipHit(clip, 0);
-        }
-        return null;
     }
 
     /** A gradient clip as an absolute-positioned child of the color box (spanning the gradient band): draws
@@ -2124,30 +2046,6 @@ public class AnimationTrackEditor extends TrackEditor {
 
     // ------------------------------------------------------------------ curve clips (config NF / NF3)
 
-    /** A hit against a curve clip: which axis/clip and whether the start edge (1), end edge (2), body (0). */
-    private record CurveClipHit(int axis, CurveClip clip, int mode) {}
-
-    /** Draw curve clips as full-height channel-colored regions, each rendering a preview of its curve
-     *  (auto-fit to the curve's own sampled value range) across its span. */
-    private void drawCurveClips(TimelineContext ctx, GuiGraphics graphics, AnimationTrackUIState st,
-                                AnimatedProperty property, float x, float y, float width, float height) {
-        if (!(property instanceof ConfigAnimatedProperty cfg)) return;
-        for (var axis : activeAxes(st)) {
-            for (var clip : cfg.curveClips(axis)) {
-                var x0 = tickToCurveX(ctx, (float) clip.start(), x);
-                var x1 = tickToCurveX(ctx, (float) clip.end(), x);
-                if (x1 < x || x0 > x + width) continue;
-                var cx0 = Math.max(x, x0);
-                var cw = Math.min(x + width, x1) - cx0;
-                var selected = st.selectedCurveClips.contains(clip);
-                var base = channelColor(axis).color;
-                DrawerHelper.drawSolidRect(graphics, cx0, y, cw, height, withAlpha(base, selected ? 0x44 : 0x22));
-                DrawerHelper.drawBorder(graphics, cx0, y, cw, height, selected ? ColorPattern.WHITE.color : base, 1);
-                drawClipCurvePreview(graphics, clip, x0, x1, x, y, width, height, base);
-            }
-        }
-    }
-
     /** Draw the clip's curve as a polyline over its span, auto-fit to the curve's sampled value range. */
     private void drawClipCurvePreview(GuiGraphics graphics, CurveClip clip, float x0, float x1,
                                       float boxX, float y, float width, float height, int color) {
@@ -2176,23 +2074,6 @@ public class AnimationTrackEditor extends TrackEditor {
             pts.add(new Vector2f(px, py));
         }
         if (pts.size() > 1) DrawerHelper.drawLines(graphics, pts, color, color, 0.5f);
-    }
-
-    @Nullable
-    private CurveClipHit hitCurveClip(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, float bx, float by, float mx, float my) {
-        if (!(property instanceof ConfigAnimatedProperty cfg)) return null;
-        var axes = activeAxes(st);
-        if (axes.length != 1) return null; // interactive only on a single selected sub-property
-        var axis = axes[0];
-        for (var clip : cfg.curveClips(axis)) {
-            var x0 = tickToCurveX(ctx, (float) clip.start(), bx);
-            var x1 = tickToCurveX(ctx, (float) clip.end(), bx);
-            if (mx < x0 - CLIP_EDGE_PX || mx > x1 + CLIP_EDGE_PX) continue;
-            if (Math.abs(mx - x0) <= CLIP_EDGE_PX) return new CurveClipHit(axis, clip, 1);
-            if (Math.abs(mx - x1) <= CLIP_EDGE_PX) return new CurveClipHit(axis, clip, 2);
-            if (mx >= x0 && mx <= x1) return new CurveClipHit(axis, clip, 0);
-        }
-        return null;
     }
 
     private static void clearCurveClipSelection(AnimationTrackUIState st) {
