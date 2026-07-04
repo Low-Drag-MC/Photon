@@ -1397,9 +1397,6 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void onExprClipMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, AnimatedProperty property,
                                      AnimationTrackUIState st, int axis, ExprClip clip, UIElement el) {
-        // keyframes (still box-drawn in Stage 1) keep grab priority over a clip they sit within: if one is
-        // under the cursor, don't consume — let the press bubble up to the box's keyframe handler.
-        if (keyframeUnderCursor(ctx, st, property, el, e)) return;
         ctx.setActiveTrack(track);
         st.explicitSelection = true;
         if (e.button == 1) {
@@ -2295,7 +2292,6 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void onCurveClipMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, ConfigAnimatedProperty cfg,
                                       AnimationTrackUIState st, int axis, CurveClip clip, UIElement el) {
-        if (keyframeUnderCursor(ctx, st, cfg, el, e)) return; // keyframes keep grab priority (see onExprClipMouseDown)
         ctx.setActiveTrack(track);
         st.explicitSelection = true;
         if (e.button == 1) {
@@ -2559,15 +2555,6 @@ public class AnimationTrackEditor extends TrackEditor {
         ctx.refreshPreview();
     }
 
-    /** True if a keyframe of {@code property} sits under the cursor, hit-tested in the box coordinate space
-     *  (the clip element's parent is the box). Used so full-height clip elements yield to keyframe grabs. */
-    private boolean keyframeUnderCursor(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, UIElement el, UIEvent e) {
-        var box = el.getParent();
-        if (box == null) return false;
-        return hitKey(ctx, st, property, box.getContentX(), box.getContentY(), box.getContentHeight(),
-                effectiveRange(property), e.x, e.y) != null;
-    }
-
     @Nullable
     private int[] hitKey(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, float bx, float by, float bh, float[] range, float mx, float my) {
         for (var axis : activeAxes(st)) {
@@ -2582,21 +2569,6 @@ public class AnimationTrackEditor extends TrackEditor {
             }
         }
         return null;
-    }
-
-    private int hitHandle(TimelineContext ctx, AnimatedProperty property, int axis, int k, float bx, float by, float bh, float[] range, float mx, float my) {
-        if (k < 0 || k >= property.keyCount(axis)) return 0;
-        var in = property.inHandle(axis, k);
-        if (in != null && Math.abs(mx - tickToCurveX(ctx, in.x, bx)) <= TimelineContext.KEY_HIT_PX
-                && Math.abs(my - valueToCurveY(in.y, by, bh, range[0], range[1])) <= TimelineContext.KEY_HIT_PX) {
-            return 1;
-        }
-        var out = property.outHandle(axis, k);
-        if (out != null && Math.abs(mx - tickToCurveX(ctx, out.x, bx)) <= TimelineContext.KEY_HIT_PX
-                && Math.abs(my - valueToCurveY(out.y, by, bh, range[0], range[1])) <= TimelineContext.KEY_HIT_PX) {
-            return 2;
-        }
-        return 0;
     }
 
     private void removeKeyframe(TimelineContext ctx, Track track, AnimationTrackUIState st, AnimatedProperty property, int axis, int k) {
