@@ -264,6 +264,20 @@ public class AnimationTrackEditor extends TrackEditor {
         st.explicitSelection = false;
     }
 
+    /** Sentinel for {@link #clearOtherSubSelections}: the single-reference color-stop selection has no set. */
+    private static final Object STOP_TOKEN = new Object();
+
+    /** Make the {@code keep} sub-selection the only active one, clearing every other kind (keyframes vs
+     *  expr/curve/gradient clips vs color stop stay mutually exclusive). Pass the set being kept (or
+     *  {@link #STOP_TOKEN} for a stop). This is what makes Delete/copy operate on exactly one kind (bug 2). */
+    private void clearOtherSubSelections(AnimationTrackUIState st, Object keep) {
+        if (keep != st.selectedKeys) { st.selectedKeys.clear(); st.selKeyAxis = -1; st.selKeyIndex = -1; }
+        if (keep != st.selectedExprClips) st.selectedExprClips.clear();
+        if (keep != st.selectedCurveClips) { st.selectedCurveClip = null; st.selectedCurveClips.clear(); }
+        if (keep != st.selectedGradientClips) { st.selectedGradientClip = null; st.selectedGradientClips.clear(); }
+        if (keep != STOP_TOKEN) st.selectedStop = null;
+    }
+
     // ------------------------------------------------------------------ record mode
 
     @Override
@@ -688,13 +702,11 @@ public class AnimationTrackEditor extends TrackEditor {
             else onCurveDoubleClick(ctx, e, animation, st);
         });
         container.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
-            if (st.dragStop != null) onColorDrag(ctx, e, st);
-            else if (st.keyMarquee) { st.kmX1 = e.x; st.kmY1 = e.y; }
+            if (st.keyMarquee) { st.kmX1 = e.x; st.kmY1 = e.y; }
             else onCurveDrag(ctx, e, st);
         });
         container.addEventListener(UIEvents.DRAG_END, e -> {
-            if (st.dragStop != null) onColorDragEnd(ctx, st);
-            else if (st.keyMarquee) finishKeyMarquee(ctx, animation, st, e.currentElement);
+            if (st.keyMarquee) finishKeyMarquee(ctx, animation, st, e.currentElement);
             else onCurveDragEnd(ctx, st);
         });
         container.addEventListener(UIEvents.MOUSE_WHEEL, e -> {
@@ -711,6 +723,8 @@ public class AnimationTrackEditor extends TrackEditor {
         if (property == null || !animation.properties().contains(property)) return;
         if (property instanceof ColorAnimatedProperty color) {
             for (var clip : color.gradientClips()) box.addChild(createGradientClipElement(ctx, animation, color, st, clip, box));
+            // stops added last so their (narrow) markers win hit-testing over the gradient clips they overlap
+            for (var stop : color.stops()) box.addChild(createColorStopElement(ctx, animation, color, st, stop, box));
             return;
         }
         // expr clips (added first so the later curve clips win overlapping hit-tests, matching the old order)
@@ -1238,6 +1252,7 @@ public class AnimationTrackEditor extends TrackEditor {
         }
         var hit = hitKey(ctx, st, property, bx, by, bh, range, e.x, e.y);
         if (hit != null) {
+            clearOtherSubSelections(st, st.selectedKeys); // keyframe selection is exclusive with clips/stop (bug 2)
             var id = encodeKey(hit[0], hit[1]);
             if (e.isShiftDown()) { // toggle membership, no drag
                 if (!st.selectedKeys.remove(id)) st.selectedKeys.add(id);
@@ -1320,6 +1335,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var before = property.snapshotChannels();
         var newIndex = property.addKey(axis, tick, property.type().clampValue(cursorValue));
         if (newIndex < 0) return;
+        clearOtherSubSelections(st, st.selectedKeys);
         st.selKeyAxis = axis;
         st.selKeyIndex = newIndex;
         st.selectedKeys.clear();
@@ -1397,9 +1413,7 @@ public class AnimationTrackEditor extends TrackEditor {
                                 AnimatedProperty property, int axis, ExprClip clip, boolean additive) {
         st.explicitSelection = true;
         ctx.setActiveTrack(track);
-        st.selectedKeys.clear();
-        st.selKeyAxis = -1;
-        st.selKeyIndex = -1;
+        clearOtherSubSelections(st, st.selectedExprClips);
         if (additive) {
             if (!st.selectedExprClips.remove(clip)) st.selectedExprClips.add(clip);
         } else if (!st.selectedExprClips.contains(clip)) {
@@ -1738,16 +1752,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var bandTop = colorBandTop(y);
         var bandH = colorBandH(height);
         drawGradientStrip(ctx, graphics, color, x, bandTop, width, bandH);
-        // gradient clips (which override the stops in their range) are drawn as real child elements now.
-        var markerY = bandTop + bandH;
-        for (var stop : color.stops()) {
-            var sx = tickToCurveX(ctx, stop.tick, x);
-            if (sx < x - 4 || sx > x + width + 4) continue;
-            var selected = st.selectedStop == stop;
-            DrawerHelper.drawSolidRect(graphics, sx - 0.5f, bandTop, 1, bandH, withAlpha(ColorPattern.WHITE.color, selected ? 0xFF : 0x66));
-            DrawerHelper.drawSolidRect(graphics, sx - 4, markerY + 1, 8, 6, (selected ? ColorPattern.WHITE : ColorPattern.GRAY).color);
-            DrawerHelper.drawSolidRect(graphics, sx - 3, markerY + 2, 6, 4, 0xFF000000 | (stop.argb & 0xFFFFFF));
-        }
+        // gradient clips + color stops (which override the stops in their range) are real child elements now.
     }
 
     @Nullable
@@ -1763,25 +1768,9 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void onColorMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, ColorAnimatedProperty color, AnimationTrackUIState st) {
         if (e.button == 0) { ctx.setActiveTrack(track); st.explicitSelection = true; }
-        var el = e.currentElement;
-        var bx = el.getContentX();
-        // gradient clips are real elements now; the box handles only stops + the empty-space add menu.
-        var stopHit = hitStop(ctx, color, bx, e.x);
-        if (e.button == 1) {
-            if (!track.lock()) {
-                if (stopHit != null) removeStopEdit(ctx, st, color, stopHit);
-                else openColorClipMenu(ctx, track, color, st, bx, e);
-            }
-            e.stopPropagation();
-            return;
-        }
-        if (e.button != 0 || track.lock()) return;
-        if (stopHit != null) {
-            selectStop(ctx, track, color, st, stopHit);
-            st.dragStop = stopHit;
-            st.stopDragSnapshot = color.snapshotStops();
-            ctx.beginScrub();
-            el.startDrag(null, null);
+        // gradient clips + stops are real elements now; the box only opens the empty-space add menu.
+        if (e.button == 1 && !track.lock()) {
+            openColorClipMenu(ctx, track, color, st, e.currentElement.getContentX(), e);
             e.stopPropagation();
         }
     }
@@ -1845,10 +1834,10 @@ public class AnimationTrackEditor extends TrackEditor {
         if (e.button != 0) return;
         e.stopPropagation();
         if (track.lock()) return;
+        clearOtherSubSelections(st, st.selectedGradientClips); // exclusive with keys/expr/curve/stop
         if (e.isShiftDown() || e.isCtrlDown()) { // bug 1: toggle this clip in the multi-selection (no drag)
             if (!st.selectedGradientClips.remove(clip)) st.selectedGradientClips.add(clip);
             st.selectedGradientClip = clip;
-            st.selectedStop = null;
             return;
         }
         // keep the multi-selection when grabbing one of its members; otherwise select just this clip
@@ -1857,7 +1846,6 @@ public class AnimationTrackEditor extends TrackEditor {
             st.selectedGradientClips.add(clip);
         }
         st.selectedGradientClip = clip;
-        st.selectedStop = null;
         inspectGradientClip(ctx, track, clip);
         var bx = el.getParent().getContentX();
         beginGradientClipDrag(ctx, st, color, clip, edgeMode(e.x, el), curveXToTick(ctx, e.x, bx));
@@ -1917,10 +1905,10 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void selectGradientClip(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty color,
                                     AnimationTrackUIState st, GradientClip clip) {
+        clearOtherSubSelections(st, st.selectedGradientClips);
         st.selectedGradientClip = clip;
         st.selectedGradientClips.clear();
         st.selectedGradientClips.add(clip);
-        st.selectedStop = null;
         st.explicitSelection = true;
         ctx.setActiveTrack(track);
         inspectGradientClip(ctx, track, clip);
@@ -2002,7 +1990,6 @@ public class AnimationTrackEditor extends TrackEditor {
     private void onColorDoubleClick(TimelineContext ctx, UIEvent e, AnimationTrack track, ColorAnimatedProperty color, AnimationTrackUIState st) {
         if (track.lock()) return;
         var bx = e.currentElement.getContentX();
-        if (hitStop(ctx, color, bx, e.x) != null) return; // clicking an existing stop selects it, doesn't add
         var tick = Math.max(0, curveXToTick(ctx, e.x, bx));
         var argb = color.sampleColor(tick);
         var before = color.snapshotStops();
@@ -2018,7 +2005,7 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void onColorDrag(TimelineContext ctx, UIEvent e, AnimationTrackUIState st) {
         if (st.dragStop == null || !(st.selectedProperty instanceof ColorAnimatedProperty color)) return;
-        var bx = e.currentElement.getContentX();
+        var bx = e.currentElement.getParent().getContentX(); // element is the stop marker; its parent is the box
         var tick = (float) Math.max(0, ctx.snapKeyTick(Math.max(0, curveXToTick(ctx, e.x, bx)), e.isCtrlDown()));
         st.dragStop.tick = tick;
         color.sort();
@@ -2054,11 +2041,64 @@ public class AnimationTrackEditor extends TrackEditor {
         ctx.refreshPreview();
     }
 
+    /** A color stop as an absolute-positioned full-height marker child of the color box: draws the band tick
+     *  line + the swatch marker, owns select + body-drag (move tick) + right-click remove. */
+    private UIElement createColorStopElement(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty color,
+                                             AnimationTrackUIState st, ColorAnimatedProperty.ColorKey stop, UIElement box) {
+        var el = new UIElement().setId("timeline.colorStop").layout(layout -> {
+            layout.positionType(TaffyPosition.ABSOLUTE);
+            layout.left((float) ((stop.tick - ctx.scrollTicks()) * ctx.scale()) - 4);
+            layout.width(8);
+            layout.top(0);
+            layout.heightPercent(100);
+        }).style(style -> style
+                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                    var cx = x + w / 2f;
+                    var bandTop = colorBandTop(y);
+                    var bandH = colorBandH(h);
+                    var markerY = bandTop + bandH;
+                    var selected = st.selectedStop == stop;
+                    DrawerHelper.drawSolidRect(graphics, cx - 0.5f, bandTop, 1, bandH, withAlpha(ColorPattern.WHITE.color, selected ? 0xFF : 0x66));
+                    DrawerHelper.drawSolidRect(graphics, cx - 4, markerY + 1, 8, 6, (selected ? ColorPattern.WHITE : ColorPattern.GRAY).color);
+                    DrawerHelper.drawSolidRect(graphics, cx - 3, markerY + 2, 6, 4, 0xFF000000 | (stop.argb & 0xFFFFFF));
+                }));
+        el.addEventListener(UIEvents.MOUSE_DOWN, e -> onColorStopMouseDown(ctx, e, track, color, st, stop, el));
+        el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onColorDrag(ctx, e, st));
+        el.addEventListener(UIEvents.DRAG_END, e -> { onColorDragEnd(ctx, st); e.stopPropagation(); });
+        // double-clicking an existing stop must not add a new one on top of it
+        el.addEventListener(UIEvents.DOUBLE_CLICK, UIEvent::stopPropagation);
+        ctx.registerLaneItem(el, () -> {
+            var cx = (float) ((stop.tick - ctx.scrollTicks()) * ctx.scale());
+            el.setDisplay(cx >= -8 && cx <= box.getContentWidth() + 8);
+            el.layout(layout -> layout.left(cx - 4));
+        });
+        return el;
+    }
+
+    private void onColorStopMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, ColorAnimatedProperty color,
+                                      AnimationTrackUIState st, ColorAnimatedProperty.ColorKey stop, UIElement el) {
+        ctx.setActiveTrack(track);
+        st.explicitSelection = true;
+        if (e.button == 1) {
+            if (!track.lock()) removeStopEdit(ctx, st, color, stop);
+            e.stopPropagation();
+            return;
+        }
+        if (e.button != 0) return;
+        e.stopPropagation();
+        if (track.lock()) return;
+        selectStop(ctx, track, color, st, stop);
+        st.dragStop = stop;
+        st.stopDragSnapshot = color.snapshotStops();
+        ctx.beginScrub();
+        el.startDrag(null, null);
+    }
+
     /** Select a color stop (active track for delete, no track highlight) and inspect its color. */
     private void selectStop(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty color,
                             AnimationTrackUIState st, ColorAnimatedProperty.ColorKey stop) {
+        clearOtherSubSelections(st, STOP_TOKEN); // stop selection is exclusive with clips/keys
         st.selectedStop = stop;
-        clearGradientClipSelection(st); // stop and gradient-clip selection are mutually exclusive
         st.explicitSelection = true;
         ctx.setActiveTrack(track);
         inspectColorStop(ctx, track, stop);
@@ -2164,10 +2204,7 @@ public class AnimationTrackEditor extends TrackEditor {
                                  ConfigAnimatedProperty cfg, int axis, CurveClip clip, boolean additive) {
         st.explicitSelection = true;
         ctx.setActiveTrack(track);
-        st.selectedKeys.clear();
-        st.selKeyAxis = -1;
-        st.selKeyIndex = -1;
-        st.selectedExprClips.clear();
+        clearOtherSubSelections(st, st.selectedCurveClips);
         if (additive) {
             if (!st.selectedCurveClips.remove(clip)) st.selectedCurveClips.add(clip);
         } else if (!st.selectedCurveClips.contains(clip)) {
@@ -2572,6 +2609,7 @@ public class AnimationTrackEditor extends TrackEditor {
             if (!st.keyMarqueeAdditive) { st.selectedKeys.clear(); st.selKeyAxis = -1; st.selKeyIndex = -1; }
             return;
         }
+        clearOtherSubSelections(st, st.selectedKeys); // a marquee selects keyframes, exclusive with clips/stop
         var bx = box.getContentX();
         var by = box.getContentY();
         var bh = box.getContentHeight();
