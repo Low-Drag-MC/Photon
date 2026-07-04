@@ -685,7 +685,10 @@ public class AnimationTrackEditor extends TrackEditor {
         // crucially, stopPropagation keeps it from bubbling to the left panel's "add track" handler
         scroller.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) {
+                // blank area of the properties list (rows stopPropagation) → deselect the property
+                var cleared = clearSubSelection(st);
                 ctx.selectTrack(track);
+                if (cleared) ctx.requestRebuild();
             } else if (e.button == 1 && !track.lock()) {
                 openAddPropertyMenu(ctx, animation, st, e.x, e.y);
             }

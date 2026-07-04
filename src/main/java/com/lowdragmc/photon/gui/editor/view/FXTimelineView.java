@@ -1429,10 +1429,9 @@ public class FXTimelineView extends View implements TimelineContext {
     public void selectTrack(Track track) {
         var editor = editorFor(track);
         if (editor == null) return;
-        if (selectedTrack == track && selectedClip == null && !subSelectionActive(track)) return; // already selected
-        // clearing a sub-selection (e.g. an animation property) drops the curve/clip elements built for it,
-        // so the expanded box must rebuild to remove them (clearSubSelection reports when that's needed)
-        var needsRebuild = editor.clearSubSelection(stateFor(track, editor));
+        // selecting a track keeps any property sub-selection (its lanes persist); the property is only
+        // cleared by clicking a blank area of the left properties list (see AnimationTrackEditor).
+        if (selectedTrack == track && selectedClip == null) return; // already the active track
         clearFxObjectSelection();
         fxEditor.inspectorView.inspect(editor.trackConfigurator(this, track), null, () -> {
             if (selectedTrack == track) selectedTrack = null;
@@ -1442,7 +1441,6 @@ public class FXTimelineView extends View implements TimelineContext {
         selectedClip = null;
         selectedClipTrack = null;
         applyClipSelectionClasses();
-        if (needsRebuild) rebuild();
     }
 
     private void deleteSelection() {
