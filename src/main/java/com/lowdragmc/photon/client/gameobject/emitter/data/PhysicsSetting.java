@@ -65,6 +65,7 @@ public class PhysicsSetting extends ToggleGroup {
         private final PhysicsSetting config;
         public final RuntimeValue<Boolean> enable;
         public final RuntimeValue<Boolean> hasCollision;
+        public final RuntimeValue<Boolean> removedWhenCollided;
         public final RuntimeValue<NumberFunction> friction;
         public final RuntimeValue<NumberFunction> collidedFriction;
         public final RuntimeValue<NumberFunction> gravity;
@@ -76,6 +77,7 @@ public class PhysicsSetting extends ToggleGroup {
             this.config = config;
             this.enable = new RuntimeValue<>(config::isEnable);
             this.hasCollision = new RuntimeValue<>(() -> config.hasCollision);
+            this.removedWhenCollided = new RuntimeValue<>(() -> config.removedWhenCollided);
             this.friction = new RuntimeValue<>(() -> config.friction);
             this.collidedFriction = new RuntimeValue<>(() -> config.collidedFriction);
             this.gravity = new RuntimeValue<>(() -> config.gravity);
@@ -93,7 +95,7 @@ public class PhysicsSetting extends ToggleGroup {
         }
 
         public boolean isRemovedWhenCollided() {
-            return config.removedWhenCollided;
+            return removedWhenCollided.get();
         }
 
         public float getFriction(IParticle particle) {
@@ -123,6 +125,7 @@ public class PhysicsSetting extends ToggleGroup {
         public void clear() {
             enable.clear();
             hasCollision.clear();
+            removedWhenCollided.clear();
             friction.clear();
             collidedFriction.clear();
             gravity.clear();

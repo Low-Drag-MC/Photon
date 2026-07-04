@@ -94,6 +94,8 @@ public class ParticleEmitter extends Emitter {
                     o -> ((ParticleEmitter) o).runtime().physics.enable),
             new RuntimeBinding("physics.hasCollision", "PhysicsSetting.hasCollision", ConfigValueType.BOOL,
                     o -> ((ParticleEmitter) o).runtime().physics.hasCollision),
+            new RuntimeBinding("physics.removedWhenCollided", "PhysicsSetting.removedWhenCollided", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().physics.removedWhenCollided),
             new RuntimeBinding("physics.friction", "PhysicsSetting.friction", ConfigValueType.NUMBER_FUNCTION,
                     o -> ((ParticleEmitter) o).runtime().physics.friction),
             new RuntimeBinding("physics.collidedFriction", "PhysicsSetting.collidedFriction", ConfigValueType.NUMBER_FUNCTION,
