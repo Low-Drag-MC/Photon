@@ -193,6 +193,7 @@ public class FXTimelineView extends View implements TimelineContext {
     @Override public boolean isClipSelected(Clip clip) { return selectedClips.contains(clip); }
     @Override public java.util.Set<Clip> selectedClips() { return selectedClips; }
     @Override public void registerLaneItem(UIElement element, Runnable reposition) { laneItems.add(new TimelineContext.LaneItem(element, reposition)); }
+    @Override public void refreshLaneLayout() { repositionLaneItems(); }
     @Override public void registerClipView(Track track, Clip clip, UIElement element) {
         clipViews.add(new ClipView(track, clip, element));
         registerLaneItem(element, () -> element.layout(layout -> {

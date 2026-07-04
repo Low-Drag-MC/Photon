@@ -129,6 +129,10 @@ public interface TimelineContext {
      *  re-lays-it-out without a full rebuild. */
     void registerLaneItem(com.lowdragmc.lowdraglib2.gui.ui.UIElement element, Runnable reposition);
 
+    /** Re-run every registered {@link LaneItem}'s reposition from the current model — call this after a drag
+     *  mutates a clip/stop tick so its element follows live (the same path scroll/zoom uses). */
+    void refreshLaneLayout();
+
     // ---- clip helpers (shared by clip-based tracks) ----
     /** Register a clip's element (and its track) so scroll/zoom + marquee + group-drag can find it. */
     void registerClipView(Track track, Clip clip, com.lowdragmc.lowdraglib2.gui.ui.UIElement element);

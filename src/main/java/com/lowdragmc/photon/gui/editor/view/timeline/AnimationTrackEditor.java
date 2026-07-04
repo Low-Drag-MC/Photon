@@ -1415,6 +1415,9 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void onExprClipMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, AnimatedProperty property,
                                      AnimationTrackUIState st, int axis, ExprClip clip, UIElement el) {
+        // keyframes (still box-drawn in Stage 1) keep grab priority over a clip they sit within: if one is
+        // under the cursor, don't consume — let the press bubble up to the box's keyframe handler.
+        if (keyframeUnderCursor(ctx, st, property, el, e)) return;
         ctx.setActiveTrack(track);
         st.explicitSelection = true;
         if (e.button == 1) {
@@ -1477,6 +1480,7 @@ public class AnimationTrackEditor extends TrackEditor {
             var newEnd = Math.max(anchorOrig[0] + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
             st.dragClip.duration(newEnd - anchorOrig[0]);
         }
+        ctx.refreshLaneLayout(); // move the clip element(s) to follow the mutated ticks
         ctx.refreshPreview();
         e.stopPropagation();
     }
@@ -1799,6 +1803,7 @@ public class AnimationTrackEditor extends TrackEditor {
             var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
             clip.duration(newEnd - clip.start());
         }
+        ctx.refreshLaneLayout(); // move the gradient-clip element to follow the mutated ticks
         ctx.refreshPreview();
         e.stopPropagation();
     }
@@ -1931,6 +1936,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var tick = (float) Math.max(0, ctx.snapKeyTick(Math.max(0, curveXToTick(ctx, e.x, bx)), e.isCtrlDown()));
         st.dragStop.tick = tick;
         color.sort();
+        ctx.refreshLaneLayout(); // move the stop marker element to follow the mutated tick
         ctx.refreshPreview();
         e.stopPropagation();
     }
@@ -2130,6 +2136,7 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void onCurveClipMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, ConfigAnimatedProperty cfg,
                                       AnimationTrackUIState st, int axis, CurveClip clip, UIElement el) {
+        if (keyframeUnderCursor(ctx, st, cfg, el, e)) return; // keyframes keep grab priority (see onExprClipMouseDown)
         ctx.setActiveTrack(track);
         st.explicitSelection = true;
         if (e.button == 1) {
@@ -2175,6 +2182,7 @@ public class AnimationTrackEditor extends TrackEditor {
             var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
             clip.duration(newEnd - clip.start());
         }
+        ctx.refreshLaneLayout(); // move the curve-clip element to follow the mutated ticks
         ctx.refreshPreview();
         e.stopPropagation();
     }
@@ -2369,6 +2377,15 @@ public class AnimationTrackEditor extends TrackEditor {
                 () -> { redo.run(); clearCurveClipSelection(st); st.selectedExprClips.clear(); ctx.refreshPreview(); },
                 () -> { undo.run(); clearCurveClipSelection(st); st.selectedExprClips.clear(); ctx.refreshPreview(); });
         ctx.refreshPreview();
+    }
+
+    /** True if a keyframe of {@code property} sits under the cursor, hit-tested in the box coordinate space
+     *  (the clip element's parent is the box). Used so full-height clip elements yield to keyframe grabs. */
+    private boolean keyframeUnderCursor(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, UIElement el, UIEvent e) {
+        var box = el.getParent();
+        if (box == null) return false;
+        return hitKey(ctx, st, property, box.getContentX(), box.getContentY(), box.getContentHeight(),
+                effectiveRange(property), e.x, e.y) != null;
     }
 
     @Nullable
