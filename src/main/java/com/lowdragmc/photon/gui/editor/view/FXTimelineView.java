@@ -26,6 +26,8 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
+import com.lowdragmc.photon.client.fx.timeline.property.ColorAnimatedProperty;
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigAnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.SignalTrack;
 import com.lowdragmc.photon.client.fx.timeline.Timeline;
@@ -954,38 +956,62 @@ public class FXTimelineView extends View implements TimelineContext {
 
     @Override
     public double snapKeyTick(double tick, boolean ctrl) {
+        return snapKeyTick(tick, ctrl, null);
+    }
+
+    @Override
+    public double snapKeyTick(double tick, boolean ctrl, @Nullable java.util.Set<?> excludeSubClips) {
         if (ctrl) return tick;
         var runtime = fxEditor.runtime;
         if (runtime == null) return tick;
         double threshold = SNAP_PX / scale;
-        double best = tick;
-        double bestDist = threshold;
+        // running-best; a mutable holder so the sub-clip edge scan can share the same accumulator
+        var acc = new double[]{tick, threshold}; // {best, bestDist}
         for (var track : runtime.fxData.timeline().leafTracks(true)) {
             for (var clip : track.clips()) {
-                for (var cand : new double[]{clip.start(), clip.end()}) {
-                    var d = Math.abs(cand - tick);
-                    if (d < bestDist) { bestDist = d; best = cand; }
-                }
+                snapConsider(acc, tick, clip.start());
+                snapConsider(acc, tick, clip.end());
             }
             if (track instanceof AnimationTrack animation) {
                 for (var property : animation.properties()) {
-                    for (var t : property.keyframeTimes()) {
-                        var d = Math.abs(t - tick);
-                        if (d < bestDist) { bestDist = d; best = t; }
+                    for (var t : property.keyframeTimes()) snapConsider(acc, tick, t);
+                    for (int axis = 0; axis < property.channelCount(); axis++) {
+                        for (var sub : property.exprClips(axis)) {
+                            if (excludeSubClips != null && excludeSubClips.contains(sub)) continue;
+                            snapConsider(acc, tick, sub.start());
+                            snapConsider(acc, tick, sub.end());
+                        }
+                    }
+                    if (property instanceof ColorAnimatedProperty color) {
+                        for (var sub : color.gradientClips()) {
+                            if (excludeSubClips != null && excludeSubClips.contains(sub)) continue;
+                            snapConsider(acc, tick, sub.start());
+                            snapConsider(acc, tick, sub.end());
+                        }
+                    }
+                    if (property instanceof ConfigAnimatedProperty cfg) {
+                        for (int axis = 0; axis < cfg.channelCount(); axis++) {
+                            for (var sub : cfg.curveClips(axis)) {
+                                if (excludeSubClips != null && excludeSubClips.contains(sub)) continue;
+                                snapConsider(acc, tick, sub.start());
+                                snapConsider(acc, tick, sub.end());
+                            }
+                        }
                     }
                 }
             } else if (track instanceof SignalTrack signalTrack) {
-                for (var signal : signalTrack.signals()) {
-                    var d = Math.abs(signal.time() - tick);
-                    if (d < bestDist) { bestDist = d; best = signal.time(); }
-                }
+                for (var signal : signalTrack.signals()) snapConsider(acc, tick, signal.time());
             }
         }
-        for (var cand : new double[]{0, currentTimeTicks()}) {
-            var d = Math.abs(cand - tick);
-            if (d < bestDist) { bestDist = d; best = cand; }
-        }
-        return best;
+        snapConsider(acc, tick, 0);
+        snapConsider(acc, tick, currentTimeTicks());
+        return acc[0];
+    }
+
+    /** Update the {best, bestDist} accumulator if {@code cand} is closer to {@code tick}. */
+    private static void snapConsider(double[] acc, double tick, double cand) {
+        var d = Math.abs(cand - tick);
+        if (d < acc[1]) { acc[1] = d; acc[0] = cand; }
     }
 
     @Override

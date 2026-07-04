@@ -141,8 +141,13 @@ public interface TimelineContext {
 
     double snapMoveStart(double start, double duration, @Nullable Clip exclude, boolean ctrl);
 
-    /** Snap a keyframe tick to clip edges, the playhead, tick 0 and every other keyframe time. */
+    /** Snap a keyframe tick to clip edges, the playhead, tick 0 and every other keyframe time (also to
+     *  every animation sub-clip edge — expr / gradient / curve). */
     double snapKeyTick(double tick, boolean ctrl);
+
+    /** Like {@link #snapKeyTick(double, boolean)} but excludes the given animation sub-clips (the ones being
+     *  dragged) so a clip doesn't snap to its own moving edges. */
+    double snapKeyTick(double tick, boolean ctrl, @Nullable java.util.Set<?> excludeSubClips);
 
     /** Set/clear the cross-track snap guide lines drawn over all lanes while dragging a clip. */
     void setDragGuide(@Nullable Clip clip);

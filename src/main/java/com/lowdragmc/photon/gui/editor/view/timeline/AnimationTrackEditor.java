@@ -1480,9 +1480,10 @@ public class AnimationTrackEditor extends TrackEditor {
         if (anchorOrig == null) return;
         property.restoreExprClips(axis, st.dragClipSnapshot); // reset then re-apply (no compounding)
         var ctrl = e.isCtrlDown();
+        var exclude = st.clipDragOrigins.keySet(); // the moved clips don't snap to their own edges
         if (st.dragClipMode == 0) {
             // move the whole selection by a common Δtick, snapping the anchor's start/end, clamping tick >= 0
-            var target = snapClipStart(ctx, cursorTick - st.dragClipGrabOffset, anchorOrig[1], ctrl);
+            var target = snapClipStart(ctx, cursorTick - st.dragClipGrabOffset, anchorOrig[1], ctrl, exclude);
             double dTick = target - anchorOrig[0];
             double lo = -Double.MAX_VALUE;
             for (var origin : st.clipDragOrigins.values()) lo = Math.max(lo, -origin[0]); // keep every start >= 0
@@ -1492,10 +1493,10 @@ public class AnimationTrackEditor extends TrackEditor {
             }
         } else if (st.dragClipMode == 1) {
             var origEnd = anchorOrig[0] + anchorOrig[1];
-            var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl)), origEnd - MIN_EXPR_CLIP_TICKS);
+            var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl, exclude)), origEnd - MIN_EXPR_CLIP_TICKS);
             st.dragClip.start(newStart).duration(origEnd - newStart);
         } else {
-            var newEnd = Math.max(anchorOrig[0] + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
+            var newEnd = Math.max(anchorOrig[0] + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl, exclude));
             st.dragClip.duration(newEnd - anchorOrig[0]);
         }
         st.subClipDragInvalid = exprDragOverlaps(st, property, axis); // overlap not allowed → flag red + revert
@@ -1565,10 +1566,11 @@ public class AnimationTrackEditor extends TrackEditor {
         return false;
     }
 
-    /** Snap a moving clip's start, preferring whichever of its start/end lands on a snap target closer. */
-    private double snapClipStart(TimelineContext ctx, double start, double duration, boolean ctrl) {
-        var snapStart = ctx.snapKeyTick(start, ctrl);
-        var snapEnd = ctx.snapKeyTick(start + duration, ctrl) - duration;
+    /** Snap a moving clip's start, preferring whichever of its start/end lands on a snap target closer.
+     *  {@code exclude} are the sub-clips being dragged (so they don't snap to their own edges). */
+    private double snapClipStart(TimelineContext ctx, double start, double duration, boolean ctrl, java.util.Set<?> exclude) {
+        var snapStart = ctx.snapKeyTick(start, ctrl, exclude);
+        var snapEnd = ctx.snapKeyTick(start + duration, ctrl, exclude) - duration;
         var leftSnapped = snapStart != start;
         var rightSnapped = snapEnd != start;
         if (leftSnapped && (!rightSnapped || Math.abs(snapStart - start) <= Math.abs(snapEnd - start))) return snapStart;
@@ -1860,15 +1862,16 @@ public class AnimationTrackEditor extends TrackEditor {
         var clip = st.dragGradientClip;
         var cursorTick = curveXToTick(ctx, e.x, bx);
         var ctrl = e.isCtrlDown();
+        var exclude = java.util.Set.of(clip); // don't snap the clip to its own moving edges
         if (st.dragGradientClipMode == 0) { // move
             var start = Math.max(0, cursorTick - st.dragGradientClipGrabOffset);
-            clip.start(Math.max(0, ctx.snapKeyTick(start, ctrl)));
+            clip.start(Math.max(0, ctx.snapKeyTick(start, ctrl, exclude)));
         } else if (st.dragGradientClipMode == 1) { // resize start, keep end fixed
             var end = clip.end();
-            var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl)), end - MIN_EXPR_CLIP_TICKS);
+            var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl, exclude)), end - MIN_EXPR_CLIP_TICKS);
             clip.start(newStart).duration(end - newStart);
         } else { // resize end
-            var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
+            var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl, exclude));
             clip.duration(newEnd - clip.start());
         }
         st.subClipDragInvalid = gradientDragOverlaps(color, clip); // overlap not allowed → flag red + revert
@@ -2252,15 +2255,16 @@ public class AnimationTrackEditor extends TrackEditor {
         var clip = st.dragCurveClip;
         var cursorTick = Math.max(0, curveXToTick(ctx, e.x, bx));
         var ctrl = e.isCtrlDown();
+        var exclude = java.util.Set.of(clip); // don't snap the clip to its own moving edges
         if (st.dragCurveClipMode == 0) {
             var start = Math.max(0, cursorTick - st.dragCurveClipGrabOffset);
-            clip.start(Math.max(0, snapClipStart(ctx, start, clip.duration(), ctrl)));
+            clip.start(Math.max(0, snapClipStart(ctx, start, clip.duration(), ctrl, exclude)));
         } else if (st.dragCurveClipMode == 1) {
             var end = clip.end();
-            var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl)), end - MIN_EXPR_CLIP_TICKS);
+            var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl, exclude)), end - MIN_EXPR_CLIP_TICKS);
             clip.start(newStart).duration(end - newStart);
         } else {
-            var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
+            var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl, exclude));
             clip.duration(newEnd - clip.start());
         }
         st.subClipDragInvalid = curveDragOverlaps(st.dragCurveClipProperty, st.dragCurveClipAxis, clip); // overlap not allowed
