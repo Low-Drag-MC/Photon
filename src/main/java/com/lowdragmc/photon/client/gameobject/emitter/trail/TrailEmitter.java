@@ -6,8 +6,10 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
+import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
@@ -17,6 +19,7 @@ import net.minecraft.world.phys.AABB;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Collections;
+import java.util.List;
 
 /**
  * @author KilaBash
@@ -42,10 +45,49 @@ public class TrailEmitter extends Emitter {
         public int version() {
             return 2;
         }
+
+        @Override
+        public List<RuntimeBinding> runtimeBindings() {
+            return RUNTIME_BINDINGS;
+        }
     };
+
+    /** Timeline-animatable config values backed by named {@link TrailRuntime} slots (no map/reflection). */
+    public static final List<RuntimeBinding> RUNTIME_BINDINGS = List.of(
+            new RuntimeBinding("duration", "ParticleConfig.duration", ConfigValueType.INT,
+                    o -> ((TrailEmitter) o).runtime().duration),
+            new RuntimeBinding("looping", "ParticleConfig.looping", ConfigValueType.BOOL,
+                    o -> ((TrailEmitter) o).runtime().looping),
+            new RuntimeBinding("startDelay", "ParticleConfig.startDelay", ConfigValueType.INT,
+                    o -> ((TrailEmitter) o).runtime().startDelay),
+            new RuntimeBinding("time", "TrailConfig.time", ConfigValueType.INT,
+                    o -> ((TrailEmitter) o).runtime().time),
+            new RuntimeBinding("minVertexDistance", "TrailConfig.minVertexDistance", ConfigValueType.FLOAT,
+                    o -> ((TrailEmitter) o).runtime().minVertexDistance),
+            new RuntimeBinding("widthOverTrail", "TrailConfig.widthOverTrail", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((TrailEmitter) o).runtime().widthOverTrail),
+            new RuntimeBinding("colorOverTrail", "TrailConfig.colorOverTrail", ConfigValueType.COLOR,
+                    o -> ((TrailEmitter) o).runtime().colorOverTrail),
+            new RuntimeBinding("lights.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((TrailEmitter) o).runtime().lights.enable),
+            new RuntimeBinding("lights.skyLight", "LightOverLifetimeSetting.skyLight", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((TrailEmitter) o).runtime().lights.skyLight),
+            new RuntimeBinding("lights.blockLight", "LightOverLifetimeSetting.blockLight", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((TrailEmitter) o).runtime().lights.blockLight),
+            new RuntimeBinding("uvAnimation.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((TrailEmitter) o).runtime().uvAnimation.enable),
+            new RuntimeBinding("uvAnimation.frameOverTime", "UVAnimationSetting.frameOverTime", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((TrailEmitter) o).runtime().uvAnimation.frameOverTime),
+            new RuntimeBinding("uvAnimation.startFrame", "UVAnimationSetting.startFrame", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((TrailEmitter) o).runtime().uvAnimation.startFrame),
+            new RuntimeBinding("uvAnimation.cycle", "UVAnimationSetting.cycle", ConfigValueType.FLOAT,
+                    o -> ((TrailEmitter) o).runtime().uvAnimation.cycle));
 
     @Persisted(subPersisted = true)
     public final TrailConfig config;
+
+    /** Per-instance runtime layer: named override slots (timeline-driven) over the immutable config. */
+    private TrailRuntime runtime;
 
     // runtime
     protected TrailParticle trailParticle;
@@ -58,6 +100,14 @@ public class TrailEmitter extends Emitter {
 
     public TrailEmitter(TrailConfig config) {
         this.config = config;
+    }
+
+    /** This emitter's per-instance runtime layer (lazily created; timeline overrides live here). */
+    public TrailRuntime runtime() {
+        if (runtime == null) {
+            runtime = new TrailRuntime(config);
+        }
+        return runtime;
     }
 
 
@@ -88,23 +138,23 @@ public class TrailEmitter extends Emitter {
 
     @Override
     public int getLifetime() {
-        return config.duration;
+        return runtime().duration.get();
     }
 
     @Override
     public int getStartDelay() {
-        return config.startDelay;
+        return runtime().startDelay.get();
     }
 
     @Override
     protected void updateOrigin() {
         super.updateOrigin();
-        setLifetime(config.duration);
+        setLifetime(getLifetime());
     }
 
     @Override
     public boolean isLooping() {
-        return config.isLooping();
+        return runtime().looping.get();
     }
 
     @Override
@@ -132,6 +182,9 @@ public class TrailEmitter extends Emitter {
     @Override
     public void reset() {
         super.reset();
+        if (runtime != null) {
+            runtime.clear(); // drop timeline overrides; fall back to authored config
+        }
         trailParticle = new TrailParticle(this, config);
     }
 

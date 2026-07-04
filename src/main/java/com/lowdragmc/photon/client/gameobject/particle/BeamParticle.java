@@ -3,6 +3,8 @@ package com.lowdragmc.photon.client.gameobject.particle;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamRuntime;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
@@ -51,6 +53,9 @@ public class BeamParticle implements IParticle {
     protected boolean isRemoved;
 
     protected BeamConfig config;
+    /** The owning emitter's per-instance runtime layer (timeline overrides + moved value behaviour). */
+    @Getter
+    protected BeamRuntime runtime;
     @Getter
     protected IParticleEmitter emitter;
     @Getter
@@ -61,12 +66,13 @@ public class BeamParticle implements IParticle {
     public BeamParticle(IParticleEmitter emitter, BeamConfig config) {
         this.emitter = emitter;
         this.config = config;
+        this.runtime = emitter instanceof BeamEmitter e ? e.runtime() : new BeamRuntime(config);
         this.randomSource = RandomSource.create(emitter.getRandomSource().nextLong());
         this.setup();
     }
 
     public void setup() {
-        this.setDelay(config.getStartDelay());
+        this.setDelay(runtime.startDelay.get());
         update();
         updateOrigin();
     }
@@ -103,7 +109,7 @@ public class BeamParticle implements IParticle {
     }
 
     protected void updateColor() {
-        var color = config.getColor().get(getT(), () -> getMemRandom("color")).intValue();
+        var color = runtime.color.get().get(getT(), () -> getMemRandom("color")).intValue();
         r = ColorUtils.red(color);
         g = ColorUtils.green(color);
         b = ColorUtils.blue(color);
@@ -111,13 +117,13 @@ public class BeamParticle implements IParticle {
     }
 
     protected void updateLight() {
-        if (config.lights.isEnable()) return;
+        if (runtime.lights.isEnable()) return;
         light = getLightColor();
     }
 
     public int getRealLight(float partialTicks) {
-        if (config.lights.isEnable()) {
-            return config.lights.getLight(this, partialTicks);
+        if (runtime.lights.isEnable()) {
+            return runtime.lights.getLight(this, partialTicks);
         }
         return light;
     }
@@ -142,19 +148,19 @@ public class BeamParticle implements IParticle {
     }
 
     public Vector4f getRealUVs(float partialTicks) {
-        if (config.uvAnimation.isEnable()) {
-            return config.uvAnimation.getUVs(this, partialTicks);
+        if (runtime.uvAnimation.isEnable()) {
+            return runtime.uvAnimation.getUVs(this, partialTicks);
         } else {
             return new Vector4f(0, 0, 1, 1);
         }
     }
 
     protected float getRealWidth(float pPartialTicks) {
-        return config.getWidth().get(getT(pPartialTicks), () -> getMemRandom("width")).floatValue();
+        return runtime.width.get().get(getT(pPartialTicks), () -> getMemRandom("width")).floatValue();
     }
 
     protected float getRealEmit(float pPartialTicks) {
-        return config.getEmitRate().get(getT(pPartialTicks), () -> getMemRandom("emit")).floatValue();
+        return runtime.emitRate.get().get(getT(pPartialTicks), () -> getMemRandom("emit")).floatValue();
     }
 
     protected Vector3f getRealEnd(@Nonnull Camera camera, Vector3f from) {

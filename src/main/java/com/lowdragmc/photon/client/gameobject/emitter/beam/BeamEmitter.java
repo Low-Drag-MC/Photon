@@ -7,8 +7,10 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
+import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.BeamParticle;
@@ -43,11 +45,48 @@ public class BeamEmitter extends Emitter {
         public int version() {
             return 2;
         }
+
+        @Override
+        public List<RuntimeBinding> runtimeBindings() {
+            return RUNTIME_BINDINGS;
+        }
     };
+
+    /** Timeline-animatable config values backed by named {@link BeamRuntime} slots (no map/reflection). */
+    public static final List<RuntimeBinding> RUNTIME_BINDINGS = List.of(
+            new RuntimeBinding("duration", "ParticleConfig.duration", ConfigValueType.INT,
+                    o -> ((BeamEmitter) o).runtime().duration),
+            new RuntimeBinding("looping", "ParticleConfig.looping", ConfigValueType.BOOL,
+                    o -> ((BeamEmitter) o).runtime().looping),
+            new RuntimeBinding("startDelay", "ParticleConfig.startDelay", ConfigValueType.INT,
+                    o -> ((BeamEmitter) o).runtime().startDelay),
+            new RuntimeBinding("width", "BeamConfig.width", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((BeamEmitter) o).runtime().width),
+            new RuntimeBinding("emitRate", "BeamConfig.emitRate", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((BeamEmitter) o).runtime().emitRate),
+            new RuntimeBinding("color", "BeamConfig.color", ConfigValueType.COLOR,
+                    o -> ((BeamEmitter) o).runtime().color),
+            new RuntimeBinding("lights.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((BeamEmitter) o).runtime().lights.enable),
+            new RuntimeBinding("lights.skyLight", "LightOverLifetimeSetting.skyLight", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((BeamEmitter) o).runtime().lights.skyLight),
+            new RuntimeBinding("lights.blockLight", "LightOverLifetimeSetting.blockLight", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((BeamEmitter) o).runtime().lights.blockLight),
+            new RuntimeBinding("uvAnimation.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((BeamEmitter) o).runtime().uvAnimation.enable),
+            new RuntimeBinding("uvAnimation.frameOverTime", "UVAnimationSetting.frameOverTime", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((BeamEmitter) o).runtime().uvAnimation.frameOverTime),
+            new RuntimeBinding("uvAnimation.startFrame", "UVAnimationSetting.startFrame", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((BeamEmitter) o).runtime().uvAnimation.startFrame),
+            new RuntimeBinding("uvAnimation.cycle", "UVAnimationSetting.cycle", ConfigValueType.FLOAT,
+                    o -> ((BeamEmitter) o).runtime().uvAnimation.cycle));
 
     @Getter
     @Persisted(subPersisted = true)
     protected final BeamConfig config;
+
+    /** Per-instance runtime layer: named override slots (timeline-driven) over the immutable config. */
+    private BeamRuntime runtime;
 
     // runtime
     protected BeamParticle beamParticle;
@@ -58,6 +97,14 @@ public class BeamEmitter extends Emitter {
 
     public BeamEmitter(BeamConfig config) {
         this.config = config;
+    }
+
+    /** This emitter's per-instance runtime layer (lazily created; timeline overrides live here). */
+    public BeamRuntime runtime() {
+        if (runtime == null) {
+            runtime = new BeamRuntime(config);
+        }
+        return runtime;
     }
 
     @Override
@@ -92,23 +139,23 @@ public class BeamEmitter extends Emitter {
 
     @Override
     public int getLifetime() {
-        return config.duration;
+        return runtime().duration.get();
     }
 
     @Override
     public int getStartDelay() {
-        return config.startDelay;
+        return runtime().startDelay.get();
     }
 
     @Override
     protected void updateOrigin() {
         super.updateOrigin();
-        setLifetime(config.duration);
+        setLifetime(getLifetime());
     }
 
     @Override
     public boolean isLooping() {
-        return config.isLooping();
+        return runtime().looping.get();
     }
 
     //////////////////////////////////////
@@ -148,6 +195,9 @@ public class BeamEmitter extends Emitter {
     @Override
     public void reset() {
         super.reset();
+        if (runtime != null) {
+            runtime.clear(); // drop timeline overrides; fall back to authored config
+        }
         beamParticle = new BeamParticle(this, config);
     }
 

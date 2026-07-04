@@ -4,6 +4,8 @@ import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailRuntime;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -32,6 +34,8 @@ public class AraTrailParticle implements IParticle {
 
     public final IParticleEmitter emitter;
     public final AraTrailConfig config;
+    /** The owning emitter's per-instance runtime layer (timeline overrides + moved value behaviour). */
+    public final AraTrailRuntime runtime;
 
     // runtime
     private float initialThickness = 1;
@@ -108,6 +112,7 @@ public class AraTrailParticle implements IParticle {
     public AraTrailParticle(IParticleEmitter emitter, AraTrailConfig config) {
         this.emitter = emitter;
         this.config = config;
+        this.runtime = emitter instanceof AraTrailEmitter e ? e.runtime() : new AraTrailRuntime(config);
         this.randomSource = RandomSource.create(emitter.getRandomSource().nextLong());
         setup();
     }
@@ -184,7 +189,7 @@ public class AraTrailParticle implements IParticle {
         this.worldRight = worldRightSupplier == null ? transform.right() : worldRightSupplier.get(partialTicks);
         this.colorMultiplier = colorMultiplierSupplier == null ? new Vector4f(1) : colorMultiplierSupplier.get(partialTicks);
         this.thicknessMultiplier = thicknessMultiplierSupplier == null ? 1 : thicknessMultiplierSupplier.get(partialTicks);
-        this.lifeTime = lifetimeSupplier == null ? config.time : lifetimeSupplier.get();
+        this.lifeTime = lifetimeSupplier == null ? runtime.time.get() : lifetimeSupplier.get();
     }
     
     public Vector3f getWorldPosition() {
@@ -209,7 +214,7 @@ public class AraTrailParticle implements IParticle {
         prevPosition = getWorldPosition();
         velocity = new Vector3f();
         initialVelocity = config.initialVelocity;
-        initialThickness = config.initialThickness;
+        initialThickness = runtime.initialThickness.get();
         initialColor = new Vector4f(
                 ColorUtils.red(config.initialColor),
                 ColorUtils.green(config.initialColor),
@@ -229,7 +234,7 @@ public class AraTrailParticle implements IParticle {
         if (deltaTime > 0) {
             Vector3f deltaPosition = getWorldPosition().sub(prevPosition);
             Vector3f currentVelocity = deltaPosition.div(deltaTime);
-            velocity = velocity.lerp(currentVelocity, config.physicsSetting.velocitySmoothing);
+            velocity = velocity.lerp(currentVelocity, runtime.physics.velocitySmoothing.get());
         }
 
         prevPosition = getWorldPosition();
@@ -250,10 +255,10 @@ public class AraTrailParticle implements IParticle {
         updateDynamicData(1);           // current-tick emitter pose (no head lag)
         if (!isRemoved) {
             updateVelocity(timeStep);
-            if (config.physicsSetting.isEnable()) physicsStep(timeStep);
+            if (runtime.physics.isEnable()) physicsStep(timeStep);
             emissionStep(timeStep);
             snapLastPointToTransform();
-        } else if (config.physicsSetting.isEnable()) {
+        } else if (runtime.physics.isEnable()) {
             physicsStep(timeStep);
         }
         updatePointsLifecycle(timeStep);
@@ -264,13 +269,13 @@ public class AraTrailParticle implements IParticle {
         accumTime += time;
 
         // If enough time has passed since the last emission (>= timeInterval), consider emitting new points.
-        if (accumTime >= config.timeInterval) {
+        if (accumTime >= runtime.timeInterval.get()) {
             if (config.emit) {
                 var position = getWorldToTrail().transformPosition(getWorldPosition());
 
                 // If there's less than 2 points, or if the last 2 points are too far apart, spawn a new one:
-                if (points.size() < 1 || (
-                        position.distance(points.get(points.size() - 1).position) >= config.minDistance
+                if (points.isEmpty() || (
+                        position.distance(points.getLast().position) >= runtime.minDistance.get()
                 )) {
                     emitPoint(position);
                     accumTime = 0;
@@ -280,8 +285,8 @@ public class AraTrailParticle implements IParticle {
     }
 
     private void warmup() {
-        if (!config.physicsSetting.isEnable()) return;
-        float simulatedTime = config.physicsSetting.warmup;
+        if (!runtime.physics.isEnable()) return;
+        float simulatedTime = runtime.physics.warmup.get();
         var fixedDeltaTime = getFixedDeltaTime();
         updateDynamicData(0);
         while (simulatedTime > fixedDeltaTime) {
@@ -294,11 +299,11 @@ public class AraTrailParticle implements IParticle {
     }
 
     private void physicsStep(float timestep) {
-        float velocity_scale = (float) Math.pow(1 - Mth.clamp(config.physicsSetting.damping, 0, 1), timestep);
+        float velocity_scale = (float) Math.pow(1 - Mth.clamp(runtime.physics.damping.get(), 0, 1), timestep);
 
         for (Point point : points) {
             // apply gravity and external forces:
-            point.velocity.add(new Vector3f(config.physicsSetting.gravity).mul(timestep));
+            point.velocity.add(new Vector3f(runtime.physics.gravity.get()).mul(timestep));
             point.velocity.mul(velocity_scale);
 
             // integrate velocity:
@@ -331,7 +336,7 @@ public class AraTrailParticle implements IParticle {
         var nrm = worldToTrail.transformDirection(getWorldForward());
         var tgt = worldToTrail.transformDirection(getWorldRight());
 
-        var point = new Point(position, new Vector3f(velocity).mul(config.physicsSetting.inertia).add(initialVelocity),
+        var point = new Point(position, new Vector3f(velocity).mul(runtime.physics.inertia.get()).add(initialVelocity),
                 tgt, nrm, initialColor, initialThickness, texcoord, lifeTime);
         if (skipLast && points.size() > 1) {
             points.add(points.size() - 1, point);
@@ -774,9 +779,9 @@ public class AraTrailParticle implements IParticle {
                 float normalizedSegmentLife = Float.isInfinite(getLifeTime()) ? 1 : Mth.clamp(1 - data[i].life / getLifeTime(), 0, 1);
 
                 // Calculate vertex color:
-                var timeColor = config.colorOverTime.get(normalizedLife, () -> getMemRandom("trails-colorOverTime")).intValue();
-                var lengthColor = config.colorOverLength.get(normalizedLength, () -> getMemRandom("trails-colorOverLength")).intValue();
-                var segmentColor = config.colorOverSegmentTime.get(normalizedSegmentLife, () -> getMemRandom("trails-colorOverSegmentTime")).intValue();
+                var timeColor = runtime.colorOverTime.get().get(normalizedLife, () -> getMemRandom("trails-colorOverTime")).intValue();
+                var lengthColor = runtime.colorOverLength.get().get(normalizedLength, () -> getMemRandom("trails-colorOverLength")).intValue();
+                var segmentColor = runtime.colorOverSegmentTime.get().get(normalizedSegmentLife, () -> getMemRandom("trails-colorOverSegmentTime")).intValue();
                 color = new Vector4f(data[i].color).mul(colorMultiplier).mul(
                         ColorUtils.red(timeColor) * ColorUtils.red(lengthColor) * ColorUtils.red(segmentColor),
                         ColorUtils.green(timeColor) * ColorUtils.green(lengthColor) * ColorUtils.green(segmentColor),
@@ -785,10 +790,10 @@ public class AraTrailParticle implements IParticle {
                 );
 
                 // Calculate final thickness:
-                float sectionThickness = config.thickness * thicknessMultiplier * data[i].thickness *
-                        config.thicknessOverTime.get(normalizedLife, () -> getMemRandom("trails-thicknessOverTime")).floatValue() *
-                        config.thicknessOverSegmentTime.get(normalizedSegmentLife, () -> getMemRandom("trails-thicknessOverSegmentTime")).floatValue() *
-                        config.thicknessOverLength.get(normalizedLength, () -> getMemRandom("trails-thicknessOverLength")).floatValue();
+                float sectionThickness = runtime.thickness.get() * thicknessMultiplier * data[i].thickness *
+                        runtime.thicknessOverTime.get().get(normalizedLife, () -> getMemRandom("trails-thicknessOverTime")).floatValue() *
+                        runtime.thicknessOverSegmentTime.get().get(normalizedSegmentLife, () -> getMemRandom("trails-thicknessOverSegmentTime")).floatValue() *
+                        runtime.thicknessOverLength.get().get(normalizedLength, () -> getMemRandom("trails-thicknessOverLength")).floatValue();
 
                 // In world tile mode, override texture coordinate with the point's one:
                 if (config.textureMode == AraTrailConfig.TextureMode.WorldTile)

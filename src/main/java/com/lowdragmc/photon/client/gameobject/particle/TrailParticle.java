@@ -4,6 +4,8 @@ import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailRuntime;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.floats.Float2ObjectFunction;
 import lombok.Getter;
@@ -71,6 +73,9 @@ public class TrailParticle implements IParticle {
     @Getter
     protected TailArray tails = new TailArray();
     protected TrailConfig config;
+    /** The owning emitter's per-instance runtime layer (timeline overrides + moved value behaviour). */
+    @Getter
+    protected TrailRuntime runtime;
     @Getter
     protected IParticleEmitter emitter;
     @Getter
@@ -81,14 +86,15 @@ public class TrailParticle implements IParticle {
     public TrailParticle(IParticleEmitter emitter, TrailConfig config) {
         this.emitter = emitter;
         this.config = config;
+        this.runtime = emitter instanceof TrailEmitter e ? e.runtime() : new TrailRuntime(config);
         this.randomSource = RandomSource.create(emitter.getRandomSource().nextLong());
         this.headPositionSupplier = (t) -> emitter.transform().position();
         this.setup();
     }
 
     public void setup() {
-        this.setDelay(config.getStartDelay());
-        this.lifetimeSupplier = () -> (float) config.getTime();
+        this.setDelay(runtime.startDelay.get());
+        this.lifetimeSupplier = () -> (float) runtime.time.get();
         update(1f);
         updateOrigin();
         tails.clear();
@@ -147,8 +153,8 @@ public class TrailParticle implements IParticle {
     }
 
     public int getRealLight(float partialTicks) {
-        if (config.lights.isEnable()) {
-            return config.lights.getLight(this, partialTicks);
+        if (runtime.lights.isEnable()) {
+            return runtime.lights.getLight(this, partialTicks);
         }
         return light;
     }
@@ -200,7 +206,7 @@ public class TrailParticle implements IParticle {
         updateTails(dt);
         updateRawTailsProperties();
         if (config.isSmoothInterpolation()) {
-            this.tails = generateSmoothPath(rawTails, this.tails, config.getMinVertexDistance());
+            this.tails = generateSmoothPath(rawTails, this.tails, runtime.minVertexDistance.get());
         } else {
             this.tails = rawTails;
         }
@@ -226,7 +232,8 @@ public class TrailParticle implements IParticle {
             var shouldAdd = true;
             if (!rawTails.isEmpty()) {
                 Vector3f last = rawTails.getPosition(rawTails.size() - 1);
-                if (headPos.distanceSquared(last) < config.getMinVertexDistance() * config.getMinVertexDistance()) {
+                var minVertexDistance = runtime.minVertexDistance.get();
+                if (headPos.distanceSquared(last) < minVertexDistance * minVertexDistance) {
                     shouldAdd = false;
                 }
             }
@@ -310,13 +317,13 @@ public class TrailParticle implements IParticle {
     protected void updateRawTrailProperties(int tailIndex, int tailsSize) {
         float t = ((float) tailIndex) / (tailsSize - 1);
 
-        int colorInt = config.getColorOverTrail().get(t, () -> getMemRandom("trails-colorOverTrail")).intValue();
+        int colorInt = runtime.colorOverTrail.get().get(t, () -> getMemRandom("trails-colorOverTrail")).intValue();
         rawTails.colorR[tailIndex] = ColorUtils.red(colorInt);
         rawTails.colorG[tailIndex] = ColorUtils.green(colorInt);
         rawTails.colorB[tailIndex] = ColorUtils.blue(colorInt);
         rawTails.colorA[tailIndex] = ColorUtils.alpha(colorInt);
 
-        float widthValue = config.getWidthOverTrail().get(t, () -> getMemRandom("trails-widthOverTrail")).floatValue();
+        float widthValue = runtime.widthOverTrail.get().get(t, () -> getMemRandom("trails-widthOverTrail")).floatValue();
         if (widthMultiplier != null) {
             widthValue *= widthMultiplier.get();
         }
@@ -324,7 +331,7 @@ public class TrailParticle implements IParticle {
     }
 
     protected void updateLight() {
-        if (config.lights.isEnable()) return;
+        if (runtime.lights.isEnable()) return;
         light = getLightColor();
     }
 
@@ -343,8 +350,8 @@ public class TrailParticle implements IParticle {
             v0 = 0;
             v1 = 1;
 
-            if (config.uvAnimation.isEnable()) {
-                var uvs = config.uvAnimation.getUVs(this, partialTicks);
+            if (runtime.uvAnimation.isEnable()) {
+                var uvs = runtime.uvAnimation.getUVs(this, partialTicks);
                 var x = uvs.x;
                 var y = uvs.y;
                 var w = uvs.z - uvs.x;
@@ -355,8 +362,8 @@ public class TrailParticle implements IParticle {
                 v1 = y + h * v1;
             }
         } else {
-            if (config.uvAnimation.isEnable()) {
-                var uvs = config.uvAnimation.getUVs(this, partialTicks);
+            if (runtime.uvAnimation.isEnable()) {
+                var uvs = runtime.uvAnimation.getUVs(this, partialTicks);
                 u0 = uvs.x();
                 v0 = uvs.y();
                 u1 = uvs.z();
