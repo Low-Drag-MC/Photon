@@ -1,13 +1,24 @@
 package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
+import com.lowdragmc.photon.client.gameobject.emitter.data.ColorOverLifetimeSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.ColorBySpeedSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.EmissionSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ForceOverLifetimeSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.LifetimeByEmitterSpeedSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.NoiseSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.RotationBySpeedSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.SizeBySpeedSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.UVAnimationSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhysicsSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RotationOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ShapeSetting;
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SizeOverLifetimeSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.TrailsSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.VelocityOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3;
 
@@ -28,8 +39,20 @@ public class ParticleRuntime {
     public final RotationOverLifetimeSetting.Runtime rotationOverLifetime;
     public final ForceOverLifetimeSetting.Runtime forceOverLifetime;
     public final LightOverLifetimeSetting.Runtime lights;
+    public final ColorOverLifetimeSetting.Runtime colorOverLifetime;
+    public final VelocityOverLifetimeSetting.Runtime velocityOverLifetime;
+    public final InheritVelocitySetting.Runtime inheritVelocity;
+    public final LifetimeByEmitterSpeedSetting.Runtime lifetimeByEmitterSpeed;
+    public final ColorBySpeedSetting.Runtime colorBySpeed;
+    public final SizeBySpeedSetting.Runtime sizeBySpeed;
+    public final RotationBySpeedSetting.Runtime rotationBySpeed;
+    public final NoiseSetting.Runtime noise;
+    public final UVAnimationSetting.Runtime uvAnimation;
+    public final TrailsSetting.Runtime trails;
+    public final SubEmittersSetting.Runtime subEmitters;
 
     // top-level ParticleConfig values (read directly by the emitter/particle, not via a setting)
+    public final RuntimeValue<NumberFunction> startColor;
     public final RuntimeValue<NumberFunction> startDelay;
     public final RuntimeValue<NumberFunction> startLifetime;
     public final RuntimeValue<NumberFunction> startSpeed;
@@ -43,6 +66,7 @@ public class ParticleRuntime {
 
     public ParticleRuntime(ParticleConfig config) {
         this.config = config;
+        this.startColor = new RuntimeValue<>(config::getStartColor);
         this.startDelay = new RuntimeValue<>(config::getStartDelay);
         this.startLifetime = new RuntimeValue<>(config::getStartLifetime);
         this.startSpeed = new RuntimeValue<>(config::getStartSpeed);
@@ -60,10 +84,22 @@ public class ParticleRuntime {
         this.rotationOverLifetime = config.rotationOverLifetime.createRuntime();
         this.forceOverLifetime = config.forceOverLifetime.createRuntime();
         this.lights = config.lights.createRuntime();
+        this.colorOverLifetime = config.colorOverLifetime.createRuntime();
+        this.velocityOverLifetime = config.velocityOverLifetime.createRuntime();
+        this.inheritVelocity = config.inheritVelocity.createRuntime();
+        this.lifetimeByEmitterSpeed = config.lifetimeByEmitterSpeed.createRuntime();
+        this.colorBySpeed = config.colorBySpeed.createRuntime();
+        this.sizeBySpeed = config.sizeBySpeed.createRuntime();
+        this.rotationBySpeed = config.rotationBySpeed.createRuntime();
+        this.noise = config.noise.createRuntime();
+        this.uvAnimation = config.uvAnimation.createRuntime();
+        this.trails = config.trails.createRuntime();
+        this.subEmitters = config.subEmitters.createRuntime();
     }
 
     /** Clear every timeline override (fall back to authored config). Called on emitter reset. */
     public void clear() {
+        startColor.clear();
         startDelay.clear();
         startLifetime.clear();
         startSpeed.clear();
@@ -81,5 +117,16 @@ public class ParticleRuntime {
         rotationOverLifetime.clear();
         forceOverLifetime.clear();
         lights.clear();
+        colorOverLifetime.clear();
+        velocityOverLifetime.clear();
+        inheritVelocity.clear();
+        lifetimeByEmitterSpeed.clear();
+        colorBySpeed.clear();
+        sizeBySpeed.clear();
+        rotationBySpeed.clear();
+        noise.clear();
+        uvAnimation.clear();
+        trails.clear();
+        subEmitters.clear();
     }
 }

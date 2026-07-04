@@ -125,21 +125,21 @@ public class TileParticle implements IParticle {
         var emitterT = emitter.getT();
         // start values come from the runtime layer (timeline override if set, else authored config)
         setDelay(runtime.startDelay.get().get(randomSource, emitterT).intValue());
-        if (config.lifetimeByEmitterSpeed.isEnable()) {
-            setLifetime(config.lifetimeByEmitterSpeed.getLifetime(this, emitter,
+        if (runtime.lifetimeByEmitterSpeed.isEnable()) {
+            setLifetime(runtime.lifetimeByEmitterSpeed.getLifetime(this, emitter,
                     runtime.startLifetime.get().get(randomSource, emitterT).intValue()));
         } else {
             setLifetime(runtime.startLifetime.get().get(randomSource, emitterT).intValue());
         }
 
         runtime.shape.setupParticle(this, emitter);
-        if (config.inheritVelocity.isEnable() && config.inheritVelocity.getMode() == InheritVelocitySetting.Mode.INITIAL) {
-            addInternalVelocity(getSpaceTransformInverse().transformDirection(config.inheritVelocity.getVelocity(emitter)));
+        if (runtime.inheritVelocity.isEnable() && runtime.inheritVelocity.getMode() == InheritVelocitySetting.Mode.INITIAL) {
+            addInternalVelocity(getSpaceTransformInverse().transformDirection(runtime.inheritVelocity.getVelocity(emitter)));
         }
         mulInternalVelocity(runtime.startSpeed.get().get(randomSource, emitterT).floatValue());
         this.initialSize = runtime.startSize.get().get(randomSource, emitterT);
         this.initialRotation = runtime.startRotation.get().get(randomSource, emitterT).mul(Mth.TWO_PI / 360);
-        var color = config.getStartColor().get(randomSource, emitterT).intValue();
+        var color = runtime.startColor.get().get(randomSource, emitterT).intValue();
         this.initialColor = new Vector4f(ColorUtils.red(color), ColorUtils.green(color), ColorUtils.blue(color), ColorUtils.alpha(color));
         setSize(initialSize);
         setRotation(initialRotation);
@@ -147,8 +147,8 @@ public class TileParticle implements IParticle {
         update(1f);
         updateOrigin();
 
-        if (config.trails.isEnable() && emitter instanceof ParticleEmitter particleEmitter) {
-            config.trails.setup(particleEmitter, this);
+        if (runtime.trails.isEnable() && emitter instanceof ParticleEmitter particleEmitter) {
+            runtime.trails.setup(particleEmitter, this);
         }
     }
 
@@ -263,8 +263,8 @@ public class TileParticle implements IParticle {
     public Vector3f getLocalPos(float partialTicks) {
         var pos = getLocalPoseWithoutNoise(partialTicks);
 
-        if (config.noise.isEnable()) {
-            pos.add(config.noise.getPosition(this, partialTicks));
+        if (runtime.noise.isEnable()) {
+            pos.add(runtime.noise.getPosition(this, partialTicks));
         }
 
         return pos;
@@ -349,8 +349,8 @@ u     */
     }
 
     public Vector4f getRealUVs(float partialTicks) {
-        if (config.uvAnimation.isEnable()) {
-            return config.uvAnimation.getUVs(this, partialTicks);
+        if (runtime.uvAnimation.isEnable()) {
+            return runtime.uvAnimation.getUVs(this, partialTicks);
         } else {
             return new Vector4f(0, 0, 1, 1);
         }
@@ -378,16 +378,16 @@ u     */
             return;
         }
 
-        if (this.age == 0 && config.subEmitters.isEnable()) {
-            config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Birth);
+        if (this.age == 0 && runtime.subEmitters.isEnable()) {
+            runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Birth);
         }
 
         // update life cycle
         if (this.age >= this.lifetime && lifetime > 0) {
             this.age += dt;
             setRemoved(true);
-            if (config.subEmitters.isEnable()) {
-                config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
+            if (runtime.subEmitters.isEnable()) {
+                runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
             }
             return;
         }
@@ -396,8 +396,8 @@ u     */
         // update data
         update(dt);
 
-        if (config.subEmitters.isEnable()) {
-            config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Tick);
+        if (runtime.subEmitters.isEnable()) {
+            runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Tick);
         }
 
         if (lifetime > 0) {
@@ -515,15 +515,15 @@ u     */
         }
         if (runtime.physics.isEnable() && runtime.physics.isRemovedWhenCollided()) {
             this.setRemoved(true);
-            if (config.subEmitters.isEnable()) {
-                config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
+            if (runtime.subEmitters.isEnable()) {
+                runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
             }
         }
-        if (config.subEmitters.isEnable()) {
-            config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Collision);
+        if (runtime.subEmitters.isEnable()) {
+            runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Collision);
             if (!isFirstCollision) {
                 isFirstCollision = true;
-                config.subEmitters.triggerEvent(this, SubEmittersSetting.Event.FirstCollision);
+                runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.FirstCollision);
             }
         }
     }
@@ -533,8 +533,8 @@ u     */
      */
     public Vector3f getInternalVelocity() {
         var velocity = new Vector3f(velocityX, velocityY, velocityZ);
-        if (config.velocityOverLifetime.isEnable()) {
-            var velocityAddition = config.velocityOverLifetime.getVelocityAddition(this);
+        if (runtime.velocityOverLifetime.isEnable()) {
+            var velocityAddition = runtime.velocityOverLifetime.getVelocityAddition(this);
             velocity.add(velocityAddition);
         }
         if (runtime.forceOverLifetime.isEnable() && runtime.forceOverLifetime.getSimulationSpace() == ParticleConfig.Space.Local) {
@@ -551,27 +551,27 @@ u     */
         if (runtime.forceOverLifetime.isEnable() && runtime.forceOverLifetime.getSimulationSpace() == ParticleConfig.Space.World) {
             velocity.add(runtime.forceOverLifetime.getForce(this));
         }
-        if (config.inheritVelocity.isEnable() && config.inheritVelocity.getMode() == InheritVelocitySetting.Mode.CURRENT) {
-            velocity.add(config.inheritVelocity.getVelocity(emitter));
+        if (runtime.inheritVelocity.isEnable() && runtime.inheritVelocity.getMode() == InheritVelocitySetting.Mode.CURRENT) {
+            velocity.add(runtime.inheritVelocity.getVelocity(emitter));
         }
-        if (config.velocityOverLifetime.isEnable()) {
-            var velocityMultiplier = config.velocityOverLifetime.getVelocityMultiplier(this);
+        if (runtime.velocityOverLifetime.isEnable()) {
+            var velocityMultiplier = runtime.velocityOverLifetime.getVelocityMultiplier(this);
             velocity.mul(velocityMultiplier);
         }
         return velocity;
     }
 
     protected void updateSize() {
-        if (config.sizeBySpeed.isEnable() || runtime.sizeOverLifetime.isEnable() || config.noise.isEnable()) {
+        if (runtime.sizeBySpeed.isEnable() || runtime.sizeOverLifetime.isEnable() || runtime.noise.isEnable()) {
             var size = new Vector3f(initialSize);
             var mul = new Vector3f(1, 1, 1);
 
-            if (config.noise.isEnable()) {
-                size.add(config.noise.getSize(this, 0));
+            if (runtime.noise.isEnable()) {
+                size.add(runtime.noise.getSize(this, 0));
             }
 
-            if (config.sizeBySpeed.isEnable()) {
-                mul.mul(config.sizeBySpeed.getSize(this));
+            if (runtime.sizeBySpeed.isEnable()) {
+                mul.mul(runtime.sizeBySpeed.getSize(this));
             }
             if (runtime.sizeOverLifetime.isEnable()) {
                 mul.mul(runtime.sizeOverLifetime.getSize(this, 0));
@@ -582,19 +582,19 @@ u     */
     }
 
     protected void updateRotation() {
-        if (runtime.rotationOverLifetime.isEnable() || config.rotationBySpeed.isEnable() || config.noise.isEnable()) {
+        if (runtime.rotationOverLifetime.isEnable() || runtime.rotationBySpeed.isEnable() || runtime.noise.isEnable()) {
             var rotation = new Vector3f(initialRotation);
 
             if (runtime.rotationOverLifetime.isEnable()) {
                 rotation.add(runtime.rotationOverLifetime.getRotation(this, 0));
             }
 
-            if (config.rotationBySpeed.isEnable()) {
-                rotation.add(config.rotationBySpeed.getRotation(this));
+            if (runtime.rotationBySpeed.isEnable()) {
+                rotation.add(runtime.rotationBySpeed.getRotation(this));
             }
 
-            if (config.noise.isEnable()) {
-                rotation.add(config.noise.getRotation(this, 0));
+            if (runtime.noise.isEnable()) {
+                rotation.add(runtime.noise.getRotation(this, 0));
             }
 
             setRotation(rotation);
@@ -602,15 +602,15 @@ u     */
     }
 
     protected void updateColor() {
-        if (config.colorOverLifetime.isEnable() || config.colorBySpeed.isEnable()) {
+        if (runtime.colorOverLifetime.isEnable() || runtime.colorBySpeed.isEnable()) {
             var color = new Vector4f(initialColor);
 
-            if (config.colorOverLifetime.isEnable()) {
-                color.mul(config.colorOverLifetime.getColor(this, 0));
+            if (runtime.colorOverLifetime.isEnable()) {
+                color.mul(runtime.colorOverLifetime.getColor(this, 0));
             }
 
-            if (config.colorBySpeed.isEnable()) {
-                color.mul(config.colorBySpeed.getColor(this));
+            if (runtime.colorBySpeed.isEnable()) {
+                color.mul(runtime.colorBySpeed.getColor(this));
             }
 
             setColor(color);

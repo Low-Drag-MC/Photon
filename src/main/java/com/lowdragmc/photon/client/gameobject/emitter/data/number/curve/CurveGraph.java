@@ -253,6 +253,14 @@ public class CurveGraph extends BindableUIElement<ECBCurves> {
                 }).addEventListener(UIEvents.DRAG_SOURCE_UPDATE, event -> {
                     var result = DraggingPoint(event, true);
                     var segments = value.getSegments();
+                    // clamp x within the neighbours' range (leave a tiny gap so adjacent points never become
+                    // exactly equal -> avoids the 0/0 in ECBCurves#getCurveY) so an overshoot renders as a
+                    // clean vertical jump instead of an inverted/crossed-over segment. Matches the animation
+                    // track's keyframe drag clamp.
+                    var lo = index > 0 ? segments.get(index - 1).p0.x + 0.001f : 0f;
+                    var hi = index < segments.size() ? segments.get(index).p1.x - 0.001f : 1f;
+                    result.x = Math.max(lo, Math.min(hi, result.x));
+                    event.currentElement.layout(layout -> layout.leftPercent(result.x * 100));
                     if (index < segments.size()) {
                         var offset = new Vector2f(result.x - segments.get(index).p0.x, result.y - segments.get(index).p0.y);
                         segments.get(index).p0.set(result);

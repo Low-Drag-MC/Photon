@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
+import com.lowdragmc.photon.client.fx.timeline.property.ColorPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
@@ -63,7 +64,9 @@ public class ParticleEmitter extends Emitter {
                 var list = new ArrayList<>(super.animatableProperties());
                 // runtime-slot-backed config properties (the timeline writes the slot directly)
                 for (var b : runtimeBindings()) {
-                    list.add(ConfigPropertyType.fromBinding(b));
+                    list.add(b.type == ConfigValueType.COLOR
+                            ? ColorPropertyType.fromBinding(b)
+                            : ConfigPropertyType.fromBinding(b));
                 }
                 animatableProperties = list;
             }
@@ -137,7 +140,95 @@ public class ParticleEmitter extends Emitter {
             new RuntimeBinding("lights.skyLight", "LightOverLifetimeSetting.skyLight", ConfigValueType.NUMBER_FUNCTION,
                     o -> ((ParticleEmitter) o).runtime().lights.skyLight),
             new RuntimeBinding("lights.blockLight", "LightOverLifetimeSetting.blockLight", ConfigValueType.NUMBER_FUNCTION,
-                    o -> ((ParticleEmitter) o).runtime().lights.blockLight));
+                    o -> ((ParticleEmitter) o).runtime().lights.blockLight),
+            new RuntimeBinding("startColor", "ParticleConfig.startColor", ConfigValueType.COLOR,
+                    o -> ((ParticleEmitter) o).runtime().startColor),
+            new RuntimeBinding("colorOverLifetime.color", "ParticleConfig.colorOverLifetime.color", ConfigValueType.COLOR,
+                    o -> ((ParticleEmitter) o).runtime().colorOverLifetime.color),
+            // ---- animatable enables for every ToggleGroup setting (Part 2) ----
+            new RuntimeBinding("colorOverLifetime.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().colorOverLifetime.enable),
+            new RuntimeBinding("sizeOverLifetime.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().sizeOverLifetime.enable),
+            new RuntimeBinding("rotationOverLifetime.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().rotationOverLifetime.enable),
+            new RuntimeBinding("forceOverLifetime.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().forceOverLifetime.enable),
+            new RuntimeBinding("lights.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().lights.enable),
+            new RuntimeBinding("velocityOverLifetime.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().velocityOverLifetime.enable),
+            new RuntimeBinding("inheritVelocity.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().inheritVelocity.enable),
+            new RuntimeBinding("lifetimeByEmitterSpeed.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().lifetimeByEmitterSpeed.enable),
+            new RuntimeBinding("colorBySpeed.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().colorBySpeed.enable),
+            new RuntimeBinding("sizeBySpeed.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().sizeBySpeed.enable),
+            new RuntimeBinding("rotationBySpeed.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().rotationBySpeed.enable),
+            new RuntimeBinding("noise.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().noise.enable),
+            new RuntimeBinding("uvAnimation.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().uvAnimation.enable),
+            new RuntimeBinding("trails.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().trails.enable),
+            new RuntimeBinding("subEmitters.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().subEmitters.enable),
+            // ---- migrated setting values (Part 1) ----
+            new RuntimeBinding("velocityOverLifetime.linear", "VelocityOverLifetimeSetting.linear", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().velocityOverLifetime.linear),
+            new RuntimeBinding("velocityOverLifetime.orbital", "VelocityOverLifetimeSetting.orbital", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().velocityOverLifetime.orbital),
+            new RuntimeBinding("velocityOverLifetime.offset", "VelocityOverLifetimeSetting.offset", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().velocityOverLifetime.offset),
+            new RuntimeBinding("velocityOverLifetime.radial", "VelocityOverLifetimeSetting.radial", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().velocityOverLifetime.radial),
+            new RuntimeBinding("velocityOverLifetime.speedModifier", "VelocityOverLifetimeSetting.speedModifier", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().velocityOverLifetime.speedModifier),
+            new RuntimeBinding("inheritVelocity.multiply", "InheritVelocitySetting.multiply", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().inheritVelocity.multiply),
+            new RuntimeBinding("lifetimeByEmitterSpeed.multiplier", "LifetimeByEmitterSpeedSetting.multiplier", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().lifetimeByEmitterSpeed.multiplier),
+            new RuntimeBinding("colorBySpeed.color", "ColorBySpeedSetting.color", ConfigValueType.COLOR,
+                    o -> ((ParticleEmitter) o).runtime().colorBySpeed.color),
+            new RuntimeBinding("sizeBySpeed.size", "NoiseSetting.size", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().sizeBySpeed.size),
+            new RuntimeBinding("rotationBySpeed.roll", "RotationBySpeedSetting.roll", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().rotationBySpeed.roll),
+            new RuntimeBinding("rotationBySpeed.pitch", "RotationBySpeedSetting.pitch", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().rotationBySpeed.pitch),
+            new RuntimeBinding("rotationBySpeed.yaw", "RotationBySpeedSetting.yaw", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().rotationBySpeed.yaw),
+            new RuntimeBinding("noise.frequency", "NoiseSetting.frequency", ConfigValueType.FLOAT,
+                    o -> ((ParticleEmitter) o).runtime().noise.frequency),
+            new RuntimeBinding("noise.position", "NoiseSetting.position", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().noise.position),
+            new RuntimeBinding("noise.rotation", "NoiseSetting.rotation", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().noise.rotation),
+            new RuntimeBinding("noise.size", "NoiseSetting.size", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().noise.size),
+            new RuntimeBinding("uvAnimation.frameOverTime", "UVAnimationSetting.frameOverTime", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().uvAnimation.frameOverTime),
+            new RuntimeBinding("uvAnimation.startFrame", "UVAnimationSetting.startFrame", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().uvAnimation.startFrame),
+            new RuntimeBinding("uvAnimation.cycle", "UVAnimationSetting.cycle", ConfigValueType.FLOAT,
+                    o -> ((ParticleEmitter) o).runtime().uvAnimation.cycle),
+            new RuntimeBinding("trails.ratio", "TrailsSetting.ratio", ConfigValueType.FLOAT,
+                    o -> ((ParticleEmitter) o).runtime().trails.ratio),
+            new RuntimeBinding("trails.lifetime", "TrailsSetting.lifetime", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().trails.lifetime),
+            new RuntimeBinding("trails.dieWithParticles", "TrailsSetting.dieWithParticles", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().trails.dieWithParticles),
+            new RuntimeBinding("trails.sizeAffectsWidth", "TrailsSetting.sizeAffectsWidth", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().trails.sizeAffectsWidth),
+            new RuntimeBinding("trails.sizeAffectsLifetime", "TrailsSetting.sizeAffectsLifetime", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().trails.sizeAffectsLifetime),
+            new RuntimeBinding("trails.inheritParticleColor", "TrailsSetting.inheritParticleColor", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().trails.inheritParticleColor),
+            new RuntimeBinding("trails.colorOverLifetime", "TrailsSetting.colorOverLifetime", ConfigValueType.COLOR,
+                    o -> ((ParticleEmitter) o).runtime().trails.colorOverLifetime));
 
     @Persisted(subPersisted = true)
     public final ParticleConfig config;

@@ -141,6 +141,8 @@ public class FXTimelineView extends View implements TimelineContext {
     /** Multi-clip clipboard: each entry keeps its source track + start offset from the earliest clip. */
     private record ClipboardEntry(Track track, Clip clip, double startOffset) {}
     private static final List<ClipboardEntry> clipboardClips = new ArrayList<>();
+    /** What the last copy captured, so paste picks the right clipboard: 0 none, 1 clips, 2 track, 3 track-editor sub-selection. */
+    private static int clipboardKind = 0;
 
     public FXTimelineView(FXEditor fxEditor) {
         super("editor.timeline", new TextTexture("TL"));
@@ -1191,13 +1193,30 @@ public class FXTimelineView extends View implements TimelineContext {
                 var t = trackOf(clip);
                 if (t != null) clipboardClips.add(new ClipboardEntry(t, clip.copy(), clip.start() - minStart));
             }
-        } else if (selectedTrack != null) {
-            clipboardTrack = selectedTrack.copy();
+            clipboardKind = 1;
+            return;
         }
+        var track = selectedTrack;
+        if (track == null) return;
+        // let the track editor copy a sub-selection (clip / keyframe / stop) before falling back to the track
+        var editor = editorFor(track);
+        if (editor != null && editor.copySubSelection(this, track, stateFor(track, editor))) {
+            clipboardKind = 3;
+            return;
+        }
+        clipboardTrack = track.copy();
+        clipboardKind = 2;
     }
 
     private void pasteClipboard() {
         if (fxEditor.runtime == null) return;
+        if (clipboardKind == 3) {
+            var track = selectedTrack;
+            if (track == null) return;
+            var editor = editorFor(track);
+            if (editor != null) editor.pasteSubSelection(this, track, stateFor(track, editor));
+            return;
+        }
         if (!clipboardClips.isEmpty()) {
             var timeline = fxEditor.runtime.fxData.timeline();
             var playhead = Math.max(0, currentTimeTicks());

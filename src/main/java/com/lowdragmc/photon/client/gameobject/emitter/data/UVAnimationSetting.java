@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
+import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -80,5 +81,69 @@ public class UVAnimationSetting extends ToggleGroup {
         u1 = u0 + cellU;
         v1 = v0 + cellV;
         return new Vector4f(u0, v0, u1, v1);
+    }
+
+    public Runtime createRuntime() {
+        return new Runtime(this);
+    }
+
+    /** Per-emitter runtime layer for ParticleEmitter. The config keeps its own {@link #getUVs} for the
+     *  Beam/Trail emitters (which have no runtime layer). */
+    public static class Runtime {
+        private final UVAnimationSetting config;
+        public final RuntimeValue<Boolean> enable;
+        public final RuntimeValue<Vector2i> tiles;        // slot only (Vector2i → no timeline binding)
+        public final RuntimeValue<Animation> animation;   // slot only (enum → no timeline binding)
+        public final RuntimeValue<NumberFunction> frameOverTime;
+        public final RuntimeValue<NumberFunction> startFrame;
+        public final RuntimeValue<Float> cycle;
+
+        public Runtime(UVAnimationSetting config) {
+            this.config = config;
+            this.enable = new RuntimeValue<>(config::isEnable);
+            this.tiles = new RuntimeValue<>(config::getTiles);
+            this.animation = new RuntimeValue<>(config::getAnimation);
+            this.frameOverTime = new RuntimeValue<>(config::getFrameOverTime);
+            this.startFrame = new RuntimeValue<>(config::getStartFrame);
+            this.cycle = new RuntimeValue<>(config::getCycle);
+        }
+
+        public boolean isEnable() {
+            return enable.get();
+        }
+
+        public Vector4f getUVs(IParticle particle, float partialTicks) {
+            var t = particle.getT(partialTicks);
+            var tiles = this.tiles.get();
+            var cellU = 1f / tiles.x();
+            var cellV = 1f / tiles.y();
+            var currentFrame = startFrame.get().get(t, () -> particle.getMemRandom("startFrame")).floatValue();
+            currentFrame += cycle.get() * frameOverTime.get().get(t, () -> particle.getMemRandom("frameOverTime")).floatValue();
+            float u0, v0, u1, v1;
+            var cellSize = tiles.x();
+            if (animation.get() == Animation.WholeSheet) {
+                int X = (int) (currentFrame % cellSize);
+                int Y = (int) (currentFrame / cellSize);
+                u0 = X * cellU;
+                v0 = Y * cellV;
+            } else {
+                int X = (int) (currentFrame % cellSize);
+                int Y = (int) (particle.getMemRandom("randomRow") * tiles.y());
+                u0 = X * cellU;
+                v0 = Y * cellV;
+            }
+            u1 = u0 + cellU;
+            v1 = v0 + cellV;
+            return new Vector4f(u0, v0, u1, v1);
+        }
+
+        public void clear() {
+            enable.clear();
+            tiles.clear();
+            animation.clear();
+            frameOverTime.clear();
+            startFrame.clear();
+            cycle.clear();
+        }
     }
 }

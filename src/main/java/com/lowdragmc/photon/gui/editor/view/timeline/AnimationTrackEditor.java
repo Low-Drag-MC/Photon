@@ -2,6 +2,7 @@ package com.lowdragmc.photon.gui.editor.view.timeline;
 
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ColorConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -19,21 +20,35 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.OreSprites;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigPropertyType;
 import dev.vfyjxf.taffy.style.TaffyPosition;
 import org.lwjgl.glfw.GLFW;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
+import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.photon.client.fx.timeline.ExprClip;
+import com.lowdragmc.photon.client.fx.timeline.GradientClip;
+import com.lowdragmc.photon.client.fx.timeline.CurveClip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
+import com.lowdragmc.photon.client.fx.timeline.property.ColorAnimatedProperty;
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigAnimatedProperty;
 import com.lowdragmc.photon.client.gameobject.FXObject;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.GradientColorConfigurator;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.configurator.NumberFunctionConfigurator;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector2f;
+import org.joml.Vector4f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -48,6 +63,22 @@ import java.util.Set;
 @OnlyIn(Dist.CLIENT)
 public class AnimationTrackEditor extends TrackEditor {
     private static final ColorPattern[] CHANNEL_COLORS = {ColorPattern.RED, ColorPattern.GREEN, ColorPattern.BLUE};
+
+    /** A generic {@link NumberFunctionConfig} used to edit a curve clip's {@code Curve} in the inspector,
+     *  read once from the dummy annotated holder field below. */
+    @NumberFunctionConfig(types = {Curve.class, RandomCurve.class},
+            curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "value"))
+    private static final Object CURVE_CLIP_CONFIG_HOLDER = null;
+    private static final NumberFunctionConfig CURVE_CLIP_CONFIG = curveClipConfig();
+
+    private static NumberFunctionConfig curveClipConfig() {
+        try {
+            return AnimationTrackEditor.class.getDeclaredField("CURVE_CLIP_CONFIG_HOLDER")
+                    .getAnnotation(NumberFunctionConfig.class);
+        } catch (NoSuchFieldException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     public static class AnimationTrackUIState extends TrackUIState {
         @Nullable AnimatedProperty selectedProperty;
@@ -77,6 +108,25 @@ public class AnimationTrackEditor extends TrackEditor {
         // keyframe marquee (rubber-band) inside the curve box
         boolean keyMarquee, keyMarqueeAdditive;
         float kmX0, kmY0, kmX1, kmY1;
+        // color property (gradient lane): selected/dragged stop + drag snapshot for undo
+        @Nullable ColorAnimatedProperty.ColorKey selectedStop;
+        @Nullable ColorAnimatedProperty.ColorKey dragStop;
+        @Nullable List<ColorAnimatedProperty.ColorKey> stopDragSnapshot;
+        // color property gradient clips (f(t)->gradient) overlaid on the color lane
+        @Nullable GradientClip selectedGradientClip;
+        final Set<GradientClip> selectedGradientClips = new HashSet<>();
+        @Nullable GradientClip dragGradientClip;
+        int dragGradientClipMode = 0; // 0 move, 1 resize-start, 2 resize-end
+        double dragGradientClipGrabOffset;
+        @Nullable List<GradientClip> gradientClipDragSnapshot;
+        // config NF/NF3 curve clips (f(t)->curve) drawn in a strip at the top of the curve box
+        @Nullable CurveClip selectedCurveClip;
+        final Set<CurveClip> selectedCurveClips = new HashSet<>();
+        @Nullable ConfigAnimatedProperty dragCurveClipProperty;
+        @Nullable CurveClip dragCurveClip;
+        int dragCurveClipAxis = -1, dragCurveClipMode = 0; // 0 move, 1 resize-start, 2 resize-end
+        double dragCurveClipGrabOffset;
+        @Nullable List<CurveClip> curveClipDragSnapshot;
         // record mode
         /** Last captured value per type (the reference the poll diffs against). Re-read after every write
          *  so a capture/apply round-trip (e.g. euler↔quaternion) is absorbed and never re-triggers. */
@@ -169,6 +219,18 @@ public class AnimationTrackEditor extends TrackEditor {
     public boolean deleteSelection(TimelineContext ctx, Track track, TrackUIState state) {
         var st = (AnimationTrackUIState) state;
         if (st.selectedProperty == null) return false;
+        if (st.selectedProperty instanceof ColorAnimatedProperty color && !st.selectedGradientClips.isEmpty()) {
+            if (!track.lock()) removeSelectedGradientClips(ctx, st, color);
+            return true;
+        }
+        if (st.selectedProperty instanceof ColorAnimatedProperty color && st.selectedStop != null) {
+            if (!track.lock()) removeStopEdit(ctx, st, color, st.selectedStop);
+            return true;
+        }
+        if (st.selectedProperty instanceof ConfigAnimatedProperty cfg && !st.selectedCurveClips.isEmpty()) {
+            if (!track.lock()) removeSelectedCurveClips(ctx, st, cfg);
+            return true;
+        }
         if (!st.selectedExprClips.isEmpty()) {
             if (!track.lock()) removeSelectedExprClips(ctx, st, st.selectedProperty);
             return true;
@@ -194,6 +256,11 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selKeyIndex = -1;
         st.selectedKeys.clear();
         st.selectedExprClips.clear();
+        st.selectedStop = null;
+        st.selectedGradientClip = null;
+        st.selectedGradientClips.clear();
+        st.selectedCurveClip = null;
+        st.selectedCurveClips.clear();
         st.explicitSelection = false;
     }
 
@@ -390,6 +457,27 @@ public class AnimationTrackEditor extends TrackEditor {
                 }
             }
         }
+        // color properties: nearest stop by screen-x → expand + select the property + that stop
+        ColorAnimatedProperty bestColor = null;
+        ColorAnimatedProperty.ColorKey bestStop = null;
+        float bestStopDist = TimelineContext.KEY_HIT_PX + 1;
+        for (var property : track.properties()) {
+            if (property instanceof ColorAnimatedProperty color) {
+                for (var stop : color.stops()) {
+                    var sx = ctx.originX() + (float) ((stop.tick - ctx.scrollTicks()) * ctx.scale());
+                    var d = Math.abs(e.x - sx);
+                    if (d < bestStopDist) { bestStopDist = d; bestColor = color; bestStop = stop; }
+                }
+            }
+        }
+        if (bestColor != null) {
+            st.expanded = true;
+            selectProperty(ctx, track, st, bestColor, -1);
+            selectStop(ctx, track, bestColor, st, bestStop);
+            ctx.requestRebuild();
+            e.stopPropagation();
+            return;
+        }
         AnimatedProperty bestProp = null;
         int bestAxis = -1, bestKey = -1;
         float bestDist = TimelineContext.KEY_HIT_PX + 1;
@@ -418,8 +506,35 @@ public class AnimationTrackEditor extends TrackEditor {
     /** Lane content drawn under the playhead (default: expr clip bars + keyframe dots). The speed track
      *  overrides to draw a curve preview. */
     protected void drawLaneContent(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
+        drawColorLaneBars(ctx, graphics, track, x, y, width, height);
         drawExprClipBars(ctx, graphics, track, x, y, width, height);
         drawKeyframeDots(ctx, graphics, track, x, y, width, height);
+    }
+
+    /** Draw each color property's gradient as a thin bar across the collapsed lane (+ stop ticks). */
+    private void drawColorLaneBars(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
+        var barH = 6f;
+        var by = y + height / 2f - barH / 2f;
+        for (var property : track.properties()) {
+            if (property instanceof ColorAnimatedProperty color) {
+                drawGradientStrip(ctx, graphics, color, x, by, width, barH);
+                for (var clip : color.gradientClips()) {
+                    var x0 = tickToCurveX(ctx, (float) clip.start(), x);
+                    var x1 = tickToCurveX(ctx, (float) clip.end(), x);
+                    if (x1 < x || x0 > x + width || clip.gradient() == null) continue;
+                    var cx0 = Math.max(x, x0);
+                    var cx1 = Math.min(x + width, x1);
+                    drawGradientColorRegion(graphics, clip.gradient(), cx0, by, cx1 - cx0, barH);
+                    DrawerHelper.drawSolidRect(graphics, cx0, by, cx1 - cx0, 1, withAlpha(ColorPattern.WHITE.color, 0x88));
+                    DrawerHelper.drawSolidRect(graphics, cx0, by + barH - 1, cx1 - cx0, 1, withAlpha(ColorPattern.WHITE.color, 0x88));
+                }
+                for (var stop : color.stops()) {
+                    var sx = tickToCurveX(ctx, stop.tick, x);
+                    if (sx < x || sx > x + width) continue;
+                    DrawerHelper.drawSolidRect(graphics, sx - 0.5f, by, 1, barH, ColorPattern.WHITE.color);
+                }
+            }
+        }
     }
 
     /** Draw each property's expression clips as thin channel-colored bars across the collapsed lane. */
@@ -438,6 +553,19 @@ public class AnimationTrackEditor extends TrackEditor {
                     DrawerHelper.drawSolidRect(graphics, cx0, by, Math.max(1, cx1 - cx0), barH, withAlpha(color, 0xAA));
                 }
             }
+            // curve clips: a thin channel-colored bar at the top edge of the lane
+            if (property instanceof ConfigAnimatedProperty cfg) {
+                for (int axis = 0; axis < cfg.channelCount(); axis++) {
+                    for (var clip : cfg.curveClips(axis)) {
+                        var x0 = ctx.originX() + (float) ((clip.start() - ctx.scrollTicks()) * ctx.scale());
+                        var x1 = ctx.originX() + (float) ((clip.end() - ctx.scrollTicks()) * ctx.scale());
+                        if (x1 < x || x0 > x + width) continue;
+                        var cx0 = Math.max(x, x0);
+                        var cx1 = Math.min(x + width, x1);
+                        DrawerHelper.drawSolidRect(graphics, cx0, y + 1, Math.max(1, cx1 - cx0), 2, withAlpha(channelColor(axis).color, 0xAA));
+                    }
+                }
+            }
         }
     }
 
@@ -447,6 +575,7 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void drawKeyframeDots(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
         for (var property : track.properties()) {
+            if (property instanceof ColorAnimatedProperty) continue; // shown as a gradient bar instead
             for (var time : property.keyframeTimes()) {
                 var dx = ctx.originX() + (float) ((time - ctx.scrollTicks()) * ctx.scale());
                 if (dx < x || dx > x + width) continue;
@@ -534,25 +663,46 @@ public class AnimationTrackEditor extends TrackEditor {
                 layout.widthPercent(100)).setOverflowVisible(false); // height from the host wrapper's flex(1)
         container.addChild(new UIElement().layout(layout -> layout.widthPercent(100).heightPercent(100))
                 .style(style -> style
-                        .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> drawCurveEditor(ctx, graphics, animation, st, x, y, w, h))
+                        .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                            if (st.selectedProperty instanceof ColorAnimatedProperty color) {
+                                drawColorEditor(ctx, graphics, color, st, x, y, w, h);
+                            } else {
+                                drawCurveEditor(ctx, graphics, animation, st, x, y, w, h);
+                            }
+                        })
                         .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
                             ctx.drawPlayhead(graphics, x, y, w, h, pt);
                             drawKeyTooltip(ctx, graphics, animation, st, mx, my, x, y, w, h);
                             if (st.keyMarquee) drawKeyMarquee(graphics, st);
                         })));
-        container.addEventListener(UIEvents.MOUSE_DOWN, e -> onCurveMouseDown(ctx, e, animation, st));
-        container.addEventListener(UIEvents.DOUBLE_CLICK, e -> onCurveDoubleClick(ctx, e, animation, st));
+        container.addEventListener(UIEvents.MOUSE_DOWN, e -> {
+            if (st.selectedProperty instanceof ColorAnimatedProperty color) onColorMouseDown(ctx, e, animation, color, st);
+            else onCurveMouseDown(ctx, e, animation, st);
+        });
+        container.addEventListener(UIEvents.DOUBLE_CLICK, e -> {
+            if (st.selectedProperty instanceof ColorAnimatedProperty color) onColorDoubleClick(ctx, e, animation, color, st);
+            else onCurveDoubleClick(ctx, e, animation, st);
+        });
         container.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
-            if (st.keyMarquee) { st.kmX1 = e.x; st.kmY1 = e.y; }
+            if (st.dragGradientClip != null) onGradientClipDrag(ctx, e, st);
+            else if (st.dragStop != null) onColorDrag(ctx, e, st);
+            else if (st.dragCurveClip != null) onCurveClipDrag(ctx, e, st);
+            else if (st.keyMarquee) { st.kmX1 = e.x; st.kmY1 = e.y; }
             else if (st.dragClip != null) onClipDrag(ctx, e, st);
             else onCurveDrag(ctx, e, st);
         });
         container.addEventListener(UIEvents.DRAG_END, e -> {
-            if (st.keyMarquee) finishKeyMarquee(ctx, animation, st, e.currentElement);
+            if (st.dragGradientClip != null) onGradientClipDragEnd(ctx, st);
+            else if (st.dragStop != null) onColorDragEnd(ctx, st);
+            else if (st.dragCurveClip != null) onCurveClipDragEnd(ctx, st);
+            else if (st.keyMarquee) finishKeyMarquee(ctx, animation, st, e.currentElement);
             else if (st.dragClip != null) onClipDragEnd(ctx, st);
             else onCurveDragEnd(ctx, st);
         });
-        container.addEventListener(UIEvents.MOUSE_WHEEL, e -> onCurveWheel(ctx, e, st));
+        container.addEventListener(UIEvents.MOUSE_WHEEL, e -> {
+            if (st.selectedProperty instanceof ColorAnimatedProperty) ctx.zoom(e);
+            else onCurveWheel(ctx, e, st);
+        });
         return container;
     }
 
@@ -585,7 +735,7 @@ public class AnimationTrackEditor extends TrackEditor {
                 .hoverTexture(IGuiTexture.EMPTY)
                 .markTexture(Icons.DOWN_ARROW_NO_BAR_S_LIGHT).unmarkTexture(Icons.RIGHT_ARROW_NO_BAR_S_LIGHT);
         toggle.setId("timeline.animProperty.expand").layout(layout -> layout.aspectRatio(1).heightPercent(100)).setDisplay(multi);
-        var label = new Label().setText(Component.translatable(propertyKey(property.type())).getString());
+        var label = new Label().setText(property.type().path());
         TimelineContext.styleLabel(label);
         label.layout(layout -> layout.flex(1).heightPercent(100));
         row.addChildren(toggle, label);
@@ -615,8 +765,7 @@ public class AnimationTrackEditor extends TrackEditor {
         });
         var swatch = new UIElement().layout(layout -> layout.width(4).heightPercent(100))
                 .style(style -> style.backgroundTexture(channelColor(axis).rectTexture()));
-        var label = new Label().setText(Component.translatable(propertyKey(property.type())).getString()
-                + "." + property.type().channelKey(axis));
+        var label = new Label().setText(property.type().path() + "." + property.type().channelKey(axis));
         TimelineContext.styleLabel(label);
         label.layout(layout -> layout.flex(1).heightPercent(100));
         return row.addChildren(swatch, label);
@@ -698,6 +847,11 @@ public class AnimationTrackEditor extends TrackEditor {
             st.selKeyIndex = -1;
             st.selectedKeys.clear();
             st.selectedExprClips.clear();
+            st.selectedStop = null;
+            st.selectedGradientClip = null;
+            st.selectedGradientClips.clear();
+            st.selectedCurveClip = null;
+            st.selectedCurveClips.clear();
         }
         st.expandedProperties.remove(property);
     }
@@ -719,6 +873,11 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selKeyIndex = -1;
         st.selectedKeys.clear();
         st.selectedExprClips.clear();
+        st.selectedStop = null;
+        st.selectedGradientClip = null;
+        st.selectedGradientClips.clear();
+        st.selectedCurveClip = null;
+        st.selectedCurveClips.clear();
     }
 
     /** Inspect the channel a selection controls: the property type's own config (e.g. rotation interp
@@ -930,6 +1089,8 @@ public class AnimationTrackEditor extends TrackEditor {
         var step = 2 / ctx.scale();
         // expression clip regions (translucent, under the line)
         drawExprClips(ctx, graphics, st, property, x, y, width, height);
+        // curve clips (f(t)->curve): full-height regions rendering their curve preview
+        drawCurveClips(ctx, graphics, st, property, x, y, width, height);
         var stepped = property.type().stepped();
         for (var axis : axes) {
             // effective value = expression clip override where present, else the keyframe curve; clip
@@ -1024,6 +1185,12 @@ public class AnimationTrackEditor extends TrackEditor {
                 e.stopPropagation();
                 return;
             }
+            var curveHit = hitCurveClip(ctx, st, property, bx, by, e.x, e.y);
+            if (curveHit != null) {
+                if (!track.lock()) removeCurveClipEdit(ctx, st, (ConfigAnimatedProperty) property, curveHit.axis(), curveHit.clip());
+                e.stopPropagation();
+                return;
+            }
             if (!track.lock()) {
                 var clipHit = hitExprClip(ctx, st, property, bx, by, bh, e.x, e.y);
                 if (clipHit != null) openExprClipMenu(ctx, track, st, property, clipHit.axis(), clipHit.clip(), e.x, e.y);
@@ -1033,6 +1200,16 @@ public class AnimationTrackEditor extends TrackEditor {
             return;
         }
         if (e.button != 0 || track.lock()) return;
+        // curve clip (top strip) → select (+ begin move / resize)
+        var curveHit = hitCurveClip(ctx, st, property, bx, by, e.x, e.y);
+        if (curveHit != null) {
+            var cfg = (ConfigAnimatedProperty) property;
+            selectCurveClip(ctx, track, st, cfg, curveHit.axis(), curveHit.clip(), e.isShiftDown());
+            beginCurveClipDrag(ctx, st, cfg, curveHit.axis(), curveHit.clip(), curveHit.mode(), curveXToTick(ctx, e.x, bx));
+            el.startDrag(null, null);
+            e.stopPropagation();
+            return;
+        }
         // tangent handle drag (only when exactly one key is selected; stepped channels have no handles)
         if (!property.type().stepped() && st.selectedKeys.size() == 1 && st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)) {
             var which = hitHandle(ctx, property, st.selKeyAxis, st.selKeyIndex, bx, by, bh, range, e.x, e.y);
@@ -1310,6 +1487,10 @@ public class AnimationTrackEditor extends TrackEditor {
         var menu = TreeBuilder.Menu.start();
         menu.leaf(Component.translatable("photon.gui.editor.timeline.expr_clip.add"),
                 () -> addExprClip(ctx, track, st, property, axis, snapped));
+        if (property instanceof ConfigAnimatedProperty cfg) {
+            menu.leaf(Component.translatable("photon.gui.editor.timeline.add_curve_clip"),
+                    () -> addCurveClipEdit(ctx, track, st, cfg, axis, snapped));
+        }
         ctx.openMenu(e.x, e.y, menu);
     }
 
@@ -1452,6 +1633,674 @@ public class AnimationTrackEditor extends TrackEditor {
         } else {
             ctx.zoom(e);
         }
+    }
+
+    // ------------------------------------------------------------------ color / gradient editor
+
+    /** Draw a horizontal gradient by stepping 2px columns and sampling the color at each column's tick. */
+    private void drawGradientStrip(TimelineContext ctx, GuiGraphics graphics, ColorAnimatedProperty color,
+                                   float x, float y, float width, float height) {
+        var step = 2f;
+        for (float cx = x; cx < x + width; cx += step) {
+            var w = Math.min(step, x + width - cx);
+            var tick = curveXToTick(ctx, cx + w / 2f, x);
+            DrawerHelper.drawSolidRect(graphics, cx, y, w, height, color.sampleColor(tick));
+        }
+    }
+
+    private static float colorBandTop(float boxY) {
+        return boxY + 6;
+    }
+
+    private static float colorBandH(float boxH) {
+        return Math.max(8, boxH - 20);
+    }
+
+    /** Draw a gradient across [x, x+width] by stepping columns and sampling {@code gc} over its [0,1]. */
+    private void drawGradientColorRegion(GuiGraphics graphics, GradientColor gc, float x, float y, float width, float height) {
+        var step = 2f;
+        for (float cx = x; cx < x + width; cx += step) {
+            var w = Math.min(step, x + width - cx);
+            var frac = Math.max(0f, Math.min(1f, (cx + w / 2f - x) / width));
+            DrawerHelper.drawSolidRect(graphics, cx, y, w, height, gc.getColor(frac));
+        }
+    }
+
+    /** Full gradient-lane editor: a wide gradient band across the time axis + draggable color stops, with
+     *  gradient clips (f(t)->gradient) overlaid as full-band regions. */
+    private void drawColorEditor(TimelineContext ctx, GuiGraphics graphics, ColorAnimatedProperty color,
+                                 AnimationTrackUIState st, float x, float y, float width, float height) {
+        DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
+        drawCurveGrid(ctx, graphics, x, y, width, height);
+        var bandTop = colorBandTop(y);
+        var bandH = colorBandH(height);
+        drawGradientStrip(ctx, graphics, color, x, bandTop, width, bandH);
+        // gradient clips override the stops in their range: draw their gradient over the band
+        for (var clip : color.gradientClips()) {
+            var x0 = tickToCurveX(ctx, (float) clip.start(), x);
+            var x1 = tickToCurveX(ctx, (float) clip.end(), x);
+            if (x1 < x || x0 > x + width || clip.gradient() == null) continue;
+            var cx0 = Math.max(x, x0);
+            var cx1 = Math.min(x + width, x1);
+            drawGradientColorRegion(graphics, clip.gradient(), cx0, bandTop, cx1 - cx0, bandH);
+            var border = st.selectedGradientClips.contains(clip) ? ColorPattern.WHITE.color : withAlpha(ColorPattern.WHITE.color, 0x88);
+            DrawerHelper.drawSolidRect(graphics, cx0, bandTop, cx1 - cx0, 1, border);
+            DrawerHelper.drawSolidRect(graphics, cx0, bandTop + bandH - 1, cx1 - cx0, 1, border);
+            DrawerHelper.drawSolidRect(graphics, cx0, bandTop, 1, bandH, border);
+            DrawerHelper.drawSolidRect(graphics, cx1 - 1, bandTop, 1, bandH, border);
+        }
+        var markerY = bandTop + bandH;
+        for (var stop : color.stops()) {
+            var sx = tickToCurveX(ctx, stop.tick, x);
+            if (sx < x - 4 || sx > x + width + 4) continue;
+            var selected = st.selectedStop == stop;
+            DrawerHelper.drawSolidRect(graphics, sx - 0.5f, bandTop, 1, bandH, withAlpha(ColorPattern.WHITE.color, selected ? 0xFF : 0x66));
+            DrawerHelper.drawSolidRect(graphics, sx - 4, markerY + 1, 8, 6, (selected ? ColorPattern.WHITE : ColorPattern.GRAY).color);
+            DrawerHelper.drawSolidRect(graphics, sx - 3, markerY + 2, 6, 4, 0xFF000000 | (stop.argb & 0xFFFFFF));
+        }
+    }
+
+    @Nullable
+    private ColorAnimatedProperty.ColorKey hitStop(TimelineContext ctx, ColorAnimatedProperty color, float bx, float mx) {
+        ColorAnimatedProperty.ColorKey best = null;
+        var bestDist = TimelineContext.KEY_HIT_PX;
+        for (var stop : color.stops()) {
+            var d = Math.abs(mx - tickToCurveX(ctx, stop.tick, bx));
+            if (d <= bestDist) { bestDist = d; best = stop; }
+        }
+        return best;
+    }
+
+    private void onColorMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, ColorAnimatedProperty color, AnimationTrackUIState st) {
+        if (e.button == 0) { ctx.setActiveTrack(track); st.explicitSelection = true; }
+        var el = e.currentElement;
+        var bx = el.getContentX();
+        var by = el.getContentY();
+        var bh = el.getContentHeight();
+        var clipHit = hitGradientClip(ctx, color, bx, by, bh, e.x, e.y);
+        var stopHit = hitStop(ctx, color, bx, e.x);
+        if (e.button == 1) {
+            if (!track.lock()) {
+                if (clipHit != null) removeGradientClipEdit(ctx, st, color, clipHit.clip());
+                else if (stopHit != null) removeStopEdit(ctx, st, color, stopHit);
+                else openColorClipMenu(ctx, track, color, st, bx, e);
+            }
+            e.stopPropagation();
+            return;
+        }
+        if (e.button != 0 || track.lock()) return;
+        if (clipHit != null) {
+            selectGradientClip(ctx, track, color, st, clipHit.clip());
+            beginGradientClipDrag(ctx, st, color, clipHit.clip(), clipHit.mode(), curveXToTick(ctx, e.x, bx));
+            el.startDrag(null, null);
+            e.stopPropagation();
+            return;
+        }
+        if (stopHit != null) {
+            selectStop(ctx, track, color, st, stopHit);
+            st.dragStop = stopHit;
+            st.stopDragSnapshot = color.snapshotStops();
+            ctx.beginScrub();
+            el.startDrag(null, null);
+            e.stopPropagation();
+        }
+    }
+
+    /** A hit against a gradient clip: which clip and whether the start edge (1), end edge (2) or body (0). */
+    private record GradientClipHit(GradientClip clip, int mode) {}
+
+    @Nullable
+    private GradientClipHit hitGradientClip(TimelineContext ctx, ColorAnimatedProperty color, float bx, float by, float bh, float mx, float my) {
+        var bandTop = colorBandTop(by);
+        var bandH = colorBandH(bh);
+        if (my < bandTop || my > bandTop + bandH) return null; // clips are interactive only within the band
+        for (var clip : color.gradientClips()) {
+            var x0 = tickToCurveX(ctx, (float) clip.start(), bx);
+            var x1 = tickToCurveX(ctx, (float) clip.end(), bx);
+            if (mx < x0 - CLIP_EDGE_PX || mx > x1 + CLIP_EDGE_PX) continue;
+            if (Math.abs(mx - x0) <= CLIP_EDGE_PX) return new GradientClipHit(clip, 1);
+            if (Math.abs(mx - x1) <= CLIP_EDGE_PX) return new GradientClipHit(clip, 2);
+            if (mx >= x0 && mx <= x1) return new GradientClipHit(clip, 0);
+        }
+        return null;
+    }
+
+    private void beginGradientClipDrag(TimelineContext ctx, AnimationTrackUIState st, ColorAnimatedProperty color, GradientClip clip, int mode, float cursorTick) {
+        st.dragGradientClip = clip;
+        st.dragGradientClipMode = mode;
+        st.dragGradientClipGrabOffset = cursorTick - clip.start();
+        st.gradientClipDragSnapshot = color.snapshotGradientClips();
+        ctx.beginScrub();
+    }
+
+    private void onGradientClipDrag(TimelineContext ctx, UIEvent e, AnimationTrackUIState st) {
+        if (st.dragGradientClip == null || !(st.selectedProperty instanceof ColorAnimatedProperty)) return;
+        var bx = e.currentElement.getContentX();
+        var clip = st.dragGradientClip;
+        var cursorTick = curveXToTick(ctx, e.x, bx);
+        var ctrl = e.isCtrlDown();
+        if (st.dragGradientClipMode == 0) { // move
+            var start = Math.max(0, cursorTick - st.dragGradientClipGrabOffset);
+            clip.start(Math.max(0, ctx.snapKeyTick(start, ctrl)));
+        } else if (st.dragGradientClipMode == 1) { // resize start, keep end fixed
+            var end = clip.end();
+            var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl)), end - MIN_EXPR_CLIP_TICKS);
+            clip.start(newStart).duration(end - newStart);
+        } else { // resize end
+            var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
+            clip.duration(newEnd - clip.start());
+        }
+        ctx.refreshPreview();
+        e.stopPropagation();
+    }
+
+    private void onGradientClipDragEnd(TimelineContext ctx, AnimationTrackUIState st) {
+        if (st.dragGradientClip == null || st.gradientClipDragSnapshot == null
+                || !(st.selectedProperty instanceof ColorAnimatedProperty color)) {
+            st.dragGradientClip = null;
+            st.gradientClipDragSnapshot = null;
+            return;
+        }
+        var before = st.gradientClipDragSnapshot;
+        var after = color.snapshotGradientClips();
+        st.dragGradientClip = null;
+        st.gradientClipDragSnapshot = null;
+        ctx.endScrub();
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); ctx.refreshPreview(); },
+                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); ctx.refreshPreview(); });
+    }
+
+    private static void clearGradientClipSelection(AnimationTrackUIState st) {
+        st.selectedGradientClip = null;
+        st.selectedGradientClips.clear();
+    }
+
+    private void selectGradientClip(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty color,
+                                    AnimationTrackUIState st, GradientClip clip) {
+        st.selectedGradientClip = clip;
+        st.selectedGradientClips.clear();
+        st.selectedGradientClips.add(clip);
+        st.selectedStop = null;
+        st.explicitSelection = true;
+        ctx.setActiveTrack(track);
+        inspectGradientClip(ctx, track, clip);
+    }
+
+    /** Inspect a selected gradient clip: its {@link GradientColor} via the LDLib2 gradient editor. */
+    private void inspectGradientClip(TimelineContext ctx, AnimationTrack track, GradientClip clip) {
+        var before = new GradientColor[]{clip.gradient().copy()};
+        var cfg = IConfigurable.create(group -> group.addConfigurator(new GradientColorConfigurator(
+                "photon.gui.editor.timeline.property.color",
+                () -> clip.gradient().copy(),
+                gc -> {
+                    var prev = before[0];
+                    copyGradientInto(clip.gradient(), gc);
+                    var after = clip.gradient().copy();
+                    before[0] = after;
+                    ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                            () -> { copyGradientInto(clip.gradient(), after); ctx.refreshPreview(); },
+                            () -> { copyGradientInto(clip.gradient(), prev); ctx.refreshPreview(); });
+                    ctx.refreshPreview();
+                }, clip.gradient().copy(), true)));
+        ctx.inspectProperty(track, cfg);
+    }
+
+    /** Deep-copy the gradient stops of {@code src} into {@code target} (keeps {@code target}'s identity). */
+    private static void copyGradientInto(GradientColor target, GradientColor src) {
+        target.getAP().clear();
+        for (var v : src.getAP()) target.getAP().add(new Vector2f(v));
+        target.getRgbP().clear();
+        for (var v : src.getRgbP()) target.getRgbP().add(new Vector4f(v));
+    }
+
+    private void removeGradientClipEdit(TimelineContext ctx, AnimationTrackUIState st, ColorAnimatedProperty color, GradientClip clip) {
+        var before = color.snapshotGradientClips();
+        color.gradientClips().remove(clip);
+        var after = color.snapshotGradientClips();
+        clearGradientClipSelection(st);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); ctx.refreshPreview(); },
+                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); ctx.refreshPreview(); });
+        ctx.refreshPreview();
+    }
+
+    private void removeSelectedGradientClips(TimelineContext ctx, AnimationTrackUIState st, ColorAnimatedProperty color) {
+        if (st.selectedGradientClips.isEmpty()) return;
+        var before = color.snapshotGradientClips();
+        color.gradientClips().removeAll(st.selectedGradientClips);
+        var after = color.snapshotGradientClips();
+        clearGradientClipSelection(st);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); ctx.refreshPreview(); },
+                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); ctx.refreshPreview(); });
+        ctx.refreshPreview();
+    }
+
+    private void openColorClipMenu(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty color,
+                                   AnimationTrackUIState st, float bx, UIEvent e) {
+        var tick = Math.max(0, curveXToTick(ctx, e.x, bx));
+        var menu = TreeBuilder.Menu.start();
+        menu.leaf(Component.translatable("photon.gui.editor.timeline.add_gradient_clip"),
+                () -> addGradientClipEdit(ctx, track, color, st, tick));
+        ctx.openMenu(e.x, e.y, menu);
+    }
+
+    private void addGradientClipEdit(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty color,
+                                     AnimationTrackUIState st, float tick) {
+        var argb = color.sampleColor(tick);
+        var clip = new GradientClip(tick, DEFAULT_EXPR_CLIP_TICKS, new GradientColor(argb, argb));
+        var before = color.snapshotGradientClips();
+        color.gradientClips().add(clip);
+        var after = color.snapshotGradientClips();
+        selectGradientClip(ctx, track, color, st, clip);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); ctx.refreshPreview(); },
+                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); ctx.refreshPreview(); });
+        ctx.refreshPreview();
+    }
+
+    private void onColorDoubleClick(TimelineContext ctx, UIEvent e, AnimationTrack track, ColorAnimatedProperty color, AnimationTrackUIState st) {
+        if (track.lock()) return;
+        var bx = e.currentElement.getContentX();
+        if (hitStop(ctx, color, bx, e.x) != null) return; // clicking an existing stop selects it, doesn't add
+        var tick = Math.max(0, curveXToTick(ctx, e.x, bx));
+        var argb = color.sampleColor(tick);
+        var before = color.snapshotStops();
+        var created = color.addStop(tick, argb);
+        var after = color.snapshotStops();
+        selectStop(ctx, track, color, st, created);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { color.restoreStops(after); st.selectedStop = null; ctx.refreshPreview(); },
+                () -> { color.restoreStops(before); st.selectedStop = null; ctx.refreshPreview(); });
+        ctx.refreshPreview();
+        e.stopPropagation();
+    }
+
+    private void onColorDrag(TimelineContext ctx, UIEvent e, AnimationTrackUIState st) {
+        if (st.dragStop == null || !(st.selectedProperty instanceof ColorAnimatedProperty color)) return;
+        var bx = e.currentElement.getContentX();
+        var tick = (float) Math.max(0, ctx.snapKeyTick(Math.max(0, curveXToTick(ctx, e.x, bx)), e.isCtrlDown()));
+        st.dragStop.tick = tick;
+        color.sort();
+        ctx.refreshPreview();
+        e.stopPropagation();
+    }
+
+    private void onColorDragEnd(TimelineContext ctx, AnimationTrackUIState st) {
+        if (st.dragStop == null || st.stopDragSnapshot == null || !(st.selectedProperty instanceof ColorAnimatedProperty color)) {
+            st.dragStop = null;
+            st.stopDragSnapshot = null;
+            return;
+        }
+        var before = st.stopDragSnapshot;
+        var after = color.snapshotStops();
+        st.dragStop = null;
+        st.stopDragSnapshot = null;
+        ctx.endScrub();
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { color.restoreStops(after); st.selectedStop = null; ctx.refreshPreview(); },
+                () -> { color.restoreStops(before); st.selectedStop = null; ctx.refreshPreview(); });
+    }
+
+    private void removeStopEdit(TimelineContext ctx, AnimationTrackUIState st, ColorAnimatedProperty color, ColorAnimatedProperty.ColorKey stop) {
+        if (color.stops().size() <= 1) return; // keep at least one stop
+        var before = color.snapshotStops();
+        color.removeStop(stop);
+        var after = color.snapshotStops();
+        st.selectedStop = null;
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { color.restoreStops(after); st.selectedStop = null; ctx.refreshPreview(); },
+                () -> { color.restoreStops(before); st.selectedStop = null; ctx.refreshPreview(); });
+        ctx.refreshPreview();
+    }
+
+    /** Select a color stop (active track for delete, no track highlight) and inspect its color. */
+    private void selectStop(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty color,
+                            AnimationTrackUIState st, ColorAnimatedProperty.ColorKey stop) {
+        st.selectedStop = stop;
+        clearGradientClipSelection(st); // stop and gradient-clip selection are mutually exclusive
+        st.explicitSelection = true;
+        ctx.setActiveTrack(track);
+        inspectColorStop(ctx, track, stop);
+    }
+
+    /** Inspect a selected color stop: an ARGB {@link ColorConfigurator}, undoable per change. */
+    private void inspectColorStop(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty.ColorKey stop) {
+        var before = new int[]{stop.argb};
+        var cfg = IConfigurable.create(group -> group.addConfigurator(new ColorConfigurator(
+                "photon.gui.editor.timeline.property.color",
+                () -> stop.argb,
+                v -> {
+                    var prev = before[0];
+                    stop.argb = v;
+                    before[0] = v;
+                    ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                            () -> { stop.argb = v; ctx.refreshPreview(); },
+                            () -> { stop.argb = prev; ctx.refreshPreview(); });
+                    ctx.refreshPreview();
+                }, stop.argb, true)));
+        ctx.inspectProperty(track, cfg);
+    }
+
+    // ------------------------------------------------------------------ curve clips (config NF / NF3)
+
+    /** A hit against a curve clip: which axis/clip and whether the start edge (1), end edge (2), body (0). */
+    private record CurveClipHit(int axis, CurveClip clip, int mode) {}
+
+    /** Draw curve clips as full-height channel-colored regions, each rendering a preview of its curve
+     *  (auto-fit to the curve's own sampled value range) across its span. */
+    private void drawCurveClips(TimelineContext ctx, GuiGraphics graphics, AnimationTrackUIState st,
+                                AnimatedProperty property, float x, float y, float width, float height) {
+        if (!(property instanceof ConfigAnimatedProperty cfg)) return;
+        for (var axis : activeAxes(st)) {
+            for (var clip : cfg.curveClips(axis)) {
+                var x0 = tickToCurveX(ctx, (float) clip.start(), x);
+                var x1 = tickToCurveX(ctx, (float) clip.end(), x);
+                if (x1 < x || x0 > x + width) continue;
+                var cx0 = Math.max(x, x0);
+                var cw = Math.min(x + width, x1) - cx0;
+                var selected = st.selectedCurveClips.contains(clip);
+                var base = channelColor(axis).color;
+                DrawerHelper.drawSolidRect(graphics, cx0, y, cw, height, withAlpha(base, selected ? 0x44 : 0x22));
+                DrawerHelper.drawBorder(graphics, cx0, y, cw, height, selected ? ColorPattern.WHITE.color : base, 1);
+                drawClipCurvePreview(graphics, clip, x0, x1, x, y, width, height, base);
+            }
+        }
+    }
+
+    /** Draw the clip's curve as a polyline over its span, auto-fit to the curve's sampled value range. */
+    private void drawClipCurvePreview(GuiGraphics graphics, CurveClip clip, float x0, float x1,
+                                      float boxX, float y, float width, float height, int color) {
+        var curve = clip.curve();
+        if (curve == null || x1 <= x0) return;
+        var n = 48;
+        var vals = new float[n + 1];
+        float lo = Float.MAX_VALUE, hi = -Float.MAX_VALUE;
+        for (int i = 0; i <= n; i++) {
+            float v;
+            try {
+                v = curve.get(i / (float) n, () -> 0f).floatValue();
+            } catch (Exception e) {
+                v = 0;
+            }
+            vals[i] = v;
+            lo = Math.min(lo, v);
+            hi = Math.max(hi, v);
+        }
+        if (hi - lo < 1e-4f) { lo -= 0.5f; hi += 0.5f; }
+        var pts = new ArrayList<Vector2f>();
+        for (int i = 0; i <= n; i++) {
+            var px = x0 + (x1 - x0) * (i / (float) n);
+            if (px < boxX - 2 || px > boxX + width + 2) continue;
+            var py = y + height * (1 - (vals[i] - lo) / (hi - lo));
+            pts.add(new Vector2f(px, py));
+        }
+        if (pts.size() > 1) DrawerHelper.drawLines(graphics, pts, color, color, 0.5f);
+    }
+
+    @Nullable
+    private CurveClipHit hitCurveClip(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, float bx, float by, float mx, float my) {
+        if (!(property instanceof ConfigAnimatedProperty cfg)) return null;
+        var axes = activeAxes(st);
+        if (axes.length != 1) return null; // interactive only on a single selected sub-property
+        var axis = axes[0];
+        for (var clip : cfg.curveClips(axis)) {
+            var x0 = tickToCurveX(ctx, (float) clip.start(), bx);
+            var x1 = tickToCurveX(ctx, (float) clip.end(), bx);
+            if (mx < x0 - CLIP_EDGE_PX || mx > x1 + CLIP_EDGE_PX) continue;
+            if (Math.abs(mx - x0) <= CLIP_EDGE_PX) return new CurveClipHit(axis, clip, 1);
+            if (Math.abs(mx - x1) <= CLIP_EDGE_PX) return new CurveClipHit(axis, clip, 2);
+            if (mx >= x0 && mx <= x1) return new CurveClipHit(axis, clip, 0);
+        }
+        return null;
+    }
+
+    private static void clearCurveClipSelection(AnimationTrackUIState st) {
+        st.selectedCurveClip = null;
+        st.selectedCurveClips.clear();
+    }
+
+    private void selectCurveClip(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
+                                 ConfigAnimatedProperty cfg, int axis, CurveClip clip, boolean additive) {
+        st.explicitSelection = true;
+        ctx.setActiveTrack(track);
+        st.selectedKeys.clear();
+        st.selKeyAxis = -1;
+        st.selKeyIndex = -1;
+        st.selectedExprClips.clear();
+        if (additive) {
+            if (!st.selectedCurveClips.remove(clip)) st.selectedCurveClips.add(clip);
+        } else if (!st.selectedCurveClips.contains(clip)) {
+            st.selectedCurveClips.clear();
+            st.selectedCurveClips.add(clip);
+        }
+        st.selectedCurveClip = clip;
+        inspectCurveClip(ctx, track, clip, curveConfigFor(cfg));
+    }
+
+    private void beginCurveClipDrag(TimelineContext ctx, AnimationTrackUIState st, ConfigAnimatedProperty cfg,
+                                    int axis, CurveClip clip, int mode, float grabTick) {
+        st.dragCurveClipProperty = cfg;
+        st.dragCurveClip = clip;
+        st.dragCurveClipAxis = axis;
+        st.dragCurveClipMode = mode;
+        st.dragCurveClipGrabOffset = grabTick - clip.start();
+        st.curveClipDragSnapshot = cfg.snapshotCurveClips(axis);
+        ctx.beginScrub();
+    }
+
+    private void onCurveClipDrag(TimelineContext ctx, UIEvent e, AnimationTrackUIState st) {
+        if (st.dragCurveClip == null || st.dragCurveClipProperty == null) return;
+        var bx = e.currentElement.getContentX();
+        var clip = st.dragCurveClip;
+        var cursorTick = Math.max(0, curveXToTick(ctx, e.x, bx));
+        var ctrl = e.isCtrlDown();
+        if (st.dragCurveClipMode == 0) {
+            var start = Math.max(0, cursorTick - st.dragCurveClipGrabOffset);
+            clip.start(Math.max(0, snapClipStart(ctx, start, clip.duration(), ctrl)));
+        } else if (st.dragCurveClipMode == 1) {
+            var end = clip.end();
+            var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl)), end - MIN_EXPR_CLIP_TICKS);
+            clip.start(newStart).duration(end - newStart);
+        } else {
+            var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
+            clip.duration(newEnd - clip.start());
+        }
+        ctx.refreshPreview();
+        e.stopPropagation();
+    }
+
+    private void onCurveClipDragEnd(TimelineContext ctx, AnimationTrackUIState st) {
+        var cfg = st.dragCurveClipProperty;
+        var axis = st.dragCurveClipAxis;
+        var before = st.curveClipDragSnapshot;
+        st.dragCurveClip = null;
+        st.dragCurveClipProperty = null;
+        st.curveClipDragSnapshot = null;
+        ctx.endScrub();
+        if (cfg == null || before == null) return;
+        var after = cfg.snapshotCurveClips(axis);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { cfg.restoreCurveClips(axis, after); ctx.refreshPreview(); },
+                () -> { cfg.restoreCurveClips(axis, before); ctx.refreshPreview(); });
+    }
+
+    /** The backing config field's {@link NumberFunctionConfig} (real value range/axes), or a generic default. */
+    private static NumberFunctionConfig curveConfigFor(ConfigAnimatedProperty cfg) {
+        if (cfg.type() instanceof ConfigPropertyType cpt) {
+            var c = cpt.numberFunctionConfig();
+            if (c != null) return c;
+        }
+        return CURVE_CLIP_CONFIG;
+    }
+
+    private void addCurveClipEdit(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
+                                  ConfigAnimatedProperty cfg, int axis, double startTick) {
+        var curve = new Curve();
+        curve.loadConfig(curveConfigFor(cfg)); // seed the value range/default from the real config field
+        var clip = new CurveClip(startTick, DEFAULT_EXPR_CLIP_TICKS, curve);
+        var before = cfg.snapshotCurveClips(axis);
+        cfg.curveClips(axis).add(clip);
+        var after = cfg.snapshotCurveClips(axis);
+        selectCurveClip(ctx, track, st, cfg, axis, clip, false);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { cfg.restoreCurveClips(axis, after); clearCurveClipSelection(st); ctx.refreshPreview(); },
+                () -> { cfg.restoreCurveClips(axis, before); clearCurveClipSelection(st); ctx.refreshPreview(); });
+        ctx.refreshPreview();
+    }
+
+    private void removeCurveClipEdit(TimelineContext ctx, AnimationTrackUIState st, ConfigAnimatedProperty cfg, int axis, CurveClip clip) {
+        var before = cfg.snapshotCurveClips(axis);
+        cfg.curveClips(axis).remove(clip);
+        var after = cfg.snapshotCurveClips(axis);
+        clearCurveClipSelection(st);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { cfg.restoreCurveClips(axis, after); clearCurveClipSelection(st); ctx.refreshPreview(); },
+                () -> { cfg.restoreCurveClips(axis, before); clearCurveClipSelection(st); ctx.refreshPreview(); });
+        ctx.refreshPreview();
+    }
+
+    private void removeSelectedCurveClips(TimelineContext ctx, AnimationTrackUIState st, ConfigAnimatedProperty cfg) {
+        if (st.selectedCurveClips.isEmpty()) return;
+        var n = cfg.channelCount();
+        var before = new ArrayList<List<CurveClip>>();
+        for (int a = 0; a < n; a++) before.add(cfg.snapshotCurveClips(a));
+        for (int a = 0; a < n; a++) cfg.curveClips(a).removeAll(st.selectedCurveClips);
+        var after = new ArrayList<List<CurveClip>>();
+        for (int a = 0; a < n; a++) after.add(cfg.snapshotCurveClips(a));
+        clearCurveClipSelection(st);
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { for (int a = 0; a < n; a++) cfg.restoreCurveClips(a, after.get(a)); clearCurveClipSelection(st); ctx.refreshPreview(); },
+                () -> { for (int a = 0; a < n; a++) cfg.restoreCurveClips(a, before.get(a)); clearCurveClipSelection(st); ctx.refreshPreview(); });
+        ctx.refreshPreview();
+    }
+
+    /** Inspect a selected curve clip: edit its {@code Curve} via a {@link NumberFunctionConfigurator} using
+     *  the backing config field's real value range/axes. */
+    private void inspectCurveClip(TimelineContext ctx, AnimationTrack track, CurveClip clip, NumberFunctionConfig config) {
+        var before = new NumberFunction[]{clip.curve() == null ? new Curve() : clip.curve().copy()};
+        var cfg = IConfigurable.create(group -> group.addConfigurator(new NumberFunctionConfigurator(
+                "photon.gui.editor.timeline.property.curve",
+                clip::curve,
+                newFn -> {
+                    var prev = before[0];
+                    clip.curve(newFn);
+                    var after = newFn == null ? new Curve() : newFn.copy();
+                    before[0] = after;
+                    ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                            () -> { clip.curve(after.copy()); ctx.refreshPreview(); },
+                            () -> { clip.curve(prev.copy()); ctx.refreshPreview(); });
+                    ctx.refreshPreview();
+                }, true, config)));
+        ctx.inspectProperty(track, cfg);
+    }
+
+    // ------------------------------------------------------------------ sub-selection copy / paste
+
+    private enum SubKind { GRADIENT, CURVE, EXPR, STOP }
+    private static SubKind clipboardKind;
+    private static final List<GradientClip> clipboardGradientClips = new ArrayList<>();
+    private static final List<CurveClip> clipboardCurveClips = new ArrayList<>();
+    private static final List<ExprClip> clipboardExprClips = new ArrayList<>();
+    private static final List<ColorAnimatedProperty.ColorKey> clipboardStops = new ArrayList<>();
+    /** The earliest start/tick of the copied items; paste shifts them so this lands at the playhead. */
+    private static double clipboardAnchor;
+
+    @Override
+    public boolean copySubSelection(TimelineContext ctx, Track track, TrackUIState state) {
+        var st = (AnimationTrackUIState) state;
+        if (!st.selectedGradientClips.isEmpty()) {
+            clipboardGradientClips.clear();
+            clipboardAnchor = Double.MAX_VALUE;
+            for (var c : st.selectedGradientClips) { clipboardGradientClips.add(c.copy()); clipboardAnchor = Math.min(clipboardAnchor, c.start()); }
+            clipboardKind = SubKind.GRADIENT;
+            return true;
+        }
+        if (!st.selectedCurveClips.isEmpty()) {
+            clipboardCurveClips.clear();
+            clipboardAnchor = Double.MAX_VALUE;
+            for (var c : st.selectedCurveClips) { clipboardCurveClips.add(c.copy()); clipboardAnchor = Math.min(clipboardAnchor, c.start()); }
+            clipboardKind = SubKind.CURVE;
+            return true;
+        }
+        if (!st.selectedExprClips.isEmpty()) {
+            clipboardExprClips.clear();
+            clipboardAnchor = Double.MAX_VALUE;
+            for (var c : st.selectedExprClips) { clipboardExprClips.add(c.copy()); clipboardAnchor = Math.min(clipboardAnchor, c.start()); }
+            clipboardKind = SubKind.EXPR;
+            return true;
+        }
+        if (st.selectedStop != null) {
+            clipboardStops.clear();
+            clipboardStops.add(st.selectedStop.copy());
+            clipboardAnchor = st.selectedStop.tick;
+            clipboardKind = SubKind.STOP;
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean pasteSubSelection(TimelineContext ctx, Track track, TrackUIState state) {
+        var st = (AnimationTrackUIState) state;
+        var property = st.selectedProperty;
+        if (property == null || clipboardKind == null || track.lock()) return false;
+        var delta = Math.max(0, ctx.currentTimeTicks()) - clipboardAnchor;
+        var axes = activeAxes(st);
+        var axis = axes.length == 1 ? axes[0] : 0;
+        switch (clipboardKind) {
+            case GRADIENT -> {
+                if (!(property instanceof ColorAnimatedProperty color) || clipboardGradientClips.isEmpty()) return false;
+                var before = color.snapshotGradientClips();
+                for (var c : clipboardGradientClips) color.gradientClips().add(c.copy().start(Math.max(0, c.start() + delta)));
+                pushSubEdit(ctx, () -> color.restoreGradientClips(before), color::snapshotGradientClips, color::restoreGradientClips, st);
+                return true;
+            }
+            case CURVE -> {
+                if (!(property instanceof ConfigAnimatedProperty cfg) || clipboardCurveClips.isEmpty()) return false;
+                var before = cfg.snapshotCurveClips(axis);
+                for (var c : clipboardCurveClips) cfg.curveClips(axis).add(c.copy().start(Math.max(0, c.start() + delta)));
+                var after = cfg.snapshotCurveClips(axis);
+                pushAxisEdit(ctx, st, () -> cfg.restoreCurveClips(axis, after), () -> cfg.restoreCurveClips(axis, before));
+                return true;
+            }
+            case EXPR -> {
+                if (clipboardExprClips.isEmpty()) return false;
+                var before = property.snapshotExprClips(axis);
+                for (var c : clipboardExprClips) property.addExprClip(axis, c.copy().start(Math.max(0, c.start() + delta)));
+                var after = property.snapshotExprClips(axis);
+                pushAxisEdit(ctx, st, () -> property.restoreExprClips(axis, after), () -> property.restoreExprClips(axis, before));
+                return true;
+            }
+            case STOP -> {
+                if (!(property instanceof ColorAnimatedProperty color) || clipboardStops.isEmpty()) return false;
+                var before = color.snapshotStops();
+                for (var s : clipboardStops) color.addStop((float) Math.max(0, s.tick + delta), s.argb);
+                pushSubEdit(ctx, () -> color.restoreStops(before), color::snapshotStops, color::restoreStops, st);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Push an undoable paste for a whole-list sub-selection (gradient clips / color stops). */
+    private <T> void pushSubEdit(TimelineContext ctx, Runnable restoreBefore,
+                                 java.util.function.Supplier<List<T>> snapshot, java.util.function.Consumer<List<T>> restore, AnimationTrackUIState st) {
+        var after = snapshot.get();
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { restore.accept(after); clearGradientClipSelection(st); clearCurveClipSelection(st); st.selectedStop = null; ctx.refreshPreview(); },
+                () -> { restoreBefore.run(); clearGradientClipSelection(st); clearCurveClipSelection(st); st.selectedStop = null; ctx.refreshPreview(); });
+        ctx.requestRebuild();
+        ctx.refreshPreview();
+    }
+
+    /** Push an undoable paste for a per-axis sub-selection (curve clips / expr clips). */
+    private void pushAxisEdit(TimelineContext ctx, AnimationTrackUIState st, Runnable redo, Runnable undo) {
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { redo.run(); clearCurveClipSelection(st); st.selectedExprClips.clear(); ctx.refreshPreview(); },
+                () -> { undo.run(); clearCurveClipSelection(st); st.selectedExprClips.clear(); ctx.refreshPreview(); });
+        ctx.refreshPreview();
     }
 
     @Nullable

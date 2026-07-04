@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.math.Range;
+import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
@@ -35,11 +36,40 @@ public class LifetimeByEmitterSpeedSetting extends ToggleGroup {
     @ConfigNumber(range = {0, 1000}, type = ConfigNumber.Type.FLOAT)
     protected Range speedRange = Range.of(0f, 1f);
 
-    public int getLifetime(IParticle particle, IParticleEmitter emitter, int initialLifetime) {
-        var value = emitter.getVelocity().length() * 20;
-        var min = speedRange.getMin().floatValue();
-        var max = speedRange.getMax().floatValue();
-        return (int) (multiplier.get((value - min) / (max - min), () -> particle.getMemRandom(this)).floatValue() * initialLifetime);
+    public Runtime createRuntime() {
+        return new Runtime(this);
+    }
+
+    public static class Runtime {
+        private final LifetimeByEmitterSpeedSetting config;
+        public final RuntimeValue<Boolean> enable;
+        public final RuntimeValue<NumberFunction> multiplier;
+        public final RuntimeValue<Range> speedRange; // slot only (Range → no timeline binding)
+
+        public Runtime(LifetimeByEmitterSpeedSetting config) {
+            this.config = config;
+            this.enable = new RuntimeValue<>(config::isEnable);
+            this.multiplier = new RuntimeValue<>(config::getMultiplier);
+            this.speedRange = new RuntimeValue<>(config::getSpeedRange);
+        }
+
+        public boolean isEnable() {
+            return enable.get();
+        }
+
+        public int getLifetime(IParticle particle, IParticleEmitter emitter, int initialLifetime) {
+            var value = emitter.getVelocity().length() * 20;
+            var range = speedRange.get();
+            var min = range.getMin().floatValue();
+            var max = range.getMax().floatValue();
+            return (int) (multiplier.get().get((value - min) / (max - min), () -> particle.getMemRandom(this)).floatValue() * initialLifetime);
+        }
+
+        public void clear() {
+            enable.clear();
+            multiplier.clear();
+            speedRange.clear();
+        }
     }
 
 }

@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
+import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
@@ -53,66 +54,108 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, defaultValue = 1f, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "speed modifier"))
     protected NumberFunction speedModifier = NumberFunction.constant(1);
 
-    public Vector3f getVelocityAddition(TileParticle particle) {
-        var lifetime = particle.getT();
-        var addition = linear.get(lifetime, () -> particle.getMemRandom("vol0")).mul(0.05f);
-        var orbitalVec = orbital.get(lifetime, () -> particle.getMemRandom("vol1"));
-        var center = offset.get(lifetime, () -> particle.getMemRandom("vol2"));
-        if (!Vector3fHelper.isZero(orbitalVec)) {
-            if (orbitalMode == OrbitalMode.AngularVelocity) {
-                var toPoint = new Vector3f(particle.getLocalPos()).sub(center);
-                if (orbitalVec.x != 0) {
-                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(1, 0, 0)));
-                    addition.add(new Vector3f(radiusVec).rotateX(orbitalVec.x * 0.05f).sub(radiusVec));
-                }
-                if (orbitalVec.y != 0) {
-                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 1, 0)));
-                    addition.add(new Vector3f(radiusVec).rotateY(orbitalVec.y * 0.05f).sub(radiusVec));
-                }
-                if (orbitalVec.z != 0) {
-                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 0, 1)));
-                    addition.add(new Vector3f(radiusVec).rotateZ(orbitalVec.z * 0.05f).sub(radiusVec));
-                }
-            } else if (orbitalMode == OrbitalMode.LinearVelocity) {
-                var toPoint = particle.getLocalPos().sub(center);
-                if (orbitalVec.x != 0) {
-                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(1, 0, 0)));
-                    var r = radiusVec.length();
-                    addition.add(new Vector3f(radiusVec).rotateX(orbitalVec.x * 0.05f / r).sub(radiusVec));
-                }
-                if (orbitalVec.y != 0) {
-                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 1, 0)));
-                    var r = radiusVec.length();
-                    addition.add(new Vector3f(radiusVec).rotateY(orbitalVec.y * 0.05f / r).sub(radiusVec));
-                }
-                if (orbitalVec.z != 0) {
-                    var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 0, 1)));
-                    var r = radiusVec.length();
-                    addition.add(new Vector3f(radiusVec).rotateZ(orbitalVec.z * 0.05f / r).sub(radiusVec));
-                }
-            } else if (orbitalMode == OrbitalMode.FixedVelocity) {
-                var toCenter = center.sub(particle.getLocalPos());
-                if (orbitalVec.x != 0) {
-                    addition.add(new Vector3f(toCenter).cross(new Vector3f(1, 0, 0)).normalize().mul(orbitalVec.x * 0.05f));
-                }
-                if (orbitalVec.y != 0) {
-                    addition.add(new Vector3f(toCenter).cross(new Vector3f(0, 1, 0)).normalize().mul(orbitalVec.y * 0.05f));
-                }
-                if (orbitalVec.z != 0) {
-                    addition.add(new Vector3f(toCenter).cross(new Vector3f(0, 0, 1)).normalize().mul(orbitalVec.z * 0.05f));
-                }
-            }
-        }
-        var radialVec = radial.get(lifetime, () -> particle.getMemRandom("vol3")).floatValue();
-        if (radialVec != 0) {
-            addition.add(particle.getLocalPos().normalize().mul(radialVec * 0.01f));
-        }
-        return addition;
+    public Runtime createRuntime() {
+        return new Runtime(this);
     }
 
-    public float getVelocityMultiplier(IParticle particle) {
-        var lifetime = particle.getT();
-        return speedModifier.get(lifetime, () -> particle.getMemRandom(this)).floatValue();
+    /** Per-emitter runtime layer: slots (timeline/programmatic override, else config) + moved behaviour. */
+    public static class Runtime {
+        private final VelocityOverLifetimeSetting config;
+        public final RuntimeValue<Boolean> enable;
+        public final RuntimeValue<NumberFunction3> linear;
+        public final RuntimeValue<OrbitalMode> orbitalMode; // slot only (enum → no timeline binding)
+        public final RuntimeValue<NumberFunction3> orbital;
+        public final RuntimeValue<NumberFunction3> offset;
+        public final RuntimeValue<NumberFunction> radial;
+        public final RuntimeValue<NumberFunction> speedModifier;
+
+        public Runtime(VelocityOverLifetimeSetting config) {
+            this.config = config;
+            this.enable = new RuntimeValue<>(config::isEnable);
+            this.linear = new RuntimeValue<>(config::getLinear);
+            this.orbitalMode = new RuntimeValue<>(config::getOrbitalMode);
+            this.orbital = new RuntimeValue<>(config::getOrbital);
+            this.offset = new RuntimeValue<>(config::getOffset);
+            this.radial = new RuntimeValue<>(config::getRadial);
+            this.speedModifier = new RuntimeValue<>(config::getSpeedModifier);
+        }
+
+        public boolean isEnable() {
+            return enable.get();
+        }
+
+        public Vector3f getVelocityAddition(TileParticle particle) {
+            var lifetime = particle.getT();
+            var addition = linear.get().get(lifetime, () -> particle.getMemRandom("vol0")).mul(0.05f);
+            var orbitalVec = orbital.get().get(lifetime, () -> particle.getMemRandom("vol1"));
+            var center = offset.get().get(lifetime, () -> particle.getMemRandom("vol2"));
+            var mode = orbitalMode.get();
+            if (!Vector3fHelper.isZero(orbitalVec)) {
+                if (mode == OrbitalMode.AngularVelocity) {
+                    var toPoint = new Vector3f(particle.getLocalPos()).sub(center);
+                    if (orbitalVec.x != 0) {
+                        var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(1, 0, 0)));
+                        addition.add(new Vector3f(radiusVec).rotateX(orbitalVec.x * 0.05f).sub(radiusVec));
+                    }
+                    if (orbitalVec.y != 0) {
+                        var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 1, 0)));
+                        addition.add(new Vector3f(radiusVec).rotateY(orbitalVec.y * 0.05f).sub(radiusVec));
+                    }
+                    if (orbitalVec.z != 0) {
+                        var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 0, 1)));
+                        addition.add(new Vector3f(radiusVec).rotateZ(orbitalVec.z * 0.05f).sub(radiusVec));
+                    }
+                } else if (mode == OrbitalMode.LinearVelocity) {
+                    var toPoint = particle.getLocalPos().sub(center);
+                    if (orbitalVec.x != 0) {
+                        var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(1, 0, 0)));
+                        var r = radiusVec.length();
+                        addition.add(new Vector3f(radiusVec).rotateX(orbitalVec.x * 0.05f / r).sub(radiusVec));
+                    }
+                    if (orbitalVec.y != 0) {
+                        var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 1, 0)));
+                        var r = radiusVec.length();
+                        addition.add(new Vector3f(radiusVec).rotateY(orbitalVec.y * 0.05f / r).sub(radiusVec));
+                    }
+                    if (orbitalVec.z != 0) {
+                        var radiusVec = new Vector3f(toPoint).sub(Vector3fHelper.project(new Vector3f(toPoint), new Vector3f(0, 0, 1)));
+                        var r = radiusVec.length();
+                        addition.add(new Vector3f(radiusVec).rotateZ(orbitalVec.z * 0.05f / r).sub(radiusVec));
+                    }
+                } else if (mode == OrbitalMode.FixedVelocity) {
+                    var toCenter = center.sub(particle.getLocalPos());
+                    if (orbitalVec.x != 0) {
+                        addition.add(new Vector3f(toCenter).cross(new Vector3f(1, 0, 0)).normalize().mul(orbitalVec.x * 0.05f));
+                    }
+                    if (orbitalVec.y != 0) {
+                        addition.add(new Vector3f(toCenter).cross(new Vector3f(0, 1, 0)).normalize().mul(orbitalVec.y * 0.05f));
+                    }
+                    if (orbitalVec.z != 0) {
+                        addition.add(new Vector3f(toCenter).cross(new Vector3f(0, 0, 1)).normalize().mul(orbitalVec.z * 0.05f));
+                    }
+                }
+            }
+            var radialVec = radial.get().get(lifetime, () -> particle.getMemRandom("vol3")).floatValue();
+            if (radialVec != 0) {
+                addition.add(particle.getLocalPos().normalize().mul(radialVec * 0.01f));
+            }
+            return addition;
+        }
+
+        public float getVelocityMultiplier(IParticle particle) {
+            var lifetime = particle.getT();
+            return speedModifier.get().get(lifetime, () -> particle.getMemRandom(this)).floatValue();
+        }
+
+        public void clear() {
+            enable.clear();
+            linear.clear();
+            orbitalMode.clear();
+            orbital.clear();
+            offset.clear();
+            radial.clear();
+            speedModifier.clear();
+        }
     }
 
 }

@@ -6,6 +6,7 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
+import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
@@ -93,85 +94,139 @@ public class TrailsSetting extends ToggleGroup {
         araConfig.minDistance = 0.05f;
     }
 
-    public void setup(ParticleEmitter emitter, TileParticle particle) {
-        var random = emitter.getRandomSource();
-        if (random.nextFloat() < ratio) { // has tail
-            if (trailType == TrailType.TRAIL) {
-                var trail = new TrailParticle(emitter, config);
-                trail.setDelay(particle.getDelay() + trail.getDelay());
-                trail.setHeadPositionSupplier(particle::getWorldPos);
-                trail.setDieWhenAllTailsRemoved(!dieWithParticles);
-                trail.setOnUpdate(() -> {
-                    if (particle.isRemoved()) {
-                        trail.setRemoved(true);
-                    }
-                });
-                trail.setLifetimeSupplier(() -> {
-                    var time = lifetime.get(particle.getT(), () -> particle.getMemRandom("trails-lifetime")).floatValue() * particle.getLifetime();
-                    if (sizeAffectsLifetime) {
-                        time *= Vector3fHelper.max(particle.getRealSize(0));
-                    }
-                    return time;
-                });
-                trail.setWidthMultiplier(() -> {
-                    if (sizeAffectsWidth) {
-                        return Vector3fHelper.max(particle.getRealSize(0));
-                    }
-                    return 1f;
-                });
-                trail.setColorMultiplier(t -> {
-                    var color = new Vector4f(1);
-                    if (inheritParticleColor) {
-                        color.mul(particle.getRealColor(t));
-                    }
-                    if (colorOverLifetime != null) {
-                        var c = colorOverLifetime.get(particle.getT(t), () -> particle.getMemRandom("trails-color")).intValue();
-                        color.mul(ColorUtils.red(c), ColorUtils.green(c), ColorUtils.blue(c), ColorUtils.alpha(c));
-                    }
-                    return color;
-                });
+    public Runtime createRuntime() {
+        return new Runtime(this);
+    }
 
-                emitter.emitParticle(trail);
-            } else if (trailType == TrailType.ARA_TRAIL) {
-                var trail = new AraTrailParticle(emitter, araConfig);
+    /** Per-emitter runtime layer: value slots + the (moved) trail-spawning behaviour. The {@code config}
+     *  (TrailConfig) and {@code araConfig} sub-configs stay on the setting, reached via {@code setting.*}. */
+    public static class Runtime {
+        private final TrailsSetting setting;
+        public final RuntimeValue<Boolean> enable;
+        public final RuntimeValue<Float> ratio;
+        public final RuntimeValue<NumberFunction> lifetime;
+        public final RuntimeValue<Boolean> dieWithParticles;
+        public final RuntimeValue<Boolean> sizeAffectsWidth;
+        public final RuntimeValue<Boolean> sizeAffectsLifetime;
+        public final RuntimeValue<Boolean> inheritParticleColor;
+        public final RuntimeValue<NumberFunction> colorOverLifetime;
+        public final RuntimeValue<TrailType> trailType; // slot only (enum → no timeline binding)
+
+        public Runtime(TrailsSetting setting) {
+            this.setting = setting;
+            this.enable = new RuntimeValue<>(setting::isEnable);
+            this.ratio = new RuntimeValue<>(setting::getRatio);
+            this.lifetime = new RuntimeValue<>(setting::getLifetime);
+            this.dieWithParticles = new RuntimeValue<>(setting::isDieWithParticles);
+            this.sizeAffectsWidth = new RuntimeValue<>(setting::isSizeAffectsWidth);
+            this.sizeAffectsLifetime = new RuntimeValue<>(setting::isSizeAffectsLifetime);
+            this.inheritParticleColor = new RuntimeValue<>(setting::isInheritParticleColor);
+            this.colorOverLifetime = new RuntimeValue<>(setting::getColorOverLifetime);
+            this.trailType = new RuntimeValue<>(setting::getTrailType);
+        }
+
+        public boolean isEnable() {
+            return enable.get();
+        }
+
+        public void setup(ParticleEmitter emitter, TileParticle particle) {
+            var random = emitter.getRandomSource();
+            var dieWithParticles = this.dieWithParticles.get();
+            var sizeAffectsWidth = this.sizeAffectsWidth.get();
+            var sizeAffectsLifetime = this.sizeAffectsLifetime.get();
+            var inheritParticleColor = this.inheritParticleColor.get();
+            if (random.nextFloat() < ratio.get()) { // has tail
+                if (trailType.get() == TrailType.TRAIL) {
+                    var trail = new TrailParticle(emitter, setting.config);
+                    trail.setDelay(particle.getDelay() + trail.getDelay());
+                    trail.setHeadPositionSupplier(particle::getWorldPos);
+                    trail.setDieWhenAllTailsRemoved(!dieWithParticles);
+                    trail.setOnUpdate(() -> {
+                        if (particle.isRemoved()) {
+                            trail.setRemoved(true);
+                        }
+                    });
+                    trail.setLifetimeSupplier(() -> {
+                        var time = lifetime.get().get(particle.getT(), () -> particle.getMemRandom("trails-lifetime")).floatValue() * particle.getLifetime();
+                        if (sizeAffectsLifetime) {
+                            time *= Vector3fHelper.max(particle.getRealSize(0));
+                        }
+                        return time;
+                    });
+                    trail.setWidthMultiplier(() -> {
+                        if (sizeAffectsWidth) {
+                            return Vector3fHelper.max(particle.getRealSize(0));
+                        }
+                        return 1f;
+                    });
+                    trail.setColorMultiplier(t -> {
+                        var color = new Vector4f(1);
+                        if (inheritParticleColor) {
+                            color.mul(particle.getRealColor(t));
+                        }
+                        var col = colorOverLifetime.get();
+                        if (col != null) {
+                            var c = col.get(particle.getT(t), () -> particle.getMemRandom("trails-color")).intValue();
+                            color.mul(ColorUtils.red(c), ColorUtils.green(c), ColorUtils.blue(c), ColorUtils.alpha(c));
+                        }
+                        return color;
+                    });
+
+                    emitter.emitParticle(trail);
+                } else if (trailType.get() == TrailType.ARA_TRAIL) {
+                    var trail = new AraTrailParticle(emitter, setting.araConfig);
 //                trail.setDelay(particle.getDelay() + trail.getDelay());
-                trail.setWorldPositionSupplier(particle::getWorldPos);
-                trail.setWorldUpSupplier(particle::getWorldUp);
-                trail.setWorldForwardSupplier(particle::getWorldForward);
-                trail.setWorldRightSupplier(particle::getWorldRight);
-                trail.setDieWhenAllTailsRemoved(!dieWithParticles);
-                trail.setOnUpdate(() -> {
-                    if (particle.isRemoved()) {
-                        trail.setRemoved(true);
-                    }
-                });
-                trail.setLifetimeSupplier(() -> {
-                    var time = lifetime.get(particle.getT(), () -> particle.getMemRandom("trails-lifetime")).floatValue() * particle.getLifetime();
-                    if (sizeAffectsLifetime) {
-                        time *= Vector3fHelper.max(particle.getRealSize(0));
-                    }
-                    return time / 20; // convert to second
-                });
-                trail.setThicknessMultiplierSupplier(t -> {
-                    if (sizeAffectsWidth) {
-                        return Vector3fHelper.max(particle.getRealSize(t));
-                    }
-                    return 1f;
-                });
-                trail.setColorMultiplierSupplier(t -> {
-                    var color = new Vector4f(1);
-                    if (inheritParticleColor) {
-                        color.mul(particle.getRealColor(t));
-                    }
-                    if (colorOverLifetime != null) {
-                        var c = colorOverLifetime.get(particle.getT(t), () -> particle.getMemRandom("trails-color")).intValue();
-                        color.mul(ColorUtils.red(c), ColorUtils.green(c), ColorUtils.blue(c), ColorUtils.alpha(c));
-                    }
-                    return color;
-                });
+                    trail.setWorldPositionSupplier(particle::getWorldPos);
+                    trail.setWorldUpSupplier(particle::getWorldUp);
+                    trail.setWorldForwardSupplier(particle::getWorldForward);
+                    trail.setWorldRightSupplier(particle::getWorldRight);
+                    trail.setDieWhenAllTailsRemoved(!dieWithParticles);
+                    trail.setOnUpdate(() -> {
+                        if (particle.isRemoved()) {
+                            trail.setRemoved(true);
+                        }
+                    });
+                    trail.setLifetimeSupplier(() -> {
+                        var time = lifetime.get().get(particle.getT(), () -> particle.getMemRandom("trails-lifetime")).floatValue() * particle.getLifetime();
+                        if (sizeAffectsLifetime) {
+                            time *= Vector3fHelper.max(particle.getRealSize(0));
+                        }
+                        return time / 20; // convert to second
+                    });
+                    trail.setThicknessMultiplierSupplier(t -> {
+                        if (sizeAffectsWidth) {
+                            return Vector3fHelper.max(particle.getRealSize(t));
+                        }
+                        return 1f;
+                    });
+                    trail.setColorMultiplierSupplier(t -> {
+                        var color = new Vector4f(1);
+                        if (inheritParticleColor) {
+                            color.mul(particle.getRealColor(t));
+                        }
+                        var col = colorOverLifetime.get();
+                        if (col != null) {
+                            var c = col.get(particle.getT(t), () -> particle.getMemRandom("trails-color")).intValue();
+                            color.mul(ColorUtils.red(c), ColorUtils.green(c), ColorUtils.blue(c), ColorUtils.alpha(c));
+                        }
+                        return color;
+                    });
 
-                emitter.emitParticle(trail);
+                    emitter.emitParticle(trail);
+                }
             }
+        }
+
+        public void clear() {
+            enable.clear();
+            ratio.clear();
+            lifetime.clear();
+            dieWithParticles.clear();
+            sizeAffectsWidth.clear();
+            sizeAffectsLifetime.clear();
+            inheritParticleColor.clear();
+            colorOverLifetime.clear();
+            trailType.clear();
         }
     }
 

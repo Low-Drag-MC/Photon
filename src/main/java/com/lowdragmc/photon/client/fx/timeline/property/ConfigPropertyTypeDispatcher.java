@@ -49,6 +49,9 @@ public class ConfigPropertyTypeDispatcher implements AnimatedPropertyType {
         var path = tag.getString("path");
         var valueType = ConfigValueType.valueOf(tag.getString("valueType"));
         var label = tag.contains("label") ? tag.getString("label") : path;
+        if (valueType == ConfigValueType.COLOR) {
+            return new ColorPropertyType(path, label).deserialize(provider, tag);
+        }
         var type = new ConfigPropertyType(path, valueType, label);
         return type.deserialize(provider, tag);
     }

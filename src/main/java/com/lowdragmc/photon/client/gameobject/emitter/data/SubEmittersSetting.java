@@ -11,6 +11,7 @@ import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
 import com.lowdragmc.photon.client.fx.FXHelper;
+import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
@@ -50,11 +51,36 @@ public class SubEmittersSetting extends ToggleGroup {
     @ReadOnlyManaged(serializeMethod = "emittersSerialize", deserializeMethod = "emittersDeserialize")
     protected List<Emitter> emitters = new ArrayList<>();
 
-    public void triggerEvent(TileParticle father, Event event) {
-        for (Emitter candidate : emitters) {
-            if (candidate.event == event) {
-                candidate.spawnEmitter(father);
+    public Runtime createRuntime() {
+        return new Runtime(this);
+    }
+
+    public static class Runtime {
+        private final SubEmittersSetting config;
+        public final RuntimeValue<Boolean> enable;
+        public final RuntimeValue<List<Emitter>> emitters; // slot only (list → no timeline binding)
+
+        public Runtime(SubEmittersSetting config) {
+            this.config = config;
+            this.enable = new RuntimeValue<>(config::isEnable);
+            this.emitters = new RuntimeValue<>(config::getEmitters);
+        }
+
+        public boolean isEnable() {
+            return enable.get();
+        }
+
+        public void triggerEvent(TileParticle father, Event event) {
+            for (Emitter candidate : emitters.get()) {
+                if (candidate.event == event) {
+                    candidate.spawnEmitter(father);
+                }
             }
+        }
+
+        public void clear() {
+            enable.clear();
+            emitters.clear();
         }
     }
 

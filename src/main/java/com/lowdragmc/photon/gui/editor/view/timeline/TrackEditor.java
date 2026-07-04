@@ -72,6 +72,18 @@ public abstract class TrackEditor {
         return false;
     }
 
+    /** Copy this track's current sub-selection (clip / keyframe / stop) to a clipboard. Return false if
+     *  there is nothing to copy (the host then falls back to copying the whole track). */
+    public boolean copySubSelection(TimelineContext ctx, Track track, TrackUIState state) {
+        return false;
+    }
+
+    /** Paste a previously-copied sub-selection onto this track (at the playhead). Return false if there is
+     *  nothing to paste (the host then falls back to pasting a whole track). */
+    public boolean pasteSubSelection(TimelineContext ctx, Track track, TrackUIState state) {
+        return false;
+    }
+
     /** Whether the user has an explicit sub-selection (e.g. a keyframe/property) that should suppress
      *  the whole-track highlight. Default false. */
     public boolean hasSubSelection(TrackUIState state) {

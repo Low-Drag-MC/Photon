@@ -39,7 +39,9 @@ public class ECBCurves implements INBTSerializable<ListTag> {
         if (!found) {
             for (var curve : segments) {
                 if (x >= curve.p0.x && x <= curve.p1.x) {
-                    value = curve.getPoint((x - curve.p0.x) / (curve.p1.x - curve.p0.x)).y;
+                    var dx = curve.p1.x - curve.p0.x;
+                    // zero-width segment (vertical jump): step to the later point instead of dividing by 0
+                    value = dx <= 0 ? curve.p1.y : curve.getPoint((x - curve.p0.x) / dx).y;
                     found = true;
                     break;
                 }

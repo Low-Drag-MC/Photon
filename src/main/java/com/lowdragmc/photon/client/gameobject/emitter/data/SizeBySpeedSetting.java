@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.math.Range;
+import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import org.joml.Vector3f;
@@ -32,10 +33,39 @@ public class SizeBySpeedSetting extends ToggleGroup {
     @ConfigNumber(range = {0, 1000}, type = ConfigNumber.Type.FLOAT)
     protected Range speedRange = Range.of(0f, 1f);
     
-    public Vector3f getSize(TileParticle particle) {
-        var value = particle.getRealVelocity().length() * 20;
-        var t = (value - speedRange.getA().floatValue()) / (speedRange.getB().floatValue() - speedRange.getA().floatValue());
-        return size.get(t, () -> particle.getMemRandom("sbs0"));
+    public Runtime createRuntime() {
+        return new Runtime(this);
+    }
+
+    public static class Runtime {
+        private final SizeBySpeedSetting config;
+        public final RuntimeValue<Boolean> enable;
+        public final RuntimeValue<NumberFunction3> size;
+        public final RuntimeValue<Range> speedRange; // slot only (Range → no timeline binding)
+
+        public Runtime(SizeBySpeedSetting config) {
+            this.config = config;
+            this.enable = new RuntimeValue<>(config::isEnable);
+            this.size = new RuntimeValue<>(config::getSize);
+            this.speedRange = new RuntimeValue<>(config::getSpeedRange);
+        }
+
+        public boolean isEnable() {
+            return enable.get();
+        }
+
+        public Vector3f getSize(TileParticle particle) {
+            var value = particle.getRealVelocity().length() * 20;
+            var range = speedRange.get();
+            var t = (value - range.getA().floatValue()) / (range.getB().floatValue() - range.getA().floatValue());
+            return size.get().get(t, () -> particle.getMemRandom("sbs0"));
+        }
+
+        public void clear() {
+            enable.clear();
+            size.clear();
+            speedRange.clear();
+        }
     }
 
 }

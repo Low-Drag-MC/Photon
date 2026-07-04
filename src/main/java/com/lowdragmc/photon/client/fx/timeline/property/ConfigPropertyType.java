@@ -2,14 +2,22 @@ package com.lowdragmc.photon.client.fx.timeline.property;
 
 import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
+import com.lowdragmc.photon.client.fx.timeline.CurveClip;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3Config;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 
 import javax.annotation.Nullable;
+import java.lang.reflect.Field;
 
 /**
  * A parameterized {@link AnimatedPropertyType} bound to a single timeline-animatable config value,
@@ -66,6 +74,51 @@ public class ConfigPropertyType implements AnimatedPropertyType {
 
     public String storeKey() {
         return storeKey;
+    }
+
+    // lazily-resolved @NumberFunctionConfig of the backing config field (for editing a curve clip's Curve
+    // with the field's real value range/axes). Coupled to ParticleConfig since config properties are
+    // ParticleEmitter-only today; returns null (→ caller uses a generic default) if not resolvable.
+    @Nullable
+    private NumberFunctionConfig numberFunctionConfig;
+    private boolean nfConfigResolved;
+
+    /** The backing config field's {@link NumberFunctionConfig} (a {@link NumberFunction3Config}'s common
+     *  config for NF3 fields), or {@code null} if it can't be resolved from the {@link #storeKey} path. */
+    @Nullable
+    public NumberFunctionConfig numberFunctionConfig() {
+        if (!nfConfigResolved) {
+            nfConfigResolved = true;
+            numberFunctionConfig = resolveNumberFunctionConfig();
+        }
+        return numberFunctionConfig;
+    }
+
+    @Nullable
+    private NumberFunctionConfig resolveNumberFunctionConfig() {
+        Class<?> cls = ParticleConfig.class;
+        Field field = null;
+        for (var segment : storeKey.split("\\.")) {
+            field = findField(cls, segment);
+            if (field == null) return null;
+            cls = field.getType();
+        }
+        if (field == null) return null;
+        var nf = field.getAnnotation(NumberFunctionConfig.class);
+        if (nf != null) return nf;
+        var nf3 = field.getAnnotation(NumberFunction3Config.class);
+        return nf3 != null ? nf3.common() : null;
+    }
+
+    @Nullable
+    private static Field findField(Class<?> cls, String name) {
+        for (var c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
+            try {
+                return c.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+            }
+        }
+        return null;
     }
 
     public ConfigValueType valueType() {
@@ -150,6 +203,7 @@ public class ConfigPropertyType implements AnimatedPropertyType {
                 var nf3 = (NumberFunction3) value;
                 yield new float[]{sampleSeed(nf3.x), sampleSeed(nf3.y), sampleSeed(nf3.z)};
             }
+            case COLOR -> throw new IllegalStateException("COLOR is handled by ColorPropertyType");
         };
     }
 
@@ -163,10 +217,36 @@ public class ConfigPropertyType implements AnimatedPropertyType {
     }
 
     @Override
+    public AnimatedProperty create(FXObject target) {
+        var base = capture(target);
+        var channels = AnimatedProperty.seedChannels(base);
+        var range = defaultRange(base);
+        return new ConfigAnimatedProperty(this, base.clone(), channels, range[0], range[1]);
+    }
+
+    @Override
     public void apply(FXObject target, float[] values) {
         var binding = resolveBinding(target);
         if (binding != null) {
             binding.slot(target).setRaw(buildEffective(values));
+        }
+    }
+
+    /** Write a per-channel {@link NumberFunction} array into the slot (used by curve clips): a single
+     *  {@code NUMBER_FUNCTION} channel writes {@code fns[0]}, a {@code NUMBER_FUNCTION3} writes a
+     *  {@code NumberFunction3} of the three channels. Non-function value types are ignored. */
+    public void applyFunctions(FXObject target, NumberFunction[] fns) {
+        var binding = resolveBinding(target);
+        if (binding == null) {
+            return;
+        }
+        Object effective = switch (valueType) {
+            case NUMBER_FUNCTION -> fns[0];
+            case NUMBER_FUNCTION3 -> new NumberFunction3(fns[0], fns[1], fns[2]);
+            default -> null;
+        };
+        if (effective != null) {
+            binding.slot(target).setRaw(effective);
         }
     }
 
@@ -177,6 +257,7 @@ public class ConfigPropertyType implements AnimatedPropertyType {
             case BOOL -> v[0] >= 0.5f;
             case NUMBER_FUNCTION -> NumberFunction.constant(v[0]);
             case NUMBER_FUNCTION3 -> new NumberFunction3(v[0], v[1], v[2]);
+            case COLOR -> throw new IllegalStateException("COLOR is handled by ColorPropertyType");
         };
     }
 
@@ -208,6 +289,45 @@ public class ConfigPropertyType implements AnimatedPropertyType {
         tag.putString("path", storeKey);
         tag.putString("valueType", valueType.name());
         tag.putString("label", labelKey);
+        if (property instanceof ConfigAnimatedProperty cfg) {
+            var channels = new ListTag();
+            for (int axis = 0; axis < property.channelCount(); axis++) {
+                var clips = new ListTag();
+                for (var clip : cfg.curveClips(axis)) {
+                    var c = new CompoundTag();
+                    c.putDouble("start", clip.start());
+                    c.putDouble("duration", clip.duration());
+                    if (clip.curve() != null) {
+                        c.put("curve", clip.curve().serializeWrapper());
+                    }
+                    clips.add(c);
+                }
+                channels.add(clips);
+            }
+            tag.put("curveClips", channels);
+        }
         return tag;
+    }
+
+    @Override
+    public AnimatedProperty deserialize(HolderLookup.Provider provider, CompoundTag tag) {
+        var base = AnimatedProperty.readFloatsFromTag(tag.getList("base", Tag.TAG_FLOAT));
+        var channels = AnimatedProperty.readChannels(provider, tag, channelCount());
+        var fixedBase = new float[channelCount()];
+        System.arraycopy(base, 0, fixedBase, 0, Math.min(base.length, fixedBase.length));
+        var property = new ConfigAnimatedProperty(this, fixedBase, channels, tag.getFloat("rangeMin"), tag.getFloat("rangeMax"));
+        AnimatedProperty.readExprClips(tag, property);
+        if (tag.contains("curveClips", Tag.TAG_LIST)) {
+            var channelsTag = tag.getList("curveClips", Tag.TAG_LIST);
+            for (int axis = 0; axis < channelCount() && axis < channelsTag.size(); axis++) {
+                var clips = channelsTag.getList(axis);
+                for (int i = 0; i < clips.size(); i++) {
+                    var c = clips.getCompound(i);
+                    var curve = c.contains("curve") ? NumberFunction.deserializeWrapper(c.getCompound("curve")) : new Curve();
+                    property.curveClips(axis).add(new CurveClip(c.getDouble("start"), c.getDouble("duration"), curve));
+                }
+            }
+        }
+        return property;
     }
 }

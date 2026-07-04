@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigAnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import org.junit.jupiter.api.Test;
@@ -75,6 +76,18 @@ class AnimatedPropertyTest {
         assertEquals(0f, type.sample(p, 5)[0], 1e-4, "step-held 0, rounded");
         assertEquals(3f, type.sample(p, 10)[0], 1e-4, "2.6 rounds to 3");
         assertEquals(3f, type.sample(p, 20)[0], 1e-4, "held past the last key, rounded");
+    }
+
+    @Test
+    void curveClipActiveWindowEarliestWins() {
+        var p = new ConfigAnimatedProperty(null, new float[]{0}, AnimatedProperty.seedChannels(new float[]{0}), -1, 1);
+        var a = new CurveClip(0, 10, null);
+        var b = new CurveClip(5, 10, null);
+        p.curveClips(0).add(a);
+        p.curveClips(0).add(b);
+        assertSame(a, p.activeCurveClip(0, 2), "only a contains 2");
+        assertSame(a, p.activeCurveClip(0, 7), "overlap [5,10): earliest (a) wins");
+        assertNull(p.activeCurveClip(0, 20), "past both");
     }
 
     @Test
