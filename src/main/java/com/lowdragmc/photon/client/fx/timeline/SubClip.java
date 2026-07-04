@@ -13,4 +13,7 @@ public interface SubClip {
     double duration();
 
     double end();
+
+    /** An independent value copy (concrete types return their own type; used by clip copy/paste). */
+    SubClip copy();
 }

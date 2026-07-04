@@ -164,7 +164,7 @@ public class FXTimelineView extends View implements TimelineContext {
 
         addEventListener(UIEvents.KEY_DOWN, this::onKeyDown);
         addEventListener(UIEvents.EXECUTE_COMMAND, this::onCommand);
-        addEventListener(UIEvents.TICK, e -> { updateHScroller(); pollRecording(); syncSignalDispatch(); });
+        addEventListener(UIEvents.TICK, e -> { updateHScroller(); repositionLaneItems(); pollRecording(); syncSignalDispatch(); });
     }
 
     // ------------------------------------------------------------------ TimelineContext

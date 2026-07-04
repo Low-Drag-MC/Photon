@@ -160,6 +160,27 @@ public class AnimationTrackEditor extends TrackEditor {
         return new AnimationTrackUIState();
     }
 
+    /** True if any candidate span overlaps an existing clip or another candidate (paste disallows overlap). */
+    private static boolean pasteOverlaps(List<? extends SubClip> existing, List<? extends SubClip> candidates) {
+        for (int i = 0; i < candidates.size(); i++) {
+            var c = candidates.get(i);
+            for (var e : existing) if (c.start() < e.end() && e.start() < c.end()) return true;
+            for (int j = i + 1; j < candidates.size(); j++) {
+                var o = candidates.get(j);
+                if (c.start() < o.end() && o.start() < c.end()) return true;
+            }
+        }
+        return false;
+    }
+
+    /** Context menu for a right-clicked (and now-selected) sub-clip: copy / delete the current selection. */
+    private void openSubClipMenu(TimelineContext ctx, float x, float y, Runnable copy, Runnable remove) {
+        var menu = TreeBuilder.Menu.start();
+        menu.leaf(Component.translatable("photon.gui.editor.timeline.clip.copy"), copy);
+        menu.leaf(Component.translatable("photon.gui.editor.timeline.clip.remove"), remove);
+        ctx.openMenu(x, y, menu);
+    }
+
     @Override
     public ColorPattern chipColor() {
         return ColorPattern.ORANGE;
@@ -1433,7 +1454,12 @@ public class AnimationTrackEditor extends TrackEditor {
         ctx.setActiveTrack(track);
         st.explicitSelection = true;
         if (e.button == 1) {
-            if (!track.lock()) openExprClipMenu(ctx, track, st, property, axis, clip, e.x, e.y);
+            if (!track.lock()) {
+                if (!st.selectedExprClips.contains(clip)) selectExprClip(ctx, track, st, property, axis, clip, false);
+                openSubClipMenu(ctx, e.x, e.y,
+                        () -> copySubSelection(ctx, track, st),
+                        () -> removeSelectedExprClips(ctx, st, property));
+            }
             e.stopPropagation();
             return;
         }
@@ -1569,16 +1595,13 @@ public class AnimationTrackEditor extends TrackEditor {
             menu.leaf(Component.translatable("photon.gui.editor.timeline.add_curve_clip"),
                     () -> addCurveClipEdit(ctx, track, st, cfg, axis, snapped));
         }
+        if (canPasteInto(property)) {
+            menu.leaf(Component.translatable("photon.gui.editor.timeline.clip.paste"),
+                    () -> pasteSubSelectionAt(ctx, track, st, snapped));
+        }
         ctx.openMenu(e.x, e.y, menu);
     }
 
-    private void openExprClipMenu(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
-                                  AnimatedProperty property, int axis, ExprClip clip, float x, float y) {
-        var menu = TreeBuilder.Menu.start();
-        menu.leaf(Component.translatable("photon.gui.editor.timeline.expr_clip.remove"),
-                () -> removeExprClipEdit(ctx, st, property, axis, clip));
-        ctx.openMenu(x, y, menu);
-    }
 
     private void addExprClip(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
                              AnimatedProperty property, int axis, double startTick) {
@@ -1595,15 +1618,6 @@ public class AnimationTrackEditor extends TrackEditor {
                 () -> property.restoreExprClips(axis, before));
     }
 
-    private void removeExprClipEdit(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, int axis, ExprClip clip) {
-        var before = property.snapshotExprClips(axis);
-        property.removeExprClip(axis, clip);
-        var after = property.snapshotExprClips(axis);
-        st.selectedExprClips.remove(clip);
-        pushRebuildEdit(ctx,
-                () -> property.restoreExprClips(axis, after),
-                () -> property.restoreExprClips(axis, before));
-    }
 
     /** Remove every selected expression clip (grouped by axis), one undo. */
     private void removeSelectedExprClips(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property) {
@@ -1640,7 +1654,7 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.positionType(TaffyPosition.ABSOLUTE);
             layout.width(KEY_ELEM_SIZE);
             layout.height(KEY_ELEM_SIZE);
-        }).style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+        }).setDisplay(false).style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
             var selected = st.selectedKeys.contains(encodeKey(axis, index));
             DrawerHelper.drawSolidRect(graphics, x + w / 2f - 2, y + h / 2f - 2, 4, 4, (selected ? ColorPattern.WHITE : ColorPattern.ORANGE).color);
         }));
@@ -1658,6 +1672,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var range = effectiveRange(property);
         var boxW = box.getContentWidth();
         var boxH = box.getContentHeight();
+        if (boxH < 1) { el.setDisplay(false); return; } // not laid out yet — reposition again next tick
         var kx = (float) ((key.x - ctx.scrollTicks()) * ctx.scale());
         var ky = boxH * (1 - (key.y - range[0]) / (range[1] - range[0]));
         el.setDisplay(kx >= -KEY_ELEM_SIZE && kx <= boxW + KEY_ELEM_SIZE);
@@ -1701,7 +1716,7 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.positionType(TaffyPosition.ABSOLUTE);
             layout.width(KEY_ELEM_SIZE);
             layout.height(KEY_ELEM_SIZE);
-        }).style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) ->
+        }).setDisplay(false).style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) ->
                 DrawerHelper.drawSolidRect(graphics, x + w / 2f - 1.5f, y + h / 2f - 1.5f, 3, 3, ColorPattern.GREEN.color)));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button != 0 || track.lock() || !handleActive(st, property)) return;
@@ -1730,6 +1745,7 @@ public class AnimationTrackEditor extends TrackEditor {
         if (handle == null) { el.setDisplay(false); return; }
         var range = effectiveRange(property);
         var boxH = box.getContentHeight();
+        if (boxH < 1) { el.setDisplay(false); return; } // not laid out yet — reposition again next tick
         var hx = (float) ((handle.x - ctx.scrollTicks()) * ctx.scale());
         var hy = boxH * (1 - (handle.y - range[0]) / (range[1] - range[0]));
         el.setDisplay(true);
@@ -1909,7 +1925,12 @@ public class AnimationTrackEditor extends TrackEditor {
         ctx.setActiveTrack(track);
         st.explicitSelection = true;
         if (e.button == 1) {
-            if (!track.lock()) removeGradientClipEdit(ctx, st, color, clip);
+            if (!track.lock()) {
+                if (!st.selectedGradientClips.contains(clip)) selectGradientClip(ctx, track, color, st, clip);
+                openSubClipMenu(ctx, e.x, e.y,
+                        () -> copySubSelection(ctx, track, st),
+                        () -> removeSelectedGradientClips(ctx, st, color));
+            }
             e.stopPropagation();
             return;
         }
@@ -2041,15 +2062,6 @@ public class AnimationTrackEditor extends TrackEditor {
         for (var v : src.getRgbP()) target.getRgbP().add(new Vector4f(v));
     }
 
-    private void removeGradientClipEdit(TimelineContext ctx, AnimationTrackUIState st, ColorAnimatedProperty color, GradientClip clip) {
-        var before = color.snapshotGradientClips();
-        color.gradientClips().remove(clip);
-        var after = color.snapshotGradientClips();
-        clearGradientClipSelection(st);
-        pushRebuildEdit(ctx,
-                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); },
-                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); });
-    }
 
     private void removeSelectedGradientClips(TimelineContext ctx, AnimationTrackUIState st, ColorAnimatedProperty color) {
         if (st.selectedGradientClips.isEmpty()) return;
@@ -2068,6 +2080,10 @@ public class AnimationTrackEditor extends TrackEditor {
         var menu = TreeBuilder.Menu.start();
         menu.leaf(Component.translatable("photon.gui.editor.timeline.add_gradient_clip"),
                 () -> addGradientClipEdit(ctx, track, color, st, tick));
+        if (canPasteInto(color)) {
+            menu.leaf(Component.translatable("photon.gui.editor.timeline.clip.paste"),
+                    () -> pasteSubSelectionAt(ctx, track, st, tick));
+        }
         ctx.openMenu(e.x, e.y, menu);
     }
 
@@ -2307,7 +2323,12 @@ public class AnimationTrackEditor extends TrackEditor {
         ctx.setActiveTrack(track);
         st.explicitSelection = true;
         if (e.button == 1) {
-            if (!track.lock()) removeCurveClipEdit(ctx, st, cfg, axis, clip);
+            if (!track.lock()) {
+                if (!st.selectedCurveClips.contains(clip)) selectCurveClip(ctx, track, st, cfg, axis, clip, false);
+                openSubClipMenu(ctx, e.x, e.y,
+                        () -> copySubSelection(ctx, track, st),
+                        () -> removeSelectedCurveClips(ctx, st, cfg));
+            }
             e.stopPropagation();
             return;
         }
@@ -2411,15 +2432,6 @@ public class AnimationTrackEditor extends TrackEditor {
                 () -> { cfg.restoreCurveClips(axis, before); clearCurveClipSelection(st); });
     }
 
-    private void removeCurveClipEdit(TimelineContext ctx, AnimationTrackUIState st, ConfigAnimatedProperty cfg, int axis, CurveClip clip) {
-        var before = cfg.snapshotCurveClips(axis);
-        cfg.curveClips(axis).remove(clip);
-        var after = cfg.snapshotCurveClips(axis);
-        clearCurveClipSelection(st);
-        pushRebuildEdit(ctx,
-                () -> { cfg.restoreCurveClips(axis, after); clearCurveClipSelection(st); },
-                () -> { cfg.restoreCurveClips(axis, before); clearCurveClipSelection(st); });
-    }
 
     private void removeSelectedCurveClips(TimelineContext ctx, AnimationTrackUIState st, ConfigAnimatedProperty cfg) {
         if (st.selectedCurveClips.isEmpty()) return;
@@ -2434,6 +2446,7 @@ public class AnimationTrackEditor extends TrackEditor {
                 () -> { for (int a = 0; a < n; a++) cfg.restoreCurveClips(a, after.get(a)); clearCurveClipSelection(st); },
                 () -> { for (int a = 0; a < n; a++) cfg.restoreCurveClips(a, before.get(a)); clearCurveClipSelection(st); });
     }
+
 
     /** Inspect a selected curve clip: edit its {@code Curve} via a {@link NumberFunctionConfigurator} using
      *  the backing config field's real value range/axes. */
@@ -2500,34 +2513,60 @@ public class AnimationTrackEditor extends TrackEditor {
         return false;
     }
 
+    /** Whether the current clipboard kind can be pasted into {@code property} (menu-visibility gate). */
+    private boolean canPasteInto(AnimatedProperty property) {
+        if (clipboardKind == null) return false;
+        return switch (clipboardKind) {
+            case GRADIENT, STOP -> property instanceof ColorAnimatedProperty;
+            case CURVE -> property instanceof ConfigAnimatedProperty;
+            case EXPR -> true;
+        };
+    }
+
     @Override
     public boolean pasteSubSelection(TimelineContext ctx, Track track, TrackUIState state) {
+        // keyboard paste (Ctrl+V) drops the clipboard at the playhead
+        return pasteSubSelectionAt(ctx, track, state, Math.max(0, ctx.currentTimeTicks()));
+    }
+
+    /** Paste the sub-clip clipboard so its earliest item lands at {@code destTick} (right-click menu passes
+     *  the cursor tick; keyboard passes the playhead). No-op if it would overlap an existing clip. */
+    private boolean pasteSubSelectionAt(TimelineContext ctx, Track track, TrackUIState state, double destTick) {
         var st = (AnimationTrackUIState) state;
         var property = st.selectedProperty;
         if (property == null || clipboardKind == null || track.lock()) return false;
-        var delta = Math.max(0, ctx.currentTimeTicks()) - clipboardAnchor;
+        var delta = destTick - clipboardAnchor;
         var axes = activeAxes(st);
         var axis = axes.length == 1 ? axes[0] : 0;
         switch (clipboardKind) {
             case GRADIENT -> {
                 if (!(property instanceof ColorAnimatedProperty color) || clipboardGradientClips.isEmpty()) return false;
+                var candidates = new ArrayList<GradientClip>();
+                for (var c : clipboardGradientClips) candidates.add(c.copy().start(Math.max(0, c.start() + delta)));
+                if (pasteOverlaps(color.gradientClips(), candidates)) return false; // paste never creates an overlap
                 var before = color.snapshotGradientClips();
-                for (var c : clipboardGradientClips) color.gradientClips().add(c.copy().start(Math.max(0, c.start() + delta)));
+                color.gradientClips().addAll(candidates);
                 pushSubEdit(ctx, () -> color.restoreGradientClips(before), color::snapshotGradientClips, color::restoreGradientClips, st);
                 return true;
             }
             case CURVE -> {
                 if (!(property instanceof ConfigAnimatedProperty cfg) || clipboardCurveClips.isEmpty()) return false;
+                var candidates = new ArrayList<CurveClip>();
+                for (var c : clipboardCurveClips) candidates.add(c.copy().start(Math.max(0, c.start() + delta)));
+                if (pasteOverlaps(cfg.curveClips(axis), candidates)) return false;
                 var before = cfg.snapshotCurveClips(axis);
-                for (var c : clipboardCurveClips) cfg.curveClips(axis).add(c.copy().start(Math.max(0, c.start() + delta)));
+                cfg.curveClips(axis).addAll(candidates);
                 var after = cfg.snapshotCurveClips(axis);
                 pushAxisEdit(ctx, st, () -> cfg.restoreCurveClips(axis, after), () -> cfg.restoreCurveClips(axis, before));
                 return true;
             }
             case EXPR -> {
                 if (clipboardExprClips.isEmpty()) return false;
+                var candidates = new ArrayList<ExprClip>();
+                for (var c : clipboardExprClips) candidates.add(c.copy().start(Math.max(0, c.start() + delta)));
+                if (pasteOverlaps(property.exprClips(axis), candidates)) return false;
                 var before = property.snapshotExprClips(axis);
-                for (var c : clipboardExprClips) property.addExprClip(axis, c.copy().start(Math.max(0, c.start() + delta)));
+                for (var ec : candidates) property.addExprClip(axis, ec);
                 var after = property.snapshotExprClips(axis);
                 pushAxisEdit(ctx, st, () -> property.restoreExprClips(axis, after), () -> property.restoreExprClips(axis, before));
                 return true;
