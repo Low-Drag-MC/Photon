@@ -7,7 +7,7 @@ import com.lowdragmc.lowdraglib2.math.GradientColor;
  * (a real per-particle {@code Gradient}) instead of the static keyframe-stop color. MC-lite like
  * {@link ExprClip}: the gradient itself is an LDLib2 {@link GradientColor}. Earliest clip wins on overlap.
  */
-public class GradientClip {
+public class GradientClip implements SubClip {
     private double start;
     private double duration;
     private final GradientColor gradient;

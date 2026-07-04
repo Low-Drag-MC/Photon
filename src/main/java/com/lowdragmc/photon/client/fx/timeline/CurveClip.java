@@ -8,7 +8,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction
  * per-particle over the consumer's own {@code t}) instead of the static keyframe value. MC-lite like
  * {@link ExprClip}/{@link GradientClip}. Earliest clip wins on overlap.
  */
-public class CurveClip {
+public class CurveClip implements SubClip {
     private double start;
     private double duration;
     private NumberFunction curve;

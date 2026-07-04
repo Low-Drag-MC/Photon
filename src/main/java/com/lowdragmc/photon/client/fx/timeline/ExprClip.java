@@ -17,7 +17,7 @@ import javax.annotation.Nullable;
  * timeline evaluation core stays unit-testable with plain JUnit. Serialization lives in
  * {@link AnimatedProperty}.
  */
-public class ExprClip {
+public class ExprClip implements SubClip {
     private double start;
     private double duration;
     private String expression;

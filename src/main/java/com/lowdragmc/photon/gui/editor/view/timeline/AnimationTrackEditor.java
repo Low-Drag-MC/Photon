@@ -30,6 +30,7 @@ import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.photon.client.fx.timeline.ExprClip;
 import com.lowdragmc.photon.client.fx.timeline.GradientClip;
 import com.lowdragmc.photon.client.fx.timeline.CurveClip;
+import com.lowdragmc.photon.client.fx.timeline.SubClip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.fx.timeline.property.ColorAnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigAnimatedProperty;
@@ -104,7 +105,7 @@ public class AnimationTrackEditor extends TrackEditor {
         int dragClipAxis = -1, dragClipMode = 0; // 0 move, 1 resize-start, 2 resize-end
         double dragClipGrabOffset;               // cursor tick - anchor start, captured at drag begin
         @Nullable List<ExprClip> dragClipSnapshot;
-        final Map<ExprClip, double[]> clipDragOrigins = new HashMap<>(); // clip -> {start, duration}
+        final Map<ExprClip, Double> clipDragOrigins = new HashMap<>(); // group move: clip -> original start
         // group keyframe drag (size > 1): original (tick,value) of each selected key
         boolean keyGroupDrag;
         final Map<Long, Vector2f> keyDragOrigins = new HashMap<>();
@@ -116,7 +117,6 @@ public class AnimationTrackEditor extends TrackEditor {
         @Nullable ColorAnimatedProperty.ColorKey dragStop;
         @Nullable List<ColorAnimatedProperty.ColorKey> stopDragSnapshot;
         // color property gradient clips (f(t)->gradient) overlaid on the color lane
-        @Nullable GradientClip selectedGradientClip;
         final Set<GradientClip> selectedGradientClips = new HashSet<>();
         @Nullable GradientClip dragGradientClip;
         int dragGradientClipMode = 0; // 0 move, 1 resize-start, 2 resize-end
@@ -124,7 +124,6 @@ public class AnimationTrackEditor extends TrackEditor {
         @Nullable List<GradientClip> gradientClipDragSnapshot;
         final Map<GradientClip, Double> gradientClipDragOrigins = new HashMap<>(); // group move: clip -> original start
         // config NF/NF3 curve clips (f(t)->curve) drawn in a strip at the top of the curve box
-        @Nullable CurveClip selectedCurveClip;
         final Set<CurveClip> selectedCurveClips = new HashSet<>();
         @Nullable ConfigAnimatedProperty dragCurveClipProperty;
         @Nullable CurveClip dragCurveClip;
@@ -280,9 +279,7 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selectedKeys.clear();
         st.selectedExprClips.clear();
         st.selectedStop = null;
-        st.selectedGradientClip = null;
         st.selectedGradientClips.clear();
-        st.selectedCurveClip = null;
         st.selectedCurveClips.clear();
         st.explicitSelection = false;
         return hadContent;
@@ -297,8 +294,8 @@ public class AnimationTrackEditor extends TrackEditor {
     private void clearOtherSubSelections(AnimationTrackUIState st, Object keep) {
         if (keep != st.selectedKeys) { st.selectedKeys.clear(); st.selKeyAxis = -1; st.selKeyIndex = -1; }
         if (keep != st.selectedExprClips) st.selectedExprClips.clear();
-        if (keep != st.selectedCurveClips) { st.selectedCurveClip = null; st.selectedCurveClips.clear(); }
-        if (keep != st.selectedGradientClips) { st.selectedGradientClip = null; st.selectedGradientClips.clear(); }
+        if (keep != st.selectedCurveClips) st.selectedCurveClips.clear();
+        if (keep != st.selectedGradientClips) st.selectedGradientClips.clear();
         if (keep != STOP_TOKEN) st.selectedStop = null;
     }
 
@@ -916,9 +913,7 @@ public class AnimationTrackEditor extends TrackEditor {
             st.selectedKeys.clear();
             st.selectedExprClips.clear();
             st.selectedStop = null;
-            st.selectedGradientClip = null;
             st.selectedGradientClips.clear();
-            st.selectedCurveClip = null;
             st.selectedCurveClips.clear();
         }
         st.expandedProperties.remove(property);
@@ -945,9 +940,7 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selectedKeys.clear();
         st.selectedExprClips.clear();
         st.selectedStop = null;
-        st.selectedGradientClip = null;
         st.selectedGradientClips.clear();
-        st.selectedCurveClip = null;
         st.selectedCurveClips.clear();
     }
 
@@ -1074,6 +1067,16 @@ public class AnimationTrackEditor extends TrackEditor {
     /** Shift or Ctrl held → additive multi-selection (toggle membership), matching the clip tracks. */
     private static boolean isAdditive(UIEvent e) {
         return e.isShiftDown() || e.isCtrlDown();
+    }
+
+    /** Draw the horizontal-resize cursor at the mouse when it hovers a clip element's edge zone (and the
+     *  track isn't locked). Shared by every clip element's overlay. */
+    private static void drawResizeCursor(GuiGraphics graphics, Track track, float mx, float my,
+                                         float x, float y, float w, float h, float pt) {
+        if (!track.lock() && mx >= x && mx <= x + w && my >= y && my <= y + h
+                && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
+            Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
+        }
     }
 
     /** Grab mode for a clip sub-element from the cursor x: 1 near its start edge, 2 near its end edge, else
@@ -1401,10 +1404,7 @@ public class AnimationTrackEditor extends TrackEditor {
                             DrawerHelper.drawText(graphics, text, x + 2, y + 1, 1f, (error ? ColorPattern.RED : ColorPattern.WHITE).color);
                         }
                     }
-                    if (!track.lock() && mx >= x && mx <= x + w && my >= y && my <= y + h
-                            && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
-                        Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
-                    }
+                    drawResizeCursor(graphics, track, mx, my, x, y, w, h, pt);
                 }));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> onExprClipMouseDown(ctx, e, track, property, st, axis, clip, el));
         el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onClipDrag(ctx, e, st));
@@ -1441,10 +1441,10 @@ public class AnimationTrackEditor extends TrackEditor {
         st.dragClipGrabOffset = grabTick - clip.start();
         st.dragClipSnapshot = property.snapshotExprClips(axis);
         st.clipDragOrigins.clear();
-        if (mode == 0) { // group move: capture every selected clip's origin
-            for (var c : st.selectedExprClips) st.clipDragOrigins.put(c, new double[]{c.start(), c.duration()});
+        if (mode == 0) { // group move: capture every selected clip's original start
+            for (var c : st.selectedExprClips) st.clipDragOrigins.put(c, c.start());
         } else {
-            st.clipDragOrigins.put(clip, new double[]{clip.start(), clip.duration()});
+            st.clipDragOrigins.put(clip, clip.start());
         }
         st.subClipDragInvalid = false;
         ctx.beginScrub();
@@ -1456,30 +1456,22 @@ public class AnimationTrackEditor extends TrackEditor {
         var axis = st.dragClipAxis;
         var bx = e.currentElement.getParent().getContentX(); // element is the clip; its parent is the box
         var cursorTick = Math.max(0, curveXToTick(ctx, e.x, bx));
-        var anchorOrig = st.clipDragOrigins.get(st.dragClip);
-        if (anchorOrig == null) return;
-        property.restoreExprClips(axis, st.dragClipSnapshot); // reset then re-apply (no compounding)
-        var ctrl = e.isCtrlDown();
+        if (!st.clipDragOrigins.containsKey(st.dragClip)) return;
+        property.restoreExprClips(axis, st.dragClipSnapshot); // reset then re-apply (no compounding); the
+        var ctrl = e.isCtrlDown();                            // dragged clip is now back at its original span
         var exclude = st.clipDragOrigins.keySet(); // the moved clips don't snap to their own edges
         if (st.dragClipMode == 0) {
-            // move the whole selection by a common Δtick, snapping the anchor's start/end, clamping tick >= 0
-            var target = snapClipStart(ctx, cursorTick - st.dragClipGrabOffset, anchorOrig[1], ctrl, exclude);
-            double dTick = target - anchorOrig[0];
-            double lo = -Double.MAX_VALUE;
-            for (var origin : st.clipDragOrigins.values()) lo = Math.max(lo, -origin[0]); // keep every start >= 0
-            dTick = Math.max(dTick, lo);
-            for (var entry : st.clipDragOrigins.entrySet()) {
-                entry.getKey().start(entry.getValue()[0] + dTick);
-            }
-        } else if (st.dragClipMode == 1) {
-            var origEnd = anchorOrig[0] + anchorOrig[1];
+            applyGroupMove(ctx, st.clipDragOrigins, st.dragClip, st.dragClipGrabOffset, cursorTick, ctrl, exclude);
+        } else if (st.dragClipMode == 1) { // resize start, keep end fixed
+            var origEnd = st.dragClip.end();
             var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl, exclude)), origEnd - MIN_EXPR_CLIP_TICKS);
             st.dragClip.start(newStart).duration(origEnd - newStart);
-        } else {
-            var newEnd = Math.max(anchorOrig[0] + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl, exclude));
-            st.dragClip.duration(newEnd - anchorOrig[0]);
+        } else { // resize end
+            var origStart = st.dragClip.start();
+            var newEnd = Math.max(origStart + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl, exclude));
+            st.dragClip.duration(newEnd - origStart);
         }
-        st.subClipDragInvalid = exprDragOverlaps(st, property, axis); // overlap not allowed → flag red + revert
+        st.subClipDragInvalid = anyOverlap(property.exprClips(axis), st.clipDragOrigins.keySet()); // overlap → red + revert
         ctx.setDragGuideTicks(st.dragClip.start(), st.dragClip.end()); // yellow edge guides across the lanes
         ctx.refreshLaneLayout(); // move the clip element(s) to follow the mutated ticks
         ctx.refreshPreview();
@@ -1511,49 +1503,31 @@ public class AnimationTrackEditor extends TrackEditor {
                 () -> { property.restoreExprClips(axis, before); ctx.refreshLaneLayout(); ctx.refreshPreview(); });
     }
 
-    /** Two tick ranges {@code [aStart,aEnd)} and {@code [bStart,bEnd)} overlap. */
-    private static boolean rangesOverlap(double aStart, double aEnd, double bStart, double bEnd) {
-        return aStart < bEnd && bStart < aEnd;
-    }
-
-    /** True if any expr clip currently in the drag ({@link AnimationTrackUIState#clipDragOrigins}) overlaps a
-     *  clip on the same axis that is NOT part of the drag (clips move together, so they can't newly self-overlap). */
-    private boolean exprDragOverlaps(AnimationTrackUIState st, AnimatedProperty property, int axis) {
-        var moved = st.clipDragOrigins.keySet();
-        for (var clip : property.exprClips(axis)) {
+    /** True if any moved sub-clip ({@code moved}) overlaps a non-moved sibling in {@code clips}. Moved clips
+     *  travel together, so they can't newly overlap each other — only a moved-vs-stationary conflict counts.
+     *  Used to reject overlapping clip drops (expr / gradient / curve share this). */
+    private static boolean anyOverlap(List<? extends SubClip> clips, Set<?> moved) {
+        for (var clip : clips) {
             if (!moved.contains(clip)) continue;
-            for (var other : property.exprClips(axis)) {
+            for (var other : clips) {
                 if (other == clip || moved.contains(other)) continue;
-                if (rangesOverlap(clip.start(), clip.end(), other.start(), other.end())) return true;
+                if (clip.start() < other.end() && other.start() < clip.end()) return true;
             }
         }
         return false;
     }
 
-    /** Any moved gradient clip ({@link AnimationTrackUIState#gradientClipDragOrigins}) overlaps a clip that
-     *  is NOT part of the drag (moved clips travel together, so they can't newly overlap each other). */
-    private boolean gradientDragOverlaps(ColorAnimatedProperty color, AnimationTrackUIState st) {
-        var moved = st.gradientClipDragOrigins.keySet();
-        for (var clip : color.gradientClips()) {
-            if (!moved.contains(clip)) continue;
-            for (var other : color.gradientClips()) {
-                if (other == clip || moved.contains(other)) continue;
-                if (rangesOverlap(clip.start(), clip.end(), other.start(), other.end())) return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean curveDragOverlaps(ConfigAnimatedProperty cfg, int axis, AnimationTrackUIState st) {
-        var moved = st.curveClipDragOrigins.keySet();
-        for (var clip : cfg.curveClips(axis)) {
-            if (!moved.contains(clip)) continue;
-            for (var other : cfg.curveClips(axis)) {
-                if (other == clip || moved.contains(other)) continue;
-                if (rangesOverlap(clip.start(), clip.end(), other.start(), other.end())) return true;
-            }
-        }
-        return false;
+    /** Move a group of sub-clips (all captured in {@code origins}: clip -> original start) by a common Δtick
+     *  so {@code anchor} lands at the snapped cursor position, clamping so no clip's start goes below 0.
+     *  Shared by the expr / gradient / curve group drags. */
+    private <T extends SubClip> void applyGroupMove(TimelineContext ctx, Map<T, Double> origins, T anchor,
+                                                    double grabOffset, double cursorTick, boolean ctrl, Set<?> exclude) {
+        var target = snapClipStart(ctx, cursorTick - grabOffset, anchor.duration(), ctrl, exclude);
+        double dTick = target - origins.get(anchor);
+        double lo = -Double.MAX_VALUE;
+        for (var start : origins.values()) lo = Math.max(lo, -start); // keep every start >= 0
+        dTick = Math.max(dTick, lo);
+        for (var entry : origins.entrySet()) entry.getKey().start(entry.getValue() + dTick);
     }
 
     /** Snap a moving clip's start, preferring whichever of its start/end lands on a snap target closer.
@@ -1906,10 +1880,7 @@ public class AnimationTrackEditor extends TrackEditor {
                     var sel = st.selectedGradientClips.contains(clip);
                     DrawerHelper.drawBorder(graphics, x, y, w, h,
                             invalid ? ColorPattern.RED.color : sel ? ColorPattern.WHITE.color : withAlpha(ColorPattern.WHITE.color, 0x88), 1);
-                    if (!track.lock() && mx >= x && mx <= x + w && my >= y && my <= y + h
-                            && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
-                        Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
-                    }
+                    drawResizeCursor(graphics, track, mx, my, x, y, w, h, pt);
                 }));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> onGradientClipMouseDown(ctx, e, track, color, st, clip, el));
         el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onGradientClipDrag(ctx, e, st));
@@ -1933,7 +1904,6 @@ public class AnimationTrackEditor extends TrackEditor {
         clearOtherSubSelections(st, st.selectedGradientClips); // exclusive with keys/expr/curve/stop
         if (isAdditive(e)) { // bug 1: toggle this clip in the multi-selection (no drag)
             if (!st.selectedGradientClips.remove(clip)) st.selectedGradientClips.add(clip);
-            st.selectedGradientClip = clip;
             return;
         }
         // keep the multi-selection when grabbing one of its members; otherwise select just this clip
@@ -1941,7 +1911,6 @@ public class AnimationTrackEditor extends TrackEditor {
             st.selectedGradientClips.clear();
             st.selectedGradientClips.add(clip);
         }
-        st.selectedGradientClip = clip;
         inspectGradientClip(ctx, track, clip);
         var bx = el.getParent().getContentX();
         beginGradientClipDrag(ctx, st, color, clip, edgeMode(e.x, el), curveXToTick(ctx, e.x, bx));
@@ -1970,14 +1939,8 @@ public class AnimationTrackEditor extends TrackEditor {
         var cursorTick = curveXToTick(ctx, e.x, bx);
         var ctrl = e.isCtrlDown();
         var exclude = st.gradientClipDragOrigins.keySet(); // the moved clips don't snap to their own edges
-        if (st.dragGradientClipMode == 0) { // group move by a common Δtick, snapping the anchor, clamping >= 0
-            var anchorOrig = st.gradientClipDragOrigins.get(clip);
-            var target = snapClipStart(ctx, cursorTick - st.dragGradientClipGrabOffset, clip.duration(), ctrl, exclude);
-            double dTick = target - anchorOrig;
-            double lo = -Double.MAX_VALUE;
-            for (var os : st.gradientClipDragOrigins.values()) lo = Math.max(lo, -os); // keep every start >= 0
-            dTick = Math.max(dTick, lo);
-            for (var entry : st.gradientClipDragOrigins.entrySet()) entry.getKey().start(entry.getValue() + dTick);
+        if (st.dragGradientClipMode == 0) { // group move
+            applyGroupMove(ctx, st.gradientClipDragOrigins, clip, st.dragGradientClipGrabOffset, cursorTick, ctrl, exclude);
         } else if (st.dragGradientClipMode == 1) { // resize start, keep end fixed
             var end = clip.end();
             var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl, exclude)), end - MIN_EXPR_CLIP_TICKS);
@@ -1986,7 +1949,7 @@ public class AnimationTrackEditor extends TrackEditor {
             var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl, exclude));
             clip.duration(newEnd - clip.start());
         }
-        st.subClipDragInvalid = gradientDragOverlaps(color, st); // overlap not allowed → flag red + revert
+        st.subClipDragInvalid = anyOverlap(color.gradientClips(), exclude); // overlap → red + revert
         ctx.setDragGuideTicks(clip.start(), clip.end()); // yellow edge guides across the lanes
         ctx.refreshLaneLayout(); // move the gradient-clip element to follow the mutated ticks
         ctx.refreshPreview();
@@ -2023,14 +1986,12 @@ public class AnimationTrackEditor extends TrackEditor {
     }
 
     private static void clearGradientClipSelection(AnimationTrackUIState st) {
-        st.selectedGradientClip = null;
         st.selectedGradientClips.clear();
     }
 
     private void selectGradientClip(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty color,
                                     AnimationTrackUIState st, GradientClip clip) {
         clearOtherSubSelections(st, st.selectedGradientClips);
-        st.selectedGradientClip = clip;
         st.selectedGradientClips.clear();
         st.selectedGradientClips.add(clip);
         st.explicitSelection = true;
@@ -2275,7 +2236,6 @@ public class AnimationTrackEditor extends TrackEditor {
     }
 
     private static void clearCurveClipSelection(AnimationTrackUIState st) {
-        st.selectedCurveClip = null;
         st.selectedCurveClips.clear();
     }
 
@@ -2290,7 +2250,6 @@ public class AnimationTrackEditor extends TrackEditor {
             st.selectedCurveClips.clear();
             st.selectedCurveClips.add(clip);
         }
-        st.selectedCurveClip = clip;
         inspectCurveClip(ctx, track, clip, curveConfigFor(cfg));
     }
 
@@ -2319,10 +2278,7 @@ public class AnimationTrackEditor extends TrackEditor {
                     var base = channelColor(axis).color;
                     DrawerHelper.drawBorder(graphics, x, y, w, h,
                             invalid ? ColorPattern.RED.color : selected ? ColorPattern.WHITE.color : base, 1);
-                    if (!track.lock() && mx >= x && mx <= x + w && my >= y && my <= y + h
-                            && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
-                        Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
-                    }
+                    drawResizeCursor(graphics, track, mx, my, x, y, w, h, pt);
                 }));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> onCurveClipMouseDown(ctx, e, track, cfg, st, axis, clip, el));
         el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onCurveClipDrag(ctx, e, st));
@@ -2375,23 +2331,17 @@ public class AnimationTrackEditor extends TrackEditor {
         var cursorTick = Math.max(0, curveXToTick(ctx, e.x, bx));
         var ctrl = e.isCtrlDown();
         var exclude = st.curveClipDragOrigins.keySet(); // the moved clips don't snap to their own edges
-        if (st.dragCurveClipMode == 0) { // group move by a common Δtick, snapping the anchor, clamping >= 0
-            var anchorOrig = st.curveClipDragOrigins.get(clip);
-            var target = snapClipStart(ctx, cursorTick - st.dragCurveClipGrabOffset, clip.duration(), ctrl, exclude);
-            double dTick = target - anchorOrig;
-            double lo = -Double.MAX_VALUE;
-            for (var os : st.curveClipDragOrigins.values()) lo = Math.max(lo, -os); // keep every start >= 0
-            dTick = Math.max(dTick, lo);
-            for (var entry : st.curveClipDragOrigins.entrySet()) entry.getKey().start(entry.getValue() + dTick);
-        } else if (st.dragCurveClipMode == 1) {
+        if (st.dragCurveClipMode == 0) { // group move
+            applyGroupMove(ctx, st.curveClipDragOrigins, clip, st.dragCurveClipGrabOffset, cursorTick, ctrl, exclude);
+        } else if (st.dragCurveClipMode == 1) { // resize start, keep end fixed
             var end = clip.end();
             var newStart = Math.min(Math.max(0, ctx.snapKeyTick(cursorTick, ctrl, exclude)), end - MIN_EXPR_CLIP_TICKS);
             clip.start(newStart).duration(end - newStart);
-        } else {
+        } else { // resize end
             var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl, exclude));
             clip.duration(newEnd - clip.start());
         }
-        st.subClipDragInvalid = curveDragOverlaps(st.dragCurveClipProperty, st.dragCurveClipAxis, st); // overlap not allowed
+        st.subClipDragInvalid = anyOverlap(st.dragCurveClipProperty.curveClips(st.dragCurveClipAxis), exclude); // overlap → red + revert
         ctx.setDragGuideTicks(clip.start(), clip.end()); // yellow edge guides across the lanes
         ctx.refreshLaneLayout(); // move the curve-clip element to follow the mutated ticks
         ctx.refreshPreview();
