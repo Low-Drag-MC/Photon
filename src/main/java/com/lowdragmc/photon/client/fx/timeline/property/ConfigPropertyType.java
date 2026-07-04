@@ -4,6 +4,7 @@ import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.CurveClip;
 import com.lowdragmc.photon.client.gameobject.FXObject;
+import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3;
@@ -37,10 +38,13 @@ public class ConfigPropertyType implements AnimatedPropertyType {
     private final String storeKey;
     private final ConfigValueType valueType;
     private final String labelKey;
-    // runtime slot binding: resolved lazily against the target's FXObjectType (or set by fromBinding)
+    // runtime slot binding: resolved against the current target's FXObjectType. Re-resolved whenever the
+    // target's type changes, so a property whose track is re-bound to a different fx-object type never
+    // dereferences the old type's binding (whose slot lambda hard-casts) -> no ClassCastException.
     @Nullable
     private RuntimeBinding binding;
-    private boolean bindingResolved;
+    @Nullable
+    private FXObjectType boundType;
 
     /** Minimal constructor (deserialization): the binding is resolved from the target on first use. */
     public ConfigPropertyType(String storeKey, ConfigValueType valueType, String labelKey) {
@@ -51,18 +55,18 @@ public class ConfigPropertyType implements AnimatedPropertyType {
 
     /** Build a property bound to a named runtime slot (the timeline drives the slot directly). */
     public static ConfigPropertyType fromBinding(RuntimeBinding binding) {
-        var type = new ConfigPropertyType(binding.path, binding.type, binding.labelKey);
-        type.binding = binding;
-        type.bindingResolved = true;
-        return type;
+        return new ConfigPropertyType(binding.path, binding.type, binding.labelKey);
     }
 
-    /** The runtime slot binding for {@code target}, resolved once against its {@code FXObjectType}. */
+    /** The runtime slot binding for {@code target}, resolved against its {@code FXObjectType} (re-resolved
+     *  when the target type changes; {@code null} if that type has no binding for this {@link #storeKey}). */
     @Nullable
     private RuntimeBinding resolveBinding(FXObject target) {
-        if (!bindingResolved) {
-            bindingResolved = true;
-            for (var b : target.getFXObjectType().runtimeBindings()) {
+        var type = target.getFXObjectType();
+        if (boundType != type) {
+            boundType = type;
+            binding = null;
+            for (var b : type.runtimeBindings()) {
                 if (b.path.equals(storeKey)) {
                     binding = b;
                     break;

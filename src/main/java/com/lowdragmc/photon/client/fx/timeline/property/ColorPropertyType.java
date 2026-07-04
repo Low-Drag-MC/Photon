@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.fx.timeline.property;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.gameobject.FXObject;
+import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import net.minecraft.core.HolderLookup;
@@ -29,9 +30,12 @@ public class ColorPropertyType implements AnimatedPropertyType {
     /** Config-relative dotted path (the {@link RuntimeBinding} identity, e.g. {@code "startColor"}). */
     private final String storeKey;
     private final String labelKey;
+    // resolved against the current target's FXObjectType; re-resolved when the target type changes so a
+    // re-bound track never dereferences the old type's binding (whose slot lambda hard-casts).
     @Nullable
     private RuntimeBinding binding;
-    private boolean bindingResolved;
+    @Nullable
+    private FXObjectType boundType;
 
     public ColorPropertyType(String storeKey, String labelKey) {
         this.storeKey = storeKey;
@@ -40,17 +44,16 @@ public class ColorPropertyType implements AnimatedPropertyType {
 
     /** Build a property bound to a named runtime slot (the timeline drives the slot directly). */
     public static ColorPropertyType fromBinding(RuntimeBinding binding) {
-        var type = new ColorPropertyType(binding.path, binding.labelKey);
-        type.binding = binding;
-        type.bindingResolved = true;
-        return type;
+        return new ColorPropertyType(binding.path, binding.labelKey);
     }
 
     @Nullable
     private RuntimeBinding resolveBinding(FXObject target) {
-        if (!bindingResolved) {
-            bindingResolved = true;
-            for (var b : target.getFXObjectType().runtimeBindings()) {
+        var type = target.getFXObjectType();
+        if (boundType != type) {
+            boundType = type;
+            binding = null;
+            for (var b : type.runtimeBindings()) {
                 if (b.path.equals(storeKey)) {
                     binding = b;
                     break;

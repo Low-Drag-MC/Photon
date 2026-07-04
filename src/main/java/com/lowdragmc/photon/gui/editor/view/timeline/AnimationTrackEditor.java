@@ -905,6 +905,7 @@ public class AnimationTrackEditor extends TrackEditor {
     // ------------------------------------------------------------------ menus / mutations
 
     private void openAddPropertyMenu(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st, float x, float y) {
+        if (track.lock()) return; // locked tracks can't be modified
         var runtime = ctx.runtime();
         if (runtime == null) return;
         var bound = track.targetId() == null ? null : runtime.objects.get(track.targetId());
@@ -945,6 +946,7 @@ public class AnimationTrackEditor extends TrackEditor {
     }
 
     private void addProperty(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st, AnimatedPropertyType type) {
+        if (track.lock()) return; // locked tracks can't be modified
         var runtime = ctx.runtime();
         if (runtime == null || track.targetId() == null) return;
         if (!(runtime.objects.get(track.targetId()) instanceof FXObject target)) return;

@@ -25,6 +25,7 @@ import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.fx.FXRuntime;
+import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
 import com.lowdragmc.photon.client.fx.timeline.property.ColorAnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigAnimatedProperty;
@@ -34,6 +35,7 @@ import com.lowdragmc.photon.client.fx.timeline.Timeline;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.fx.timeline.TrackGroup;
 import com.lowdragmc.photon.client.gameobject.FXObject;
+import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.view.timeline.ClipTrackEditor;
@@ -1177,9 +1179,41 @@ public class FXTimelineView extends View implements TimelineContext {
     public void bind(Track track, @Nullable UUID targetId) {
         var old = track.targetId();
         var editor = editorFor(track);
+        // Re-binding an animation track to a target of a DIFFERENT fx-object type invalidates its
+        // properties (they are bound to the old type's runtime slots). Keep them on a same-type rebind;
+        // clear them (undoably) when the type changes so a stale property can't be applied to an
+        // incompatible target. Snapshot for undo.
+        var savedProps = incompatibleAnimationProps(track, old, targetId);
         pushEdit("photon.gui.editor.timeline.bind",
-                () -> { if (editor != null) editor.onTargetWillChange(this, track, old); track.targetId(targetId); rebuild(); refreshPreview(); },
-                () -> { if (editor != null) editor.onTargetWillChange(this, track, targetId); track.targetId(old); rebuild(); refreshPreview(); });
+                () -> {
+                    if (editor != null) editor.onTargetWillChange(this, track, old);
+                    track.targetId(targetId);
+                    if (savedProps != null) ((AnimationTrack) track).properties().clear();
+                    rebuild(); refreshPreview();
+                },
+                () -> {
+                    if (editor != null) editor.onTargetWillChange(this, track, targetId);
+                    track.targetId(old);
+                    if (savedProps != null) {
+                        var props = ((AnimationTrack) track).properties();
+                        props.clear();
+                        props.addAll(savedProps);
+                    }
+                    rebuild(); refreshPreview();
+                });
+    }
+
+    /** The animation track's current properties to clear on this rebind, or {@code null} to keep them:
+     *  cleared only when both old and new targets resolve to fx objects of different {@link FXObjectType}s. */
+    @Nullable
+    private List<AnimatedProperty> incompatibleAnimationProps(Track track, @Nullable UUID oldId, @Nullable UUID newId) {
+        if (!(track instanceof AnimationTrack animation) || animation.properties().isEmpty()) return null;
+        var runtime = runtime();
+        if (runtime == null || oldId == null || newId == null) return null;
+        var oldType = runtime.objects.get(oldId) instanceof FXObject o ? o.getFXObjectType() : null;
+        var newType = runtime.objects.get(newId) instanceof FXObject n ? n.getFXObjectType() : null;
+        return oldType != null && newType != null && oldType != newType
+                ? new ArrayList<>(animation.properties()) : null;
     }
 
     // ------------------------------------------------------------------ transport / preview / keys
