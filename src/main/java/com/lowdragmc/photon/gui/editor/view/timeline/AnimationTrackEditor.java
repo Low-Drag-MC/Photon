@@ -190,8 +190,19 @@ public class AnimationTrackEditor extends TrackEditor {
     public double contentMaxTick(Track track) {
         double max = 0;
         for (var property : ((AnimationTrack) track).properties()) {
-            for (var time : property.keyframeTimes()) {
-                max = Math.max(max, time);
+            for (var time : property.keyframeTimes()) max = Math.max(max, time);
+            // sub-clips extend the content past the last keyframe too (so the total-duration line follows them)
+            for (int axis = 0; axis < property.channelCount(); axis++) {
+                for (var clip : property.exprClips(axis)) max = Math.max(max, clip.end());
+            }
+            if (property instanceof ColorAnimatedProperty color) {
+                for (var clip : color.gradientClips()) max = Math.max(max, clip.end());
+                for (var stop : color.stops()) max = Math.max(max, stop.tick);
+            }
+            if (property instanceof ConfigAnimatedProperty cfg) {
+                for (int axis = 0; axis < cfg.channelCount(); axis++) {
+                    for (var clip : cfg.curveClips(axis)) max = Math.max(max, clip.end());
+                }
             }
         }
         return max;
