@@ -84,21 +84,28 @@ public abstract class FXObjectType {
      * The animatable property types this object kind supports. Base = the local-transform properties
      * (position/rotation/scale); override (call {@code super} and append) to add object-exclusive ones.
      */
+    // memoized so every call returns the SAME instances: record mode keys its reference map by the
+    // property-type instance, and config types (fromBinding) would otherwise be rebuilt fresh each call.
+    private List<AnimatedPropertyType> animatablePropertiesCache;
+
     public List<AnimatedPropertyType> animatableProperties() {
-        var list = new ArrayList<AnimatedPropertyType>();
-        for (var id : new String[]{"position", "rotation", "scale"}) {
-            var type = PhotonRegistries.ANIMATED_PROPERTIES.get(id);
-            if (type != null) {
-                list.add(type);
+        if (animatablePropertiesCache == null) {
+            var list = new ArrayList<AnimatedPropertyType>();
+            for (var id : new String[]{"position", "rotation", "scale"}) {
+                var type = PhotonRegistries.ANIMATED_PROPERTIES.get(id);
+                if (type != null) {
+                    list.add(type);
+                }
             }
+            // config values backed by named runtime slots become parameterized property types
+            for (var b : runtimeBindings()) {
+                list.add(b.type == ConfigValueType.COLOR
+                        ? ColorPropertyType.fromBinding(b)
+                        : ConfigPropertyType.fromBinding(b));
+            }
+            animatablePropertiesCache = List.copyOf(list);
         }
-        // config values backed by named runtime slots become parameterized property types
-        for (var b : runtimeBindings()) {
-            list.add(b.type == ConfigValueType.COLOR
-                    ? ColorPropertyType.fromBinding(b)
-                    : ConfigPropertyType.fromBinding(b));
-        }
-        return list;
+        return animatablePropertiesCache;
     }
 
     /**
