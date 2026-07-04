@@ -137,8 +137,16 @@ public class ColorAnimatedProperty extends AnimatedProperty {
     }
 
     public void restoreGradientClips(List<GradientClip> snapshot) {
-        gradientClips.clear();
-        for (var c : snapshot) gradientClips.add(c.copy());
+        // Count match (a move/resize): mutate start/duration in place so UI element references stay valid
+        // across a drag/undo (mirrors AnimatedProperty#restoreExprClips). Only a structural change rebuilds.
+        if (gradientClips.size() == snapshot.size()) {
+            for (int i = 0; i < gradientClips.size(); i++) {
+                gradientClips.get(i).start(snapshot.get(i).start()).duration(snapshot.get(i).duration());
+            }
+        } else {
+            gradientClips.clear();
+            for (var c : snapshot) gradientClips.add(c.copy());
+        }
     }
 
     @Override

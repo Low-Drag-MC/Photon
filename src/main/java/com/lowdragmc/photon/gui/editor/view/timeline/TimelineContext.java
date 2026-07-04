@@ -147,6 +147,12 @@ public interface TimelineContext {
     /** Set/clear the cross-track snap guide lines drawn over all lanes while dragging a clip. */
     void setDragGuide(@Nullable Clip clip);
 
+    /** Show vertical yellow snap-guide lines across all lanes at {@code startTick}/{@code endTick} while a
+     *  lane sub-item (expr / gradient / curve clip) is dragged; clear with {@link #clearDragGuideTicks()}. */
+    void setDragGuideTicks(double startTick, double endTick);
+
+    void clearDragGuideTicks();
+
     // ---- shared undoable mutations ----
     void addClip(Track track, Clip clip);
 

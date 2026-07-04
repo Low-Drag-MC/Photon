@@ -89,6 +89,9 @@ public class AnimationTrackEditor extends TrackEditor {
         /** True once the user explicitly clicked a property/keyframe/curve (vs the auto-select on expand);
          *  used so an animation track still highlights when its header/lane is clicked. */
         boolean explicitSelection = false;
+        /** Auto-select the first property only once (on the initial build); after the user explicitly clears
+         *  the selection (clicking the track), the curve box stays empty instead of re-picking a property. */
+        boolean autoSelectedOnce = false;
         final Set<AnimatedProperty> expandedProperties = new HashSet<>();
         // curve drag transient
         @Nullable AnimatedProperty dragProperty;
@@ -251,8 +254,10 @@ public class AnimationTrackEditor extends TrackEditor {
     }
 
     @Override
-    public void clearSubSelection(TrackUIState state) {
+    public boolean clearSubSelection(TrackUIState state) {
         var st = (AnimationTrackUIState) state;
+        // the curve box builds per-property clip/stop elements, so clearing a shown property needs a rebuild
+        var hadContent = st.selectedProperty != null || st.explicitSelection;
         st.selectedProperty = null;
         st.selectedAxis = -1;
         st.selKeyAxis = -1;
@@ -265,6 +270,7 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selectedCurveClip = null;
         st.selectedCurveClips.clear();
         st.explicitSelection = false;
+        return hadContent;
     }
 
     /** Sentinel for {@link #clearOtherSubSelections}: the single-reference color-stop selection has no set. */
@@ -603,8 +609,11 @@ public class AnimationTrackEditor extends TrackEditor {
 
     // ------------------------------------------------------------------ expanded panels
 
-    /** Auto-select the first property (state-only) so the curve panel isn't blank when expanded. */
+    /** Auto-select the first property (state-only) so the curve panel isn't blank on the initial expand.
+     *  Runs only once: after the user explicitly clears the selection, the box stays empty. */
     protected void autoSelectFirstProperty(AnimationTrackUIState st, AnimationTrack animation) {
+        if (st.autoSelectedOnce) return;
+        st.autoSelectedOnce = true;
         if (st.selectedProperty == null && !animation.properties().isEmpty()) {
             selectPropertyState(st, animation.properties().getFirst(), -1);
         }
@@ -1490,6 +1499,7 @@ public class AnimationTrackEditor extends TrackEditor {
             st.dragClip.duration(newEnd - anchorOrig[0]);
         }
         st.subClipDragInvalid = exprDragOverlaps(st, property, axis); // overlap not allowed → flag red + revert
+        ctx.setDragGuideTicks(st.dragClip.start(), st.dragClip.end()); // yellow edge guides across the lanes
         ctx.refreshLaneLayout(); // move the clip element(s) to follow the mutated ticks
         ctx.refreshPreview();
         e.stopPropagation();
@@ -1506,6 +1516,7 @@ public class AnimationTrackEditor extends TrackEditor {
         st.clipDragOrigins.clear();
         st.subClipDragInvalid = false;
         ctx.endScrub();
+        ctx.clearDragGuideTicks();
         if (property == null || before == null) return;
         if (invalid) { // overlapping drop → snap back to where the drag started
             property.restoreExprClips(axis, before);
@@ -1861,6 +1872,7 @@ public class AnimationTrackEditor extends TrackEditor {
             clip.duration(newEnd - clip.start());
         }
         st.subClipDragInvalid = gradientDragOverlaps(color, clip); // overlap not allowed → flag red + revert
+        ctx.setDragGuideTicks(clip.start(), clip.end()); // yellow edge guides across the lanes
         ctx.refreshLaneLayout(); // move the gradient-clip element to follow the mutated ticks
         ctx.refreshPreview();
         e.stopPropagation();
@@ -1880,6 +1892,7 @@ public class AnimationTrackEditor extends TrackEditor {
         st.gradientClipDragSnapshot = null;
         st.subClipDragInvalid = false;
         ctx.endScrub();
+        ctx.clearDragGuideTicks();
         if (invalid) { // overlapping drop → snap back to where the drag started
             color.restoreGradientClips(before);
             ctx.refreshLaneLayout();
@@ -2251,6 +2264,7 @@ public class AnimationTrackEditor extends TrackEditor {
             clip.duration(newEnd - clip.start());
         }
         st.subClipDragInvalid = curveDragOverlaps(st.dragCurveClipProperty, st.dragCurveClipAxis, clip); // overlap not allowed
+        ctx.setDragGuideTicks(clip.start(), clip.end()); // yellow edge guides across the lanes
         ctx.refreshLaneLayout(); // move the curve-clip element to follow the mutated ticks
         ctx.refreshPreview();
         e.stopPropagation();
@@ -2266,6 +2280,7 @@ public class AnimationTrackEditor extends TrackEditor {
         st.curveClipDragSnapshot = null;
         st.subClipDragInvalid = false;
         ctx.endScrub();
+        ctx.clearDragGuideTicks();
         if (cfg == null || before == null) return;
         if (invalid) { // overlapping drop → snap back to where the drag started
             cfg.restoreCurveClips(axis, before);

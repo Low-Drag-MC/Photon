@@ -103,6 +103,8 @@ public class FXTimelineView extends View implements TimelineContext {
     private long previewTime = 0;
     @Nullable
     private Clip dragGuideClip;
+    private boolean subDragGuideActive;
+    private double subDragGuideStart, subDragGuideEnd;
     @Nullable
     private Track reorderTarget;
     private boolean reorderBelow = false;
@@ -202,6 +204,8 @@ public class FXTimelineView extends View implements TimelineContext {
         }));
     }
     @Override public void setDragGuide(@Nullable Clip clip) { dragGuideClip = clip; }
+    @Override public void setDragGuideTicks(double startTick, double endTick) { subDragGuideActive = true; subDragGuideStart = startTick; subDragGuideEnd = endTick; }
+    @Override public void clearDragGuideTicks() { subDragGuideActive = false; }
     @Override public void zoom(UIEvent event) { onZoom(event); }
 
     @Override
@@ -321,6 +325,10 @@ public class FXTimelineView extends View implements TimelineContext {
             if (dragGuideClip != null) {
                 drawGuideLine(graphics, dragGuideClip.start(), x, y, w, h);
                 drawGuideLine(graphics, dragGuideClip.end(), x, y, w, h);
+            }
+            if (subDragGuideActive) {
+                drawGuideLine(graphics, subDragGuideStart, x, y, w, h);
+                drawGuideLine(graphics, subDragGuideEnd, x, y, w, h);
             }
             if (marqueeActive) drawMarquee(graphics);
         }));
@@ -1383,7 +1391,9 @@ public class FXTimelineView extends View implements TimelineContext {
         var editor = editorFor(track);
         if (editor == null) return;
         if (selectedTrack == track && selectedClip == null && !subSelectionActive(track)) return; // already selected
-        editor.clearSubSelection(stateFor(track, editor));
+        // clearing a sub-selection (e.g. an animation property) drops the curve/clip elements built for it,
+        // so the expanded box must rebuild to remove them (clearSubSelection reports when that's needed)
+        var needsRebuild = editor.clearSubSelection(stateFor(track, editor));
         clearFxObjectSelection();
         fxEditor.inspectorView.inspect(editor.trackConfigurator(this, track), null, () -> {
             if (selectedTrack == track) selectedTrack = null;
@@ -1393,6 +1403,7 @@ public class FXTimelineView extends View implements TimelineContext {
         selectedClip = null;
         selectedClipTrack = null;
         applyClipSelectionClasses();
+        if (needsRebuild) rebuild();
     }
 
     private void deleteSelection() {

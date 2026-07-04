@@ -69,8 +69,17 @@ public class ConfigAnimatedProperty extends AnimatedProperty {
     }
 
     public void restoreCurveClips(int axis, List<CurveClip> snapshot) {
-        curveClips[axis].clear();
-        for (var c : snapshot) curveClips[axis].add(c.copy());
+        // Count match (a move/resize): mutate start/duration in place so UI element references stay valid
+        // across a drag/undo (mirrors AnimatedProperty#restoreExprClips). Only a structural change rebuilds.
+        var list = curveClips[axis];
+        if (list.size() == snapshot.size()) {
+            for (int i = 0; i < list.size(); i++) {
+                list.get(i).start(snapshot.get(i).start()).duration(snapshot.get(i).duration());
+            }
+        } else {
+            list.clear();
+            for (var c : snapshot) list.add(c.copy());
+        }
     }
 
     @Override

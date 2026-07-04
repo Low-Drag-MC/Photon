@@ -127,10 +127,11 @@ public class SignalTrackEditor extends TrackEditor {
     }
 
     @Override
-    public void clearSubSelection(TrackUIState state) {
+    public boolean clearSubSelection(TrackUIState state) {
         var st = (SignalTrackUIState) state;
         st.selectedSignals.clear();
         st.explicitSelection = false;
+        return false; // signals are drawn each frame, not built elements → no rebuild needed
     }
 
     @Override

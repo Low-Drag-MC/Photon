@@ -90,8 +90,10 @@ public abstract class TrackEditor {
         return false;
     }
 
-    /** Clear any sub-selection (called when the track itself is selected). Default no-op. */
-    public void clearSubSelection(TrackUIState state) {
+    /** Clear any sub-selection (called when the track itself is selected). Returns true if the cleared
+     *  selection had backing UI elements (so the host should rebuild). Default no-op → false. */
+    public boolean clearSubSelection(TrackUIState state) {
+        return false;
     }
 
     /** Poll for user edits while this track is in record mode (Unity-style). Default no-op. */
