@@ -120,6 +120,15 @@ public interface TimelineContext {
 
     void endClipGroupDrag(boolean commit);
 
+    // ---- lane sub-item helpers ----
+    /** A registered lane sub-element and how to re-lay-it-out when the tick/value mapping changes
+     *  (zoom/scroll/range). Registered elements are cleared on {@code rebuild()}. */
+    record LaneItem(com.lowdragmc.lowdraglib2.gui.ui.UIElement element, Runnable reposition) {}
+
+    /** Register any lane sub-element (clip / keyframe / stop) with its reposition callback so scroll/zoom
+     *  re-lays-it-out without a full rebuild. */
+    void registerLaneItem(com.lowdragmc.lowdraglib2.gui.ui.UIElement element, Runnable reposition);
+
     // ---- clip helpers (shared by clip-based tracks) ----
     /** Register a clip's element (and its track) so scroll/zoom + marquee + group-drag can find it. */
     void registerClipView(Track track, Clip clip, com.lowdragmc.lowdraglib2.gui.ui.UIElement element);

@@ -661,7 +661,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var st = (AnimationTrackUIState) state;
         var container = new UIElement().setId("timeline.animCurves").layout(layout ->
                 layout.widthPercent(100)).setOverflowVisible(false); // height from the host wrapper's flex(1)
-        container.addChild(new UIElement().layout(layout -> layout.widthPercent(100).heightPercent(100))
+        var box = new UIElement().setId("timeline.curveBox").layout(layout -> layout.widthPercent(100).heightPercent(100))
                 .style(style -> style
                         .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
                             if (st.selectedProperty instanceof ColorAnimatedProperty color) {
@@ -674,7 +674,11 @@ public class AnimationTrackEditor extends TrackEditor {
                             ctx.drawPlayhead(graphics, x, y, w, h, pt);
                             drawKeyTooltip(ctx, graphics, animation, st, mx, my, x, y, w, h);
                             if (st.keyMarquee) drawKeyMarquee(graphics, st);
-                        })));
+                        }));
+        container.addChild(box);
+        // per-clip / per-stop sub-elements (own their own hit-testing, selection, drag, right-click)
+        addCurveBoxItems(ctx, animation, st, box);
+        // box-level handlers keep only empty-space press, double-click add, marquee/keyframe drag, zoom.
         container.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (st.selectedProperty instanceof ColorAnimatedProperty color) onColorMouseDown(ctx, e, animation, color, st);
             else onCurveMouseDown(ctx, e, animation, st);
@@ -684,19 +688,13 @@ public class AnimationTrackEditor extends TrackEditor {
             else onCurveDoubleClick(ctx, e, animation, st);
         });
         container.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
-            if (st.dragGradientClip != null) onGradientClipDrag(ctx, e, st);
-            else if (st.dragStop != null) onColorDrag(ctx, e, st);
-            else if (st.dragCurveClip != null) onCurveClipDrag(ctx, e, st);
+            if (st.dragStop != null) onColorDrag(ctx, e, st);
             else if (st.keyMarquee) { st.kmX1 = e.x; st.kmY1 = e.y; }
-            else if (st.dragClip != null) onClipDrag(ctx, e, st);
             else onCurveDrag(ctx, e, st);
         });
         container.addEventListener(UIEvents.DRAG_END, e -> {
-            if (st.dragGradientClip != null) onGradientClipDragEnd(ctx, st);
-            else if (st.dragStop != null) onColorDragEnd(ctx, st);
-            else if (st.dragCurveClip != null) onCurveClipDragEnd(ctx, st);
+            if (st.dragStop != null) onColorDragEnd(ctx, st);
             else if (st.keyMarquee) finishKeyMarquee(ctx, animation, st, e.currentElement);
-            else if (st.dragClip != null) onClipDragEnd(ctx, st);
             else onCurveDragEnd(ctx, st);
         });
         container.addEventListener(UIEvents.MOUSE_WHEEL, e -> {
@@ -704,6 +702,16 @@ public class AnimationTrackEditor extends TrackEditor {
             else onCurveWheel(ctx, e, st);
         });
         return container;
+    }
+
+    /** Build the interactive sub-elements (clips / stops) of the expanded curve/color box for the currently
+     *  selected property, each as an absolute-positioned child that owns its selection + drag + right-click. */
+    private void addCurveBoxItems(TimelineContext ctx, AnimationTrack animation, AnimationTrackUIState st, UIElement box) {
+        var property = st.selectedProperty;
+        if (property == null || !animation.properties().contains(property)) return;
+        if (property instanceof ColorAnimatedProperty color) {
+            for (var clip : color.gradientClips()) box.addChild(createGradientClipElement(ctx, animation, color, st, clip, box));
+        }
     }
 
     private UIElement createPropertyRow(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
@@ -998,6 +1006,26 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private float curveYToValue(float mouseY, float boxY, float boxH, float min, float max) {
         return min + (max - min) * (1 - (mouseY - boxY) / boxH);
+    }
+
+    /** Grab mode for a clip sub-element from the cursor x: 1 near its start edge, 2 near its end edge, else
+     *  0 (body). Uses the element's own laid-out content rect. */
+    private int edgeMode(float mouseX, UIElement el) {
+        var x = el.getContentX();
+        var w = el.getContentWidth();
+        if (mouseX <= x + CLIP_EDGE_PX) return 1;
+        if (mouseX >= x + w - CLIP_EDGE_PX) return 2;
+        return 0;
+    }
+
+    /** Re-lay-out an absolute lane child spanning {@code [start, start+duration)} ticks (box-local left/width),
+     *  hiding it entirely when scrolled fully off the box (culling). */
+    private void repositionSpan(TimelineContext ctx, UIElement el, UIElement box, double startTick, double durationTicks) {
+        var x0 = (float) ((startTick - ctx.scrollTicks()) * ctx.scale());
+        var w = (float) Math.max(2, durationTicks * ctx.scale());
+        var boxW = box.getContentWidth();
+        el.setDisplay(x0 + w >= 0 && x0 <= boxW);
+        el.layout(layout -> { layout.left(x0); layout.width(w); });
     }
 
     /** Ticks for a curve polyline: uniform across {@code [startTick, endTick]} PLUS each keyframe's exact
@@ -1675,20 +1703,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var bandTop = colorBandTop(y);
         var bandH = colorBandH(height);
         drawGradientStrip(ctx, graphics, color, x, bandTop, width, bandH);
-        // gradient clips override the stops in their range: draw their gradient over the band
-        for (var clip : color.gradientClips()) {
-            var x0 = tickToCurveX(ctx, (float) clip.start(), x);
-            var x1 = tickToCurveX(ctx, (float) clip.end(), x);
-            if (x1 < x || x0 > x + width || clip.gradient() == null) continue;
-            var cx0 = Math.max(x, x0);
-            var cx1 = Math.min(x + width, x1);
-            drawGradientColorRegion(graphics, clip.gradient(), cx0, bandTop, cx1 - cx0, bandH);
-            var border = st.selectedGradientClips.contains(clip) ? ColorPattern.WHITE.color : withAlpha(ColorPattern.WHITE.color, 0x88);
-            DrawerHelper.drawSolidRect(graphics, cx0, bandTop, cx1 - cx0, 1, border);
-            DrawerHelper.drawSolidRect(graphics, cx0, bandTop + bandH - 1, cx1 - cx0, 1, border);
-            DrawerHelper.drawSolidRect(graphics, cx0, bandTop, 1, bandH, border);
-            DrawerHelper.drawSolidRect(graphics, cx1 - 1, bandTop, 1, bandH, border);
-        }
+        // gradient clips (which override the stops in their range) are drawn as real child elements now.
         var markerY = bandTop + bandH;
         for (var stop : color.stops()) {
             var sx = tickToCurveX(ctx, stop.tick, x);
@@ -1715,27 +1730,17 @@ public class AnimationTrackEditor extends TrackEditor {
         if (e.button == 0) { ctx.setActiveTrack(track); st.explicitSelection = true; }
         var el = e.currentElement;
         var bx = el.getContentX();
-        var by = el.getContentY();
-        var bh = el.getContentHeight();
-        var clipHit = hitGradientClip(ctx, color, bx, by, bh, e.x, e.y);
+        // gradient clips are real elements now; the box handles only stops + the empty-space add menu.
         var stopHit = hitStop(ctx, color, bx, e.x);
         if (e.button == 1) {
             if (!track.lock()) {
-                if (clipHit != null) removeGradientClipEdit(ctx, st, color, clipHit.clip());
-                else if (stopHit != null) removeStopEdit(ctx, st, color, stopHit);
+                if (stopHit != null) removeStopEdit(ctx, st, color, stopHit);
                 else openColorClipMenu(ctx, track, color, st, bx, e);
             }
             e.stopPropagation();
             return;
         }
         if (e.button != 0 || track.lock()) return;
-        if (clipHit != null) {
-            selectGradientClip(ctx, track, color, st, clipHit.clip());
-            beginGradientClipDrag(ctx, st, color, clipHit.clip(), clipHit.mode(), curveXToTick(ctx, e.x, bx));
-            el.startDrag(null, null);
-            e.stopPropagation();
-            return;
-        }
         if (stopHit != null) {
             selectStop(ctx, track, color, st, stopHit);
             st.dragStop = stopHit;
@@ -1765,6 +1770,65 @@ public class AnimationTrackEditor extends TrackEditor {
         return null;
     }
 
+    /** A gradient clip as an absolute-positioned child of the color box (spanning the gradient band): draws
+     *  its gradient, owns shift/ctrl multi-select (bug 1), body-move / edge-resize drag, right-click remove. */
+    private UIElement createGradientClipElement(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty color,
+                                                AnimationTrackUIState st, GradientClip clip, UIElement box) {
+        var el = new UIElement().setId("timeline.gradientClip").layout(layout -> {
+            layout.positionType(TaffyPosition.ABSOLUTE);
+            layout.left((float) ((clip.start() - ctx.scrollTicks()) * ctx.scale()));
+            layout.width((float) Math.max(2, clip.duration() * ctx.scale()));
+            layout.top(6);      // band top (see colorBandTop)
+            layout.bottom(14);  // band bottom (colorBandTop + colorBandH = y + h - 14)
+        }).style(style -> style
+                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                    if (clip.gradient() != null) drawGradientColorRegion(graphics, clip.gradient(), x, y, w, h);
+                })
+                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                    var sel = st.selectedGradientClips.contains(clip);
+                    DrawerHelper.drawBorder(graphics, x, y, w, h, sel ? ColorPattern.WHITE.color : withAlpha(ColorPattern.WHITE.color, 0x88), 1);
+                    if (!track.lock() && my >= y && my <= y + h && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
+                        Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
+                    }
+                }));
+        el.addEventListener(UIEvents.MOUSE_DOWN, e -> onGradientClipMouseDown(ctx, e, track, color, st, clip, el));
+        el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onGradientClipDrag(ctx, e, st));
+        el.addEventListener(UIEvents.DRAG_END, e -> { onGradientClipDragEnd(ctx, st); e.stopPropagation(); });
+        ctx.registerLaneItem(el, () -> repositionSpan(ctx, el, box, clip.start(), clip.duration()));
+        return el;
+    }
+
+    private void onGradientClipMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track,
+                                         ColorAnimatedProperty color, AnimationTrackUIState st, GradientClip clip, UIElement el) {
+        ctx.setActiveTrack(track);
+        st.explicitSelection = true;
+        if (e.button == 1) {
+            if (!track.lock()) removeGradientClipEdit(ctx, st, color, clip);
+            e.stopPropagation();
+            return;
+        }
+        if (e.button != 0) return;
+        e.stopPropagation();
+        if (track.lock()) return;
+        if (e.isShiftDown() || e.isCtrlDown()) { // bug 1: toggle this clip in the multi-selection (no drag)
+            if (!st.selectedGradientClips.remove(clip)) st.selectedGradientClips.add(clip);
+            st.selectedGradientClip = clip;
+            st.selectedStop = null;
+            return;
+        }
+        // keep the multi-selection when grabbing one of its members; otherwise select just this clip
+        if (!st.selectedGradientClips.contains(clip)) {
+            st.selectedGradientClips.clear();
+            st.selectedGradientClips.add(clip);
+        }
+        st.selectedGradientClip = clip;
+        st.selectedStop = null;
+        inspectGradientClip(ctx, track, clip);
+        var bx = el.getParent().getContentX();
+        beginGradientClipDrag(ctx, st, color, clip, edgeMode(e.x, el), curveXToTick(ctx, e.x, bx));
+        el.startDrag(null, null);
+    }
+
     private void beginGradientClipDrag(TimelineContext ctx, AnimationTrackUIState st, ColorAnimatedProperty color, GradientClip clip, int mode, float cursorTick) {
         st.dragGradientClip = clip;
         st.dragGradientClipMode = mode;
@@ -1775,7 +1839,7 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void onGradientClipDrag(TimelineContext ctx, UIEvent e, AnimationTrackUIState st) {
         if (st.dragGradientClip == null || !(st.selectedProperty instanceof ColorAnimatedProperty)) return;
-        var bx = e.currentElement.getContentX();
+        var bx = e.currentElement.getParent().getContentX(); // element is the clip; its parent is the box
         var clip = st.dragGradientClip;
         var cursorTick = curveXToTick(ctx, e.x, bx);
         var ctrl = e.isCtrlDown();

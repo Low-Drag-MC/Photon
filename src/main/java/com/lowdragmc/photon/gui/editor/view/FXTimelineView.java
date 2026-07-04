@@ -87,6 +87,8 @@ public class FXTimelineView extends View implements TimelineContext {
     private final UIElement ruler = new UIElement();
     private final Scroller hScroll = new Scroller.Horizontal();
     private final List<ClipView> clipViews = new ArrayList<>();
+    /** All registered lane sub-elements (clips/keyframes/stops) + their reposition callbacks. */
+    private final List<TimelineContext.LaneItem> laneItems = new ArrayList<>();
 
     /** Per-track UI state (editors are reused directly from the registry). */
     private final Map<Track, TrackUIState> states = new HashMap<>();
@@ -190,7 +192,14 @@ public class FXTimelineView extends View implements TimelineContext {
     @Override @Nullable public Track selectedClipTrack() { return selectedClipTrack; }
     @Override public boolean isClipSelected(Clip clip) { return selectedClips.contains(clip); }
     @Override public java.util.Set<Clip> selectedClips() { return selectedClips; }
-    @Override public void registerClipView(Track track, Clip clip, UIElement element) { clipViews.add(new ClipView(track, clip, element)); }
+    @Override public void registerLaneItem(UIElement element, Runnable reposition) { laneItems.add(new TimelineContext.LaneItem(element, reposition)); }
+    @Override public void registerClipView(Track track, Clip clip, UIElement element) {
+        clipViews.add(new ClipView(track, clip, element));
+        registerLaneItem(element, () -> element.layout(layout -> {
+            layout.left(tickToLocalX(clip.start()));
+            layout.width((float) Math.max(2, clip.duration() * scale));
+        }));
+    }
     @Override public void setDragGuide(@Nullable Clip clip) { dragGuideClip = clip; }
     @Override public void zoom(UIEvent event) { onZoom(event); }
 
@@ -345,7 +354,7 @@ public class FXTimelineView extends View implements TimelineContext {
         hScroll.setRange(0, 0.0001f).setValue(0f, false)
                 .setOnValueChanged(v -> {
                     scrollTicks = Float.isFinite(v) ? Math.max(0, v) : 0;
-                    repositionClips();
+                    repositionLaneItems();
                 }).layout(layout -> layout.widthPercent(100).height(HSCROLL_HEIGHT));
         return column.addChildren(ruler, rightScroller, hScroll);
     }
@@ -409,7 +418,7 @@ public class FXTimelineView extends View implements TimelineContext {
         scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * factor));
         scrollTicks = (float) Math.max(0, tickUnder - (event.x - originX()) / scale);
         updateHScroller();
-        repositionClips();
+        repositionLaneItems();
         event.stopPropagation();
     }
 
@@ -423,12 +432,9 @@ public class FXTimelineView extends View implements TimelineContext {
         return (mouseX - originX()) / scale + scrollTicks;
     }
 
-    private void repositionClips() {
-        for (var view : clipViews) {
-            view.element().layout(layout -> {
-                layout.left(tickToLocalX(view.clip().start()));
-                layout.width((float) Math.max(2, view.clip().duration() * scale));
-            });
+    private void repositionLaneItems() {
+        for (var item : laneItems) {
+            item.reposition().run();
         }
     }
 
@@ -688,6 +694,7 @@ public class FXTimelineView extends View implements TimelineContext {
         headersContainer.clearAllChildren();
         lanesContainer.clearAllChildren();
         clipViews.clear();
+        laneItems.clear();
         laneViews.clear();
         var runtime = fxEditor.runtime;
         if (runtime == null) return;
@@ -1427,6 +1434,7 @@ public class FXTimelineView extends View implements TimelineContext {
         headersContainer.clearAllChildren();
         lanesContainer.clearAllChildren();
         clipViews.clear();
+        laneItems.clear();
         laneViews.clear();
         states.clear();
         selectedClips.clear();
