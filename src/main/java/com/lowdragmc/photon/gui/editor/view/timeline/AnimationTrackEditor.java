@@ -756,6 +756,9 @@ public class AnimationTrackEditor extends TrackEditor {
                 box.addChild(createKeyframeElement(ctx, animation, property, st, axis, k, box));
             }
         }
+        // two tangent-handle elements that float to the single selected key (in-handle, then out-handle on top)
+        box.addChild(createHandleElement(ctx, animation, property, st, 1, box));
+        box.addChild(createHandleElement(ctx, animation, property, st, 2, box));
     }
 
     private UIElement createPropertyRow(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st,
@@ -1150,15 +1153,14 @@ public class AnimationTrackEditor extends TrackEditor {
             }
             DrawerHelper.drawLines(graphics, points, channelColor(axis).color, channelColor(axis).color, 0.5f);
         }
-        // keyframes are real child elements now (drawn over this box background).
-        // tangent handles only when exactly one key is selected (never for stepped/discrete channels)
-        if (!stepped && st.selectedKeys.size() == 1 && st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)
-                && st.selKeyIndex >= 0 && st.selKeyIndex < property.keyCount(st.selKeyAxis)) {
+        // keyframes + tangent-handle squares are real child elements now; only the connecting lines to the
+        // selected key's handles are drawn here (behind the handle elements).
+        if (handleActive(st, property)) {
             var key = property.key(st.selKeyAxis, st.selKeyIndex);
             var kx = tickToCurveX(ctx, key.x, x);
             var ky = valueToCurveY(key.y, y, height, min, max);
-            drawHandle(ctx, graphics, property.inHandle(st.selKeyAxis, st.selKeyIndex), kx, ky, x, y, height, min, max);
-            drawHandle(ctx, graphics, property.outHandle(st.selKeyAxis, st.selKeyIndex), kx, ky, x, y, height, min, max);
+            drawHandleLine(ctx, graphics, property.inHandle(st.selKeyAxis, st.selKeyIndex), kx, ky, x, y, height, min, max);
+            drawHandleLine(ctx, graphics, property.outHandle(st.selKeyAxis, st.selKeyIndex), kx, ky, x, y, height, min, max);
         }
     }
 
@@ -1193,14 +1195,14 @@ public class AnimationTrackEditor extends TrackEditor {
         DrawerHelper.drawText(graphics, text, tx, ty, 1f, ColorPattern.WHITE.color);
     }
 
-    private void drawHandle(TimelineContext ctx, GuiGraphics graphics, @Nullable Vector2f handle, float kx, float ky,
-                            float x, float y, float height, float min, float max) {
+    /** Draw the line from the selected key to one of its tangent handles (the handle square is a child element). */
+    private void drawHandleLine(TimelineContext ctx, GuiGraphics graphics, @Nullable Vector2f handle, float kx, float ky,
+                                float x, float y, float height, float min, float max) {
         if (handle == null) return;
         var hx = tickToCurveX(ctx, handle.x, x);
         var hy = valueToCurveY(handle.y, y, height, min, max);
         DrawerHelper.drawLines(graphics, List.of(new Vector2f(kx, ky), new Vector2f(hx, hy)),
                 ColorPattern.T_GREEN.color, ColorPattern.T_GREEN.color, 0.3f);
-        DrawerHelper.drawSolidRect(graphics, hx - 1.5f, hy - 1.5f, 3, 3, ColorPattern.GREEN.color);
     }
 
     private void onCurveMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, AnimationTrackUIState st) {
@@ -1675,6 +1677,49 @@ public class AnimationTrackEditor extends TrackEditor {
         beginCurveDrag(ctx, st, property, axis, index, 0);
         ctx.refreshLaneLayout(); // show/refresh the handles for the now-selected key
         el.startDrag(null, null);
+    }
+
+    /** A tangent handle element ({@code which}: 1 = in, 2 = out). One per handle per property, floated to the
+     *  single selected key; hidden unless the selection is a single non-stepped key on an active axis. */
+    private UIElement createHandleElement(TimelineContext ctx, AnimationTrack track, AnimatedProperty property,
+                                          AnimationTrackUIState st, int which, UIElement box) {
+        var el = new UIElement().setId("timeline.tangentHandle").layout(layout -> {
+            layout.positionType(TaffyPosition.ABSOLUTE);
+            layout.width(KEY_ELEM_SIZE);
+            layout.height(KEY_ELEM_SIZE);
+        }).style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) ->
+                DrawerHelper.drawSolidRect(graphics, x + w / 2f - 1.5f, y + h / 2f - 1.5f, 3, 3, ColorPattern.GREEN.color)));
+        el.addEventListener(UIEvents.MOUSE_DOWN, e -> {
+            if (e.button != 0 || track.lock() || !handleActive(st, property)) return;
+            ctx.setActiveTrack(track);
+            beginCurveDrag(ctx, st, property, st.selKeyAxis, st.selKeyIndex, which);
+            el.startDrag(null, null);
+            e.stopPropagation();
+        });
+        el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onCurveDrag(ctx, e, st));
+        el.addEventListener(UIEvents.DRAG_END, e -> { onCurveDragEnd(ctx, st); e.stopPropagation(); });
+        ctx.registerLaneItem(el, () -> repositionHandle(ctx, el, box, property, st, which));
+        return el;
+    }
+
+    /** Whether tangent handles apply: exactly one key selected, non-stepped channel, active axis, valid index. */
+    private boolean handleActive(AnimationTrackUIState st, AnimatedProperty property) {
+        return !property.type().stepped() && st.selectedKeys.size() == 1 && st.selKeyAxis >= 0
+                && isAxisActive(st, st.selKeyAxis) && st.selKeyIndex >= 0 && st.selKeyIndex < property.keyCount(st.selKeyAxis);
+    }
+
+    private void repositionHandle(TimelineContext ctx, UIElement el, UIElement box, AnimatedProperty property,
+                                  AnimationTrackUIState st, int which) {
+        var handle = handleActive(st, property)
+                ? (which == 1 ? property.inHandle(st.selKeyAxis, st.selKeyIndex) : property.outHandle(st.selKeyAxis, st.selKeyIndex))
+                : null;
+        if (handle == null) { el.setDisplay(false); return; }
+        var range = effectiveRange(property);
+        var boxH = box.getContentHeight();
+        var hx = (float) ((handle.x - ctx.scrollTicks()) * ctx.scale());
+        var hy = boxH * (1 - (handle.y - range[0]) / (range[1] - range[0]));
+        el.setDisplay(true);
+        el.layout(layout -> { layout.left(hx - KEY_ELEM_SIZE / 2f); layout.top(hy - KEY_ELEM_SIZE / 2f); });
     }
 
     private void beginCurveDrag(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, int axis, int key, int handle) {
