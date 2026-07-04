@@ -711,6 +711,16 @@ public class AnimationTrackEditor extends TrackEditor {
         if (property == null || !animation.properties().contains(property)) return;
         if (property instanceof ColorAnimatedProperty color) {
             for (var clip : color.gradientClips()) box.addChild(createGradientClipElement(ctx, animation, color, st, clip, box));
+            return;
+        }
+        // expr clips (added first so the later curve clips win overlapping hit-tests, matching the old order)
+        for (var axis : activeAxes(st)) {
+            for (var clip : property.exprClips(axis)) box.addChild(createExprClipElement(ctx, animation, property, st, axis, clip, box));
+        }
+        if (property instanceof ConfigAnimatedProperty cfg) {
+            for (var axis : activeAxes(st)) {
+                for (var clip : cfg.curveClips(axis)) box.addChild(createCurveClipElement(ctx, animation, cfg, st, axis, clip, box));
+            }
         }
     }
 
@@ -1115,10 +1125,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var endTick = scroll + width / ctx.scale();
         var axes = activeAxes(st);
         var step = 2 / ctx.scale();
-        // expression clip regions (translucent, under the line)
-        drawExprClips(ctx, graphics, st, property, x, y, width, height);
-        // curve clips (f(t)->curve): full-height regions rendering their curve preview
-        drawCurveClips(ctx, graphics, st, property, x, y, width, height);
+        // expression clips + curve clips (f(t)->curve) are real child elements now (drawn over this box).
         var stepped = property.type().stepped();
         for (var axis : axes) {
             // effective value = expression clip override where present, else the keyframe curve; clip
@@ -1213,31 +1220,12 @@ public class AnimationTrackEditor extends TrackEditor {
                 e.stopPropagation();
                 return;
             }
-            var curveHit = hitCurveClip(ctx, st, property, bx, by, e.x, e.y);
-            if (curveHit != null) {
-                if (!track.lock()) removeCurveClipEdit(ctx, st, (ConfigAnimatedProperty) property, curveHit.axis(), curveHit.clip());
-                e.stopPropagation();
-                return;
-            }
-            if (!track.lock()) {
-                var clipHit = hitExprClip(ctx, st, property, bx, by, bh, e.x, e.y);
-                if (clipHit != null) openExprClipMenu(ctx, track, st, property, clipHit.axis(), clipHit.clip(), e.x, e.y);
-                else openAddExprClipMenu(ctx, track, st, property, bx, e);
-            }
+            // expr/curve clips are elements (they own their own right-click); the box adds new clips.
+            if (!track.lock()) openAddExprClipMenu(ctx, track, st, property, bx, e);
             e.stopPropagation();
             return;
         }
         if (e.button != 0 || track.lock()) return;
-        // curve clip (top strip) → select (+ begin move / resize)
-        var curveHit = hitCurveClip(ctx, st, property, bx, by, e.x, e.y);
-        if (curveHit != null) {
-            var cfg = (ConfigAnimatedProperty) property;
-            selectCurveClip(ctx, track, st, cfg, curveHit.axis(), curveHit.clip(), e.isShiftDown());
-            beginCurveClipDrag(ctx, st, cfg, curveHit.axis(), curveHit.clip(), curveHit.mode(), curveXToTick(ctx, e.x, bx));
-            el.startDrag(null, null);
-            e.stopPropagation();
-            return;
-        }
         // tangent handle drag (only when exactly one key is selected; stepped channels have no handles)
         if (!property.type().stepped() && st.selectedKeys.size() == 1 && st.selKeyAxis >= 0 && isAxisActive(st, st.selKeyAxis)) {
             var which = hitHandle(ctx, property, st.selKeyAxis, st.selKeyIndex, bx, by, bh, range, e.x, e.y);
@@ -1266,17 +1254,7 @@ public class AnimationTrackEditor extends TrackEditor {
             e.stopPropagation();
             return;
         }
-        // expr clip body/edge → select (+ begin move / resize)
-        var clipHit = hitExprClip(ctx, st, property, bx, by, bh, e.x, e.y);
-        if (clipHit != null) {
-            selectExprClip(ctx, track, st, property, clipHit.axis(), clipHit.clip(), e.isShiftDown());
-            beginClipDrag(ctx, st, property, clipHit.axis(), clipHit.clip(), clipHit.mode(),
-                    curveXToTick(ctx, e.x, bx));
-            el.startDrag(null, null);
-            e.stopPropagation();
-            return;
-        }
-        // empty press → clear clip selection and start a keyframe marquee
+        // expr/curve clips are elements now; an empty press → clear clip selection and start a keyframe marquee
         if (!e.isShiftDown()) st.selectedExprClips.clear();
         st.keyMarquee = true;
         st.keyMarqueeAdditive = e.isShiftDown();
@@ -1431,6 +1409,63 @@ public class AnimationTrackEditor extends TrackEditor {
         inspectExprClip(ctx, track, property, axis, clip);
     }
 
+    /** An expression clip as an absolute-positioned full-height child of the curve box: draws its region +
+     *  expression text, owns select (shift toggles the multi-set), body-move / edge-resize, right-click menu. */
+    private UIElement createExprClipElement(TimelineContext ctx, AnimationTrack track, AnimatedProperty property,
+                                            AnimationTrackUIState st, int axis, ExprClip clip, UIElement box) {
+        var el = new UIElement().setId("timeline.exprClip").layout(layout -> {
+            layout.positionType(TaffyPosition.ABSOLUTE);
+            layout.left((float) ((clip.start() - ctx.scrollTicks()) * ctx.scale()));
+            layout.width((float) Math.max(2, clip.duration() * ctx.scale()));
+            layout.top(0);
+            layout.heightPercent(100);
+        }).style(style -> style
+                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                    var selected = st.selectedExprClips.contains(clip);
+                    var base = clip.error() != null ? ColorPattern.RED.color : channelColor(axis).color;
+                    DrawerHelper.drawSolidRect(graphics, x, y, w, h, withAlpha(base, selected ? 0x66 : 0x33));
+                })
+                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                    var error = clip.error() != null;
+                    var selected = st.selectedExprClips.contains(clip);
+                    var base = error ? ColorPattern.RED.color : channelColor(axis).color;
+                    DrawerHelper.drawBorder(graphics, x, y, w, h, selected ? ColorPattern.WHITE.color : base, 1);
+                    if (w > 20) {
+                        var text = error ? Component.translatable("photon.gui.editor.timeline.expression_error").getString() : clip.expression();
+                        if (text != null && !text.isBlank()) {
+                            DrawerHelper.drawText(graphics, text, x + 2, y + 1, 1f, (error ? ColorPattern.RED : ColorPattern.WHITE).color);
+                        }
+                    }
+                    if (!track.lock() && my >= y && my <= y + h && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
+                        Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
+                    }
+                }));
+        el.addEventListener(UIEvents.MOUSE_DOWN, e -> onExprClipMouseDown(ctx, e, track, property, st, axis, clip, el));
+        el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onClipDrag(ctx, e, st));
+        el.addEventListener(UIEvents.DRAG_END, e -> { onClipDragEnd(ctx, st); e.stopPropagation(); });
+        ctx.registerLaneItem(el, () -> repositionSpan(ctx, el, box, clip.start(), clip.duration()));
+        return el;
+    }
+
+    private void onExprClipMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, AnimatedProperty property,
+                                     AnimationTrackUIState st, int axis, ExprClip clip, UIElement el) {
+        ctx.setActiveTrack(track);
+        st.explicitSelection = true;
+        if (e.button == 1) {
+            if (!track.lock()) openExprClipMenu(ctx, track, st, property, axis, clip, e.x, e.y);
+            e.stopPropagation();
+            return;
+        }
+        if (e.button != 0) return;
+        e.stopPropagation();
+        if (track.lock()) return;
+        selectExprClip(ctx, track, st, property, axis, clip, e.isShiftDown());
+        if (e.isShiftDown()) return; // shift toggles membership only (no drag)
+        var bx = el.getParent().getContentX();
+        beginClipDrag(ctx, st, property, axis, clip, edgeMode(e.x, el), curveXToTick(ctx, e.x, bx));
+        el.startDrag(null, null);
+    }
+
     private void beginClipDrag(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property,
                                int axis, ExprClip clip, int mode, float grabTick) {
         st.dragProperty = property;
@@ -1452,7 +1487,7 @@ public class AnimationTrackEditor extends TrackEditor {
         if (st.dragClip == null || st.dragProperty == null || st.dragClipSnapshot == null) return;
         var property = st.dragProperty;
         var axis = st.dragClipAxis;
-        var bx = e.currentElement.getContentX();
+        var bx = e.currentElement.getParent().getContentX(); // element is the clip; its parent is the box
         var cursorTick = Math.max(0, curveXToTick(ctx, e.x, bx));
         var anchorOrig = st.clipDragOrigins.get(st.dragClip);
         if (anchorOrig == null) return;
@@ -2143,6 +2178,57 @@ public class AnimationTrackEditor extends TrackEditor {
         inspectCurveClip(ctx, track, clip, curveConfigFor(cfg));
     }
 
+    /** A curve clip (f(t)->curve) as an absolute-positioned full-height child of the curve box: draws its
+     *  curve preview, owns select (shift toggles the multi-set), body-move / edge-resize, right-click remove. */
+    private UIElement createCurveClipElement(TimelineContext ctx, AnimationTrack track, ConfigAnimatedProperty cfg,
+                                             AnimationTrackUIState st, int axis, CurveClip clip, UIElement box) {
+        var el = new UIElement().setId("timeline.curveClip").layout(layout -> {
+            layout.positionType(TaffyPosition.ABSOLUTE);
+            layout.left((float) ((clip.start() - ctx.scrollTicks()) * ctx.scale()));
+            layout.width((float) Math.max(2, clip.duration() * ctx.scale()));
+            layout.top(0);
+            layout.heightPercent(100);
+        }).style(style -> style
+                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                    var selected = st.selectedCurveClips.contains(clip);
+                    var base = channelColor(axis).color;
+                    DrawerHelper.drawSolidRect(graphics, x, y, w, h, withAlpha(base, selected ? 0x44 : 0x22));
+                    drawClipCurvePreview(graphics, clip, x, x + w, x, y, w, h, base);
+                })
+                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                    var selected = st.selectedCurveClips.contains(clip);
+                    var base = channelColor(axis).color;
+                    DrawerHelper.drawBorder(graphics, x, y, w, h, selected ? ColorPattern.WHITE.color : base, 1);
+                    if (!track.lock() && my >= y && my <= y + h && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
+                        Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
+                    }
+                }));
+        el.addEventListener(UIEvents.MOUSE_DOWN, e -> onCurveClipMouseDown(ctx, e, track, cfg, st, axis, clip, el));
+        el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onCurveClipDrag(ctx, e, st));
+        el.addEventListener(UIEvents.DRAG_END, e -> { onCurveClipDragEnd(ctx, st); e.stopPropagation(); });
+        ctx.registerLaneItem(el, () -> repositionSpan(ctx, el, box, clip.start(), clip.duration()));
+        return el;
+    }
+
+    private void onCurveClipMouseDown(TimelineContext ctx, UIEvent e, AnimationTrack track, ConfigAnimatedProperty cfg,
+                                      AnimationTrackUIState st, int axis, CurveClip clip, UIElement el) {
+        ctx.setActiveTrack(track);
+        st.explicitSelection = true;
+        if (e.button == 1) {
+            if (!track.lock()) removeCurveClipEdit(ctx, st, cfg, axis, clip);
+            e.stopPropagation();
+            return;
+        }
+        if (e.button != 0) return;
+        e.stopPropagation();
+        if (track.lock()) return;
+        selectCurveClip(ctx, track, st, cfg, axis, clip, e.isShiftDown());
+        if (e.isShiftDown()) return; // shift toggles membership only (no drag)
+        var bx = el.getParent().getContentX();
+        beginCurveClipDrag(ctx, st, cfg, axis, clip, edgeMode(e.x, el), curveXToTick(ctx, e.x, bx));
+        el.startDrag(null, null);
+    }
+
     private void beginCurveClipDrag(TimelineContext ctx, AnimationTrackUIState st, ConfigAnimatedProperty cfg,
                                     int axis, CurveClip clip, int mode, float grabTick) {
         st.dragCurveClipProperty = cfg;
@@ -2156,7 +2242,7 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void onCurveClipDrag(TimelineContext ctx, UIEvent e, AnimationTrackUIState st) {
         if (st.dragCurveClip == null || st.dragCurveClipProperty == null) return;
-        var bx = e.currentElement.getContentX();
+        var bx = e.currentElement.getParent().getContentX(); // element is the clip; its parent is the box
         var clip = st.dragCurveClip;
         var cursorTick = Math.max(0, curveXToTick(ctx, e.x, bx));
         var ctrl = e.isCtrlDown();
