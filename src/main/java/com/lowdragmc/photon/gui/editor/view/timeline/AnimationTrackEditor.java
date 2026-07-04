@@ -127,6 +127,9 @@ public class AnimationTrackEditor extends TrackEditor {
         int dragCurveClipAxis = -1, dragCurveClipMode = 0; // 0 move, 1 resize-start, 2 resize-end
         double dragCurveClipGrabOffset;
         @Nullable List<CurveClip> curveClipDragSnapshot;
+        /** The in-progress clip drag (expr/gradient/curve) currently overlaps another clip: draw it red and
+         *  revert on release (overlaps aren't allowed, matching the clip tracks). */
+        boolean subClipDragInvalid;
         // record mode
         /** Last captured value per type (the reference the poll diffs against). Re-read after every write
          *  so a capture/apply round-trip (e.g. euler↔quaternion) is absorbed and never re-triggers. */
@@ -1389,20 +1392,25 @@ public class AnimationTrackEditor extends TrackEditor {
                 .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     var selected = st.selectedExprClips.contains(clip);
                     var base = clip.error() != null ? ColorPattern.RED.color : channelColor(axis).color;
-                    DrawerHelper.drawSolidRect(graphics, x, y, w, h, withAlpha(base, selected ? 0x66 : 0x33));
+                    var invalid = st.subClipDragInvalid && st.clipDragOrigins.containsKey(clip);
+                    DrawerHelper.drawSolidRect(graphics, x, y, w, h,
+                            invalid ? ColorPattern.T_RED.color : withAlpha(base, selected ? 0x66 : 0x33));
                 })
                 .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     var error = clip.error() != null;
                     var selected = st.selectedExprClips.contains(clip);
+                    var invalid = st.subClipDragInvalid && st.clipDragOrigins.containsKey(clip);
                     var base = error ? ColorPattern.RED.color : channelColor(axis).color;
-                    DrawerHelper.drawBorder(graphics, x, y, w, h, selected ? ColorPattern.WHITE.color : base, 1);
+                    DrawerHelper.drawBorder(graphics, x, y, w, h,
+                            invalid ? ColorPattern.RED.color : selected ? ColorPattern.WHITE.color : base, 1);
                     if (w > 20) {
                         var text = error ? Component.translatable("photon.gui.editor.timeline.expression_error").getString() : clip.expression();
                         if (text != null && !text.isBlank()) {
                             DrawerHelper.drawText(graphics, text, x + 2, y + 1, 1f, (error ? ColorPattern.RED : ColorPattern.WHITE).color);
                         }
                     }
-                    if (!track.lock() && my >= y && my <= y + h && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
+                    if (!track.lock() && mx >= x && mx <= x + w && my >= y && my <= y + h
+                            && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
                         Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
                     }
                 }));
@@ -1449,6 +1457,7 @@ public class AnimationTrackEditor extends TrackEditor {
         } else {
             st.clipDragOrigins.put(clip, new double[]{clip.start(), clip.duration()});
         }
+        st.subClipDragInvalid = false;
         ctx.beginScrub();
     }
 
@@ -1480,6 +1489,7 @@ public class AnimationTrackEditor extends TrackEditor {
             var newEnd = Math.max(anchorOrig[0] + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
             st.dragClip.duration(newEnd - anchorOrig[0]);
         }
+        st.subClipDragInvalid = exprDragOverlaps(st, property, axis); // overlap not allowed → flag red + revert
         ctx.refreshLaneLayout(); // move the clip element(s) to follow the mutated ticks
         ctx.refreshPreview();
         e.stopPropagation();
@@ -1489,16 +1499,59 @@ public class AnimationTrackEditor extends TrackEditor {
         var property = st.dragProperty;
         var axis = st.dragClipAxis;
         var before = st.dragClipSnapshot;
+        var invalid = st.subClipDragInvalid;
         st.dragClip = null;
         st.dragProperty = null;
         st.dragClipSnapshot = null;
         st.clipDragOrigins.clear();
+        st.subClipDragInvalid = false;
         ctx.endScrub();
         if (property == null || before == null) return;
+        if (invalid) { // overlapping drop → snap back to where the drag started
+            property.restoreExprClips(axis, before);
+            ctx.refreshLaneLayout();
+            ctx.refreshPreview();
+            return;
+        }
         var after = property.snapshotExprClips(axis);
         ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { property.restoreExprClips(axis, after); ctx.refreshPreview(); },
-                () -> { property.restoreExprClips(axis, before); ctx.refreshPreview(); });
+                () -> { property.restoreExprClips(axis, after); ctx.refreshLaneLayout(); ctx.refreshPreview(); },
+                () -> { property.restoreExprClips(axis, before); ctx.refreshLaneLayout(); ctx.refreshPreview(); });
+    }
+
+    /** Two tick ranges {@code [aStart,aEnd)} and {@code [bStart,bEnd)} overlap. */
+    private static boolean rangesOverlap(double aStart, double aEnd, double bStart, double bEnd) {
+        return aStart < bEnd && bStart < aEnd;
+    }
+
+    /** True if any expr clip currently in the drag ({@link AnimationTrackUIState#clipDragOrigins}) overlaps a
+     *  clip on the same axis that is NOT part of the drag (clips move together, so they can't newly self-overlap). */
+    private boolean exprDragOverlaps(AnimationTrackUIState st, AnimatedProperty property, int axis) {
+        var moved = st.clipDragOrigins.keySet();
+        for (var clip : property.exprClips(axis)) {
+            if (!moved.contains(clip)) continue;
+            for (var other : property.exprClips(axis)) {
+                if (other == clip || moved.contains(other)) continue;
+                if (rangesOverlap(clip.start(), clip.end(), other.start(), other.end())) return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean gradientDragOverlaps(ColorAnimatedProperty color, GradientClip clip) {
+        for (var other : color.gradientClips()) {
+            if (other == clip) continue;
+            if (rangesOverlap(clip.start(), clip.end(), other.start(), other.end())) return true;
+        }
+        return false;
+    }
+
+    private boolean curveDragOverlaps(ConfigAnimatedProperty cfg, int axis, CurveClip clip) {
+        for (var other : cfg.curveClips(axis)) {
+            if (other == clip) continue;
+            if (rangesOverlap(clip.start(), clip.end(), other.start(), other.end())) return true;
+        }
+        return false;
     }
 
     /** Snap a moving clip's start, preferring whichever of its start/end lands on a snap target closer. */
@@ -1545,10 +1598,9 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selectedExprClips.clear();
         st.selectedExprClips.add(clip);
         inspectExprClip(ctx, track, property, axis, clip);
-        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { property.restoreExprClips(axis, after); ctx.refreshPreview(); },
-                () -> { property.restoreExprClips(axis, before); ctx.refreshPreview(); });
-        ctx.refreshPreview();
+        pushRebuildEdit(ctx,
+                () -> property.restoreExprClips(axis, after),
+                () -> property.restoreExprClips(axis, before));
     }
 
     private void removeExprClipEdit(TimelineContext ctx, AnimationTrackUIState st, AnimatedProperty property, int axis, ExprClip clip) {
@@ -1556,10 +1608,9 @@ public class AnimationTrackEditor extends TrackEditor {
         property.removeExprClip(axis, clip);
         var after = property.snapshotExprClips(axis);
         st.selectedExprClips.remove(clip);
-        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { property.restoreExprClips(axis, after); ctx.refreshPreview(); },
-                () -> { property.restoreExprClips(axis, before); ctx.refreshPreview(); });
-        ctx.refreshPreview();
+        pushRebuildEdit(ctx,
+                () -> property.restoreExprClips(axis, after),
+                () -> property.restoreExprClips(axis, before));
     }
 
     /** Remove every selected expression clip (grouped by axis), one undo. */
@@ -1576,10 +1627,9 @@ public class AnimationTrackEditor extends TrackEditor {
         var afterByAxis = new HashMap<Integer, List<ExprClip>>();
         for (var axis : byAxis.keySet()) afterByAxis.put(axis, property.snapshotExprClips(axis));
         st.selectedExprClips.clear();
-        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { afterByAxis.forEach(property::restoreExprClips); ctx.refreshPreview(); },
-                () -> { beforeByAxis.forEach(property::restoreExprClips); ctx.refreshPreview(); });
-        ctx.refreshPreview();
+        pushRebuildEdit(ctx,
+                () -> afterByAxis.forEach(property::restoreExprClips),
+                () -> beforeByAxis.forEach(property::restoreExprClips));
     }
 
     private static int findClipAxis(AnimatedProperty property, ExprClip clip) {
@@ -1733,11 +1783,17 @@ public class AnimationTrackEditor extends TrackEditor {
         }).style(style -> style
                 .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     if (clip.gradient() != null) drawGradientColorRegion(graphics, clip.gradient(), x, y, w, h);
+                    if (st.subClipDragInvalid && st.dragGradientClip == clip) {
+                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color); // overlapping drop is invalid
+                    }
                 })
                 .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                    var invalid = st.subClipDragInvalid && st.dragGradientClip == clip;
                     var sel = st.selectedGradientClips.contains(clip);
-                    DrawerHelper.drawBorder(graphics, x, y, w, h, sel ? ColorPattern.WHITE.color : withAlpha(ColorPattern.WHITE.color, 0x88), 1);
-                    if (!track.lock() && my >= y && my <= y + h && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
+                    DrawerHelper.drawBorder(graphics, x, y, w, h,
+                            invalid ? ColorPattern.RED.color : sel ? ColorPattern.WHITE.color : withAlpha(ColorPattern.WHITE.color, 0x88), 1);
+                    if (!track.lock() && mx >= x && mx <= x + w && my >= y && my <= y + h
+                            && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
                         Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
                     }
                 }));
@@ -1783,11 +1839,12 @@ public class AnimationTrackEditor extends TrackEditor {
         st.dragGradientClipMode = mode;
         st.dragGradientClipGrabOffset = cursorTick - clip.start();
         st.gradientClipDragSnapshot = color.snapshotGradientClips();
+        st.subClipDragInvalid = false;
         ctx.beginScrub();
     }
 
     private void onGradientClipDrag(TimelineContext ctx, UIEvent e, AnimationTrackUIState st) {
-        if (st.dragGradientClip == null || !(st.selectedProperty instanceof ColorAnimatedProperty)) return;
+        if (st.dragGradientClip == null || !(st.selectedProperty instanceof ColorAnimatedProperty color)) return;
         var bx = e.currentElement.getParent().getContentX(); // element is the clip; its parent is the box
         var clip = st.dragGradientClip;
         var cursorTick = curveXToTick(ctx, e.x, bx);
@@ -1803,6 +1860,7 @@ public class AnimationTrackEditor extends TrackEditor {
             var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
             clip.duration(newEnd - clip.start());
         }
+        st.subClipDragInvalid = gradientDragOverlaps(color, clip); // overlap not allowed → flag red + revert
         ctx.refreshLaneLayout(); // move the gradient-clip element to follow the mutated ticks
         ctx.refreshPreview();
         e.stopPropagation();
@@ -1813,16 +1871,25 @@ public class AnimationTrackEditor extends TrackEditor {
                 || !(st.selectedProperty instanceof ColorAnimatedProperty color)) {
             st.dragGradientClip = null;
             st.gradientClipDragSnapshot = null;
+            st.subClipDragInvalid = false;
             return;
         }
         var before = st.gradientClipDragSnapshot;
-        var after = color.snapshotGradientClips();
+        var invalid = st.subClipDragInvalid;
         st.dragGradientClip = null;
         st.gradientClipDragSnapshot = null;
+        st.subClipDragInvalid = false;
         ctx.endScrub();
+        if (invalid) { // overlapping drop → snap back to where the drag started
+            color.restoreGradientClips(before);
+            ctx.refreshLaneLayout();
+            ctx.refreshPreview();
+            return;
+        }
+        var after = color.snapshotGradientClips();
         ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); ctx.refreshPreview(); },
-                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); ctx.refreshPreview(); });
+                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); ctx.refreshLaneLayout(); ctx.refreshPreview(); },
+                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); ctx.refreshLaneLayout(); ctx.refreshPreview(); });
     }
 
     private static void clearGradientClipSelection(AnimationTrackUIState st) {
@@ -1873,10 +1940,9 @@ public class AnimationTrackEditor extends TrackEditor {
         color.gradientClips().remove(clip);
         var after = color.snapshotGradientClips();
         clearGradientClipSelection(st);
-        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); ctx.refreshPreview(); },
-                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); ctx.refreshPreview(); });
-        ctx.refreshPreview();
+        pushRebuildEdit(ctx,
+                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); },
+                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); });
     }
 
     private void removeSelectedGradientClips(TimelineContext ctx, AnimationTrackUIState st, ColorAnimatedProperty color) {
@@ -1885,10 +1951,9 @@ public class AnimationTrackEditor extends TrackEditor {
         color.gradientClips().removeAll(st.selectedGradientClips);
         var after = color.snapshotGradientClips();
         clearGradientClipSelection(st);
-        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); ctx.refreshPreview(); },
-                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); ctx.refreshPreview(); });
-        ctx.refreshPreview();
+        pushRebuildEdit(ctx,
+                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); },
+                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); });
     }
 
     private void openColorClipMenu(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty color,
@@ -1908,10 +1973,9 @@ public class AnimationTrackEditor extends TrackEditor {
         color.gradientClips().add(clip);
         var after = color.snapshotGradientClips();
         selectGradientClip(ctx, track, color, st, clip);
-        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); ctx.refreshPreview(); },
-                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); ctx.refreshPreview(); });
-        ctx.refreshPreview();
+        pushRebuildEdit(ctx,
+                () -> { color.restoreGradientClips(after); clearGradientClipSelection(st); },
+                () -> { color.restoreGradientClips(before); clearGradientClipSelection(st); });
     }
 
     private void onColorDoubleClick(TimelineContext ctx, UIEvent e, AnimationTrack track, ColorAnimatedProperty color, AnimationTrackUIState st) {
@@ -1923,10 +1987,9 @@ public class AnimationTrackEditor extends TrackEditor {
         var created = color.addStop(tick, argb);
         var after = color.snapshotStops();
         selectStop(ctx, track, color, st, created);
-        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { color.restoreStops(after); st.selectedStop = null; ctx.refreshPreview(); },
-                () -> { color.restoreStops(before); st.selectedStop = null; ctx.refreshPreview(); });
-        ctx.refreshPreview();
+        pushRebuildEdit(ctx,
+                () -> { color.restoreStops(after); st.selectedStop = null; },
+                () -> { color.restoreStops(before); st.selectedStop = null; });
         e.stopPropagation();
     }
 
@@ -1953,8 +2016,8 @@ public class AnimationTrackEditor extends TrackEditor {
         st.stopDragSnapshot = null;
         ctx.endScrub();
         ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { color.restoreStops(after); st.selectedStop = null; ctx.refreshPreview(); },
-                () -> { color.restoreStops(before); st.selectedStop = null; ctx.refreshPreview(); });
+                () -> { color.restoreStops(after); st.selectedStop = null; ctx.refreshLaneLayout(); ctx.refreshPreview(); },
+                () -> { color.restoreStops(before); st.selectedStop = null; ctx.refreshLaneLayout(); ctx.refreshPreview(); });
     }
 
     private void removeStopEdit(TimelineContext ctx, AnimationTrackUIState st, ColorAnimatedProperty color, ColorAnimatedProperty.ColorKey stop) {
@@ -1963,10 +2026,9 @@ public class AnimationTrackEditor extends TrackEditor {
         color.removeStop(stop);
         var after = color.snapshotStops();
         st.selectedStop = null;
-        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { color.restoreStops(after); st.selectedStop = null; ctx.refreshPreview(); },
-                () -> { color.restoreStops(before); st.selectedStop = null; ctx.refreshPreview(); });
-        ctx.refreshPreview();
+        pushRebuildEdit(ctx,
+                () -> { color.restoreStops(after); st.selectedStop = null; },
+                () -> { color.restoreStops(before); st.selectedStop = null; });
     }
 
     /** A color stop as an absolute-positioned full-height marker child of the color box: draws the band tick
@@ -2116,14 +2178,19 @@ public class AnimationTrackEditor extends TrackEditor {
                 .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     var selected = st.selectedCurveClips.contains(clip);
                     var base = channelColor(axis).color;
-                    DrawerHelper.drawSolidRect(graphics, x, y, w, h, withAlpha(base, selected ? 0x44 : 0x22));
+                    var invalid = st.subClipDragInvalid && st.dragCurveClip == clip;
+                    DrawerHelper.drawSolidRect(graphics, x, y, w, h,
+                            invalid ? ColorPattern.T_RED.color : withAlpha(base, selected ? 0x44 : 0x22));
                     drawClipCurvePreview(graphics, clip, x, x + w, x, y, w, h, base);
                 })
                 .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                    var invalid = st.subClipDragInvalid && st.dragCurveClip == clip;
                     var selected = st.selectedCurveClips.contains(clip);
                     var base = channelColor(axis).color;
-                    DrawerHelper.drawBorder(graphics, x, y, w, h, selected ? ColorPattern.WHITE.color : base, 1);
-                    if (!track.lock() && my >= y && my <= y + h && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
+                    DrawerHelper.drawBorder(graphics, x, y, w, h,
+                            invalid ? ColorPattern.RED.color : selected ? ColorPattern.WHITE.color : base, 1);
+                    if (!track.lock() && mx >= x && mx <= x + w && my >= y && my <= y + h
+                            && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
                         Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
                     }
                 }));
@@ -2162,6 +2229,7 @@ public class AnimationTrackEditor extends TrackEditor {
         st.dragCurveClipMode = mode;
         st.dragCurveClipGrabOffset = grabTick - clip.start();
         st.curveClipDragSnapshot = cfg.snapshotCurveClips(axis);
+        st.subClipDragInvalid = false;
         ctx.beginScrub();
     }
 
@@ -2182,6 +2250,7 @@ public class AnimationTrackEditor extends TrackEditor {
             var newEnd = Math.max(clip.start() + MIN_EXPR_CLIP_TICKS, ctx.snapKeyTick(cursorTick, ctrl));
             clip.duration(newEnd - clip.start());
         }
+        st.subClipDragInvalid = curveDragOverlaps(st.dragCurveClipProperty, st.dragCurveClipAxis, clip); // overlap not allowed
         ctx.refreshLaneLayout(); // move the curve-clip element to follow the mutated ticks
         ctx.refreshPreview();
         e.stopPropagation();
@@ -2191,15 +2260,23 @@ public class AnimationTrackEditor extends TrackEditor {
         var cfg = st.dragCurveClipProperty;
         var axis = st.dragCurveClipAxis;
         var before = st.curveClipDragSnapshot;
+        var invalid = st.subClipDragInvalid;
         st.dragCurveClip = null;
         st.dragCurveClipProperty = null;
         st.curveClipDragSnapshot = null;
+        st.subClipDragInvalid = false;
         ctx.endScrub();
         if (cfg == null || before == null) return;
+        if (invalid) { // overlapping drop → snap back to where the drag started
+            cfg.restoreCurveClips(axis, before);
+            ctx.refreshLaneLayout();
+            ctx.refreshPreview();
+            return;
+        }
         var after = cfg.snapshotCurveClips(axis);
         ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { cfg.restoreCurveClips(axis, after); ctx.refreshPreview(); },
-                () -> { cfg.restoreCurveClips(axis, before); ctx.refreshPreview(); });
+                () -> { cfg.restoreCurveClips(axis, after); ctx.refreshLaneLayout(); ctx.refreshPreview(); },
+                () -> { cfg.restoreCurveClips(axis, before); ctx.refreshLaneLayout(); ctx.refreshPreview(); });
     }
 
     /** The backing config field's {@link NumberFunctionConfig} (real value range/axes), or a generic default. */
@@ -2220,10 +2297,9 @@ public class AnimationTrackEditor extends TrackEditor {
         cfg.curveClips(axis).add(clip);
         var after = cfg.snapshotCurveClips(axis);
         selectCurveClip(ctx, track, st, cfg, axis, clip, false);
-        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { cfg.restoreCurveClips(axis, after); clearCurveClipSelection(st); ctx.refreshPreview(); },
-                () -> { cfg.restoreCurveClips(axis, before); clearCurveClipSelection(st); ctx.refreshPreview(); });
-        ctx.refreshPreview();
+        pushRebuildEdit(ctx,
+                () -> { cfg.restoreCurveClips(axis, after); clearCurveClipSelection(st); },
+                () -> { cfg.restoreCurveClips(axis, before); clearCurveClipSelection(st); });
     }
 
     private void removeCurveClipEdit(TimelineContext ctx, AnimationTrackUIState st, ConfigAnimatedProperty cfg, int axis, CurveClip clip) {
@@ -2231,10 +2307,9 @@ public class AnimationTrackEditor extends TrackEditor {
         cfg.curveClips(axis).remove(clip);
         var after = cfg.snapshotCurveClips(axis);
         clearCurveClipSelection(st);
-        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { cfg.restoreCurveClips(axis, after); clearCurveClipSelection(st); ctx.refreshPreview(); },
-                () -> { cfg.restoreCurveClips(axis, before); clearCurveClipSelection(st); ctx.refreshPreview(); });
-        ctx.refreshPreview();
+        pushRebuildEdit(ctx,
+                () -> { cfg.restoreCurveClips(axis, after); clearCurveClipSelection(st); },
+                () -> { cfg.restoreCurveClips(axis, before); clearCurveClipSelection(st); });
     }
 
     private void removeSelectedCurveClips(TimelineContext ctx, AnimationTrackUIState st, ConfigAnimatedProperty cfg) {
@@ -2246,10 +2321,9 @@ public class AnimationTrackEditor extends TrackEditor {
         var after = new ArrayList<List<CurveClip>>();
         for (int a = 0; a < n; a++) after.add(cfg.snapshotCurveClips(a));
         clearCurveClipSelection(st);
-        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { for (int a = 0; a < n; a++) cfg.restoreCurveClips(a, after.get(a)); clearCurveClipSelection(st); ctx.refreshPreview(); },
-                () -> { for (int a = 0; a < n; a++) cfg.restoreCurveClips(a, before.get(a)); clearCurveClipSelection(st); ctx.refreshPreview(); });
-        ctx.refreshPreview();
+        pushRebuildEdit(ctx,
+                () -> { for (int a = 0; a < n; a++) cfg.restoreCurveClips(a, after.get(a)); clearCurveClipSelection(st); },
+                () -> { for (int a = 0; a < n; a++) cfg.restoreCurveClips(a, before.get(a)); clearCurveClipSelection(st); });
     }
 
     /** Inspect a selected curve clip: edit its {@code Curve} via a {@link NumberFunctionConfigurator} using
@@ -2360,13 +2434,23 @@ public class AnimationTrackEditor extends TrackEditor {
         return false;
     }
 
+    /** Push an already-applied structural sub-item edit (add/remove of a clip or stop, which changes the
+     *  box's child-element set) so both the just-applied change and later redo/undo rebuild the box. */
+    private void pushRebuildEdit(TimelineContext ctx, Runnable redo, Runnable undo) {
+        ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                () -> { redo.run(); ctx.requestRebuild(); ctx.refreshPreview(); },
+                () -> { undo.run(); ctx.requestRebuild(); ctx.refreshPreview(); });
+        ctx.requestRebuild();
+        ctx.refreshPreview();
+    }
+
     /** Push an undoable paste for a whole-list sub-selection (gradient clips / color stops). */
     private <T> void pushSubEdit(TimelineContext ctx, Runnable restoreBefore,
                                  java.util.function.Supplier<List<T>> snapshot, java.util.function.Consumer<List<T>> restore, AnimationTrackUIState st) {
         var after = snapshot.get();
         ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { restore.accept(after); clearGradientClipSelection(st); clearCurveClipSelection(st); st.selectedStop = null; ctx.refreshPreview(); },
-                () -> { restoreBefore.run(); clearGradientClipSelection(st); clearCurveClipSelection(st); st.selectedStop = null; ctx.refreshPreview(); });
+                () -> { restore.accept(after); clearGradientClipSelection(st); clearCurveClipSelection(st); st.selectedStop = null; ctx.requestRebuild(); ctx.refreshPreview(); },
+                () -> { restoreBefore.run(); clearGradientClipSelection(st); clearCurveClipSelection(st); st.selectedStop = null; ctx.requestRebuild(); ctx.refreshPreview(); });
         ctx.requestRebuild();
         ctx.refreshPreview();
     }
@@ -2374,8 +2458,9 @@ public class AnimationTrackEditor extends TrackEditor {
     /** Push an undoable paste for a per-axis sub-selection (curve clips / expr clips). */
     private void pushAxisEdit(TimelineContext ctx, AnimationTrackUIState st, Runnable redo, Runnable undo) {
         ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
-                () -> { redo.run(); clearCurveClipSelection(st); st.selectedExprClips.clear(); ctx.refreshPreview(); },
-                () -> { undo.run(); clearCurveClipSelection(st); st.selectedExprClips.clear(); ctx.refreshPreview(); });
+                () -> { redo.run(); clearCurveClipSelection(st); st.selectedExprClips.clear(); ctx.requestRebuild(); ctx.refreshPreview(); },
+                () -> { undo.run(); clearCurveClipSelection(st); st.selectedExprClips.clear(); ctx.requestRebuild(); ctx.refreshPreview(); });
+        ctx.requestRebuild();
         ctx.refreshPreview();
     }
 
