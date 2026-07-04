@@ -164,7 +164,7 @@ public class FXTimelineView extends View implements TimelineContext {
 
         addEventListener(UIEvents.KEY_DOWN, this::onKeyDown);
         addEventListener(UIEvents.EXECUTE_COMMAND, this::onCommand);
-        addEventListener(UIEvents.TICK, e -> { updateHScroller(); repositionLaneItems(); pollRecording(); syncSignalDispatch(); });
+        addEventListener(UIEvents.TICK, e -> { updateHScroller(); pollRecording(); syncBoxStructures(); repositionLaneItems(); syncSignalDispatch(); });
     }
 
     // ------------------------------------------------------------------ TimelineContext
@@ -447,6 +447,19 @@ public class FXTimelineView extends View implements TimelineContext {
         for (var item : laneItems) {
             item.reposition().run();
         }
+    }
+
+    /** Rebuild when an expanded editor's box no longer matches its data (a keyframe/clip added or removed
+     *  out-of-band, e.g. by the record poll) so the missing/extra child elements are created/dropped. */
+    private void syncBoxStructures() {
+        if (fxEditor.runtime == null) return;
+        boolean stale = false;
+        for (var track : fxEditor.runtime.fxData.timeline().leafTracks(true)) {
+            var editor = editorFor(track);
+            var state = states.get(track);
+            if (editor != null && state != null && editor.isBoxStale(state)) stale = true;
+        }
+        if (stale) rebuild();
     }
 
     // ------------------------------------------------------------------ ruler drawing

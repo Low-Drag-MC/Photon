@@ -90,6 +90,12 @@ public abstract class TrackEditor {
         return false;
     }
 
+    /** Whether the editor's expanded box no longer matches its data (an element was added/removed by
+     *  code, not a lane interaction) and must be rebuilt. Checked each tick by the host. Default false. */
+    public boolean isBoxStale(TrackUIState state) {
+        return false;
+    }
+
     /** Clear any sub-selection (called when the track itself is selected). Returns true if the cleared
      *  selection had backing UI elements (so the host should rebuild). Default no-op → false. */
     public boolean clearSubSelection(TrackUIState state) {

@@ -142,6 +142,9 @@ public class AnimationTrackEditor extends TrackEditor {
         long recordLastTime = Long.MIN_VALUE;
         @Nullable List<AnimatedProperty> recordSnapshot;
         boolean recordDirty;
+        /** Element-count signature of the box at its last build; a mismatch (data changed out-of-band,
+         *  e.g. a record-poll keyframe) means the box's child element set is stale and must rebuild. */
+        long builtSignature;
     }
 
     /** Per-channel value difference (degrees / blocks) above which record mode writes a keyframe. */
@@ -751,6 +754,7 @@ public class AnimationTrackEditor extends TrackEditor {
         container.addChild(box);
         // per-clip / per-stop sub-elements (own their own hit-testing, selection, drag, right-click)
         addCurveBoxItems(ctx, animation, st, box);
+        st.builtSignature = boxSignature(st); // remember the element set so a per-tick change forces a rebuild
         // box-level handlers keep only empty-space press, double-click add, marquee/keyframe drag, zoom.
         container.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (st.selectedProperty instanceof ColorAnimatedProperty color) onColorMouseDown(ctx, e, animation, color, st);
@@ -773,6 +777,30 @@ public class AnimationTrackEditor extends TrackEditor {
             else onCurveWheel(ctx, e, st);
         });
         return container;
+    }
+
+    /** Element-count signature of the shown property; a change means the box's child element set is
+     *  stale (a keyframe/clip/stop was added or removed by code, not by a lane interaction that rebuilt). */
+    private long boxSignature(AnimationTrackUIState st) {
+        var p = st.selectedProperty;
+        if (p == null) return 0;
+        long h = 1;
+        for (var axis : activeAxes(st)) {
+            h = h * 31 + p.keyCount(axis);
+            h = h * 31 + p.exprClips(axis).size();
+            if (p instanceof ConfigAnimatedProperty cfg) h = h * 31 + cfg.curveClips(axis).size();
+        }
+        if (p instanceof ColorAnimatedProperty color) {
+            h = h * 31 + color.gradientClips().size();
+            h = h * 31 + color.stops().size();
+        }
+        return h;
+    }
+
+    @Override
+    public boolean isBoxStale(TrackUIState state) {
+        var st = (AnimationTrackUIState) state;
+        return st.expanded && boxSignature(st) != st.builtSignature;
     }
 
     /** Build the interactive sub-elements (clips / stops) of the expanded curve/color box for the currently
