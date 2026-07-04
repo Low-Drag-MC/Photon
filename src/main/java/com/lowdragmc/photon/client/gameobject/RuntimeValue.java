@@ -25,6 +25,12 @@ public class RuntimeValue<T> {
         return override != null ? override : configFallback.get();
     }
 
+    /** The authored config value, ignoring any timeline override (used by record mode so a live
+     *  inspector edit is visible even while the slot is overridden). */
+    public T authored() {
+        return configFallback.get();
+    }
+
     /** Set by the timeline each tick (a sampled constant / gradient color / boxed scalar). */
     public void set(T value) {
         this.override = value;

@@ -191,7 +191,17 @@ public class ConfigPropertyType implements AnimatedPropertyType {
     @Override
     public float[] capture(FXObject target) {
         var binding = resolveBinding(target);
-        var value = binding != null ? binding.slot(target).get() : null;
+        return toChannels(binding != null ? binding.slot(target).get() : null);
+    }
+
+    @Override
+    public float[] captureLive(FXObject target) {
+        var binding = resolveBinding(target);
+        return toChannels(binding != null ? binding.slot(target).authored() : null);
+    }
+
+    /** Convert a slot value (constant / function / boxed scalar) to this type's channel floats. */
+    private float[] toChannels(Object value) {
         if (value == null) {
             return new float[channelCount()];
         }

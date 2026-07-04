@@ -61,6 +61,13 @@ public interface AnimatedPropertyType {
     /** Read the target's current value for this property (length {@link #channelCount()}). */
     float[] capture(FXObject target);
 
+    /** Read the value the <i>user</i> controls for record mode: same as {@link #capture} for
+     *  direct-write types (transform), but override-bypassing for slot-backed config types (so a live
+     *  inspector edit is visible even while the timeline override masks the slot). */
+    default float[] captureLive(FXObject target) {
+        return capture(target);
+    }
+
     /** Write a sampled value (length {@link #channelCount()}) onto the target. */
     void apply(FXObject target, float[] values);
 
