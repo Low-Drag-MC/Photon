@@ -362,7 +362,7 @@ public class AnimationTrackEditor extends TrackEditor {
         boolean changed = false;
         boolean structural = false;
         for (var type : target.getFXObjectType().animatableProperties()) {
-            var actual = type.capture(target);
+            var actual = type.captureLive(target);
             var last = st.recordLast.get(type);
             if (last == null) { st.recordLast.put(type, actual); continue; }
             if (!channelsDiffer(actual, last)) continue; // nothing changed since the last poll (also absorbs roundtrip)
@@ -414,7 +414,21 @@ public class AnimationTrackEditor extends TrackEditor {
     /** Capture the current value of every animatable type into the record reference map. */
     private static void referenceRecord(AnimationTrackUIState st, FXObject target) {
         for (var type : target.getFXObjectType().animatableProperties()) {
-            st.recordLast.put(type, type.capture(target));
+            st.recordLast.put(type, type.captureLive(target));
+        }
+    }
+
+    /** After an out-of-band animation-data edit (double-click add, keyframe/handle move, clip edit)
+     *  during recording, resync the record reference to the freshly-applied pose so the next poll does
+     *  not misread the curve change as a manual target edit and drop a spurious key. */
+    private void noteRecordingEdit(TimelineContext ctx, Track track, AnimationTrackUIState st) {
+        if (!ctx.isRecording(track)) return;
+        var runtime = ctx.runtime();
+        var animation = (AnimationTrack) track;
+        if (runtime != null && animation.targetId() != null
+                && runtime.objects.get(animation.targetId()) instanceof FXObject target) {
+            referenceRecord(st, target);
+            st.recordLastTime = Math.max(0L, ctx.currentTimeTicks());
         }
     }
 
@@ -1294,6 +1308,7 @@ public class AnimationTrackEditor extends TrackEditor {
                 () -> { property.restoreChannels(before); ctx.requestRebuild(); ctx.refreshPreview(); });
         ctx.requestRebuild();
         ctx.refreshPreview();
+        noteRecordingEdit(ctx, track, st);
         e.stopPropagation();
     }
 
