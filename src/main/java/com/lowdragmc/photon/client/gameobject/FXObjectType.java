@@ -4,6 +4,9 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
+import com.lowdragmc.photon.client.fx.timeline.property.ColorPropertyType;
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigPropertyType;
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
@@ -88,6 +91,12 @@ public abstract class FXObjectType {
             if (type != null) {
                 list.add(type);
             }
+        }
+        // config values backed by named runtime slots become parameterized property types
+        for (var b : runtimeBindings()) {
+            list.add(b.type == ConfigValueType.COLOR
+                    ? ColorPropertyType.fromBinding(b)
+                    : ConfigPropertyType.fromBinding(b));
         }
         return list;
     }

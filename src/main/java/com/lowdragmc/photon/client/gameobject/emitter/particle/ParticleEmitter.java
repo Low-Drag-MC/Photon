@@ -7,9 +7,6 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
-import com.lowdragmc.photon.client.fx.timeline.property.ColorPropertyType;
-import com.lowdragmc.photon.client.fx.timeline.property.ConfigPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
@@ -53,24 +50,6 @@ public class ParticleEmitter extends Emitter {
         @Override
         public int version() {
             return 2;
-        }
-
-        /** Transform properties (super) + the runtime-slot-bound config properties (cached). */
-        private List<AnimatedPropertyType> animatableProperties;
-
-        @Override
-        public List<AnimatedPropertyType> animatableProperties() {
-            if (animatableProperties == null) {
-                var list = new ArrayList<>(super.animatableProperties());
-                // runtime-slot-backed config properties (the timeline writes the slot directly)
-                for (var b : runtimeBindings()) {
-                    list.add(b.type == ConfigValueType.COLOR
-                            ? ColorPropertyType.fromBinding(b)
-                            : ConfigPropertyType.fromBinding(b));
-                }
-                animatableProperties = list;
-            }
-            return animatableProperties;
         }
 
         @Override
