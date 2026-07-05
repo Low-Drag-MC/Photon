@@ -55,7 +55,15 @@ public class PhotonParticleManager extends ParticleManager {
 
         var startTime = System.nanoTime();
         GlStateManager._disableScissorTest();
-        super.render(pMatrixStack, pActiveRenderInfo, isPlaying ? pPartialTicks : 0, renderTypeFilter);
+        // The editor scene renders into its own FBO — the render pipeline must composite over THAT
+        // (scene color/depth capture, bloom sizing, final blit), not the game's main target.
+        com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline
+                .setExternalTarget(sceneView.getSceneRenderTarget());
+        try {
+            super.render(pMatrixStack, pActiveRenderInfo, isPlaying ? pPartialTicks : 0, renderTypeFilter);
+        } finally {
+            com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline.setExternalTarget(null);
+        }
         GlStateManager._enableScissorTest();
         lastFrameTimes[frameIndex] = System.nanoTime() - startTime;
         frameIndex = (frameIndex + 1) % lastFrameTimes.length;

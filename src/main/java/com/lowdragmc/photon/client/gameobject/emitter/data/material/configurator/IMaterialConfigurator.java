@@ -9,6 +9,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.UIResourceMaterial;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Setter;
@@ -61,16 +62,26 @@ public class IMaterialConfigurator extends ValueConfigurator<IMaterial> {
 
     protected void showMaterialDialog(UIEvent event) {
         var previous = getValue();
-        MaterialResource.INSTANCE.getResourceInstance().createSelectorDialog(event.x, event.y, material -> {
-            if (material != null && filter.test(material)) {
-                onValueUpdatePassively(material.copy()); // copy: don't mutate the shared resource instance
+        // Selecting from the library assigns a LIVE reference (UIResourceMaterial) — the same semantics
+        // as dragging a tile — so later edits to the library resource keep propagating to this slot.
+        // The path arrives via MaterialResource's selection listener (the stock dialog callback only
+        // reports the value, and an inline copy would silently freeze the material at selection time).
+        MaterialResource.INSTANCE.setPathSelectListener(path -> {
+            var material = new UIResourceMaterial(path);
+            // filter semantics are about the material's actual type — test the resolved target.
+            if (filter.test(material.getInternalTexture())) {
+                onValueUpdatePassively(material);
                 updateValue();
             }
-        }, () -> {
-            if (previous == null) return;
-            onValueUpdatePassively(previous);
-            updateValue();
-        }).show(getModularUI());
+        });
+        var dialog = MaterialResource.INSTANCE.getResourceInstance().createSelectorDialog(event.x, event.y,
+                material -> { }, () -> {
+                    if (previous == null) return;
+                    onValueUpdatePassively(previous);
+                    updateValue();
+                });
+        dialog.setOnClose(() -> MaterialResource.INSTANCE.setPathSelectListener(null));
+        dialog.show(getModularUI());
     }
 
     @Override

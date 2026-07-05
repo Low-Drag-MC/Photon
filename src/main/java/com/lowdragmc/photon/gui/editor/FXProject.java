@@ -14,10 +14,12 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.data.fixer.PhotonFXProjectDataFixer;
+import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.CurveResource;
 import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
+import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
 import lombok.Getter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -42,6 +44,8 @@ public class FXProject implements IProject {
     public FXProject() {
         this.resources = Resources.of(
                 MaterialResource.INSTANCE,
+                ShaderGraphResource.INSTANCE,
+                PhotonShaderFunctionGraphResource.INSTANCE,
                 ColorsResource.INSTANCE,
                 CurveResource.INSTANCE,
                 GradientResource.INSTANCE,

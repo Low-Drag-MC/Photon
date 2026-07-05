@@ -6,19 +6,24 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
-import lombok.Getter;
 import net.minecraft.client.renderer.ShaderInstance;
 
 import javax.annotation.Nonnull;
 import java.util.Objects;
-import java.util.Optional;
 
+/**
+ * A <b>live reference</b> to a material in the resource library. Resolution happens on every access
+ * (a cache-map lookup) instead of being latched once: the library's backing instance can be replaced
+ * under us — resource edits, the file watcher re-reading a changed file (which also clears the
+ * {@code ResourceInstance} cache), pack reloads — and a latched instance would silently freeze this
+ * material on a stale object forever. Following the canonical
+ * {@code ResourceInstance.getResource} lookup each time keeps every user of this reference in sync
+ * with what the resource panel shows and edits.
+ */
 @LDLRegisterClient(name = "ui_resource_material", registry = "photon:material")
 public final class UIResourceMaterial implements IMaterial {
     @Persisted
     private IResourcePath resourcePath = new BuiltinPath("");
-    @Getter(lazy = true)
-    private final IMaterial internalTexture = getMaterialFromResource();
 
     private UIResourceMaterial() {
 
@@ -28,9 +33,16 @@ public final class UIResourceMaterial implements IMaterial {
         this.resourcePath = resourcePath;
     }
 
-    private IMaterial getMaterialFromResource() {
-        return Optional.ofNullable(MaterialResource.INSTANCE.getResourceInstance().getResource(resourcePath))
-                .orElse(IMaterial.MISSING);
+    /** Never null — an empty {@code BuiltinPath("")} round-trips to null through the path codec. */
+    public IResourcePath getResourcePath() {
+        if (resourcePath == null) resourcePath = new BuiltinPath("");
+        return resourcePath;
+    }
+
+    /** The referenced material, re-resolved from the library on every call (cheap cached lookup). */
+    public IMaterial getInternalTexture() {
+        var material = MaterialResource.INSTANCE.getResourceInstance().getResource(getResourcePath());
+        return material == null ? IMaterial.MISSING : material;
     }
 
     @Override
@@ -50,18 +62,18 @@ public final class UIResourceMaterial implements IMaterial {
 
     @Override
     public UIResourceMaterial copy() {
-        return new UIResourceMaterial(resourcePath);
+        return new UIResourceMaterial(getResourcePath());
     }
 
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         UIResourceMaterial that = (UIResourceMaterial) o;
-        return Objects.equals(resourcePath, that.resourcePath);
+        return Objects.equals(getResourcePath(), that.getResourcePath());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(resourcePath);
+        return Objects.hashCode(getResourcePath());
     }
 }

@@ -129,6 +129,8 @@ dependencies {
 
     // LDLib2
     implementation("com.lowdragmc.ldlib2:ldlib2-neoforge-${minecraft_version}:${ldlib2_version}:all")
+    // KilaGraph
+    implementation("com.lowdragmc.kilagraph:kilagraph-neoforge-${minecraft_version}:${kilagraph_version}")
 
     // JEI
     compileOnly("mezz.jei:jei-${minecraft_version}-common-api:${jei_version}") { transitive = false }

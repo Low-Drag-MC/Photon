@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.gui.editor.resource;
 
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
+import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
@@ -63,15 +64,45 @@ public class MaterialResource extends Resource<IMaterial> {
         return IMaterial.deserializeWrapper(tag);
     }
 
+    /**
+     * Fired (with the clicked path) whenever a material tile is selected in ANY container of this
+     * resource — set transiently by {@code IMaterialConfigurator}'s selector dialog to receive the
+     * chosen <em>path</em> (the stock selector callback only reports the value), cleared on close.
+     */
+    @Nullable
+    private java.util.function.Consumer<IResourcePath> pathSelectListener;
+
+    public void setPathSelectListener(@Nullable java.util.function.Consumer<IResourcePath> listener) {
+        this.pathSelectListener = listener;
+    }
+
+    /**
+     * All reads go through the canonical {@code ResourceInstance.getResource} lookup (NOT the raw
+     * provider): that is the same instance every {@link UIResourceMaterial} reference resolves, so the
+     * object the inspector edits, the tile previews, and the materials applied to fx objects are always
+     * one and the same — a per-provider lookup could diverge from it after a file-watcher reload.
+     */
     @Override
     public ResourceProviderContainer<IMaterial> createResourceProviderContainer(IResourceProvider<IMaterial> provider) {
-        var container = super.createResourceProviderContainer(provider);
+        var container = new ResourceProviderContainer<>(provider) {
+            @Override
+            public void selectResource(IResourcePath resourcePath) {
+                super.selectResource(resourcePath);
+                if (pathSelectListener != null && resourcePath != null && provider.hasResource(resourcePath)) {
+                    pathSelectListener.accept(resourcePath);
+                }
+            }
+        };
         container.setUiSupplier(path -> new UIElement().layout(layout -> {
                     layout.widthPercent(100);
                     layout.heightPercent(100);
-                }).style(style -> style.backgroundTexture(provider.getResource(path).preview())));
+                }).style(style -> style.backgroundTexture(
+                        com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture.of(() -> {
+                            var material = getResourceInstance().getResource(path);
+                            return material == null ? IGuiTexture.MISSING_TEXTURE : material.preview();
+                        }))));
         container.setOnEdit((c, path) -> {
-            var material = provider.getResource(path);
+            var material = getResourceInstance().getResource(path);
             if (material == null) return;
             c.getEditor().inspectorView.inspect(material, configurator -> c.markResourceDirty(path));
         });

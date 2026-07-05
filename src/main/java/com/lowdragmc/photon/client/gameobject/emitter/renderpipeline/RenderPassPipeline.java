@@ -66,6 +66,29 @@ public class RenderPassPipeline extends BufferBuilder {
     @Nullable
     private static HDRTarget SCENE_SAMPLER;
     private static boolean IS_SCENE_SAMPLER_DIRTY = true;
+    /**
+     * When set, the pipeline treats this target as the "background" it composites over instead of the
+     * game's main render target — set by the FX editor around its FBO scene render (the scene view draws
+     * the world into its own full-viewport FBO), cleared right after. This keeps scene color/depth,
+     * bloom sizing and the final blit consistent inside offscreen scenes; the Iris fbo-swap path is
+     * skipped while it is active (shaderpacks only drive the real world render).
+     */
+    @Nullable
+    private static com.mojang.blaze3d.pipeline.RenderTarget EXTERNAL_TARGET;
+
+    public static void setExternalTarget(@Nullable com.mojang.blaze3d.pipeline.RenderTarget target) {
+        EXTERNAL_TARGET = target;
+    }
+
+    /** Whether the pipeline is compositing into an offscreen (FBO scene) target — see {@link #setExternalTarget}. */
+    public static boolean hasExternalTarget() {
+        return EXTERNAL_TARGET != null;
+    }
+
+    /** The target the pipeline composites over: the external (FBO scene) target when set, else the game's. */
+    private static com.mojang.blaze3d.pipeline.RenderTarget backgroundTarget() {
+        return EXTERNAL_TARGET != null ? EXTERNAL_TARGET : Minecraft.getInstance().getMainRenderTarget();
+    }
 
     public static Comparator<PhotonFXRenderPass> makeRenderPassComparator() {
         return (passOne, passTwo) -> {
@@ -108,7 +131,7 @@ public class RenderPassPipeline extends BufferBuilder {
 
     private void beforeRendering() {
         current = this;
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = backgroundTarget();
         prepareTarget(mainTarget.width, mainTarget.height);
         PhotonPostProcessing.prepareTarget(mainTarget.width, mainTarget.height);
         if (PhotonParticleManager.getDrawMode() == SceneView.DrawMode.WIREFRAME) {
@@ -141,7 +164,8 @@ public class RenderPassPipeline extends BufferBuilder {
         DRAW_TARGET = resize(DRAW_TARGET, width, height, true, IS_DRAW_TARGET_DIRTY);
         IS_DRAW_TARGET_DIRTY = false;
         // we will copy the color texture and share the depth texture of the main target.
-        if (Photon.isShaderModInstalled() && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
+        if (EXTERNAL_TARGET == null && Photon.isShaderModInstalled()
+                && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
             // iris has its own separated fbo. we should use it instead
             GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
                     extendedShader.getWritingToBeforeTranslucent() :
@@ -179,7 +203,7 @@ public class RenderPassPipeline extends BufferBuilder {
                 }
             }
         } else {
-            var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+            var mainTarget = backgroundTarget();
             DRAW_TARGET.copyColorFrom(mainTarget);
             if (!DRAW_TARGET.hasOtherAttachedDepthTexture() || DRAW_TARGET.getAttachedDepthTexture() != mainTarget.getDepthTextureId()) {
                 DRAW_TARGET.attachDepthBuffer(mainTarget);
@@ -195,9 +219,9 @@ public class RenderPassPipeline extends BufferBuilder {
             GL30.glPolygonMode(GL30.GL_FRONT_AND_BACK, GL30.GL_FILL);
             drawMode = SceneView.DrawMode.DRAW;
         }
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = backgroundTarget();
         var lastViewport = PositionedRect.of(GlStateManager.Viewport.x(), GlStateManager.Viewport.y(), GlStateManager.Viewport.width(), GlStateManager.Viewport.height());
-        var background = Minecraft.getInstance().getMainRenderTarget();
+        var background = backgroundTarget();
         var hasDifferentViewPort = lastViewport.position.x != 0 ||
                 lastViewport.position.y != 0 ||
                 lastViewport.size.width != background.width ||
@@ -217,7 +241,8 @@ public class RenderPassPipeline extends BufferBuilder {
 
         // we need it because extended shaders only work while the main target bound.
         mainTarget.bindWrite(false);
-        if (Photon.isShaderModInstalled() && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
+        if (EXTERNAL_TARGET == null && Photon.isShaderModInstalled()
+                && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
             // We want to blit our result back to iris's fbo
             GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
                     extendedShader.getWritingToBeforeTranslucent() :
@@ -248,6 +273,9 @@ public class RenderPassPipeline extends BufferBuilder {
             GlStateManager._enableDepthTest();
             GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainTarget.frameBufferId);
         } else {
+            // Same path for the game's main target and an external (FBO scene) target — the editor
+            // scene clears to an OPAQUE sky color (SceneView.SceneBackground), so the blit behaves
+            // exactly like the in-game one and no alpha-compositing special case is needed.
             ShaderUtils.fastBlit(outputTarget, mainTarget);
         }
 
