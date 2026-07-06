@@ -129,6 +129,8 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     public final LifetimeByEmitterSpeedSetting lifetimeByEmitterSpeed = new LifetimeByEmitterSpeedSetting();
     @Configurable(name = "ParticleConfig.forceOverLifetime", subConfigurable = true, tips = "photon.emitter.config.forceOverLifetime")
     public final ForceOverLifetimeSetting forceOverLifetime = new ForceOverLifetimeSetting();
+    @Configurable(name = "ParticleConfig.externalForces", subConfigurable = true, tips = "photon.emitter.config.externalForces")
+    public final ExternalForcesSetting externalForces = new ExternalForcesSetting();
     @Configurable(name = "ParticleConfig.colorOverLifetime", subConfigurable = true, tips = "photon.emitter.config.colorOverLifetime")
     public final ColorOverLifetimeSetting colorOverLifetime = new ColorOverLifetimeSetting();
     @Configurable(name = "ParticleConfig.colorBySpeed", subConfigurable = true, tips = "photon.emitter.config.colorBySpeed")

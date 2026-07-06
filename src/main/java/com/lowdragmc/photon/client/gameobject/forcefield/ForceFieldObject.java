@@ -105,6 +105,11 @@ public class ForceFieldObject extends FXObject {
         return TYPE;
     }
 
+    /** Whether this field has been removed (leaf objects can't use the child-based {@code isAlive}). */
+    public boolean isRemoved() {
+        return this.removed;
+    }
+
     @Override
     public IGuiTexture getIcon() {
         return ICON;

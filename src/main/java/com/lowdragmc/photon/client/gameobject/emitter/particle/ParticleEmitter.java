@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
@@ -16,6 +17,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
+import com.lowdragmc.photon.client.gameobject.forcefield.ForceFieldObject;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
@@ -139,6 +141,10 @@ public class ParticleEmitter extends Emitter {
                     o -> ((ParticleEmitter) o).runtime().rotationOverLifetime.enable),
             new RuntimeBinding("forceOverLifetime.enable", "enable", ConfigValueType.BOOL,
                     o -> ((ParticleEmitter) o).runtime().forceOverLifetime.enable),
+            new RuntimeBinding("externalForces.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().externalForces.enable),
+            new RuntimeBinding("externalForces.multiplier", "ExternalForcesSetting.multiplier", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().externalForces.multiplier),
             new RuntimeBinding("lights.enable", "enable", ConfigValueType.BOOL,
                     o -> ((ParticleEmitter) o).runtime().lights.enable),
             new RuntimeBinding("velocityOverLifetime.enable", "enable", ConfigValueType.BOOL,
@@ -333,11 +339,42 @@ public class ParticleEmitter extends Emitter {
             simSpace.scale();
             simSpace.rotation();
         }
+        activeForceFields = gatherForceFields();
         for (var queue : particles.values()) {
             for (var particle : queue) {
                 particle.syncOrigin();
             }
         }
+    }
+
+    /** Immutable per-tick snapshot of the force fields affecting this emitter (read concurrently
+     *  by parallel particle updates; see {@link #gatherForceFields}). */
+    private List<ForceFieldObject> activeForceFields = List.of();
+
+    public List<ForceFieldObject> getActiveForceFields() {
+        return activeForceFields;
+    }
+
+    private List<ForceFieldObject> gatherForceFields() {
+        if (!runtime().externalForces.isEnable() || !(getScene() instanceof FXRuntime fxRuntime)) {
+            return List.of();
+        }
+        var setting = config.externalForces;
+        List<ForceFieldObject> list = null;
+        for (var object : fxRuntime.objects.values()) {
+            if (object instanceof ForceFieldObject field && field.isActive() && !field.isRemoved()
+                    && setting.isInfluencedBy(field)) {
+                // warm the field's transform caches for the parallel particle updates
+                field.transform().localToWorldMatrix();
+                field.transform().worldToLocalMatrix();
+                field.transform().rotation();
+                if (list == null) {
+                    list = new ArrayList<>();
+                }
+                list.add(field);
+            }
+        }
+        return list == null ? List.of() : List.copyOf(list);
     }
 
     @Override

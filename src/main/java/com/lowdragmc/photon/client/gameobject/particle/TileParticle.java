@@ -463,6 +463,25 @@ public class TileParticle implements IParticle {
             setLocalPos(localX + moveLocal.x, localY + moveLocal.y, localZ + moveLocal.z, false);
         }
 
+        // external force fields: fold into the stored velocity once per tick (direction/gravity/vortex
+        // integrate as force * dt, drag damps). Deliberately not part of getRealVelocity(), which must
+        // stay side-effect-free and is called several times per tick/frame.
+        if (runtime.externalForces.isEnable() && emitter instanceof ParticleEmitter particleEmitter) {
+            var fields = particleEmitter.getActiveForceFields();
+            if (!fields.isEmpty()) {
+                var multiplier = runtime.externalForces.getMultiplier(this);
+                if (multiplier != 0) {
+                    var worldPos = getWorldPos();
+                    var worldVelocity = getSpaceTransform().transformDirection(new Vector3f(velocityX, velocityY, velocityZ));
+                    var size = Math.max(sizeX, Math.max(sizeY, sizeZ));
+                    for (var field : fields) {
+                        field.apply(worldPos, worldVelocity, size, dt, this, multiplier);
+                    }
+                    setInternalVelocity(getSpaceTransformInverse().transformDirection(worldVelocity));
+                }
+            }
+        }
+
         // update internal velocity
         if (!runtime.physics.isEnable()) return;
         // detect collision by comparing the desired displacement vs the collided one (dt-independent)

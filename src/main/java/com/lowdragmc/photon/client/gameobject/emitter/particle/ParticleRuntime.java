@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.particle;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ColorOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ColorBySpeedSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.EmissionSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.ExternalForcesSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ForceOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LifetimeByEmitterSpeedSetting;
@@ -38,6 +39,7 @@ public class ParticleRuntime {
     public final SizeOverLifetimeSetting.Runtime sizeOverLifetime;
     public final RotationOverLifetimeSetting.Runtime rotationOverLifetime;
     public final ForceOverLifetimeSetting.Runtime forceOverLifetime;
+    public final ExternalForcesSetting.Runtime externalForces;
     public final LightOverLifetimeSetting.Runtime lights;
     public final ColorOverLifetimeSetting.Runtime colorOverLifetime;
     public final VelocityOverLifetimeSetting.Runtime velocityOverLifetime;
@@ -83,6 +85,7 @@ public class ParticleRuntime {
         this.sizeOverLifetime = config.sizeOverLifetime.createRuntime();
         this.rotationOverLifetime = config.rotationOverLifetime.createRuntime();
         this.forceOverLifetime = config.forceOverLifetime.createRuntime();
+        this.externalForces = config.externalForces.createRuntime();
         this.lights = config.lights.createRuntime();
         this.colorOverLifetime = config.colorOverLifetime.createRuntime();
         this.velocityOverLifetime = config.velocityOverLifetime.createRuntime();
@@ -116,6 +119,7 @@ public class ParticleRuntime {
         sizeOverLifetime.clear();
         rotationOverLifetime.clear();
         forceOverLifetime.clear();
+        externalForces.clear();
         lights.clear();
         colorOverLifetime.clear();
         velocityOverLifetime.clear();
