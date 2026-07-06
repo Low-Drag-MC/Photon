@@ -6,13 +6,11 @@ import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRen
 import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailRuntime;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.floats.Float2ObjectFunction;
 import lombok.Getter;
 import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.client.Camera;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -335,12 +333,6 @@ public class TrailParticle implements IParticle {
         light = getLightColor();
     }
 
-    public void render(@Nonnull VertexConsumer pBuffer, Camera pRenderInfo, float partialTicks) {
-        if (delay <= 0) {
-            tails.renderInternal(pBuffer, partialTicks, pRenderInfo.getPosition().toVector3f(), getRealColor(partialTicks), getRealLight(partialTicks));
-        }
-    }
-
     public Vector4f getUVs(int tailIndex, int size, float partialTicks) {
         float u0, u1, v0, v1;
         var uvMode = config.getUvMode();
@@ -422,7 +414,7 @@ public class TrailParticle implements IParticle {
             size++;
         }
 
-        private void removeLast() {
+        public void removeLast() {
             if (size > 0) {
                 size--;
             }
@@ -482,128 +474,6 @@ public class TrailParticle implements IParticle {
         private Tail copyAsTail(int index) {
             Vector3f pos = getPosition(index);
             return new Tail(pos, lifeTime[index], getColor(index), getWidth(index));
-        }
-
-        public void renderInternal(VertexConsumer buffer, float partialTicks, Vector3f cameraPos, Vector4f color, int light) {
-            Vector3f lastNormal = null;
-            Vector3f lastFaceNormal = null;
-            Vector3f lastUp = null;
-
-            Vector3f headPos = getHeadPosition(partialTicks);
-            boolean pushHead = true;
-            int tailSize = tails.size();
-            if (tailSize > 0) {
-                Vector3f lastPos = tails.getPosition(tailSize - 1);
-                if (lastPos.equals(headPos)) {
-                    pushHead = false;
-                }
-            }
-
-            if (pushHead) {
-                Tail headTail = new Tail(headPos, 100, getColor(0), getWidth(0));
-                tails.add(headTail);
-            }
-
-            var lerpDur = 0f;
-            var t = 0f;
-            if (rawTails.size() > 1) {
-                lerpDur = rawTails.lifeTime[1] - rawTails.lifeTime[0];
-                t = 1 - (rawTails.lifeTime[0] + 1 - partialTicks) / lerpDur;
-            }
-            for (int i = 0; i < size - 1; i++) {
-                // skip dead tails
-                if ((lifeTime[i] - partialTicks < 0f && lifeTime[i + 1] - partialTicks < 0)) {
-                    continue;
-                }
-                var currT = lifeTime[i] / lerpDur;
-                var nextT = lifeTime[i + 1] / lerpDur;
-                if (nextT < t) continue;
-
-                // basic
-                Vector3f tailPos = new Vector3f(posX[i], posY[i], posZ[i]);
-                Vector3f next = new Vector3f(posX[i + 1], posY[i + 1], posZ[i + 1]);
-                // apply interpolation for tail
-                if (lerpDur > 0) {
-                    if (currT <= t && t <= nextT) {
-                        tailPos = tailPos.lerp(next, (t - currT) / (nextT - currT));
-                    }
-                }
-
-                Vector3f curr = new Vector3f(tailPos);
-                Vector3f vec = new Vector3f(next).sub(curr);
-                Vector3f toTail = new Vector3f(curr).sub(cameraPos);
-                Vector3f normal = new Vector3f(vec).cross(toTail).normalize();
-
-                if (lastNormal == null) lastNormal = normal;
-
-                Vector3f avgNormal = new Vector3f(lastNormal).add(normal).div(2);
-                Vector3f up = new Vector3f(tailPos).add(new Vector3f(avgNormal).mul(width[i])).sub(cameraPos);
-                Vector3f down = new Vector3f(tailPos).add(new Vector3f(avgNormal).mul(-width[i])).sub(cameraPos);
-                Vector3f faceNormal = new Vector3f(avgNormal).cross(vec).normalize();
-
-                float ta = color.w() * colorA[i];
-                float tr = color.x() * colorR[i];
-                float tg = color.y() * colorG[i];
-                float tb = color.z() * colorB[i];
-
-                Vector4f uvs = getUVs(i, size, partialTicks);
-                float u0 = uvs.x(), u1 = uvs.z(), v0 = uvs.y(), v1 = uvs.w();
-
-                // 1. push first strip segment
-                if (lastUp == null) {
-                    pushVertex(buffer, light, up, faceNormal, tr, tg, tb, ta, u0, v0);
-                    pushVertex(buffer, light, up, faceNormal, tr, tg, tb, ta, u0, v0);
-                }
-
-                // 2. push next segment
-                pushVertex(buffer, light, up, faceNormal, tr, tg, tb, ta, u0, v0);
-                pushVertex(buffer, light, down, faceNormal, tr, tg, tb, ta, u0, v1);
-
-                // 保留 last
-                lastUp = up;
-                lastNormal = normal;
-                lastFaceNormal = faceNormal;
-            }
-
-            // handle head segment
-            int headIndex = size - 1;
-            // 修改 head segment 处理
-            if (headIndex > 0 && lastNormal != null) {
-                Vector3f head = getPosition(headIndex);
-
-                // 注意这里，直接用 lastNormal
-
-                Vector3f up = new Vector3f(head).add(new Vector3f(lastNormal).mul(width[headIndex])).sub(cameraPos);
-                Vector3f down = new Vector3f(head).add(new Vector3f(lastNormal).mul(-width[headIndex])).sub(cameraPos);
-
-                float ta = color.w() * colorA[headIndex];
-                float tr = color.x() * colorR[headIndex];
-                float tg = color.y() * colorG[headIndex];
-                float tb = color.z() * colorB[headIndex];
-
-                Vector4f uvs = getUVs(headIndex - 1, size, partialTicks);
-                float u0 = uvs.x(), u1 = uvs.z(), v0 = uvs.y(), v1 = uvs.w();
-
-                // 继续用之前的 u1、v0、v1
-                pushVertex(buffer, light, up, lastFaceNormal, tr, tg, tb, ta, u1, v0);
-                pushVertex(buffer, light, down, lastFaceNormal, tr, tg, tb, ta, u1, v1);
-                lastUp = up;
-            }
-
-
-            // 3. **Degenerate triangle 插入**
-            if (lastUp != null) {
-                pushVertex(buffer, light, lastUp, lastFaceNormal, 0, 0, 0, 0, 0, 0); // 重复点1
-                pushVertex(buffer, light, lastUp, lastFaceNormal, 0, 0, 0, 0, 0, 0); // 重复点2
-            }
-
-            if (pushHead) {
-                tails.removeLast(); // 新增函数，见下
-            }
-        }
-
-        private void pushVertex(VertexConsumer buffer, int light, Vector3f pos, Vector3f normal, float r, float g, float b, float a, float u, float v) {
-            buffer.addVertex(pos.x, pos.y, pos.z).setUv(u, v).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
         }
 
     }

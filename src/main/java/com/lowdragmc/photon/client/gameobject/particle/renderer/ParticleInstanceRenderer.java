@@ -1,23 +1,20 @@
-package com.lowdragmc.photon.client.gameobject.emitter.particle;
+package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
-import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.AutoCloseCleaner;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
-import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.neoforged.neoforge.client.model.IQuadTransformer;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.apache.commons.lang3.tuple.Pair;
-import org.joml.Matrix3f;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.system.MemoryStack;
 
@@ -25,13 +22,17 @@ import javax.annotation.Nullable;
 import java.lang.ref.Cleaner;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
 import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.opengl.GL33.*;
 
-public class ParticleInstanceRenderer {
+/**
+ * GL-resource backend of {@link TileParticleRenderer}: owns the VAO/static-geometry/instance
+ * VBOs and the raw draw call. The per-particle instance-data math lives in the renderer;
+ * this class only manages buffers ({@link #beginUpload}/{@link #endUpload}).
+ */
+class ParticleInstanceRenderer {
     private static class InstanceResource implements AutoCloseable {
         protected int vao = -1;
         protected int modelVbo = -1;
@@ -84,7 +85,7 @@ public class ParticleInstanceRenderer {
 
     public void init() {
         if (initialized) return;
-        ensureCreated(config.maxParticles);
+        ensureCreated(config.getMaxParticles());
         initialized = true;
     }
 
@@ -426,11 +427,17 @@ public class ParticleInstanceRenderer {
         return instanceDataBuffer;
     }
 
-    public boolean upload(Collection<TileParticle> particles, Camera camera, float partialTicks) {
+    /**
+     * Prepare the buffers for a fresh instance-data upload: (lazy-)create GL resources, grow the
+     * instance VBO if needed, bind the VAO/VBO and return the cleared shared staging buffer the
+     * caller fills ({@code instanceDataSize} floats per instance). Returns null when GL resources
+     * are unavailable.
+     */
+    @Nullable
+    FloatBuffer beginUpload(int particleCount) {
         init();
-        if (resource == null) return false;
+        if (resource == null) return null;
 
-        var particleCount = particles.size();
         if (particleCount > maxInstancesSize) {
             resize(particleCount);
         }
@@ -441,136 +448,16 @@ public class ParticleInstanceRenderer {
 
         glBindVertexArray(resource.vao);
         glBindBuffer(GL_ARRAY_BUFFER, resource.instanceVbo);
+        return buffer;
+    }
 
-        instanceCount = 0;
-        var vec3 = camera.getPosition();
-        for (var p : particles) {
-            if (p.getDelay() > 0) continue;
-            instanceCount++;
-            var localPos = p.getLocalPos(partialTicks).mulPosition(p.getSpaceTransform());
-            var x = (float) (localPos.x - vec3.x);
-            var y = (float) (localPos.y - vec3.y);
-            var z = (float) (localPos.z - vec3.z);
-
-            var color = p.getRealColor(partialTicks);
-            var rotation = p.getRealRotation(partialTicks);
-            var renderMode = p.getConfig().renderer.getRenderMode();
-
-            var size = p.getRealSize(partialTicks);
-            var scale = p.getSpaceScale();
-            var light = p.getRealLight(partialTicks);
-
-            if (renderMode == ParticleRendererSetting.Mode.Model) {
-                var quaternion = new Quaternionf().rotateXYZ(rotation.x, rotation.y, rotation.z).mul(p.getSpaceRotation());
-                // pos vec3
-                buffer.put(x).put(y).put(z);
-                // scale vec3
-                buffer.put(scale.x * size.x).put(scale.y * size.y).put(scale.z * size.z);
-                // rot quat (vec4)
-                buffer.put(quaternion.x).put(quaternion.y).put(quaternion.z).put(quaternion.w);
-                // color vec4
-                buffer.put(color.x).put(color.y).put(color.z).put(color.w);
-                // light int
-                buffer.put(Float.intBitsToFloat(light));
-            } else {
-                var uvs = p.getRealUVs(partialTicks);
-
-                Quaternionf quaternion;
-                float finalSizeX = size.x;
-                float finalSizeY = size.y;
-                if (renderMode == ParticleRendererSetting.Mode.StretchedBillboard) {
-                    Vector3f vel = p.getRealVelocity();
-                    float speed = vel.length();
-
-                    Vector3f right = new Vector3f();
-                    if (speed > 1e-5f) {
-                        right.set(vel).div(speed);
-                    } else {
-                        right.set(1, 0, 0);
-                    }
-
-                    Vector3f dirToCam = new Vector3f((float)(vec3.x - localPos.x), (float)(vec3.y - localPos.y), (float)(vec3.z - localPos.z));
-                    if (dirToCam.lengthSquared() > 1e-5f) {
-                        dirToCam.normalize();
-                    } else {
-                        dirToCam.set(0, 0, 1);
-                    }
-
-                    Vector3f up = new Vector3f();
-                    dirToCam.cross(right, up);
-
-                    if (up.lengthSquared() < 1e-5f) {
-                        if (Math.abs(right.y) > 0.99f) {
-                            up.set(0, 0, 1).cross(right).normalize();
-                        } else {
-                            up.set(0, 1, 0).cross(right).normalize();
-                        }
-                    } else {
-                        up.normalize();
-                    }
-
-                    Vector3f forward = new Vector3f();
-                    right.cross(up, forward).normalize();
-
-                    Matrix3f mat = new Matrix3f(
-                            right.x,   right.y,   right.z,
-                            up.x,      up.y,      up.z,
-                            forward.x, forward.y, forward.z
-                    );
-                    quaternion = new Quaternionf().setFromNormalized(mat);
-
-                    float stretch = config.renderer.getLengthScale() + speed * config.renderer.getVelocityScale();
-                    finalSizeX *= stretch;
-
-                    float offsetAmount = (finalSizeX - size.x) * scale.x;
-                    x -= right.x * offsetAmount;
-                    y -= right.y * offsetAmount;
-                    z -= right.z * offsetAmount;
-
-                } else {
-                    var defaultQuat = renderMode.quaternion.apply(p, camera, partialTicks);
-                    if (!Vector3fHelper.isZero(rotation)) {
-                        quaternion = new Quaternionf(defaultQuat).rotateXYZ(rotation.x, rotation.y, rotation.z);
-                    } else {
-                        quaternion = defaultQuat;
-                    }
-                }
-
-                // pos vec3
-                buffer.put(x).put(y).put(z);
-                // size vec2
-                buffer.put(finalSizeX).put(finalSizeY);
-                // scale vec3
-                buffer.put(scale.x).put(scale.y).put(scale.z);
-                // rot quat (vec4)
-                buffer.put(quaternion.x).put(quaternion.y).put(quaternion.z).put(quaternion.w);
-                // color vec4
-                buffer.put(color.x).put(color.y).put(color.z).put(color.w);
-                // uv vec4 (flip v)
-                buffer.put(uvs.x).put(uvs.w).put(uvs.z).put(uvs.y);
-                // light int
-                buffer.put(Float.intBitsToFloat(light));
-            }
-
-            if (config.additionalGPUDataSetting.isEnable() && config.additionalGPUDataSetting.hasCustomData()) {
-                // append additional data
-                config.additionalGPUDataSetting.uploadData(p, buffer, partialTicks);
-            }
-        }
-
+    /**
+     * Flip and upload the filled staging buffer; remembers the instance count for the draw call.
+     */
+    void endUpload(FloatBuffer buffer, int instanceCount) {
+        this.instanceCount = instanceCount;
         buffer.flip();
-
-        // upload
-
-        // debug
-//        int bytesToUpload = buffer.remaining() * Float.BYTES;
-//        int bytesAllocated = maxInstancesSize * instanceDataSize * Float.BYTES;
-//        if (bytesToUpload > bytesAllocated) {
-//            LDLib2.LOGGER.warn("Not enough GPU memory for particles! ({} > {})", bytesToUpload, bytesAllocated);
-//        }
-
         glBufferSubData(GL_ARRAY_BUFFER, 0, buffer);
-        return instanceCount > 0;
     }
 
     public void drawWithShader(ShaderInstance shader) {

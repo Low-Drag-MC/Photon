@@ -1,14 +1,18 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.Camera;
 import net.minecraft.util.RandomSource;
 
 import java.util.function.Function;
 
+/**
+ * A particle holds data and simulation only; geometry emission lives in the particle type's
+ * renderer (see {@code client/gameobject/particle/renderer}), invoked by the owning
+ * {@link PhotonFXRenderPass}'s {@code renderQueue}.
+ */
 public interface IParticle {
 
+    /** The render pass that owns/draws this particle (the pipeline's queue-grouping key). */
     PhotonFXRenderPass getRenderType();
 
     RandomSource getRandomSource();
@@ -38,7 +42,5 @@ public interface IParticle {
      *  owning emitter's {@code onTickBegin}); keeps frozen/sped-up particles from jittering. */
     default void syncOrigin() {
     }
-
-    void render(VertexConsumer buffer, Camera camera, float pPartialTicks);
 
 }

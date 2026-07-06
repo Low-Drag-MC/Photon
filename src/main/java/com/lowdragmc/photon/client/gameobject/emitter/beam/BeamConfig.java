@@ -27,15 +27,19 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.gameobject.particle.IParticle;
+import com.lowdragmc.photon.client.gameobject.particle.renderer.BeamParticleRenderer;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.Camera;
 import net.minecraft.world.level.ClipContext;
 import org.joml.Vector3f;
 
 import javax.annotation.Nonnull;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Optional;
 
 /**
@@ -135,6 +139,10 @@ public class BeamConfig implements IConfigurable, IPersistedSerializable {
             super(renderer, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
         }
 
+        @Override
+        protected void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
+            BeamParticleRenderer.INSTANCE.renderQueue(buffer, particles, camera, partialTicks);
+        }
 
         @Override
         public boolean equals(@Nonnull Object o) {

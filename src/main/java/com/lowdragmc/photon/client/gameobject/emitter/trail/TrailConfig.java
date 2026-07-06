@@ -18,12 +18,16 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomCo
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGradient;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
+import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
+import com.lowdragmc.photon.client.gameobject.particle.renderer.TrailParticleRenderer;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.Camera;
 
 import javax.annotation.Nonnull;
+import java.util.Collection;
 
 /**
  * @author KilaBash
@@ -69,12 +73,6 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
     protected boolean calculateSmoothByShader = false;
     @Setter
     @Getter
-    @Configurable(name = "ParticleConfig.parallelRendering", tips = {
-            "photon.emitter.config.parallelRendering.0",
-            "photon.emitter.config.parallelRendering.1"})
-    protected boolean parallelRendering = false;
-    @Setter
-    @Getter
     @Configurable(name = "TrailConfig.uvMode", tips = "photon.emitter.trail.config.uvMode")
     protected TrailParticle.UVMode uvMode = TrailParticle.UVMode.Stretch;
     @Setter
@@ -111,8 +109,8 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
         }
 
         @Override
-        public boolean isParallel() {
-            return isParallelRendering();
+        protected void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
+            TrailParticleRenderer.INSTANCE.renderQueue(buffer, particles, camera, partialTicks);
         }
 
         @Override

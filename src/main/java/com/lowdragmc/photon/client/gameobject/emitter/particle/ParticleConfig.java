@@ -23,6 +23,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveCon
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
+import com.lowdragmc.photon.client.gameobject.particle.renderer.TileParticleRenderer;
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
@@ -104,13 +105,6 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     @Configurable(name = "ParticleConfig.parallelUpdate", tips = {"photon.emitter.config.parallelUpdate.0",
             "photon.emitter.config.parallelUpdate.1"})
     protected boolean parallelUpdate = false;
-    @Setter
-    @Getter
-    @Configurable(name = "ParticleConfig.parallelRendering", tips = {
-            "photon.emitter.config.parallelRendering.0",
-            "photon.emitter.config.parallelRendering.1",
-            "photon.emitter.config.parallelRendering.2"})
-    protected boolean parallelRendering = false;
     @Configurable(name = "ParticleConfig.emission", subConfigurable = true, tips = "photon.emitter.config.emission")
     public final EmissionSetting emission = new EmissionSetting();
     @Configurable(name = "ParticleConfig.shape", subConfigurable = true, tips = "photon.emitter.config.shape")
@@ -192,51 +186,56 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
 
     @ParametersAreNonnullByDefault
     public class RenderPass extends PhotonFXRenderPass {
-        private final ParticleInstanceRenderer instanceRenderer = new ParticleInstanceRenderer(ParticleConfig.this);
+        // not named "renderer": that would shadow ParticleConfig.renderer inside this inner class.
+        // NOT part of equals/hashCode — the batching key stays rendererSetting + mode + format.
+        private final TileParticleRenderer tileParticleRenderer = new TileParticleRenderer(ParticleConfig.this);
 
         public RenderPass() {
             super(renderer, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
         }
 
+        /** Tear down the instanced GL resources (render mode / model / instance layout changed). */
         public void clearInstance() {
-            instanceRenderer.dispose();
+            tileParticleRenderer.dispose();
         }
 
-        public void drawParticlesInternal(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
-            if (renderer.getRenderMode() == ParticleRendererSetting.Mode.None) {
-                return;
-            }
-            if (renderer.isUseGPUInstance()) {
-                var context = renderer.getRenderMode() == ParticleRendererSetting.Mode.Model ?
-                        MaterialContext.PARTICLE_MODEL_INSTANCE : MaterialContext.PARTICLE_INSTANCE;
+        @Override
+        protected void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
+            tileParticleRenderer.renderQueue(buffer, particles, camera, partialTicks);
+        }
 
-                // upload to vbo
-                if (instanceRenderer.upload((Collection) particles, camera, partialTicks)) {
-                    for (MaterialSetting materialSetting : materials) {
-                        materialSetting.pre();
-                        renderInstanceWithMaterial(materialSetting.getMaterial(), context);
-                        materialSetting.post();
-                    }
+        @Override
+        protected boolean useInstancing() {
+            return renderer.isUseGPUInstance() && renderer.getRenderMode() != ParticleRendererSetting.Mode.None;
+        }
+
+        @Override
+        protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+            var context = renderer.getRenderMode() == ParticleRendererSetting.Mode.Model ?
+                    MaterialContext.PARTICLE_MODEL_INSTANCE : MaterialContext.PARTICLE_INSTANCE;
+
+            var drew = false;
+            // upload to vbo
+            if (tileParticleRenderer.uploadInstances(particles, camera, partialTicks)) {
+                for (MaterialSetting materialSetting : materials) {
+                    materialSetting.pre();
+                    renderInstanceWithMaterial(materialSetting.getMaterial(), context);
+                    materialSetting.post();
                 }
-
-                // invalidate cache
-                glBindVertexArray(0);
-                BufferUploader.invalidate();
-            } else {
-                super.drawParticlesInternal(materials, pipeline, particles, camera, partialTicks);
+                drew = true;
             }
+
+            // invalidate cache
+            glBindVertexArray(0);
+            BufferUploader.invalidate();
+            return drew;
         }
 
         protected void renderInstanceWithMaterial(IMaterial material, MaterialContext context) {
             var shader = material.begin(context);
             RenderSystem.setShader(() -> shader);
-            instanceRenderer.drawWithShader(shader);
+            tileParticleRenderer.drawInstanced(shader);
             material.end(context);
-        }
-
-        @Override
-        public boolean isParallel() {
-            return isParallelRendering();
         }
 
         @Override

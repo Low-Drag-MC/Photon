@@ -1,9 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
-import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
-import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ForceOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
@@ -11,14 +9,10 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRuntime;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
 import lombok.Setter;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
@@ -26,12 +20,8 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.client.model.IQuadTransformer;
-import net.neoforged.neoforge.client.model.data.ModelData;
 import org.joml.*;
-import org.lwjgl.system.MemoryStack;
 
-import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.lang.Math;
 import java.util.List;
@@ -662,197 +652,6 @@ public class TileParticle implements IParticle {
     protected void updateLight() {
         if (runtime.lights.isEnable()) return;
         light = getLightColor();
-    }
-
-    public void render(@Nonnull VertexConsumer pBuffer, Camera pRenderInfo, float pPartialTicks) {
-        if (delay <= 0) {
-            renderInternal(pBuffer, pRenderInfo, pPartialTicks);
-        }
-    }
-
-    public void renderInternal(@Nonnull VertexConsumer buffer, Camera camera, float partialTicks) {
-        var vec3 = camera.getPosition();
-
-        var localPos = getLocalPos(partialTicks).mulPosition(getSpaceTransform());
-        var x = (float) (localPos.x - vec3.x);
-        var y = (float) (localPos.y - vec3.y);
-        var z = (float) (localPos.z - vec3.z);
-
-        var color = getRealColor(partialTicks);
-        var r = color.x();
-        var g = color.y();
-        var b = color.z();
-        var a = color.w();
-
-        var light = getRealLight(partialTicks);
-
-        var rotation = getRealRotation(partialTicks);
-        var renderMode = config.renderer.getRenderMode();
-
-        var size = getRealSize(partialTicks);
-
-        if (renderMode == ParticleRendererSetting.Mode.Model) {
-            var transform = new Matrix4f().translate(x, y ,z)
-                    .rotate(new Quaternionf().rotateXYZ(rotation.x, rotation.y, rotation.z).mul(getSpaceRotation()))
-                    .scale(size.mul(getSpaceScale()))
-                    .translate(-0.5f, -0.5f, -0.5f);
-            // draw 3d model
-            var model = config.renderer.getModel();
-            for (var side : MODEL_SIDES) {
-                var brightness = (side != null && config.renderer.isShade()) ? switch (side) {
-                    case DOWN, UP:
-                        yield 0.9F;
-                    case NORTH:
-                    case SOUTH:
-                        yield 0.8F;
-                    case WEST:
-                    case EAST:
-                        yield 0.6F;
-                } : 1f;
-                var quads = model.renderModel(null, null, null, side, randomSource, ModelData.EMPTY, null);
-                for (var quad : quads) {
-                    putBulkData(transform, buffer, quad, brightness, r, g, b, a, light);
-                }
-            }
-        } else {
-            Quaternionf quaternion;
-            float finalSizeX = size.x;
-            float finalSizeY = size.y;
-            float finalSizeZ = size.z;
-            var spaceScale = getSpaceScale();
-
-            if (renderMode == ParticleRendererSetting.Mode.StretchedBillboard) {
-                Vector3f vel = getRealVelocity();
-                float speed = vel.length();
-
-                Vector3f right = new Vector3f();
-                if (speed > 1e-5f) {
-                    right.set(vel).div(speed);
-                } else {
-                    right.set(1, 0, 0);
-                }
-
-                Vector3f dirToCam = new Vector3f((float)(vec3.x - localPos.x), (float)(vec3.y - localPos.y), (float)(vec3.z - localPos.z));
-                if (dirToCam.lengthSquared() > 1e-5f) {
-                    dirToCam.normalize();
-                } else {
-                    dirToCam.set(0, 0, 1);
-                }
-
-                Vector3f up = new Vector3f();
-                dirToCam.cross(right, up);
-
-                if (up.lengthSquared() < 1e-5f) {
-                    if (Math.abs(right.y) > 0.99f) {
-                        up.set(0, 0, 1).cross(right).normalize();
-                    } else {
-                        up.set(0, 1, 0).cross(right).normalize();
-                    }
-                } else {
-                    up.normalize();
-                }
-
-                Vector3f forward = new Vector3f();
-                right.cross(up, forward).normalize();
-
-                Matrix3f mat = new Matrix3f(
-                        right.x,   right.y,   right.z,
-                        up.x,      up.y,      up.z,
-                        forward.x, forward.y, forward.z
-                );
-                quaternion = new Quaternionf().setFromNormalized(mat);
-
-                float stretch = config.renderer.getLengthScale() + speed * config.renderer.getVelocityScale();
-                finalSizeX *= stretch;
-
-                float offsetAmount = (finalSizeX - size.x) * spaceScale.x;
-                x -= right.x * offsetAmount;
-                y -= right.y * offsetAmount;
-                z -= right.z * offsetAmount;
-
-            } else {
-                quaternion = renderMode.quaternion.apply(this, camera, partialTicks);
-                if (!Vector3fHelper.isZero(rotation)) {
-                    quaternion = new Quaternionf(quaternion).rotateXYZ(rotation.x, rotation.y, rotation.z);
-                }
-            }
-
-            var rawVertexes = new Vector3f[]{
-                    new Vector3f(1.0F, -1.0F, 0.0F),
-                    new Vector3f(1.0F, 1.0F, 0.0F),
-                    new Vector3f(-1.0F, 1.0F, 0.0F),
-                    new Vector3f(-1.0F, -1.0F, 0.0F),
-            };
-            var normal = new Vector3f(0, 0, 1);
-
-            for (var i = 0; i < 4; ++i) {
-                var vertex = rawVertexes[i];
-                vertex.mul(finalSizeX, finalSizeY, finalSizeZ);
-                vertex = quaternion.transform(vertex);
-                vertex.mul(spaceScale);
-                vertex.add(x, y, z);
-            }
-
-            normal = quaternion.transform(normal);
-
-            var uvs = getRealUVs(partialTicks);
-            var u0 = uvs.x();
-            var v0 = uvs.y();
-            var u1 = uvs.z();
-            var v1 = uvs.w();
-
-            buffer.addVertex(rawVertexes[0].x(), rawVertexes[0].y(), rawVertexes[0].z()).setUv(u1, v1).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
-            buffer.addVertex(rawVertexes[1].x(), rawVertexes[1].y(), rawVertexes[1].z()).setUv(u1, v0).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
-            buffer.addVertex(rawVertexes[2].x(), rawVertexes[2].y(), rawVertexes[2].z()).setUv(u0, v0).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
-            buffer.addVertex(rawVertexes[3].x(), rawVertexes[3].y(), rawVertexes[3].z()).setUv(u0, v1).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
-        }
-    }
-
-    public void putBulkData(Matrix4f transform, VertexConsumer buffer, BakedQuad quad, float brightness, float red, float green, float blue, float alpha, int light) {
-        int[] vertices = quad.getVertices();
-        int points = vertices.length / 8;
-
-        try (MemoryStack memoryStack = MemoryStack.stackPush()) {
-            var byteBuffer = memoryStack.malloc(DefaultVertexFormat.BLOCK.getVertexSize());
-            var intBuffer = byteBuffer.asIntBuffer();
-
-            var u0 = quad.getSprite().getU0();
-            var v0 = quad.getSprite().getV0();
-            var u1 = quad.getSprite().getU1();
-            var v1 = quad.getSprite().getV1();
-            var uw = u1 - u0;
-            var vh = v1 - v0;
-            var pivotPoint = config.renderer.getModelPivot();
-
-            for (int k = 0; k < points; ++k) {
-                intBuffer.clear();
-                intBuffer.put(vertices, k * 8, 8);
-                var x = byteBuffer.getFloat(0) + pivotPoint.x; // 0
-                var y = byteBuffer.getFloat(4) + pivotPoint.y; // 1
-                var z = byteBuffer.getFloat(8) + pivotPoint.z; // 2
-                var u = byteBuffer.getFloat(16); // 4 u
-                var v = byteBuffer.getFloat(20); // 5 v
-                var normalData = byteBuffer.getInt(IQuadTransformer.NORMAL * 4);
-                float nX = ((byte) normalData      ) / 127.0f;
-                float nY = ((byte)(normalData>>8 )) / 127.0f;
-                float nZ = ((byte)(normalData>>16)) / 127.0f;
-                if (!config.renderer.isUseBlockUV()) {
-                    u =  (u - u0) / uw;
-                    v =  (v - v0) / vh;
-                }
-
-                var pos = transform.transform(new Vector4f(x, y, z, 1.0F));
-                var normalMat = transform.normal(new Matrix3f());
-                var normal = new Vector3f(nX, nY, nZ).mul(normalMat).normalize();
-
-                buffer.addVertex(pos.x, pos.y, pos.z);
-                buffer.setColor(red * brightness, green * brightness, blue * brightness, alpha);
-                buffer.setUv(u, v);
-                buffer.setLight(light);
-                buffer.setNormal(normal.x, normal.y, normal.z);
-            }
-        }
-
     }
 
 }

@@ -33,7 +33,6 @@ public class TrailEmitterMapper implements Mapper {
         newTrailConfigTag.putInt("duration",   trailConfigTag.getInt("duration"));
         newTrailConfigTag.put("renderer", MapperUtils.mapRendererTag(trailConfigTag.getCompound("renderer"),trailConfigTag));
         newTrailConfigTag.putByte("smoothInterpolation",  trailConfigTag.getByte("smoothInterpolation"));
-        newTrailConfigTag.putByte("parallelRendering",   trailConfigTag.getByte("parallelRendering"));
         newTrailConfigTag.putByte("looping", trailConfigTag.getByte("looping"));
 
         return  newTrailConfigTag;

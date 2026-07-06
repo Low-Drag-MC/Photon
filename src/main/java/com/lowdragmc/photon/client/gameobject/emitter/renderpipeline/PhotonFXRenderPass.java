@@ -54,10 +54,6 @@ public abstract class PhotonFXRenderPass {
         this.format = format;
     }
 
-    public boolean isParallel() {
-        return false;
-    }
-
     public void prepareStatus(@Nonnull RenderPassPipeline pipeline) {
         Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer();
     }
@@ -66,20 +62,26 @@ public abstract class PhotonFXRenderPass {
         return tesselator.begin(mode, format);
     }
 
-    public final void drawParticles(RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+    /**
+     * Draw this pass's queued particles. Returns whether anything was actually drawn
+     * (used by the pipeline to decide whether the scene sampler became stale).
+     */
+    public final boolean drawParticles(RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
         var materials = getMaterials(pipeline);
-        if (materials.isEmpty()) return;
-        drawParticlesInternal(materials, pipeline, particles, camera, partialTicks);
+        if (materials.isEmpty()) return false;
+        return drawParticlesInternal(materials, pipeline, particles, camera, partialTicks);
     }
 
-    protected void drawParticlesInternal(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+    protected final boolean drawParticlesInternal(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+        if (useInstancing()) {
+            return drawInstanced(materials, pipeline, particles, camera, partialTicks);
+        }
+
         // prepare mesh data
         var buffer = begin(Tesselator.getInstance());
-        for (var particle : particles) {
-            particle.render(buffer, camera, partialTicks);
-        }
+        renderQueue(buffer, particles, camera, partialTicks);
         var meshData = buffer.build();
-        if (meshData == null) return;
+        if (meshData == null) return false;
 
         // sort quads if necessary
         var sorting = getSorting();
@@ -102,6 +104,31 @@ public abstract class PhotonFXRenderPass {
 
         // invalidate cache
         BufferUploader.invalidate();
+        return true;
+    }
+
+    /**
+     * Geometry-emission seam of the CPU path: emit vertices for the queued particles
+     * (all of this pass's particle type) into the tesselator buffer. Implementations
+     * delegate to their particle-type renderer.
+     */
+    protected abstract void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks);
+
+    /**
+     * Whether this pass draws via GPU instancing this frame. Per-frame decision;
+     * MUST NOT participate in equals/hashCode (the batching key stays
+     * rendererSetting + mode + format).
+     */
+    protected boolean useInstancing() {
+        return false;
+    }
+
+    /**
+     * Instanced draw path; only called when {@link #useInstancing()}. Returns whether
+     * anything was drawn. Default: no instancing support.
+     */
+    protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+        return false;
     }
 
     protected List<MaterialSetting> getMaterials(RenderPassPipeline pipeline) {

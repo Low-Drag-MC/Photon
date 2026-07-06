@@ -19,17 +19,22 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
+import com.lowdragmc.photon.client.gameobject.particle.IParticle;
+import com.lowdragmc.photon.client.gameobject.particle.renderer.AraTrailParticleRenderer;
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.Camera;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector3f;
 
 import javax.annotation.Nonnull;
+import java.util.Collection;
 
 /**
  * @author KilaBash
@@ -171,9 +176,16 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     }
 
     private class RenderPass extends PhotonFXRenderPass {
+        // stateful (mesh scratch buffers) -> per-config instance; NOT part of equals/hashCode
+        private final AraTrailParticleRenderer trailRenderer = new AraTrailParticleRenderer();
 
         public RenderPass() {
             super(renderer, VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.BLOCK);
+        }
+
+        @Override
+        protected void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
+            trailRenderer.renderQueue(buffer, particles, camera, partialTicks);
         }
 
         @Override

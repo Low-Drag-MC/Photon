@@ -89,7 +89,6 @@ public class TrailsSetting extends ToggleGroup {
 
     public TrailsSetting() {
         config.setWidthOverTrail(NumberFunction.constant(0.5f));
-        config.setParallelRendering(true);
         araConfig.thickness = 0.5f;
         araConfig.minDistance = 0.05f;
     }

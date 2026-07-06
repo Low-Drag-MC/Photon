@@ -29,7 +29,6 @@ public class ParticleEmitterMapper implements Mapper{
         newConfigTag.putInt("prewarm", 0);
         newConfigTag.putInt("maxParticles", configTag.getInt("maxParticles"));
         newConfigTag.putInt("duration", configTag.getInt("duration"));
-        newConfigTag.putByte("parallelRendering", configTag.getByte("parallelRendering"));
         newConfigTag.putByte("looping",  configTag.getByte("looping"));
         newConfigTag.putByte("parallelUpdate",  configTag.getByte("parallelUpdate"));
         newConfigTag.put("startDelay", MapperUtils.mapTypedValue(configTag.getCompound("startDelay"), false));
