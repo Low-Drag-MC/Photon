@@ -18,6 +18,7 @@ import org.joml.Vector4f;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
@@ -36,6 +37,10 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     @Getter
     protected ConcurrentHashMap<Object, Float> memRandom = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<BlockPos, Integer> lightCache = new ConcurrentHashMap<>();
+    /** True while particles update on worker threads: {@link #getLightColor} must not touch the level. */
+    private volatile boolean parallelLightPhase = false;
+    /** Positions particles asked for during the parallel phase; refreshed on the game thread post-loop. */
+    private final Set<BlockPos> lightQueryQueue = ConcurrentHashMap.newKeySet();
 
     protected Emitter() {
         this.friction = 1;
@@ -55,7 +60,9 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         }
         previousPosition = transform.position();
 
-        lightCache.clear();
+        if (clearsLightCacheOnTickBegin()) {
+            lightCache.clear();
+        }
         updateOrigin(); // snapshot render origin once per tick (see FXObject.tick)
     }
 
@@ -154,13 +161,55 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
 
     @Override
     public int getLightColor(BlockPos pos) {
-        return lightCache.computeIfAbsent(pos, p -> {
-            var level = getLevel();
-            if (level != null && (level.isLoaded(p) || level instanceof DummyWorld)) {
-                return LevelRenderer.getLightColor(level, p);
-            }
-            return 0;
-        });
+        return getLightColor(pos, 0);
+    }
+
+    @Override
+    public int getLightColor(BlockPos pos, int lastLight) {
+        if (parallelLightPhase) {
+            // worker thread: read-only on the level. Record the position (on hit AND miss, so the
+            // wanted-set tracks live particles) and fall back to the caller's last value on a miss;
+            // rebuildLightCache() fills it on the game thread — correct next tick (1-tick latency).
+            lightQueryQueue.add(pos);
+            var cached = lightCache.get(pos);
+            return cached != null ? cached : lastLight;
+        }
+        return lightCache.computeIfAbsent(pos, this::computeLightColor);
+    }
+
+    /** Game-thread only: the actual level/light-engine query. */
+    private int computeLightColor(BlockPos pos) {
+        var level = getLevel();
+        if (level != null && (level.isLoaded(pos) || level instanceof DummyWorld)) {
+            return LevelRenderer.getLightColor(level, pos);
+        }
+        return 0;
+    }
+
+    /**
+     * Whether the light cache resets at tick begin (default). Emitters that update particles on
+     * worker threads must return false — a begin-clear would guarantee a miss on every parallel
+     * read — and call {@link #rebuildLightCache()} at tick end instead.
+     */
+    protected boolean clearsLightCacheOnTickBegin() {
+        return true;
+    }
+
+    /** Toggled by the owning emitter around its worker-thread particle update phase. */
+    protected void setParallelLightPhase(boolean value) {
+        this.parallelLightPhase = value;
+    }
+
+    /**
+     * Game-thread only: recompute every position requested this tick and evict the rest, so light
+     * stays fresh (≤1 tick stale) and the cache stays bounded to positions actually in use.
+     */
+    protected void rebuildLightCache() {
+        lightCache.clear();
+        for (var pos : lightQueryQueue) {
+            lightCache.put(pos, computeLightColor(pos));
+        }
+        lightQueryQueue.clear();
     }
 
     @Override

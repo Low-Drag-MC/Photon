@@ -330,7 +330,10 @@ public class TrailParticle implements IParticle {
 
     protected void updateLight() {
         if (runtime.lights.isEnable()) return;
-        light = getLightColor();
+        var pos = getHeadPosition();
+        var blockPos = new BlockPos((int) pos.x, (int) pos.y, (int) pos.z);
+        // fallback keeps the last light on a (parallel-phase) cache miss; corrected next tick
+        light = emitter.getLightColor(blockPos, Math.max(light, 0));
     }
 
     public Vector4f getUVs(int tailIndex, int size, float partialTicks) {

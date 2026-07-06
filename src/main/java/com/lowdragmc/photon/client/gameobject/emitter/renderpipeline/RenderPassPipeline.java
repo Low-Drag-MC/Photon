@@ -75,15 +75,21 @@ public class RenderPassPipeline extends BufferBuilder {
         beforeRendering();
         RenderSystem.setShader(GameRenderer::getParticleShader);
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        // the draw target was freshly copied from the scene in beforeRendering -> stale sampler
+        markSceneSamplerDirty();
         for (var entry : particles.entrySet()) {
             var renderPass = entry.getKey();
             var particleQueue = entry.getValue();
             if (!particleQueue.isEmpty()) {
                 renderPass.prepareStatus(this);
-                renderPass.drawParticles(this, particleQueue, camera, partialTicks);
+                var drewSomething = renderPass.drawParticles(this, particleQueue, camera, partialTicks);
                 renderPass.releaseStatus(this);
+                if (drewSomething) {
+                    // only a pass that wrote pixels can change what a later scene-sampling
+                    // material sees; skipping the mark avoids a redundant scene re-copy
+                    markSceneSamplerDirty();
+                }
             }
-            markSceneSamplerDirty();
         }
         clearRenderingState();
         afterRendering();

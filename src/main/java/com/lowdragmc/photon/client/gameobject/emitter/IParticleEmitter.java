@@ -102,6 +102,15 @@ public interface IParticleEmitter extends IFXObject, IConfigurable {
 
     int getLightColor(BlockPos pos);
 
+    /**
+     * Light lookup with a caller-supplied fallback used when the value cannot be computed right
+     * now (particle updates running on worker threads and the position missed the cache — the
+     * emitter refreshes it on the game thread, so the correct value arrives next tick).
+     */
+    default int getLightColor(BlockPos pos, int lastLight) {
+        return getLightColor(pos);
+    }
+
     RandomSource getRandomSource();
 
     @Override

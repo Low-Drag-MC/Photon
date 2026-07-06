@@ -228,6 +228,9 @@ public class ParticleEmitter extends Emitter {
     /** Per-instance runtime layer: named override slots (timeline-driven) over the immutable config. */
     private ParticleRuntime runtime;
 
+    /** Below this queue size, parallelStream scheduling overhead outweighs the win — stay serial. */
+    private static final int PARALLEL_UPDATE_MIN_PARTICLES = 128;
+
     // runtime
     protected boolean hasFirstUpdate = false;
     @Getter @Setter
@@ -434,10 +437,16 @@ public class ParticleEmitter extends Emitter {
             waitToAdded.clear();
         }
 
+        var parallelAllowed = useParallelUpdate();
         for (var queue : particles.values()) {
-            if (runtime().parallelUpdate.get() && (!runtime().physics.isEnable() || !runtime().physics.hasCollision())) { // parallel stream for particles tick.
+            if (parallelAllowed && queue.size() >= PARALLEL_UPDATE_MIN_PARTICLES) { // parallel stream for particles tick.
                 queue.removeIf(p -> !p.isAlive());
-                queue.parallelStream().forEach(p -> p.updateTick(dt));
+                setParallelLightPhase(true);
+                try {
+                    queue.parallelStream().forEach(p -> p.updateTick(dt));
+                } finally {
+                    setParallelLightPhase(false);
+                }
             } else {
                 var iter = queue.iterator();
                 while (iter.hasNext()) {
@@ -450,11 +459,28 @@ public class ParticleEmitter extends Emitter {
                 }
             }
         }
+        if (parallelAllowed) {
+            // refresh every light position requested this tick on the game thread
+            // (parallel reads only consult the cache; misses used the last value)
+            rebuildLightCache();
+        }
 
         // drain sub-emitter spawns collected during (possibly parallel) particle updates
         for (Runnable spawn; (spawn = pendingSubEmitterSpawns.poll()) != null; ) {
             spawn.run();
         }
+    }
+
+    /** Parallel particle updates are allowed when enabled and collision is off (level reads). */
+    private boolean useParallelUpdate() {
+        return runtime().parallelUpdate.get() && (!runtime().physics.isEnable() || !runtime().physics.hasCollision());
+    }
+
+    @Override
+    protected boolean clearsLightCacheOnTickBegin() {
+        // parallel emitters keep the cache across the tick (reads are cache-only during the
+        // parallel phase) and rebuild it at tick end instead
+        return !useParallelUpdate();
     }
 
     @Override
