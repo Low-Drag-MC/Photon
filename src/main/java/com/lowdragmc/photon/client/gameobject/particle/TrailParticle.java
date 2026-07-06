@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
+import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailConfig;
@@ -208,7 +209,11 @@ public class TrailParticle implements IParticle {
         } else {
             this.tails = rawTails;
         }
-        this.updateLight();
+        // tails accumulate and their emptiness drives isAlive — only the (pure, per-tick) light
+        // query is skippable during a fast seek replay
+        if (!PhotonParticleManager.isFastSimulation()) {
+            this.updateLight();
+        }
     }
 
     protected void updateTails(float dt) {

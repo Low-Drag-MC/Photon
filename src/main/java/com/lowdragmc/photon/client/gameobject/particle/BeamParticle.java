@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
+import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamEmitter;
@@ -103,6 +104,10 @@ public class BeamParticle implements IParticle {
     }
 
     protected void updateChanges() {
+        // pure per-tick recomputes: skippable during a fast seek replay (final full ticks restore them)
+        if (PhotonParticleManager.isFastSimulation()) {
+            return;
+        }
         this.updateColor();
         this.updateLight();
     }

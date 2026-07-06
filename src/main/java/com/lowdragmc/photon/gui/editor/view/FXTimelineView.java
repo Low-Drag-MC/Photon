@@ -189,7 +189,8 @@ public class FXTimelineView extends View implements TimelineContext {
     @Override public void pushApplied(String name, Runnable redo, Runnable undo) {
         fxEditor.historyView.pushHistory(Component.translatable(name), EditAction.of(redo, undo), false);
     }
-    @Override public void refreshPreview() { fxEditor.sceneView.simulateTo(currentTimeTicks()); }
+    // coalesced: edit actions can fire many refreshes per frame; only the last one replays
+    @Override public void refreshPreview() { fxEditor.sceneView.requestSimulateTo(currentTimeTicks()); }
     @Override public void openMenu(float x, float y, TreeBuilder.Menu menu) { fxEditor.openMenu(x, y, menu); }
     @Override public void requestRebuild() { rebuild(); }
     @Override public boolean isTrackSelected(Track track) {
@@ -1250,7 +1251,9 @@ public class FXTimelineView extends View implements TimelineContext {
 
     private void scrubTo(UIEvent event) {
         var time = Math.max(0, Math.round(xToTick(event.x)));
-        fxEditor.sceneView.simulateTo(time);
+        // coalesced: fires on every drag-update; a backward target replays from 0 each time,
+        // so only the newest target per frame actually simulates
+        fxEditor.sceneView.requestSimulateTo(time);
     }
 
     private void onKeyDown(UIEvent event) {

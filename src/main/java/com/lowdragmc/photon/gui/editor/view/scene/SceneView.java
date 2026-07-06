@@ -11,6 +11,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.data.Horizontal;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.*;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonParticleManager;
@@ -74,6 +75,8 @@ public class SceneView extends View {
     private int sceneRange = 6;
     // runtime
     private boolean isSceneLoaded = false;
+    /** Coalesced seek target (-1 = none): scrub/edit streams request here, flushed once per frame. */
+    private long pendingSimulateTarget = -1;
 
     public SceneView(FXEditor fxEditor) {
         super("editor.scene", Icons.CAMERA);
@@ -116,28 +119,69 @@ public class SceneView extends View {
         }
     }
 
+    /**
+     * Coalesced seek: only the newest target is kept and at most one real {@link #simulateTo} runs
+     * per UI frame. Use this for high-frequency callers (playhead drag, edit-preview refresh) —
+     * a backward seek replays the whole timeline from 0, so per-mouse-event seeks are ruinous.
+     */
+    public void requestSimulateTo(long time) {
+        pendingSimulateTarget = Math.max(0, time);
+    }
+
+    private void flushPendingSimulate() {
+        if (pendingSimulateTarget >= 0) {
+            var target = pendingSimulateTarget;
+            pendingSimulateTarget = -1;
+            simulateTo(target);
+        }
+    }
+
+    @Override
+    public void drawContents(@NotNull GUIContext context) {
+        // flush before the children draw so the seek result is visible this frame
+        flushPendingSimulate();
+        super.drawContents(context);
+    }
+
+    @Override
+    public void screenTick() {
+        flushPendingSimulate(); // fallback for frames where the view isn't drawn
+        super.screenTick();
+    }
+
     public void simulateTo(long time) {
+        pendingSimulateTarget = -1; // a direct seek supersedes any pending coalesced request
         // a scrub/seek/edit-preview replay (never live play): silence timeline audio so a replayed clip
         // doesn't start (or leave) a long sound playing. syncSignalDispatch re-enables it next UI tick if
         // playback is actually live.
         if (fxEditor.runtime != null) fxEditor.runtime.timelinePlayer.setAudioDispatch(false);
         var curTime = particleManager.getTime();
         if (time > curTime) {
-            var iter = Math.min(time - curTime, 500 * 20);
-            for (int i = 0; i < iter; i++) {
-                particleManager.tickInternal();
-            }
+            runSimulationTicks(time - curTime);
             particleManager.setTime(time);
         } else {
             reset();
             if (fxEditor.runtime != null) {
                 fxEditor.runtime.emmit(effect);
-                var iter = Math.min(time, 500 * 20);
-                for (int i = 0; i < iter; i++) {
-                    particleManager.tickInternal();
-                }
+                runSimulationTicks(time);
                 particleManager.setTime(time);
             }
+        }
+    }
+
+    private void runSimulationTicks(long ticks) {
+        var iter = Math.min(ticks, 500 * 20);
+        try {
+            for (long i = 0; i < iter; i++) {
+                // fast-seek: intermediate ticks skip pure per-tick visual recomputes (color/rotation/
+                // light, size when safe — see TileParticle.updateChanges). The last TWO ticks run full:
+                // the final origin snapshot must also be post-full-update, because a paused editor
+                // renders with partialTicks = 0 and lerp(0, origin, current) returns the ORIGIN values.
+                PhotonParticleManager.setFastSimulation(i < iter - 2);
+                particleManager.tickInternal();
+            }
+        } finally {
+            PhotonParticleManager.setFastSimulation(false);
         }
     }
 

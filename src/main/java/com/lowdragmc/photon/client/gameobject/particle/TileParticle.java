@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
+import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ForceOverLifetimeSetting;
@@ -434,7 +435,19 @@ public class TileParticle implements IParticle {
     }
 
     protected void updateChanges(float dt) {
-        this.updatePositionAndInternalVelocity(dt);
+        this.updatePositionAndInternalVelocity(dt); // NEVER skipped: position/velocity accumulate
+        if (PhotonParticleManager.isFastSimulation()) {
+            // seek replay of a tick that will never be rendered: color/rotation/light are pure
+            // per-tick recomputes from initial values + curves (the final full ticks restore them
+            // exactly). Size is NOT pure downstream when (a) collision reads the boundingBox that
+            // setSize updates, or (b) trails bake getRealSize into persisted tail lifetimes.
+            var sizeAffectsSimulation = (runtime.physics.isEnable() && runtime.physics.hasCollision())
+                    || runtime.trails.isEnable();
+            if (sizeAffectsSimulation) {
+                this.updateSize();
+            }
+            return;
+        }
         this.updateColor();
         this.updateSize();
         this.updateRotation();

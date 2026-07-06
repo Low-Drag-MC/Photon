@@ -24,6 +24,13 @@ public class PhotonParticleManager extends ParticleManager {
     @Nullable
     @Getter
     private static SceneView.DrawMode drawMode = null;
+    /**
+     * True while a timeline seek replays ticks that will never be rendered: particles may skip
+     * pure per-tick visual recomputes (color/rotation/light — see TileParticle.updateChanges).
+     * Volatile: read by parallelUpdate worker threads during the replayed ticks.
+     */
+    @Getter
+    private static volatile boolean fastSimulation = false;
     @Getter @Setter
     private long time = 0;
     @Getter @Setter
@@ -38,6 +45,10 @@ public class PhotonParticleManager extends ParticleManager {
 
     public PhotonParticleManager(SceneView sceneView) {
         this.sceneView = sceneView;
+    }
+
+    public static void setFastSimulation(boolean value) {
+        fastSimulation = value;
     }
 
     public long getRealTime() {
