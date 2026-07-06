@@ -56,7 +56,8 @@ public class Cone implements IShape {
                 (float) (r *  Math.sin(theta))).mul(scale);
 
         var speed = new Vector3f(0, 1, 0)
-                .rotateAxis((float) ((r / radius) * Math.toRadians(angle)), 0, 0, -1)
+                // radius 0 makes r/radius 0/0 (NaN) — treat the tilt fraction as 0 (straight up)
+                .rotateAxis((float) ((radius > 0 ? r / radius : 0) * Math.toRadians(angle)), 0, 0, -1)
                 .rotateAxis((float) theta, 0, -1, 0);
 
         particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPoseWithoutNoise()), true);

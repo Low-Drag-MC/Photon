@@ -28,14 +28,16 @@ import net.neoforged.api.distmarker.OnlyIn;
 public class LightOverLifetimeSetting extends ToggleGroup {
 
     @Configurable(name = "LightOverLifetimeSetting.skyLight", tips = "photon.emitter.config.lights.skyLight")
-    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, numberType = ConfigNumber.Type.INTEGER, defaultValue = 15, min = 0, max = 15, wheelDur = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "speed modifier"))
+    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, numberType = ConfigNumber.Type.INTEGER, defaultValue = 15, min = 0, max = 15, wheelDur = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "sky light"))
     protected NumberFunction skyLight = NumberFunction.constant(15);
 
     @Configurable(name = "LightOverLifetimeSetting.blockLight", tips = "photon.emitter.config.lights.blockLight")
-    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, numberType = ConfigNumber.Type.INTEGER, defaultValue = 15, min = 0, max = 15, wheelDur = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "speed modifier"))
+    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, numberType = ConfigNumber.Type.INTEGER, defaultValue = 15, min = 0, max = 15, wheelDur = 1, curveConfig = @CurveConfig(xAxis = "lifetime", yAxis = "block light"))
     protected NumberFunction blockLight = NumberFunction.constant(15);
 
     public LightOverLifetimeSetting() {
+        // intentionally enabled by default: photon particles render full-bright (15/15)
+        // unless the author disables this group to pick up world lighting
         this.enable = true;
     }
 

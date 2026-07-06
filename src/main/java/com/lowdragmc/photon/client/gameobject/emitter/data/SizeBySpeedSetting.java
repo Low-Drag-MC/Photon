@@ -57,7 +57,10 @@ public class SizeBySpeedSetting extends ToggleGroup {
         public Vector3f getSize(TileParticle particle) {
             var value = particle.getRealVelocity().length() * 20;
             var range = speedRange.get();
-            var t = (value - range.getA().floatValue()) / (range.getB().floatValue() - range.getA().floatValue());
+            var a = range.getA().floatValue();
+            var b = range.getB().floatValue();
+            // zero-width range would divide by zero; clamp so curves sample inside [0, 1]
+            var t = b > a ? Math.clamp((value - a) / (b - a), 0f, 1f) : (value >= a ? 1f : 0f);
             return size.get().get(t, () -> particle.getMemRandom("sbs0"));
         }
 

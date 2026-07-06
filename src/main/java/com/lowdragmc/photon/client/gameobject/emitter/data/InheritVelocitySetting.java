@@ -64,6 +64,8 @@ public class InheritVelocitySetting extends ToggleGroup {
         }
 
         public Vector3f getVelocity(IParticleEmitter emitter) {
+            // per-EMITTER memRandom (not per-particle): this method has no particle context, so a
+            // RandomConstant multiplier samples once per emitter lifetime — known limitation
             return emitter.getVelocity().mul(multiply.get().get(emitter.getT(), () -> emitter.getMemRandom(this)).floatValue());
         }
 

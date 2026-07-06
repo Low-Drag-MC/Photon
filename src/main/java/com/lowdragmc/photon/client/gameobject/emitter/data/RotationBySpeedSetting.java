@@ -73,11 +73,16 @@ public class RotationBySpeedSetting extends ToggleGroup {
         public Vector3f getRotation(TileParticle particle) {
             var value = particle.getRealVelocity().length() * 20;
             var range = speedRange.get();
-            var t = ((value - range.getA().floatValue()) / (range.getB().floatValue() - range.getA().floatValue()));
+            var a = range.getA().floatValue();
+            var b = range.getB().floatValue();
+            // zero-width range would divide by zero; clamp so curves sample inside [0, 1]
+            var t = b > a ? Math.clamp((value - a) / (b - a), 0f, 1f) : (value >= a ? 1f : 0f);
+            // component order must match RotationOverLifetimeSetting: (yaw, pitch, roll) -> (x, y, z),
+            // so "roll" lands on Z — the axis billboards actually spin around
             return new Vector3f(
-                    roll.get().get(t, () -> particle.getMemRandom("rbs0")).floatValue(),
+                    yaw.get().get(t, () -> particle.getMemRandom("rbs2")).floatValue(),
                     pitch.get().get(t, () -> particle.getMemRandom("rbs1")).floatValue(),
-                    yaw.get().get(t, () -> particle.getMemRandom("rbs2")).floatValue()).mul(Mth.TWO_PI / 360);
+                    roll.get().get(t, () -> particle.getMemRandom("rbs0")).floatValue()).mul(Mth.TWO_PI / 360);
         }
 
         public void clear() {

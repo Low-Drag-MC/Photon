@@ -68,8 +68,10 @@ public class UVAnimationSetting extends ToggleGroup {
         float u0, v0, u1, v1;
         var cellSize = tiles.x();
         if (animation == Animation.WholeSheet) {
-            int X = (int) (currentFrame % cellSize);
-            int Y = (int) (currentFrame / cellSize);
+            // wrap into the sheet so frames past tiles.x*tiles.y don't sample outside the texture
+            int frame = Math.floorMod((int) currentFrame, tiles.x() * tiles.y());
+            int X = frame % cellSize;
+            int Y = frame / cellSize;
             u0 = X * cellU;
             v0 = Y * cellV;
         } else {
@@ -122,8 +124,10 @@ public class UVAnimationSetting extends ToggleGroup {
             float u0, v0, u1, v1;
             var cellSize = tiles.x();
             if (animation.get() == Animation.WholeSheet) {
-                int X = (int) (currentFrame % cellSize);
-                int Y = (int) (currentFrame / cellSize);
+                // wrap into the sheet so frames past tiles.x*tiles.y don't sample outside the texture
+                int frame = Math.floorMod((int) currentFrame, tiles.x() * tiles.y());
+                int X = frame % cellSize;
+                int Y = frame / cellSize;
                 u0 = X * cellU;
                 v0 = Y * cellV;
             } else {

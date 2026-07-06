@@ -58,7 +58,11 @@ public class ColorBySpeedSetting extends ToggleGroup {
         public Vector4f getColor(TileParticle particle) {
             var value = particle.getRealVelocity().length() * 20;
             var range = speedRange.get();
-            var c = color.get().get(((value - range.getA().floatValue()) / (range.getB().floatValue() - range.getA().floatValue())), () -> particle.getMemRandom(this)).intValue();
+            var a = range.getA().floatValue();
+            var b = range.getB().floatValue();
+            // zero-width range would divide by zero; clamp so curves/gradients sample inside [0, 1]
+            var t = b > a ? Math.clamp((value - a) / (b - a), 0f, 1f) : (value >= a ? 1f : 0f);
+            var c = color.get().get(t, () -> particle.getMemRandom(this)).intValue();
             return new Vector4f((c >> 16 & 0xff) / 255f, (c >> 8 & 0xff) / 255f, (c & 0xff) / 255f, (c >> 24 & 0xff) / 255f);
         }
 

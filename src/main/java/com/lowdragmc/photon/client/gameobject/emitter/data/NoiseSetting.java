@@ -57,11 +57,11 @@ public class NoiseSetting extends ToggleGroup {
     protected NumberFunction3 position = new NumberFunction3(0.1, 0.1, 0.1);
 
     @Configurable(name = "NoiseSetting.rotation", tips = "photon.emitter.config.noise.rotation")
-    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 180}, xAxis = "rotation amount", yAxis = "lifetime"))
+    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 180}, xAxis = "lifetime", yAxis = "rotation amount"))
     protected NumberFunction rotation = NumberFunction.constant(0);
 
     @Configurable(name = "NoiseSetting.size", tips = "photon.emitter.config.noise.size")
-    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "size amount", yAxis = "lifetime"))
+    @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "size amount"))
     protected NumberFunction size = NumberFunction.constant(0);
 
 

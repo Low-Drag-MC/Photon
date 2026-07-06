@@ -63,7 +63,8 @@ ParticleData getParticleData() {
     data.Position = (rotMat * vec3(aPos.xy * iSize, aPos.z)) * iScale + iPos;
     data.Color = iColor;
     data.UV = mix(iUV.xy, iUV.zw, aPos.xy * 0.5 + 0.5);
-    data.LightUV = ivec2((iLight >> 16) & 0xFFFF, iLight & 0xFFFF);
+    // vanilla UV2 order is (block, sky); java packs sky<<20 | block<<4
+    data.LightUV = ivec2(iLight & 0xFFFF, (iLight >> 16) & 0xFFFF);
     data.Normal = normalize(rotMat * vec3(0, 0, 1));
 
 #elif defined(PARTICLE_MODEL_INSTANCE)
@@ -73,7 +74,8 @@ ParticleData getParticleData() {
     data.Position = (rotMat * (centeredPos * iScale)) + iPos;
     data.Color = vec4(iColor.rgb * aBrightness, iColor.a);
     data.UV = aUV;
-    data.LightUV = ivec2((iLight >> 16) & 0xFFFF, iLight & 0xFFFF);
+    // vanilla UV2 order is (block, sky); java packs sky<<20 | block<<4
+    data.LightUV = ivec2(iLight & 0xFFFF, (iLight >> 16) & 0xFFFF);
     data.Normal = normalize(rotMat * aNormal);
 
 #else
