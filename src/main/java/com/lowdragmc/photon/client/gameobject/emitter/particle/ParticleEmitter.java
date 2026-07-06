@@ -390,7 +390,11 @@ public class ParticleEmitter extends Emitter {
     public void update(float dt) {
         if (!hasFirstUpdate) {
             hasFirstUpdate = true;
-            var prewarm = runtime().prewarm.get();
+            int prewarm = runtime().prewarm.get();
+            if (!isLooping()) {
+                // prewarm >= duration would age a non-looping emitter to death before its first visible frame
+                prewarm = Math.min(prewarm, Math.max(getLifetime() - 1, 0));
+            }
             if (prewarm > 0) {
                 for (int i = 0; i < prewarm; i++) {
                     emitParticle(1f); // prewarm always simulates whole ticks
@@ -410,10 +414,10 @@ public class ParticleEmitter extends Emitter {
         accumulatedDistance += getVelocity().length() * dt;
         // emit new particle (maxParticles may be timeline-overridden; authored value is the fallback)
         var maxParticles = runtime().maxParticles.get();
-        var available = maxParticles - getParticleAmount();
-        if (!removed && getParticleAmount() < maxParticles) {
+        var particleAmount = getParticleAmount(); // streams all queues — compute once per call
+        if (!removed && particleAmount < maxParticles) {
             var emissionCount = runtime().emission.getEmissionCount(this, getRandomSource(), dt);
-            available = Math.min(emissionCount, available);
+            var available = Math.min(emissionCount, maxParticles - particleAmount);
             particleBatchCount = Math.max(1, available);
             particleBatchCursor = 0;
             for (int i = 0; i < available; i++) {
@@ -424,7 +428,8 @@ public class ParticleEmitter extends Emitter {
         // particles life cycle
         if (!waitToAdded.isEmpty()) {
             for (var p : waitToAdded) {
-                particles.computeIfAbsent(p.getRenderType(), type -> new ArrayDeque<>(maxParticles)).add(p);
+                // modest initial capacity: maxParticles is timeline-drivable and may be huge
+                particles.computeIfAbsent(p.getRenderType(), type -> new ArrayDeque<>(Math.min(maxParticles, 256))).add(p);
             }
             waitToAdded.clear();
         }

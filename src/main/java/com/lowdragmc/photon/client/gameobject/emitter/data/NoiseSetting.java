@@ -108,7 +108,11 @@ public class NoiseSetting extends ToggleGroup {
         }
 
         public void setupSeed(IParticle particle) {
-            config.noise.get().setSeed(particle.getMemRandom("noise-seed", randomSource -> (float) randomSource.nextGaussian()) * 255);
+            var seed = particle.getMemRandom("noise-seed", randomSource -> (float) randomSource.nextGaussian()) * 255;
+            var generator = config.noise.get(); // thread-local
+            if (generator.getSeed() != seed) { // skip the redundant write for consecutive samples of one particle
+                generator.setSeed(seed);
+            }
         }
 
         public Vector3f getRotation(IParticle particle, float partialTicks) {
