@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.shadergraph;
 
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraph;
+import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphModel;
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler;
 import com.lowdragmc.kilagraph.rendertype.format.VertexFormatPresets;
@@ -11,6 +12,7 @@ import com.lowdragmc.kilagraph.rendertype.nodes.vertex.VertexPositionBlock;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.GraphNodeRegistry;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.BlockNode;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.model.graph.CustomGraphModelImpl;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.NodeModel;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.shadergraph.nodes.ParticlePositionBlock;
@@ -86,10 +88,10 @@ public class ShaderGraph extends RenderTypeGraph {
     /** Local subgraphs ("create subgraph from selection" / dive-in) are Photon function graphs, so
      *  they carry Photon's node palette too. */
     @Override
-    protected com.lowdragmc.lowdraglib2.nodegraphtookit.model.graph.CustomGraphModelImpl createGraphModel() {
-        return new com.lowdragmc.kilagraph.rendertype.RenderTypeGraphModel(this) {
+    protected CustomGraphModelImpl createGraphModel() {
+        return new RenderTypeGraphModel(this) {
             @Override
-            public com.lowdragmc.lowdraglib2.nodegraphtookit.model.graph.CustomGraphModelImpl createLocalSubgraphInstance() {
+            public CustomGraphModelImpl createLocalSubgraphInstance() {
                 return createLocalSubgraphInstance(PhotonShaderFunctionGraph.class);
             }
         };

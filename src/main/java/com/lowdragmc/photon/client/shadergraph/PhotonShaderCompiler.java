@@ -16,8 +16,9 @@ import com.lowdragmc.kilagraph.rendertype.format.KGVertexElements;
  *
  * <p>Scene color/depth read Photon's pipeline capture ({@code SamplerSceneColor}/{@code SamplerSceneDepth},
  * bound from {@code RenderPassPipeline}'s scene sampler — Iris-compatible) instead of KilaGraph's
- * {@code SceneCaptureManager}, and the screen UV uses {@code U_ViewPort} so it stays correct on any
- * render target.</p>
+ * {@code SceneCaptureManager}. The screen UV is window-relative {@code gl_FragCoord.xy / ScreenSize}
+ * (see {@link #screenUv()}) — the immediate editor scene renders into a sub-viewport of the window-sized
+ * capture, so window-relative sampling is correct there and in-world alike.</p>
  */
 public class PhotonShaderCompiler extends ShaderGraphCompiler {
 
@@ -60,18 +61,6 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
     @Override
     protected ShaderExpr modelPosition() {
         return new ShaderExpr(PARTICLE_DATA + ".Position", GlslType.VEC3);
-    }
-
-    /**
-     * Screen UV relative to the active viewport ({@code U_ViewPort} = x, y, width, height) rather than
-     * {@code ScreenSize} — Photon draws into its pipeline's render target, and this matches
-     * {@code CustomShaderMaterial}'s convention. Previews keep the base behavior (mesh uv).
-     */
-    @Override
-    protected ShaderExpr screenUv() {
-        if (isPreview() || isEditorPreview()) return meshUv();
-        useBuiltinUniform(VIEWPORT, GlslType.VEC4);
-        return new ShaderExpr("((gl_FragCoord.xy - " + VIEWPORT + ".xy) / " + VIEWPORT + ".zw)", GlslType.VEC2);
     }
 
     /**

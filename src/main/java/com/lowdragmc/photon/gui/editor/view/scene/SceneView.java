@@ -55,32 +55,6 @@ public class SceneView extends View {
             this.translateKey = translateKey;
         }
     }
-    /**
-     * The Minecraft-style scene sky preset: an OPAQUE horizon (fog) color the FBO clears to, plus the
-     * sky-dome zenith color and day/night celestial set drawn by {@link SceneSkyRenderer}. Opaque on
-     * purpose: the scene panel then composites like any other texture and the particle pipeline behaves
-     * exactly as in-game — a transparent background would need premultiplied-alpha handling through the
-     * whole pipeline (blend funcs, bloom, blits).
-     */
-    public enum SceneBackground {
-        DAY("scene_background.day", 0xFFAFC9FF, 0xFF78A7FF, true),
-        NIGHT("scene_background.night", 0xFF0B0E1A, 0xFF05070F, false);
-
-        public final String translateKey;
-        /** The FBO clear color — what shows at/below the horizon, like vanilla's fog-colored void. */
-        public final int horizonColor;
-        /** The sky-dome (zenith) tint. */
-        public final int skyColor;
-        /** Sun (day) vs full moon + stars (night). */
-        public final boolean day;
-
-        SceneBackground(String translateKey, int horizonColor, int skyColor, boolean day) {
-            this.translateKey = translateKey;
-            this.horizonColor = horizonColor;
-            this.skyColor = skyColor;
-            this.day = day;
-        }
-    }
     public final FXEditor fxEditor;
     public final ParticleSceneEditor sceneEditor;
     public final TrackedDummyWorld level = new TrackedDummyWorld();
@@ -96,8 +70,6 @@ public class SceneView extends View {
     private SceneMode sceneMode = SceneMode.PLATFORM;
     @Getter @Setter
     private DrawMode drawMode = DrawMode.DRAW;
-    @Getter
-    private SceneBackground sceneBackground = SceneBackground.NIGHT;
     @Getter
     private int sceneRange = 6;
     // runtime
@@ -115,66 +87,13 @@ public class SceneView extends View {
             layout.widthPercent(100);
             layout.flex(1);
         });
-        // FBO-backed scene: the world (and the particle pipeline) render into a dedicated full-viewport
-        // framebuffer instead of a sub-viewport of the window — so screen-space shader inputs
-        // (gl_FragCoord / U_ViewPort / scene color+depth) are always consistent. The FBO is resized to
-        // the panel's real pixel resolution every tick (see screenTick).
         sceneEditor.scene
-                .createScene(level, true, null)
+                .createScene(level)
                 .setTickWorld(true)
                 .useCacheBuffer();
         this.addChild(sceneEditor);
         this.addChild(fxObjectInfoView);
         this.addChild(fxObjectAnimationView);
-        applySceneBackground();
-        // The MC-style skybox (dome + sun/moon/stars) draws right after the clear, before the world.
-        var renderer = sceneEditor.scene.getRenderer();
-        if (renderer != null) {
-            renderer.setBeforeWorldRender(r -> SceneSkyRenderer.render(r, sceneBackground));
-        }
-    }
-
-    public void setSceneBackground(SceneBackground background) {
-        if (background == null || this.sceneBackground == background) return;
-        this.sceneBackground = background;
-        applySceneBackground();
-    }
-
-    /** Push the selected background's horizon color as the scene FBO's opaque clear color. */
-    private void applySceneBackground() {
-        if (sceneEditor.scene.getRenderer() instanceof com.lowdragmc.lowdraglib2.client.scene.FBOWorldSceneRenderer fboRenderer) {
-            var color = sceneBackground.horizonColor;
-            fboRenderer.setClearColor(
-                    ((color >> 16) & 0xFF) / 255f,
-                    ((color >> 8) & 0xFF) / 255f,
-                    (color & 0xFF) / 255f,
-                    1f);
-        }
-    }
-
-    /** The scene's offscreen render target when the FBO renderer is active (else null). */
-    @org.jetbrains.annotations.Nullable
-    public com.mojang.blaze3d.pipeline.RenderTarget getSceneRenderTarget() {
-        return sceneEditor.scene.getRenderer() instanceof com.lowdragmc.lowdraglib2.client.scene.FBOWorldSceneRenderer fboRenderer
-                ? fboRenderer.getFbo() : null;
-    }
-
-    /**
-     * Keep the scene FBO at the panel's true pixel resolution: the element's content size is in
-     * GUI-scaled units, so multiply by the window's gui scale to get real framebuffer pixels — a resize
-     * of the panel or a gui-scale change retargets the FBO (cheap no-op when unchanged).
-     */
-    @Override
-    public void screenTick() {
-        super.screenTick();
-        if (sceneEditor.scene.getRenderer() instanceof com.lowdragmc.lowdraglib2.client.scene.FBOWorldSceneRenderer fboRenderer) {
-            var guiScale = Minecraft.getInstance().getWindow().getGuiScale();
-            int width = Math.max(1, (int) Math.round(sceneEditor.scene.getContentWidth() * guiScale));
-            int height = Math.max(1, (int) Math.round(sceneEditor.scene.getContentHeight() * guiScale));
-            if (width != fboRenderer.getResolutionWidth() || height != fboRenderer.getResolutionHeight()) {
-                fboRenderer.setFBOSize(width, height);
-            }
-        }
     }
 
     public void clearScene() {
@@ -358,27 +277,6 @@ public class SceneView extends View {
                                 if (event.currentElement instanceof Selector selector) {
                                     if (selector.getValue() != getDrawMode()) {
                                         selector.setValue(getDrawMode(), false);
-                                    }
-                                }
-                            }),
-                    new Selector<SceneBackground>()
-                            .setCandidates(List.of(SceneBackground.values()))
-                            .setValue(getSceneBackground(), false)
-                            .setOnValueChanged(SceneView.this::setSceneBackground)
-                            .setCandidateUIProvider(candidate -> new Label()
-                                    .textStyle(style -> style
-                                            .textAlignHorizontal(Horizontal.LEFT)
-                                            .textAlignVertical(Vertical.CENTER))
-                                    .setText(candidate == null ? "---" : candidate.translateKey))
-                            .layout(layout -> {
-                                layout.heightPercent(100);
-                                layout.flex(1);
-                            })
-                            .style(style -> style.tooltips("editor.scene_background"))
-                            .addEventListener(UIEvents.TICK, event -> {
-                                if (event.currentElement instanceof Selector selector) {
-                                    if (selector.getValue() != getSceneBackground()) {
-                                        selector.setValue(getSceneBackground(), false);
                                     }
                                 }
                             }),

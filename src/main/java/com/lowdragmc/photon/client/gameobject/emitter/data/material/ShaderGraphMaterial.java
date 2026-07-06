@@ -24,7 +24,9 @@ import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassP
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.lowdragmc.photon.client.shadergraph.runtime.ShaderGraphRuntime;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
+import com.mojang.blaze3d.systems.RenderSystem;
 import dev.vfyjxf.taffy.style.AlignItems;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.core.HolderLookup;
@@ -152,13 +154,37 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             viewport.set((float) GlStateManager.Viewport.x(), (float) GlStateManager.Viewport.y(),
                     (float) GlStateManager.Viewport.width(), (float) GlStateManager.Viewport.height());
         }
+        // KGBuiltinUniforms binds kg_CameraPos to the GAME's main camera — wrong in the editor SceneView
+        // (orbit camera). Override with the pipeline's actual render camera, the one particles are rendered
+        // camera-relative to, so CameraNode / WorldToScreenUV "absolute" are correct in the editor scene and
+        // in-world alike (mirrors CustomShaderMaterial's U_CameraPosition). Runs after KGBuiltinUniforms.bind
+        // in getShader(), so it wins.
+        var cameraPos = shader.getUniform("kg_CameraPos");
+        if (cameraPos != null) {
+            var camera = Optional.ofNullable(RenderPassPipeline.getCurrent())
+                    .map(RenderPassPipeline::getCamera).orElse(null);
+            if (camera != null) {
+                var p = camera.getPosition();
+                cameraPos.set((float) p.x, (float) p.y, (float) p.z);
+            }
+        }
+        // Same story: KGBuiltinUniforms binds kg_Time (the Time node) from the WORLD clock
+        // (mc.level.getGameTime()), which ignores the emitter timeline (play/pause/scrub) and disagrees
+        // with the GameTime node — vanilla GameTime IS driven by Photon from the particle time. Override
+        // kg_Time to that same particle time: RenderSystem's normalized shader game time (what Photon sets
+        // each render) scaled to KG's seconds (24000 ticks = 1200 s), so Time and GameTime nodes agree and
+        // freeze/scrub with the emitter.
+        var engineTime = shader.getUniform("kg_Time");
+        if (engineTime != null) {
+            engineTime.set(RenderSystem.getShaderGameTime() * 1200f);
+        }
         if (compiled.usesSceneColor() || compiled.usesSceneDepth()) {
             var sampler = Optional.ofNullable(RenderPassPipeline.getCurrent())
                     .map(RenderPassPipeline::getSceneSampler);
             shader.setSampler(PhotonShaderCompiler.SCENE_COLOR,
-                    sampler.map(target -> target.getColorTextureId()).orElse(-1));
+                    sampler.map(RenderTarget::getColorTextureId).orElse(-1));
             shader.setSampler(PhotonShaderCompiler.SCENE_DEPTH,
-                    sampler.map(target -> target.getDepthTextureId()).orElse(-1));
+                    sampler.map(RenderTarget::getDepthTextureId).orElse(-1));
         }
     }
 
