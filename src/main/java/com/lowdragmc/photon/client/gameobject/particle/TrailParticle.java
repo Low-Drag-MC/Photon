@@ -49,7 +49,7 @@ public class TrailParticle implements IParticle {
      * Life cycle
      */
     @Setter @Getter
-    protected int delay;
+    protected float delay; // fractional ticks: consumed by dt per step, not one whole tick per substep
     @Setter @Getter
     protected boolean isRemoved;
     @Getter
@@ -176,7 +176,7 @@ public class TrailParticle implements IParticle {
     @Override
     public void updateTick(float dt) {
         if (delay > 0) {
-            delay--;
+            delay -= dt;
             return;
         }
 

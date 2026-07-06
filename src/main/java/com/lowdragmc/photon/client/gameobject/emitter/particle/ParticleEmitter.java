@@ -32,6 +32,7 @@ import org.joml.Vector3f;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * @author KilaBash
@@ -351,6 +352,14 @@ public class ParticleEmitter extends Emitter {
      *  by parallel particle updates; see {@link #gatherForceFields}). */
     private List<ForceFieldObject> activeForceFields = List.of();
 
+    /** Sub-emitter spawns scheduled from particle updateTick (possibly on parallelStream workers);
+     *  drained on the game thread at the end of {@link #emitParticle(float)}, same tick. */
+    private final Queue<Runnable> pendingSubEmitterSpawns = new ConcurrentLinkedQueue<>();
+
+    public void scheduleSubEmitterSpawn(Runnable spawn) {
+        pendingSubEmitterSpawns.add(spawn);
+    }
+
     public List<ForceFieldObject> getActiveForceFields() {
         return activeForceFields;
     }
@@ -436,6 +445,11 @@ public class ParticleEmitter extends Emitter {
                 }
             }
         }
+
+        // drain sub-emitter spawns collected during (possibly parallel) particle updates
+        for (Runnable spawn; (spawn = pendingSubEmitterSpawns.poll()) != null; ) {
+            spawn.run();
+        }
     }
 
     @Override
@@ -465,6 +479,7 @@ public class ParticleEmitter extends Emitter {
             runtime.clear(); // drop timeline overrides; fall back to authored config
         }
         this.particles.clear();
+        this.pendingSubEmitterSpawns.clear();
         this.hasFirstUpdate = false;
         this.particleBatchCount = 1;
         this.particleBatchCursor = 0;
@@ -505,6 +520,7 @@ public class ParticleEmitter extends Emitter {
         super.remove(force);
         if (force) {
             particles.clear();
+            pendingSubEmitterSpawns.clear();
         }
     }
 

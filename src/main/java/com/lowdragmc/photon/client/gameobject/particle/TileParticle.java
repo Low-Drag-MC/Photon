@@ -69,7 +69,7 @@ public class TileParticle implements IParticle {
      * Life cycle
      */
     @Setter @Getter
-    protected int delay;
+    protected float delay; // fractional ticks: consumed by dt per step, not one whole tick per substep
     @Setter @Getter
     protected float age;
     @Setter @Getter
@@ -168,6 +168,9 @@ public class TileParticle implements IParticle {
 
     @Override
     public float getT(float partialTicks) {
+        if (getLifetime() <= 0) {
+            return Mth.clamp(t, 0, 1); // infinite particle: hold current t instead of dividing by zero
+        }
         return Mth.clamp(t + partialTicks / getLifetime(), 0, 1);
     }
 
@@ -375,7 +378,7 @@ public class TileParticle implements IParticle {
      */
     public void updateTick(float dt) {
         if (delay > 0) {
-            delay--;
+            delay -= dt;
             return;
         }
 
@@ -383,9 +386,17 @@ public class TileParticle implements IParticle {
             runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Birth);
         }
 
-        // update life cycle
+        // death: snap t to 1 and apply the final visual state (no motion) so over-lifetime curves
+        // reach their endpoints on the frames the dead particle still renders before removal.
+        // lifetime <= 0 intentionally never age-dies (infinite particles; they die via collision
+        // or emitter removal).
         if (this.age >= this.lifetime && lifetime > 0) {
             this.age += dt;
+            this.t = 1;
+            this.updateColor();
+            this.updateSize();
+            this.updateRotation();
+            this.updateLight();
             setRemoved(true);
             if (runtime.subEmitters.isEnable()) {
                 runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
@@ -393,16 +404,17 @@ public class TileParticle implements IParticle {
             return;
         }
         this.age += dt;
+        if (lifetime > 0) {
+            // recompute BEFORE update so curves sample this step's t (was one tick late), and clamp:
+            // fractional dt can push age past lifetime here, which previously produced t > 1
+            t = Math.min(age / lifetime, 1f);
+        }
 
         // update data
         update(dt);
 
         if (runtime.subEmitters.isEnable()) {
-            runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Tick);
-        }
-
-        if (lifetime > 0) {
-            t = age / lifetime;
+            runtime.subEmitters.triggerTickEvent(this, dt);
         }
     }
 
@@ -484,17 +496,14 @@ public class TileParticle implements IParticle {
 
         // update internal velocity
         if (!runtime.physics.isEnable()) return;
-        // detect collision by comparing the desired displacement vs the collided one (dt-independent)
+        // detect collision by comparing the desired displacement vs the collided one (dt-independent);
+        // NaN (0/0, unmoved axis with zero desire) compares false, so it is not treated as blocked
         if (runtime.physics.hasCollision() && !this.collided) {
-            var bounceChance = runtime.physics.getBounceChance(this);
-            var bounceRate = runtime.physics.getBounceRate(this);
-            var bounceSpreadRate = runtime.physics.getBounceSpreadRate(this);
-            if (Math.abs(desiredX) / Math.abs(moveX) > 1.001) {
-                updateCollisionBounce(bounceChance, velocity, bounceRate, bounceSpreadRate, Direction.Axis.X);
-            } else if (Math.abs(desiredY) / Math.abs(moveY) > 1.001) {
-                updateCollisionBounce(bounceChance, velocity, bounceRate, bounceSpreadRate, Direction.Axis.Y);
-            } else if (Math.abs(desiredZ) / Math.abs(moveZ) > 1.001) {
-                updateCollisionBounce(bounceChance, velocity, bounceRate, bounceSpreadRate, Direction.Axis.Z);
+            var blockedX = Math.abs(desiredX) / Math.abs(moveX) > 1.001;
+            var blockedY = Math.abs(desiredY) / Math.abs(moveY) > 1.001;
+            var blockedZ = Math.abs(desiredZ) / Math.abs(moveZ) > 1.001;
+            if (blockedX || blockedY || blockedZ) {
+                updateCollisionBounce(blockedX, blockedY, blockedZ);
             }
         }
 
@@ -516,22 +525,22 @@ public class TileParticle implements IParticle {
         }
     }
 
-    private void updateCollisionBounce(float bounceChance, Vector3f velocity, float bounceRate, float bounceSpreadRate, Direction.Axis axis) {
+    private void updateCollisionBounce(boolean blockedX, boolean blockedY, boolean blockedZ) {
+        var bounceChance = runtime.physics.getBounceChance(this);
         if (bounceChance < 1 && bounceChance < randomSource.nextFloat()) {
             this.collided = true;
         } else {
-            var newVelocity = getSpaceTransformInverse().transformDirection(new Vector3f(
-                    axis == Direction.Axis.X ? -velocity.x * bounceRate :
-                            (velocity.x + (bounceSpreadRate > 0 ?
-                                    (float) (bounceSpreadRate * randomSource.nextGaussian()) : 0)),
-                    axis == Direction.Axis.Y ? -velocity.y * bounceRate :
-                            (velocity.y + (bounceSpreadRate > 0 ?
-                                    (float) (bounceSpreadRate * randomSource.nextGaussian()) : 0)),
-                    axis == Direction.Axis.Z ? -velocity.z * bounceRate :
-                            (velocity.z + (bounceSpreadRate > 0 ?
-                                    (float) (bounceSpreadRate * randomSource.nextGaussian()) : 0))
-            ));
-            setInternalVelocity(newVelocity);
+            var bounceRate = runtime.physics.getBounceRate(this);
+            var bounceSpreadRate = runtime.physics.getBounceSpreadRate(this);
+            // reflect only the STORED velocity (projected to world for axis alignment) — reflecting
+            // getRealVelocity() would bake the per-call VOL/force/inherit/multiplier contributions
+            // into the stored velocity, compounding on every bounce
+            var velocity = getSpaceTransform().transformDirection(new Vector3f(velocityX, velocityY, velocityZ));
+            velocity.set(
+                    blockedX ? -velocity.x * bounceRate : spread(velocity.x, bounceSpreadRate),
+                    blockedY ? -velocity.y * bounceRate : spread(velocity.y, bounceSpreadRate),
+                    blockedZ ? -velocity.z * bounceRate : spread(velocity.z, bounceSpreadRate));
+            setInternalVelocity(getSpaceTransformInverse().transformDirection(velocity));
         }
         if (runtime.physics.isEnable() && runtime.physics.isRemovedWhenCollided()) {
             this.setRemoved(true);
@@ -546,6 +555,10 @@ public class TileParticle implements IParticle {
                 runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.FirstCollision);
             }
         }
+    }
+
+    private float spread(float velocity, float spreadRate) {
+        return spreadRate > 0 ? velocity + (float) (spreadRate * randomSource.nextGaussian()) : velocity;
     }
 
     /**

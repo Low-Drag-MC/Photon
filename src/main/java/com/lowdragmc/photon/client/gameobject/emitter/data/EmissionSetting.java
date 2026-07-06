@@ -119,20 +119,43 @@ public class EmissionSetting implements IConfigurable, IPersistedSerializable {
                 particleEmitter.setAccumulatedDistance(particleEmitter.getAccumulatedDistance() - emitDistance * distanceValue);
             }
 
+            var duration = particleEmitter.getLifetime();
+            var looping = particleEmitter.isLooping() && duration > 0;
             for (var bust : config.bursts) {
                 var count = bust.count.get(randomSource, t).intValue();
-                // burst trigger ages: bust.time, +interval, ... (limited by cycles when > 0); fire each
-                // trigger whose age lands in [ageStart, ageEnd).
-                int firstK = (int) Math.ceil((ageStart - bust.time) / bust.interval);
-                if (firstK < 0) firstK = 0;
-                for (int k = firstK; ; k++) {
-                    if (bust.cycles > 0 && k >= bust.cycles) break;
-                    float triggerAge = bust.time + (long) k * bust.interval;
-                    if (triggerAge < ageStart) continue;
-                    if (triggerAge >= ageEnd) break;
-                    if (randomSource.nextFloat() < bust.probability) {
-                        number += count;
+                if (looping) {
+                    // looping emitters: ageF grows unbounded while the effect repeats every `duration`
+                    // ticks, so evaluate bursts against the age wrapped into [0, duration) — bursts
+                    // re-fire each loop, cycles caps triggers within one loop iteration.
+                    var dt = Math.min(ageEnd - ageStart, duration); // dt > duration: clamp to one full loop
+                    var loopedStart = ageStart % duration;
+                    var loopedEnd = loopedStart + dt;
+                    number += burstTriggers(bust, count, randomSource, loopedStart, Math.min(loopedEnd, duration));
+                    if (loopedEnd > duration) { // slice crosses the loop boundary: second sub-window from 0
+                        number += burstTriggers(bust, count, randomSource, 0, loopedEnd - duration);
                     }
+                } else {
+                    number += burstTriggers(bust, count, randomSource, ageStart, ageEnd);
+                }
+            }
+            return number;
+        }
+
+        /**
+         * Fire each burst trigger age ({@code time + k*interval}, {@code k} limited by cycles when > 0)
+         * that lands in {@code [start, end)}.
+         */
+        private int burstTriggers(Burst bust, int count, RandomSource randomSource, float start, float end) {
+            var number = 0;
+            int firstK = (int) Math.ceil((start - bust.time) / bust.interval);
+            if (firstK < 0) firstK = 0;
+            for (int k = firstK; ; k++) {
+                if (bust.cycles > 0 && k >= bust.cycles) break;
+                float triggerAge = bust.time + (long) k * bust.interval;
+                if (triggerAge < start) continue;
+                if (triggerAge >= end) break;
+                if (randomSource.nextFloat() < bust.probability) {
+                    number += count;
                 }
             }
             return number;

@@ -12,8 +12,8 @@ import net.minecraft.resources.ResourceLocation;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author KilaBash
@@ -23,7 +23,9 @@ import java.util.Map;
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 public class FXHelper {
-    private final static Map<ResourceLocation, FX> CACHE = new HashMap<>();
+    // concurrent: sub-emitter spawns may query the cache while other threads do (never mutate mid-load;
+    // loadFX does not re-enter getFX, so computeIfAbsent cannot recurse)
+    private final static Map<ResourceLocation, FX> CACHE = new ConcurrentHashMap<>();
     public static final String FX_PATH = "fx/";
 
     public static int clearCache() {

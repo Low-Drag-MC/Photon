@@ -20,11 +20,13 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.IntTag;
+import net.minecraft.util.Mth;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -73,6 +75,23 @@ public class SubEmittersSetting extends ToggleGroup {
         public void triggerEvent(TileParticle father, Event event) {
             for (Emitter candidate : emitters.get()) {
                 if (candidate.event == event) {
+                    candidate.spawnEmitter(father);
+                }
+            }
+        }
+
+        /**
+         * Tick event with integer-tick-crossing semantics: fires when this step crossed a whole tick
+         * and that tick matches the candidate's tickInterval. Robust under fractional dt (sub-stepped
+         * timeline speed), where the particle's float age almost never lands exactly on an integer.
+         */
+        public void triggerTickEvent(TileParticle father, float dt) {
+            var newTick = Mth.floor(father.getAge());
+            if (newTick <= Mth.floor(father.getAge() - dt)) {
+                return; // no whole tick crossed this step (dt <= 1 => at most one crossing)
+            }
+            for (Emitter candidate : emitters.get()) {
+                if (candidate.event == Event.Tick && newTick % candidate.tickInterval == 0) {
                     candidate.spawnEmitter(father);
                 }
             }
@@ -142,35 +161,51 @@ public class SubEmittersSetting extends ToggleGroup {
         protected boolean inheritDuration = false;
 
         public void spawnEmitter(TileParticle father) {
-            if (fxLocation != null && father.getAge() % tickInterval == 0 &&
-                    father.getRandomSource().nextFloat() < emitProbability.get(father.getT(0),
-                            () -> father.getMemRandom("sub_emitter_probability")).floatValue()) {
-                var fx = FXHelper.getFX(fxLocation);
-                if (fx == null) return;
-                var runtime = fx.createRuntime();
-                runtime.root.updatePos(father.getWorldPos());
-                for (var value : runtime.objects.values()) {
-                    if (value instanceof IParticleEmitter particleEmitter) {
-                        if (inheritLifetime) {
-                            particleEmitter.setAge((int) father.getAge());
-                        }
-                        if (inheritDuration) {
-                            particleEmitter.self().setLifetime(father.getLifetime());
-                        }
-                        if (inheritColor) {
-                            particleEmitter.setRGBAColor(father.getRealColor(0));
-                        }
-                        if (inheritSize) {
-                            particleEmitter.transform().scale(father.getRealSize(0));
-                        }
-                        if (inheritRotation) {
-                            var xyz = father.getRealRotation(0);
-                            particleEmitter.transform().rotation(new Quaternionf().rotationXYZ(xyz.x, xyz.y, xyz.z));
-                        }
+            if (fxLocation == null) {
+                return;
+            }
+            // probability roll stays here: the particle's RandomSource is confined to its update thread
+            if (father.getRandomSource().nextFloat() >= emitProbability.get(father.getT(0),
+                    () -> father.getMemRandom("sub_emitter_probability")).floatValue()) {
+                return;
+            }
+            // FXHelper.getFX + FXRuntime.emmit (particle engine) are not thread-safe: particle updates
+            // may run on parallelStream workers, so defer the spawn to the game thread — the owning
+            // emitter drains it at the end of the same tick (deferred in serial mode too, so ordering
+            // is mode-independent; a dead particle's fields stay valid until next tick's removal).
+            if (father.getEmitter() instanceof ParticleEmitter particleEmitter) {
+                particleEmitter.scheduleSubEmitterSpawn(() -> doSpawn(father));
+            } else {
+                doSpawn(father); // non-ParticleEmitter owners never parallel-update TileParticles
+            }
+        }
+
+        private void doSpawn(TileParticle father) {
+            var fx = FXHelper.getFX(fxLocation);
+            if (fx == null) return;
+            var runtime = fx.createRuntime();
+            runtime.root.updatePos(father.getWorldPos());
+            for (var value : runtime.objects.values()) {
+                if (value instanceof IParticleEmitter particleEmitter) {
+                    if (inheritLifetime) {
+                        particleEmitter.setAge((int) father.getAge());
+                    }
+                    if (inheritDuration) {
+                        particleEmitter.self().setLifetime(father.getLifetime());
+                    }
+                    if (inheritColor) {
+                        particleEmitter.setRGBAColor(father.getRealColor(0));
+                    }
+                    if (inheritSize) {
+                        particleEmitter.transform().scale(father.getRealSize(0));
+                    }
+                    if (inheritRotation) {
+                        var xyz = father.getRealRotation(0);
+                        particleEmitter.transform().rotation(new Quaternionf().rotationXYZ(xyz.x, xyz.y, xyz.z));
                     }
                 }
-                runtime.emmit(father.getEmitter().getEffectExecutor());
             }
+            runtime.emmit(father.getEmitter().getEffectExecutor());
         }
 
         @Override
