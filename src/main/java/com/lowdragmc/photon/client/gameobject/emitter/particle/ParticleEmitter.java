@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
 import com.google.common.collect.Queues;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
@@ -22,6 +23,9 @@ import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.phys.AABB;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -271,9 +275,64 @@ public class ParticleEmitter extends Emitter {
         return new TileParticle(this, config);
     }
 
+    /** Read-only identity fallbacks for world simulation space (never mutated by callers). */
+    private static final Matrix4f IDENTITY = new Matrix4f();
+
+    /**
+     * Resolve the transform defining this emitter's simulation space, or null for world space (identity).
+     * Custom space falls back to world space while the referenced transform is unresolved.
+     */
+    @Nullable
+    protected Transform resolveSimSpaceTransform() {
+        var space = config.getSimulationSpace();
+        // null-guard: unknown enum names deserialize to null (legacy data)
+        if (space == null || space == ParticleConfig.Space.World) {
+            return null;
+        }
+        if (space == ParticleConfig.Space.Local) {
+            return transform();
+        }
+        return config.customSpace.getTransform(getScene());
+    }
+
+    @Override
+    public Matrix4f getSimToWorld() {
+        var simSpace = resolveSimSpaceTransform();
+        return simSpace == null ? IDENTITY : simSpace.localToWorldMatrix();
+    }
+
+    @Override
+    public Matrix4f getWorldToSim() {
+        var simSpace = resolveSimSpaceTransform();
+        return simSpace == null ? IDENTITY : simSpace.worldToLocalMatrix();
+    }
+
+    @Override
+    public Vector3f getSimSpaceScale() {
+        var simSpace = resolveSimSpaceTransform();
+        return simSpace == null ? new Vector3f(1) : simSpace.scale();
+    }
+
+    @Override
+    public Quaternionf getSimSpaceRotation() {
+        var simSpace = resolveSimSpaceTransform();
+        return simSpace == null ? new Quaternionf() : simSpace.rotation();
+    }
+
     @Override
     protected void onTickBegin() {
         super.onTickBegin();
+        // Transform's lazy matrix caches are not synchronized; warm them on the game thread
+        // before particles may update via parallelStream.
+        transform().localToWorldMatrix();
+        transform().worldToLocalMatrix();
+        var simSpace = resolveSimSpaceTransform();
+        if (simSpace != null) {
+            simSpace.localToWorldMatrix();
+            simSpace.worldToLocalMatrix();
+            simSpace.scale();
+            simSpace.rotation();
+        }
         for (var queue : particles.values()) {
             for (var particle : queue) {
                 particle.syncOrigin();

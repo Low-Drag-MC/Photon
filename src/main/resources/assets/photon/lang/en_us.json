@@ -434,6 +434,8 @@
   "ParticleConfig.startRotation": "Start Rotation",
   "ParticleConfig.startColor": "Start Color",
   "ParticleConfig.simulationSpace": "Simulation Space",
+  "ParticleConfig.customSpace": "Custom Space",
+  "photon.emitter.config.customSpace.tips": "Custom space to simulate particles in (particles move with the referenced transform)",
   "ParticleConfig.maxParticles": "Max Particles",
   "ParticleConfig.parallelUpdate": "Parallel Update",
   "ParticleConfig.parallelRendering": "Parallel Rendering",

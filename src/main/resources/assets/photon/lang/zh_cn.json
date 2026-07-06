@@ -435,6 +435,8 @@
   "ParticleConfig.startRotation": "起始旋转",
   "ParticleConfig.startColor": "起始颜色",
   "ParticleConfig.simulationSpace": "模拟空间",
+  "ParticleConfig.customSpace": "自定义空间",
+  "photon.emitter.config.customSpace.tips": "模拟粒子所在的自定义空间（粒子会随引用的变换移动）",
   "ParticleConfig.maxParticles": "最大粒子数",
   "ParticleConfig.parallelUpdate": "并行更新",
   "ParticleConfig.parallelRendering": "并行渲染",

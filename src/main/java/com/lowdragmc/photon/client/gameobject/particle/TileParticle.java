@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
+import com.lowdragmc.photon.client.gameobject.emitter.data.ForceOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
@@ -48,7 +49,7 @@ public class TileParticle implements IParticle {
     /**
      * Basic data
      */
-    protected float localX, localY, localZ; // local position
+    protected float localX, localY, localZ; // position in simulation space (see IParticleEmitter#getSimToWorld)
     protected float localXo, localYo, localZo;
     protected float rotationX = 180, rotationY = 180, rotationZ = 180; // rotation
     protected float rotationXo = 180, rotationYo = 180, rotationZo = 180;
@@ -56,7 +57,7 @@ public class TileParticle implements IParticle {
     protected float sizeXo = 1, sizeYo = 1, sizeZo = 1;
     protected float r = 1, g = 1, b = 1, a = 1; // color
     protected float ro = 1, go = 1, bo = 1, ao = 1;
-    protected float velocityX, velocityY, velocityZ; // velocity
+    protected float velocityX, velocityY, velocityZ; // velocity in simulation space
     protected int light = -1;
     protected AABB boundingBox = new AABB(-0.5, -0.5, -0.5, 0.5, 0.5, 0.5);
     /**
@@ -79,10 +80,6 @@ public class TileParticle implements IParticle {
     // runtime
     @Getter
     protected float t;
-    protected Matrix4f initialTransform;
-    protected Matrix4f initialTransformInverse;
-    @Setter
-    protected Vector3f initialScale;
     protected Vector3f initialSize;
     protected Vector3f initialRotation;
     protected Vector4f initialColor;
@@ -119,9 +116,6 @@ public class TileParticle implements IParticle {
             particleBatchIndex = 0;
             particleBatchCount = 1;
         }
-        this.initialTransform = emitter.transform().localToWorldMatrix();
-        this.initialTransformInverse = emitter.transform().worldToLocalMatrix();
-        this.initialScale = emitter.transform().scale();
         var emitterT = emitter.getT();
         // start values come from the runtime layer (timeline override if set, else authored config)
         setDelay(runtime.startDelay.get().get(randomSource, emitterT).intValue());
@@ -133,11 +127,26 @@ public class TileParticle implements IParticle {
         }
 
         runtime.shape.setupParticle(this, emitter);
+        // the shape wrote emitter-local position/velocity; for non-Local simulation spaces,
+        // re-express them in simulation space using the emitter's spawn-time pose
+        if (config.getSimulationSpace() != ParticleConfig.Space.Local) {
+            var emitterToWorld = emitter.transform().localToWorldMatrix();
+            var worldToSim = emitter.getWorldToSim();
+            var pos = new Vector3f(localX, localY, localZ).mulPosition(emitterToWorld).mulPosition(worldToSim);
+            setLocalPos(pos, true);
+            var vel = worldToSim.transformDirection(emitterToWorld.transformDirection(new Vector3f(velocityX, velocityY, velocityZ)));
+            setInternalVelocity(vel);
+        }
         if (runtime.inheritVelocity.isEnable() && runtime.inheritVelocity.getMode() == InheritVelocitySetting.Mode.INITIAL) {
             addInternalVelocity(getSpaceTransformInverse().transformDirection(runtime.inheritVelocity.getVelocity(emitter)));
         }
         mulInternalVelocity(runtime.startSpeed.get().get(randomSource, emitterT).floatValue());
         this.initialSize = runtime.startSize.get().get(randomSource, emitterT);
+        // non-Local particles are not rendered through the emitter matrix, so bake the emitter's
+        // spawn-time scale (relative to the simulation space) into the size instead
+        if (config.getSimulationSpace() != ParticleConfig.Space.Local) {
+            this.initialSize.mul(emitter.transform().scale().div(emitter.getSimSpaceScale()));
+        }
         this.initialRotation = runtime.startRotation.get().get(randomSource, emitterT).mul(Mth.TWO_PI / 360);
         var color = runtime.startColor.get().get(randomSource, emitterT).intValue();
         this.initialColor = new Vector4f(ColorUtils.red(color), ColorUtils.green(color), ColorUtils.blue(color), ColorUtils.alpha(color));
@@ -288,33 +297,25 @@ public class TileParticle implements IParticle {
     }
 
     /**
-     * from local to world
+     * from simulation space to world space (read-only matrix)
      */
     public Matrix4f getSpaceTransform() {
-        return config.getSimulationSpace() == ParticleConfig.Space.Local ?
-                emitter.transform().localToWorldMatrix() :
-                initialTransform;
+        return emitter.getSimToWorld();
     }
 
     /**
-     * from world to local
-u     */
+     * from world space to simulation space (read-only matrix)
+     */
     public Matrix4f getSpaceTransformInverse() {
-        return config.getSimulationSpace() == ParticleConfig.Space.Local ?
-                emitter.transform().worldToLocalMatrix() :
-                initialTransformInverse;
+        return emitter.getWorldToSim();
     }
 
     public Vector3f getSpaceScale() {
-        return config.getSimulationSpace() == ParticleConfig.Space.Local ?
-                emitter.transform().scale() :
-                initialScale;
+        return emitter.getSimSpaceScale();
     }
 
     public Quaternionf getSpaceRotation() {
-        return config.getSimulationSpace() == ParticleConfig.Space.Local ?
-                emitter.transform().rotation() :
-                new Quaternionf();
+        return emitter.getSimSpaceRotation();
     }
 
     public Vector3f getWorldPos(float partialTicks) {
@@ -529,7 +530,8 @@ u     */
     }
 
     /**
-     * It's the internal velocity, which is the local velocity
+     * Velocity in simulation space: the stored velocity plus the (non-persistent, re-evaluated
+     * per call) velocity-over-lifetime addition.
      */
     public Vector3f getInternalVelocity() {
         var velocity = new Vector3f(velocityX, velocityY, velocityZ);
@@ -537,19 +539,27 @@ u     */
             var velocityAddition = runtime.velocityOverLifetime.getVelocityAddition(this);
             velocity.add(velocityAddition);
         }
-        if (runtime.forceOverLifetime.isEnable() && runtime.forceOverLifetime.getSimulationSpace() == ParticleConfig.Space.Local) {
-            velocity.add(runtime.forceOverLifetime.getForce(this));
-        }
         return velocity;
     }
 
     /**
-     * It's the total velocity, which is the world velocity
+     * The total world-space velocity. Composition order:
+     * <ol>
+     *     <li>{@code simToWorld * (stored velocity + velocityOverLifetime addition)}</li>
+     *     <li>{@code + forceOverLifetime} (Local: rotated by the live emitter matrix, World: as-is)</li>
+     *     <li>{@code + inheritVelocity} (CURRENT mode)</li>
+     *     <li>{@code * velocityOverLifetime speed modifier}</li>
+     * </ol>
+     * Must stay side-effect-free and cheap; it is called several times per tick/frame.
      */
     public Vector3f getRealVelocity() {
         var velocity = getSpaceTransform().transformDirection(getInternalVelocity());
-        if (runtime.forceOverLifetime.isEnable() && runtime.forceOverLifetime.getSimulationSpace() == ParticleConfig.Space.World) {
-            velocity.add(runtime.forceOverLifetime.getForce(this));
+        if (runtime.forceOverLifetime.isEnable()) {
+            var force = runtime.forceOverLifetime.getForce(this);
+            if (runtime.forceOverLifetime.getSimulationSpace() == ForceOverLifetimeSetting.ForceSpace.Local) {
+                emitter.transform().localToWorldMatrix().transformDirection(force);
+            }
+            velocity.add(force);
         }
         if (runtime.inheritVelocity.isEnable() && runtime.inheritVelocity.getMode() == InheritVelocitySetting.Mode.CURRENT) {
             velocity.add(runtime.inheritVelocity.getVelocity(emitter));

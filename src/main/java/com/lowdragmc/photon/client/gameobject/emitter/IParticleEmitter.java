@@ -12,6 +12,8 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.AABB;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
@@ -38,6 +40,37 @@ public interface IParticleEmitter extends IFXObject, IConfigurable {
     int getParticleAmount();
 
     Vector3f getVelocity();
+
+    /**
+     * Particles of this emitter store position/velocity in <b>simulation space</b>
+     * (Local = emitter space, World = world space, Custom = a referenced transform's space).
+     * The returned matrix maps simulation space to world space and must be treated as read-only.
+     * Defaults describe world space (identity).
+     */
+    default Matrix4f getSimToWorld() {
+        return new Matrix4f();
+    }
+
+    /**
+     * The matrix mapping world space to this emitter's simulation space. Read-only.
+     */
+    default Matrix4f getWorldToSim() {
+        return new Matrix4f();
+    }
+
+    /**
+     * The world-space scale of the simulation space (1 for world space).
+     */
+    default Vector3f getSimSpaceScale() {
+        return new Vector3f(1);
+    }
+
+    /**
+     * The world-space rotation of the simulation space (identity for world space).
+     */
+    default Quaternionf getSimSpaceRotation() {
+        return new Quaternionf();
+    }
 
     /**
      * get the box of cull.
