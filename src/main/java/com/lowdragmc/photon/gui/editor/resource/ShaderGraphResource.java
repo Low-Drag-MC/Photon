@@ -1,17 +1,22 @@
 package com.lowdragmc.photon.gui.editor.resource;
 
 import com.lowdragmc.kilagraph.editor.RenderTypeGraphResource;
+import com.lowdragmc.kilagraph.editor.RenderTypeGraphResourceProviderContainer;
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraph;
+import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
+import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
-import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.GraphView;
+import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.ShaderGraphMaterial;
 import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
 import com.lowdragmc.photon.client.shadergraph.gui.ShaderGraphView;
 import net.minecraft.nbt.CompoundTag;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -29,18 +34,17 @@ public class ShaderGraphResource extends RenderTypeGraphResource {
      * resource — set transiently by {@code ShaderGraphMaterial}'s selector dialog to receive the chosen
      * <em>path</em> (the stock selector callback only reports the resource value), cleared on close.
      */
-    @org.jetbrains.annotations.Nullable
-    private java.util.function.Consumer<com.lowdragmc.lowdraglib2.editor.resource.IResourcePath> pathSelectListener;
+    @Nullable
+    private Consumer<IResourcePath> pathSelectListener;
 
     protected ShaderGraphResource() {}
 
-    public void setPathSelectListener(
-            @org.jetbrains.annotations.Nullable java.util.function.Consumer<com.lowdragmc.lowdraglib2.editor.resource.IResourcePath> listener) {
+    public void setPathSelectListener(@Nullable Consumer<IResourcePath> listener) {
         this.pathSelectListener = listener;
     }
 
     @Override
-    public void buildBuiltin(com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider<CompoundTag> provider) {
+    public void buildBuiltin(BuiltinResourceProvider<CompoundTag> provider) {
         // The default particle shader (texture x lit particle color -> fog -> color/alpha) as a starter.
         provider.addResource("default_particle", serializeGraph(createGraph()));
     }
@@ -69,9 +73,9 @@ public class ShaderGraphResource extends RenderTypeGraphResource {
      */
     @Override
     public ResourceProviderContainer<CompoundTag> createResourceProviderContainer(IResourceProvider<CompoundTag> provider) {
-        var container = new com.lowdragmc.kilagraph.editor.RenderTypeGraphResourceProviderContainer(this, provider) {
+        var container = new RenderTypeGraphResourceProviderContainer(this, provider) {
             @Override
-            public void selectResource(com.lowdragmc.lowdraglib2.editor.resource.IResourcePath resourcePath) {
+            public void selectResource(IResourcePath resourcePath) {
                 super.selectResource(resourcePath);
                 if (pathSelectListener != null && resourcePath != null && provider.hasResource(resourcePath)) {
                     pathSelectListener.accept(resourcePath);
@@ -84,7 +88,7 @@ public class ShaderGraphResource extends RenderTypeGraphResource {
 
     @Override
     public IGuiTexture getIcon() {
-        return Icons.WIDGET_CUSTOM;
+        return PhotonIcons.SHADER_GRAPH;
     }
 
     @Override
