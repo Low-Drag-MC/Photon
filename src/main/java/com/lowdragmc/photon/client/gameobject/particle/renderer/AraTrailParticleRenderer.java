@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
+import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailAdditionalGPUDataSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle;
@@ -38,6 +39,14 @@ import static com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailP
 @ParametersAreNonnullByDefault
 public class AraTrailParticleRenderer {
 
+    private final AraTrailConfig config;
+    private final AraTrailInstanceRenderer instanceBackend;
+
+    public AraTrailParticleRenderer(AraTrailConfig config) {
+        this.config = config;
+        this.instanceBackend = new AraTrailInstanceRenderer(config);
+    }
+
     // ---- mesh scratch (rebuilt per trail per frame) ----
     private final List<Vector3f> vertices = new ArrayList<>();
     private final List<Vector3f> normals = new ArrayList<>();
@@ -58,6 +67,38 @@ public class AraTrailParticleRenderer {
     private final Vector4f texTangent = new Vector4f(0);
     private final Vector2f uv = new Vector2f(0);
     private Vector4f color;
+    // ---- per-point walk outputs shared between the mesh path and the instanced collector ----
+    private float walkSectionThickness;
+    private float walkNormalizedLength;
+    private float walkNormalizedSegmentLife;
+    private int flatVa;
+    private int flatVb;
+
+    // reused per-trail life snapshot for renderAgedSpans (render thread only)
+    private float[] savedLivesPool = new float[0];
+
+    // ---- instanced-collection scratch (active during uploadInstances; render thread only) ----
+    private final Matrix4f collectMatrix = new Matrix4f();
+    private final Vector3f collectTmp = new Vector3f();
+    @javax.annotation.Nullable
+    private java.nio.FloatBuffer collectPointBuffer;
+    private boolean collectTube;
+    private int collectPointCount;
+    private int collectSpanBase;
+    private int collectSpanCount;
+    private int collectInstanceCount;
+    private float[] spanPointT = new float[0];
+    private float[] spanPointLife = new float[0];
+
+    /** Visits one discontinuity-delimited span [start..end] (inclusive) of the aged point list. */
+    private interface SpanVisitor {
+        void visit(int start, int end);
+    }
+
+    /** Receives one walked point of a span, with the frame state staged in the walk fields. */
+    private interface PointSink {
+        void point(AraTrailParticle particle, Point[] data, int i, int count, CurveFrame frame, float vCoord);
+    }
 
     public void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
         for (var particle : particles) {
@@ -75,7 +116,6 @@ public class AraTrailParticleRenderer {
         particle.updateDynamicData(partialTicks);
         clearMeshData();
 
-        var config = particle.config;
         var points = particle.getPoints();
 
         // We need at least two points to create a trail mesh.
@@ -83,56 +123,73 @@ public class AraTrailParticleRenderer {
             var worldToTrail = particle.getWorldToTrail();
             Vector3f localCamPosition = worldToTrail.transformPosition(camera.getPosition().toVector3f());
 
-            // ---- per-frame tail smoothing (render-only, non-destructive; restored in finally) ----
-            // The sim removes points at the 20 TPS tick, so the tail would pop a whole segment each 0.05s.
-            // Here we "age" the trail by the current frame fraction so the tail recedes continuously between
-            // ticks: (1) subtract the elapsed life from every point (the smoothness>1 spline then trims dying
-            // sub-points via its life-cull, and segment-over-time tapers advance smoothly), and (2) for the
-            // flat smoothness<=1 path, geometrically retract the oldest point toward the next as it dies so its
-            // last segment shrinks to zero instead of vanishing. All reverted after the mesh build.
-            float ageAmt = partialTicks * particle.emitter.timeScale() / 20f;   // life (seconds) elapsed since last tick
-            float[] savedLives = new float[points.size()];
-            for (int i = 0; i < points.size(); ++i) {
-                savedLives[i] = points.get(i).life;
-                points.get(i).life -= ageAmt;
-            }
-            Point tail = points.getFirst();
-            Vector3f savedTail = null;
-            if (config.smoothness <= 1 && !tail.discontinuous && tail.life < 0) {
-                var next = points.get(1);
-                float lerpDur = next.life - tail.life;   // segment life span (aging cancels in the difference)
-                if (lerpDur > EPSILON) {
-                    float f = Mth.clamp(-tail.life / lerpDur, 0f, 1f);
-                    savedTail = new Vector3f(tail.position);
-                    tail.position = new Vector3f(savedTail).lerp(next.position, f);
-                }
-            }
+            renderAgedSpans(particle, worldToTrail, partialTicks,
+                    (start, end) -> updateSegmentMesh(particle, start, end, localCamPosition));
 
-            // Keep the head smooth between ticks: move the stored last point to the partial-tick-interpolated
-            // emitter position for the mesh build only, then restore it so the tick sim never sees it (render
-            // and tick are both on the client thread, sequential — no concurrent observation).
-            Point head = (!particle.isRemoved() && config.emit && !points.getLast().discontinuous) ? points.getLast() : null;
-            Vector3f savedHead = head == null ? null : new Vector3f(head.position);
-            if (head != null) head.position = worldToTrail.transformPosition(particle.getWorldPosition());
-            try {
-                // get discontinuous point indices:
-                discontinuities.clear();
-                for (int i = 0; i < points.size(); ++i)
-                    if (points.get(i).discontinuous || i == points.size() - 1) discontinuities.add(i);
+            // safe after the state restore: reads only the mesh lists, worldToTrail and the camera
+            renderMesh(particle, buffer, camera);
+        }
+    }
 
-                // generate mesh for each trail segment:
-                int start = 0;
-                for (int i = 0; i < discontinuities.size(); ++i) {
-                    updateSegmentMesh(particle, start, discontinuities.getInt(i), localCamPosition);
-                    start = discontinuities.getInt(i) + 1;
-                }
+    /**
+     * Runs the render-time point mutations (partial-tick aging, tail retract, head snap), visits
+     * every discontinuity-delimited span, and restores the points — shared by the CPU mesh build
+     * and the instanced collector so both see identical aged point state.
+     */
+    private void renderAgedSpans(AraTrailParticle particle, Matrix4f worldToTrail, float partialTicks, SpanVisitor visitor) {
+        var config = particle.config;
+        var points = particle.getPoints();
 
-                renderMesh(particle, buffer, camera);
-            } finally {
-                for (int i = 0; i < points.size(); ++i) points.get(i).life = savedLives[i];
-                if (savedTail != null) tail.position = savedTail;
-                if (head != null) head.position = savedHead; // restore before any tick observes it
+        // ---- per-frame tail smoothing (render-only, non-destructive; restored in finally) ----
+        // The sim removes points at the 20 TPS tick, so the tail would pop a whole segment each 0.05s.
+        // Here we "age" the trail by the current frame fraction so the tail recedes continuously between
+        // ticks: (1) subtract the elapsed life from every point (the smoothness>1 spline then trims dying
+        // sub-points via its life-cull, and segment-over-time tapers advance smoothly), and (2) for the
+        // flat smoothness<=1 path, geometrically retract the oldest point toward the next as it dies so its
+        // last segment shrinks to zero instead of vanishing. All reverted after the mesh build.
+        float ageAmt = partialTicks * particle.emitter.timeScale() / 20f;   // life (seconds) elapsed since last tick
+        if (savedLivesPool.length < points.size()) {
+            savedLivesPool = new float[Math.max(points.size(), savedLivesPool.length * 2)];
+        }
+        float[] savedLives = savedLivesPool; // scoped to this trail: restored in the finally below
+        for (int i = 0; i < points.size(); ++i) {
+            savedLives[i] = points.get(i).life;
+            points.get(i).life -= ageAmt;
+        }
+        Point tail = points.getFirst();
+        Vector3f savedTail = null;
+        if (config.smoothness <= 1 && !tail.discontinuous && tail.life < 0) {
+            var next = points.get(1);
+            float lerpDur = next.life - tail.life;   // segment life span (aging cancels in the difference)
+            if (lerpDur > EPSILON) {
+                float f = Mth.clamp(-tail.life / lerpDur, 0f, 1f);
+                savedTail = new Vector3f(tail.position);
+                tail.position = new Vector3f(savedTail).lerp(next.position, f);
             }
+        }
+
+        // Keep the head smooth between ticks: move the stored last point to the partial-tick-interpolated
+        // emitter position for the mesh build only, then restore it so the tick sim never sees it (render
+        // and tick are both on the client thread, sequential — no concurrent observation).
+        Point head = (!particle.isRemoved() && config.emit && !points.getLast().discontinuous) ? points.getLast() : null;
+        Vector3f savedHead = head == null ? null : new Vector3f(head.position);
+        if (head != null) head.position = worldToTrail.transformPosition(particle.getWorldPosition());
+        try {
+            // get discontinuous point indices:
+            discontinuities.clear();
+            for (int i = 0; i < points.size(); ++i)
+                if (points.get(i).discontinuous || i == points.size() - 1) discontinuities.add(i);
+
+            // visit each trail segment span:
+            int start = 0;
+            for (int i = 0; i < discontinuities.size(); ++i) {
+                visitor.visit(start, discontinuities.getInt(i));
+                start = discontinuities.getInt(i) + 1;
+            }
+        } finally {
+            for (int i = 0; i < points.size(); ++i) points.get(i).life = savedLives[i];
+            if (savedTail != null) tail.position = savedTail;
+            if (head != null) head.position = savedHead; // restore before any tick observes it
         }
     }
 
@@ -337,6 +394,30 @@ public class AraTrailParticleRenderer {
      * Updates mesh for one trail segment:
      */
     private void updateSegmentMesh(AraTrailParticle particle, int start, int end, Vector3f localCamPosition) {
+        walkSpan(particle, start, end, localCamPosition, this::appendMeshPoint);
+    }
+
+    /** The mesh path's point sink: appends the walked point's ribbon pair or tube ring. */
+    private void appendMeshPoint(AraTrailParticle particle, Point[] data, int i, int count, CurveFrame frame, float vCoord) {
+        var config = particle.config;
+        if (config.section.isEnable()) {
+            appendSection(config, data, frame, i, count, walkSectionThickness, vCoord);
+        } else {
+            var modified = appendFlatTrail(config, data, i, count, walkSectionThickness, vCoord, flatVa, flatVb);
+            flatVa = modified[0];
+            flatVb = modified[1];
+        }
+    }
+
+    /**
+     * Walks one span's renderable points (newest→oldest, after the optional NewerOnTop reverse),
+     * computing the per-point frame (tangent/normal/bitangent), composed color, thickness and
+     * texture coordinate exactly as the historical mesh build did, and hands each point to the
+     * sink. Shared by the CPU mesh path and the instanced collector so the math cannot diverge.
+     * Per-point results are staged in the walk fields ({@link #walkSectionThickness},
+     * {@link #walkNormalizedLength}, {@link #walkNormalizedSegmentLife}, tangent/normal/bitangent/color).
+     */
+    private void walkSpan(AraTrailParticle particle, int start, int end, Vector3f localCamPosition, PointSink sink) {
         var config = particle.config;
         var runtime = particle.runtime;
 
@@ -351,7 +432,7 @@ public class AraTrailParticleRenderer {
         if (trail.size() > 1) {
             float totalLength = 0;
             for (int i = 0; i < trail.size() - 1; ++i)
-                totalLength += new Vector3f(data[i].position).distance(data[i + 1].position);
+                totalLength += data[i].position.distance(data[i + 1].position); // read-only, no copy needed
 
             totalLength = Math.max(totalLength, EPSILON);
             float partialLength = 0;
@@ -369,8 +450,30 @@ public class AraTrailParticleRenderer {
             CurveFrame frame = initializeCurveFrame(particle, data[trail.size() - 1].position,
                     data[trail.size() - 2].position);
 
-            int va = 1;
-            int vb = 0;
+            flatVa = 1;
+            flatVb = 0;
+
+            // ---- hoisted loop invariants (bit-identical: these were recomputed per point) ----
+            float normalizedLife = Math.clamp(particle.emitter.getT(), 0, 1);
+            float lifeTime = particle.getLifeTime();
+            var colorMultiplier = particle.getColorMultiplier();
+            float thicknessMultiplier = particle.getThicknessMultiplier();
+            float baseThickness = runtime.thickness.get();
+            var colorOverLength = runtime.colorOverLength.get();
+            var colorOverSegmentTime = runtime.colorOverSegmentTime.get();
+            var thicknessOverSegmentTime = runtime.thicknessOverSegmentTime.get();
+            var thicknessOverLength = runtime.thicknessOverLength.get();
+            java.util.function.Supplier<Float> lengthColorRandom = () -> particle.getMemRandom("trails-colorOverLength");
+            java.util.function.Supplier<Float> segmentColorRandom = () -> particle.getMemRandom("trails-colorOverSegmentTime");
+            java.util.function.Supplier<Float> segmentThicknessRandom = () -> particle.getMemRandom("trails-thicknessOverSegmentTime");
+            java.util.function.Supplier<Float> lengthThicknessRandom = () -> particle.getMemRandom("trails-thicknessOverLength");
+            // colorOverTime / thicknessOverTime sample the (per-trail constant) emitter T
+            var timeColor = runtime.colorOverTime.get().get(normalizedLife, () -> particle.getMemRandom("trails-colorOverTime")).intValue();
+            float timeColorR = ColorUtils.red(timeColor);
+            float timeColorG = ColorUtils.green(timeColor);
+            float timeColorB = ColorUtils.blue(timeColor);
+            float timeColorA = ColorUtils.alpha(timeColor);
+            float timeThickness = runtime.thicknessOverTime.get().get(normalizedLife, () -> particle.getMemRandom("trails-thicknessOverTime")).floatValue();
 
             for (int i = trail.size() - 1; i >= 0; --i)
             {
@@ -431,42 +534,33 @@ public class AraTrailParticleRenderer {
                 bitangent.normalize();
 
                 // Calculate this point's normalized (0,1) lenght and life.
-                float normalizedLength = config.sorting == AraTrailConfig.TrailSorting.OlderOnTop ?
+                walkNormalizedLength = config.sorting == AraTrailConfig.TrailSorting.OlderOnTop ?
                         partialLength / totalLength :
                         (totalLength - partialLength) / totalLength;
-                float normalizedLife = Math.clamp(particle.emitter.getT(), 0, 1);
                 partialLength += sectionLength;
-                float normalizedSegmentLife = Float.isInfinite(particle.getLifeTime()) ? 1 : Mth.clamp(1 - data[i].life / particle.getLifeTime(), 0, 1);
+                walkNormalizedSegmentLife = Float.isInfinite(lifeTime) ? 1 : Mth.clamp(1 - data[i].life / lifeTime, 0, 1);
 
                 // Calculate vertex color:
-                var timeColor = runtime.colorOverTime.get().get(normalizedLife, () -> particle.getMemRandom("trails-colorOverTime")).intValue();
-                var lengthColor = runtime.colorOverLength.get().get(normalizedLength, () -> particle.getMemRandom("trails-colorOverLength")).intValue();
-                var segmentColor = runtime.colorOverSegmentTime.get().get(normalizedSegmentLife, () -> particle.getMemRandom("trails-colorOverSegmentTime")).intValue();
-                color = new Vector4f(data[i].color).mul(particle.getColorMultiplier()).mul(
-                        ColorUtils.red(timeColor) * ColorUtils.red(lengthColor) * ColorUtils.red(segmentColor),
-                        ColorUtils.green(timeColor) * ColorUtils.green(lengthColor) * ColorUtils.green(segmentColor),
-                        ColorUtils.blue(timeColor) * ColorUtils.blue(lengthColor) * ColorUtils.blue(segmentColor),
-                        ColorUtils.alpha(timeColor) * ColorUtils.alpha(lengthColor) * ColorUtils.alpha(segmentColor)
+                var lengthColor = colorOverLength.get(walkNormalizedLength, lengthColorRandom).intValue();
+                var segmentColor = colorOverSegmentTime.get(walkNormalizedSegmentLife, segmentColorRandom).intValue();
+                color = new Vector4f(data[i].color).mul(colorMultiplier).mul(
+                        timeColorR * ColorUtils.red(lengthColor) * ColorUtils.red(segmentColor),
+                        timeColorG * ColorUtils.green(lengthColor) * ColorUtils.green(segmentColor),
+                        timeColorB * ColorUtils.blue(lengthColor) * ColorUtils.blue(segmentColor),
+                        timeColorA * ColorUtils.alpha(lengthColor) * ColorUtils.alpha(segmentColor)
                 );
 
                 // Calculate final thickness:
-                float sectionThickness = runtime.thickness.get() * particle.getThicknessMultiplier() * data[i].thickness *
-                        runtime.thicknessOverTime.get().get(normalizedLife, () -> particle.getMemRandom("trails-thicknessOverTime")).floatValue() *
-                        runtime.thicknessOverSegmentTime.get().get(normalizedSegmentLife, () -> particle.getMemRandom("trails-thicknessOverSegmentTime")).floatValue() *
-                        runtime.thicknessOverLength.get().get(normalizedLength, () -> particle.getMemRandom("trails-thicknessOverLength")).floatValue();
+                walkSectionThickness = baseThickness * thicknessMultiplier * data[i].thickness *
+                        timeThickness *
+                        thicknessOverSegmentTime.get(walkNormalizedSegmentLife, segmentThicknessRandom).floatValue() *
+                        thicknessOverLength.get(walkNormalizedLength, lengthThicknessRandom).floatValue();
 
                 // In world tile mode, override texture coordinate with the point's one:
                 if (config.textureMode == AraTrailConfig.TextureMode.WorldTile)
                     vCoord = config.tileAnchor + data[i].texcoord * config.uvFactor;
 
-                if (config.section.isEnable()) {
-                    appendSection(config, data, frame, i, trail.size(), sectionThickness, vCoord);
-                }
-                else {
-                    var modified = appendFlatTrail(config, data, i, trail.size(), sectionThickness, vCoord, va, vb);
-                    va = modified[0];
-                    vb = modified[1];
-                }
+                sink.point(particle, data, i, trail.size(), frame, vCoord);
 
                 // Update vcoord:
                 float uvDelta = (config.textureMode == AraTrailConfig.TextureMode.Stretch ? sectionLength / totalLength : sectionLength);
@@ -629,5 +723,148 @@ public class AraTrailParticleRenderer {
             }
         }
         return new int[]{va, vb};
+    }
+
+    // ---------------------------------------------------------------------
+    // instanced path
+    // ---------------------------------------------------------------------
+
+    /**
+     * Fill and upload one instance per rendered trail segment, with the per-point data (position,
+     * frame, color, uv — all CPU-computed through the same {@link #walkSpan} as the mesh path)
+     * uploaded once into the point buffer texture. Returns true if any instance was uploaded (the
+     * VAO is left bound for {@link #drawInstanced}). The flat/tube variant follows the pass-owning
+     * config (the base mesh is baked from it); per-point math uses each particle's own config,
+     * exactly like the CPU path.
+     */
+    public boolean uploadInstances(Collection<IParticle> particles, Camera camera, float partialTicks) {
+        // capacity pre-scan (proven upper bound: renderable points per trail <= size * smoothness + 2)
+        var pointCapacity = 0;
+        for (var p : particles) {
+            if (p instanceof AraTrailParticle trail && trail.getPoints().size() > 1) {
+                pointCapacity += trail.getPoints().size() * Math.max(1, trail.config.smoothness) + 2;
+            }
+        }
+        if (pointCapacity == 0) return false;
+
+        var buffer = instanceBackend.beginUpload(pointCapacity); // instances per span = points - 1
+        if (buffer == null) return false;
+        var pointBuffer = instanceBackend.beginPointUpload(pointCapacity);
+        if (pointBuffer == null) return false;
+
+        var setting = config.additionalGPUDataSetting;
+        collectTube = instanceBackend.isTubeMode();
+        collectPointBuffer = pointBuffer;
+        collectPointCount = 0;
+        collectInstanceCount = 0;
+        var cameraPos = camera.getPosition().toVector3f();
+
+        for (var p : particles) {
+            if (!(p instanceof AraTrailParticle trail) || trail.getPoints().size() <= 1) continue;
+            trail.updateDynamicData(partialTicks);
+            var worldToTrail = trail.getWorldToTrail();
+            Vector3f localCamPosition = worldToTrail.transformPosition(new Vector3f(cameraPos));
+            // same matrix renderMesh builds: trail space -> camera-relative world
+            worldToTrail.invert(collectMatrix).translateLocal(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+
+            renderAgedSpans(trail, worldToTrail, partialTicks, (start, end) -> {
+                collectSpanBase = collectPointCount;
+                collectSpanCount = 0;
+                walkSpan(trail, start, end, localCamPosition, this::collectPoint);
+                emitSpanInstances(buffer, trail, partialTicks, setting);
+            });
+        }
+
+        collectPointBuffer = null;
+        instanceBackend.endPointUpload(pointBuffer);
+        instanceBackend.endUpload(buffer, collectInstanceCount);
+        return collectInstanceCount > 0;
+    }
+
+    /**
+     * The collector's point sink: writes one point's 4 texels (camera-relative, dest-arg JOML
+     * only — in-place ops would corrupt the sim points or {@code frame.bitangent}) and stages the
+     * per-point channel values.
+     */
+    private void collectPoint(AraTrailParticle particle, Point[] data, int i, int count, CurveFrame frame, float vCoord) {
+        var pointBuffer = collectPointBuffer;
+        assert pointBuffer != null;
+
+        var pos = collectMatrix.transformPosition(data[i].position, collectTmp);
+        if (collectTube) {
+            // T0: pos + thickness
+            pointBuffer.put(pos.x).put(pos.y).put(pos.z).put(walkSectionThickness);
+            // T1: bitangent (direction-transformed) + vCoord
+            var direction = collectMatrix.transformDirection(bitangent, collectTmp);
+            pointBuffer.put(direction.x).put(direction.y).put(direction.z).put(vCoord);
+            // T2: tangent — UNNORMALIZED, as the CPU ring formula uses it
+            collectTmp.set(tangent.x, tangent.y, tangent.z);
+            direction = collectMatrix.transformDirection(collectTmp);
+            pointBuffer.put(direction.x).put(direction.y).put(direction.z).put(0f);
+        } else {
+            // T0: pos + u (vCoord runs along the trail)
+            pointBuffer.put(pos.x).put(pos.y).put(pos.z).put(vCoord);
+            // T1: ribbon offset = bitangent * thickness (direction-transformed)
+            collectTmp.set(bitangent).mul(walkSectionThickness);
+            var offset = collectMatrix.transformDirection(collectTmp);
+            pointBuffer.put(offset.x).put(offset.y).put(offset.z).put(0f);
+            // T2: frame normal (direction-transformed, not renormalized — mirrors renderVertex)
+            var pointNormal = collectMatrix.transformDirection(normal, collectTmp);
+            pointBuffer.put(pointNormal.x).put(pointNormal.y).put(pointNormal.z).put(0f);
+        }
+        // T3: composed color
+        pointBuffer.put(color.x).put(color.y).put(color.z).put(color.w);
+
+        if (spanPointT.length <= collectSpanCount) {
+            var capacity = Math.max(collectSpanCount + 1, Math.max(spanPointT.length * 2, 64));
+            spanPointT = java.util.Arrays.copyOf(spanPointT, capacity);
+            spanPointLife = java.util.Arrays.copyOf(spanPointLife, capacity);
+        }
+        spanPointT[collectSpanCount] = 1 - walkNormalizedLength; // head = 1, tail = 0 (arc length)
+        spanPointLife[collectSpanCount] = walkNormalizedSegmentLife;
+        collectSpanCount++;
+        collectPointCount++;
+    }
+
+    /** Emits one instance per consecutive point pair of the just-collected span. */
+    private void emitSpanInstances(java.nio.FloatBuffer buffer, AraTrailParticle trail, float partialTicks,
+                                   AraTrailAdditionalGPUDataSetting setting) {
+        if (collectSpanCount < 2) return;
+        // cross-ribbon v pair, per particle — mirrors appendFlatTrail's +side / -side uv.y
+        var particleConfig = trail.config;
+        var newerOnTop = particleConfig.sorting == AraTrailConfig.TrailSorting.NewerOnTop;
+        float vA = newerOnTop ? particleConfig.uvWidthFactor : 0;
+        float vB = newerOnTop ? 0 : particleConfig.uvWidthFactor;
+
+        for (int w = 0; w < collectSpanCount - 1; w++) {
+            // iSeg int (point index of the segment's curr point)
+            buffer.put(Float.intBitsToFloat(collectSpanBase + w));
+            if (!collectTube) {
+                // iSegV vec2 (vA, vB)
+                buffer.put(vA).put(vB);
+            }
+            if (setting.hasCustomData()) {
+                setting.setSegmentValues(spanPointT[w], spanPointT[w + 1], spanPointLife[w], spanPointLife[w + 1]);
+                setting.uploadData(trail, buffer, partialTicks);
+            }
+            collectInstanceCount++;
+        }
+    }
+
+    public void drawInstanced(net.minecraft.client.renderer.ShaderInstance shader) {
+        instanceBackend.drawWithShader(shader);
+    }
+
+    /** Whether the baked instanced geometry no longer matches the config (mode / section / uvWidthFactor). */
+    public boolean geometryStale() {
+        return instanceBackend.geometryStale();
+    }
+
+    /**
+     * Full GL teardown of the instanced resources. Call when the instance layout or the baked
+     * geometry changes (not for capacity growth).
+     */
+    public void dispose() {
+        instanceBackend.dispose();
     }
 }

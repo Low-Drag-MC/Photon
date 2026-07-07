@@ -127,6 +127,13 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         return current;
     }
 
+    /** {@code PhotonGpuChannels} bits of the additional-data channels the compiled graph reads
+     *  (0 when unresolved/broken) — lets instanced render passes auto-enable required channels. */
+    public long getUsedChannelMask() {
+        var entry = refreshEntry();
+        return entry != null && entry.isValid() ? entry.getUsedChannelMask() : 0L;
+    }
+
     @Override
     public ShaderInstance getShader(MaterialContext context) {
         var entry = refreshEntry();

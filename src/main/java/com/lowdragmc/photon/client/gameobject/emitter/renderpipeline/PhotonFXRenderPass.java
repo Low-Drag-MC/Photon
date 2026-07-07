@@ -7,6 +7,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.ShaderGraphMaterial;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -129,6 +130,28 @@ public abstract class PhotonFXRenderPass {
      */
     protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
         return false;
+    }
+
+    /**
+     * Tear down this pass's instanced GL resources (render mode / model / instance layout
+     * changed). No-op for passes without an instanced path.
+     */
+    public void clearInstance() {
+    }
+
+    /**
+     * Union of the additional-data channels required by the pass's shadergraph materials —
+     * fed into {@code AdditionalGPUDataSetting.setMaterialMask} so instanced passes auto-enable
+     * whatever their graphs read (hand-written shader materials toggle channels manually).
+     */
+    protected static long shaderGraphChannelMask(List<MaterialSetting> materials) {
+        long mask = 0;
+        for (var materialSetting : materials) {
+            if (materialSetting.getMaterial() instanceof ShaderGraphMaterial shaderGraphMaterial) {
+                mask |= shaderGraphMaterial.getUsedChannelMask();
+            }
+        }
+        return mask;
     }
 
     protected List<MaterialSetting> getMaterials(RenderPassPipeline pipeline) {

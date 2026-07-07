@@ -10,6 +10,7 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.Graph;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphResource;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.IGraphReferenceResolver;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
 import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
@@ -59,18 +60,39 @@ public final class ShaderGraphRuntime {
         private final Map<String, LDShaderInstance> variants = new HashMap<>();
         /** Defines whose GL build failed — remembered so a broken graph doesn't retry every frame. */
         private final Set<String> failedVariants = new HashSet<>();
+        /** {@code PhotonGpuChannels} bits of the additional-data channels the graph reads. */
+        @Getter
+        private final long usedChannelMask;
 
         private Entry(CompoundTag sourceTag, @Nullable ShaderGraph graph,
                       @Nullable CompiledShaderGraph compiled, String errorMessage) {
+            this(sourceTag, graph, compiled, errorMessage, 0);
+        }
+
+        private Entry(CompoundTag sourceTag, @Nullable ShaderGraph graph,
+                      @Nullable CompiledShaderGraph compiled, String errorMessage, long usedChannelMask) {
             this.sourceTag = sourceTag;
             this.graph = graph;
             this.compiled = compiled;
             this.errorMessage = errorMessage;
+            this.usedChannelMask = usedChannelMask;
         }
 
         public boolean isValid() {
             return compiled != null;
         }
+
+        /**
+         * Compiling with an EMPTY define set would cache the GL program stages under their PLAIN
+         * name in the vanilla {@code Program} cache. A later DEFINED variant of the same source
+         * would then silently REUSE that stage: {@code ShaderInstance.getOrCreate}'s defines-aware
+         * lookup (LDLib2's ShaderInstanceMixin) only early-returns on a defines-key hit and falls
+         * through to the vanilla plain-name lookup — so e.g. the PARTICLE_INSTANCE variant links
+         * the CPU-attribute-layout vertex stage and renders nothing (until a reload rebuilds the
+         * variants in a luckier order). Always compile under a defines-qualified cache key —
+         * {@code LDShaderHolder} does the same via its per-holder uid define.
+         */
+        private static final String BASE_VARIANT_DEFINE = "PHOTON_VARIANT_BASE";
 
         /** The shader for one define permutation ({@code ""} = the plain BLOCK-attribute variant), built
          *  lazily on the render thread. Null when the graph or the GL build failed. */
@@ -81,7 +103,7 @@ public final class ShaderGraphRuntime {
             if (existing != null) return existing;
             var format = KGVertexFormat.of(compiled.settings().vertexFormatElements());
             var created = KGShaderResourceProvider.createShaderInstance(compiled, format,
-                    define.isEmpty() ? Set.of() : Set.of(define));
+                    define.isEmpty() ? Set.of(BASE_VARIANT_DEFINE) : Set.of(define));
             if (created == null) {
                 failedVariants.add(define);
                 return null;
@@ -126,11 +148,12 @@ public final class ShaderGraphRuntime {
         }
         try {
             var graph = (ShaderGraph) ShaderGraphResource.INSTANCE.deserializeGraph(tag, RESOLVER);
-            var compiled = graph.createCompiler().compile();
+            var compiler = (PhotonShaderCompiler) graph.createCompiler();
+            var compiled = compiler.compile();
             if (compiled.hasStageErrors()) {
                 return new Entry(tag, graph, null, compiled.stageErrors().getFirst().message());
             }
-            return new Entry(tag, graph, compiled, "");
+            return new Entry(tag, graph, compiled, "", compiler.getUsedChannelMask());
         } catch (Throwable e) {
             Photon.LOGGER.error("Failed to compile shader graph", e);
             return new Entry(tag, null, null, String.valueOf(e.getMessage()));

@@ -214,6 +214,12 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
             var context = renderer.getRenderMode() == ParticleRendererSetting.Mode.Model ?
                     MaterialContext.PARTICLE_MODEL_INSTANCE : MaterialContext.PARTICLE_INSTANCE;
 
+            // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change
+            additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));
+            if (additionalGPUDataSetting.relayoutNeeded()) {
+                clearInstance();
+            }
+
             var drew = false;
             // upload to vbo
             if (tileParticleRenderer.uploadInstances(particles, camera, partialTicks)) {

@@ -88,7 +88,8 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
                             layout.widthPercent(80);
                             layout.alignSelf(AlignItems.CENTER);
                             layout.paddingAll(3);
-                        }).style(style -> style.backgroundTexture(Sprites.BORDER1_RT1))
+                        }).addClass("preview_bg").style(style -> style.backgroundTexture(Sprites.BORDER1_RT1))
+                        .moveInlineAsDefault()
                         .addChild(new UIElement().layout(layout -> {
                             layout.widthPercent(100);
                             layout.heightPercent(100);

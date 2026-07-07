@@ -1,10 +1,15 @@
 package com.lowdragmc.photon.client.shadergraph;
 
+import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
 import com.lowdragmc.kilagraph.rendertype.compiler.GlslType;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderExpr;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler;
 import com.lowdragmc.kilagraph.rendertype.format.KGVertexElement;
 import com.lowdragmc.kilagraph.rendertype.format.KGVertexElements;
+import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
+import lombok.Getter;
+
+import javax.annotation.Nullable;
 
 /**
  * The Photon compile target: identical node semantics to KilaGraph's compiler, but the vertex stage reads
@@ -31,8 +36,37 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
     /** Engine-driven viewport uniform (x, y, width, height), bound by ShaderGraphMaterial. */
     public static final String VIEWPORT = "U_ViewPort";
 
+    /** The compiler currently running {@link #compile()} (render thread only) — lets nodes without
+     *  compiler access (e.g. AdditionalDataNode) report metadata like used data channels. */
+    @Nullable
+    private static PhotonShaderCompiler CURRENT;
+
+    /** {@link PhotonGpuChannels} bits of every additional-data channel the graph reads. */
+    @Getter
+    private long usedChannelMask;
+
     public PhotonShaderCompiler(ShaderGraph graph) {
         super(graph);
+    }
+
+    @Nullable
+    public static PhotonShaderCompiler current() {
+        return CURRENT;
+    }
+
+    public void markChannelUsed(PhotonGpuChannels.Channel channel) {
+        usedChannelMask |= channel.bit();
+    }
+
+    @Override
+    public CompiledShaderGraph compile() {
+        var previous = CURRENT;
+        CURRENT = this;
+        try {
+            return super.compile();
+        } finally {
+            CURRENT = previous;
+        }
     }
 
     @Override

@@ -15,6 +15,10 @@ public class MaterialContext {
     public final static MaterialContext PREVIEW = new MaterialContext().setRenderingPreview(true);
     public final static MaterialContext PARTICLE_INSTANCE = new MaterialContext().setShaderDefine("PARTICLE_INSTANCE");
     public final static MaterialContext PARTICLE_MODEL_INSTANCE = new MaterialContext().setShaderDefine("PARTICLE_MODEL_INSTANCE");
+    public final static MaterialContext TRAIL_INSTANCE = new MaterialContext().setShaderDefine("TRAIL_INSTANCE");
+    public final static MaterialContext BEAM_INSTANCE = new MaterialContext().setShaderDefine("BEAM_INSTANCE");
+    public final static MaterialContext ARA_TRAIL_INSTANCE = new MaterialContext().setShaderDefine("ARA_TRAIL_INSTANCE");
+    public final static MaterialContext ARA_TRAIL_TUBE_INSTANCE = new MaterialContext().setShaderDefine("ARA_TRAIL_TUBE_INSTANCE");
 
     private String shaderDefine = "";
     private boolean isRenderingPreview;

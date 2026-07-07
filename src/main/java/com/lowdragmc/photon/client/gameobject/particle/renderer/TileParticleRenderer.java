@@ -274,7 +274,7 @@ public class TileParticleRenderer {
                 buffer.put(Float.intBitsToFloat(light));
             }
 
-            if (config.additionalGPUDataSetting.isEnable() && config.additionalGPUDataSetting.hasCustomData()) {
+            if (config.additionalGPUDataSetting.hasCustomData()) {
                 // append additional data
                 config.additionalGPUDataSetting.uploadData(particle, buffer, partialTicks);
             }

@@ -5,10 +5,13 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
+import com.lowdragmc.photon.client.gameobject.emitter.data.InstancedRendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
-import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.UVAnimationSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -21,6 +24,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveCon
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
 import com.lowdragmc.photon.client.gameobject.particle.renderer.TrailParticleRenderer;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -28,6 +32,9 @@ import net.minecraft.client.Camera;
 
 import javax.annotation.Nonnull;
 import java.util.Collection;
+import java.util.List;
+
+import static org.lwjgl.opengl.GL30.glBindVertexArray;
 
 /**
  * @author KilaBash
@@ -87,13 +94,15 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
     protected NumberFunction colorOverTrail = new Gradient();
     @Getter
     @Configurable(name = "ParticleConfig.renderer", subConfigurable = true, tips = "photon.emitter.config.renderer")
-    public final RendererSetting renderer = new RendererSetting();
+    public final InstancedRendererSetting renderer = new InstancedRendererSetting();
     @Getter
     @Configurable(name = "ParticleConfig.fixedLight", subConfigurable = true, tips = "photon.emitter.config.lights")
     public final LightOverLifetimeSetting lights = new LightOverLifetimeSetting();
     @Getter
     @Configurable(name = "ParticleConfig.uvAnimation", subConfigurable = true, tips = "photon.emitter.config.uvAnimation")
     public final UVAnimationSetting uvAnimation = new UVAnimationSetting();
+    @Configurable(name = "ParticleConfig.additionalGPUDataSetting", subConfigurable = true, tips = "photon.emitter.config.additional_gpu_data")
+    public final TrailAdditionalGPUDataSetting additionalGPUDataSetting = new TrailAdditionalGPUDataSetting(this);
 
     // runtime
     public final PhotonFXRenderPass particleRenderType = new RenderPass();
@@ -103,14 +112,58 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
     }
 
     private class RenderPass extends PhotonFXRenderPass {
+        // NOT part of equals/hashCode — the batching key stays rendererSetting + mode + format.
+        private final TrailParticleRenderer trailParticleRenderer = new TrailParticleRenderer(TrailConfig.this);
 
         public RenderPass() {
             super(renderer, VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.BLOCK);
         }
 
         @Override
+        public void clearInstance() {
+            trailParticleRenderer.dispose();
+        }
+
+        @Override
         protected void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
-            TrailParticleRenderer.INSTANCE.renderQueue(buffer, particles, camera, partialTicks);
+            trailParticleRenderer.renderQueue(buffer, particles, camera, partialTicks);
+        }
+
+        @Override
+        protected boolean useInstancing() {
+            return renderer.isUseGPUInstance();
+        }
+
+        @Override
+        protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+            // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change
+            additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));
+            if (additionalGPUDataSetting.relayoutNeeded()) {
+                clearInstance();
+            }
+
+            var drew = false;
+            // upload to vbo
+            if (trailParticleRenderer.uploadInstances(particles, camera, partialTicks)) {
+                for (MaterialSetting materialSetting : materials) {
+                    materialSetting.pre();
+                    renderInstanceWithMaterial(materialSetting.getMaterial(), MaterialContext.TRAIL_INSTANCE);
+                    materialSetting.post();
+                }
+                drew = true;
+            }
+
+            // invalidate cache
+            glBindVertexArray(0);
+            BufferUploader.invalidate();
+            return drew;
+        }
+
+        private void renderInstanceWithMaterial(IMaterial material, MaterialContext context) {
+            var shader = material.begin(context);
+            RenderSystem.setShader(() -> shader);
+            trailParticleRenderer.drawInstanced(shader);
+            material.end(context);
         }
 
         @Override

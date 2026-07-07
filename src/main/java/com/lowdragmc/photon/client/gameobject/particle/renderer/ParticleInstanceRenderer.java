@@ -1,16 +1,10 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
-import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import lombok.Getter;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.neoforged.neoforge.client.model.IQuadTransformer;
 import net.neoforged.neoforge.client.model.data.ModelData;
@@ -18,112 +12,31 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.system.MemoryStack;
 
-import javax.annotation.Nullable;
-import java.lang.ref.Cleaner;
-import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.lwjgl.opengl.GL30.*;
-import static org.lwjgl.opengl.GL33.*;
 
 /**
- * GL-resource backend of {@link TileParticleRenderer}: owns the VAO/static-geometry/instance
- * VBOs and the raw draw call. The per-particle instance-data math lives in the renderer;
- * this class only manages buffers ({@link #beginUpload}/{@link #endUpload}).
+ * GL-resource backend of {@link TileParticleRenderer}: billboard-quad or baked-model base
+ * geometry plus the tile per-instance layout (pos/size/scale/rot/color/uv/light + custom data).
+ * Buffer management and the draw call live in {@link InstancedRenderBackend}.
  */
-class ParticleInstanceRenderer {
-    private static class InstanceResource implements AutoCloseable {
-        protected int vao = -1;
-        protected int modelVbo = -1;
-        protected int modelEbo = -1;
-        protected int instanceVbo = -1;
-
-        @Override
-        public void close() {
-            if (vao != -1) {
-                glDeleteVertexArrays(vao);
-                vao = -1;
-            }
-
-            if (modelVbo != -1) {
-                glDeleteBuffers(modelVbo);
-                modelVbo = -1;
-            }
-
-            if (instanceVbo != -1) {
-                glDeleteBuffers(instanceVbo);
-                instanceVbo = -1;
-            }
-
-            if (modelEbo != -1) {
-                glDeleteBuffers(modelEbo);
-                modelEbo = -1;
-            }
-        }
-    }
+class ParticleInstanceRenderer extends InstancedRenderBackend {
 
     private final ParticleConfig config;
-    @Getter
-    private boolean initialized = false;
-
-    @Nullable
-    private InstanceResource resource;
-    @Nullable
-    private Cleaner.Cleanable cleanable;
-
-    private int modelEboSize = 0;
-    private int instanceDataSize = 0; // number of floats per instance
-    private int maxInstancesSize = 0;
-    private int instanceCount = 0;
-    @Nullable
-    private static FloatBuffer instanceDataBuffer = null;
 
     public ParticleInstanceRenderer(ParticleConfig config) {
         this.config = config;
     }
 
-    public void init() {
-        if (initialized) return;
-        ensureCreated(config.getMaxParticles());
-        initialized = true;
+    @Override
+    protected int initialInstanceCapacity() {
+        return config.getMaxParticles();
     }
 
-    /**
-     * Resize only the instance buffer capacity; do not recreate VAO/static buffers.
-     */
-    public void resize(int size) {
-        RenderSystem.assertOnRenderThread();
-        ensureCreated(size);
-    }
-
-    private void ensureCreated(int instanceCapacity) {
-        RenderSystem.assertOnRenderThread();
-
-        if (resource == null) {
-            resource = new InstanceResource();
-            cleanable = AutoCloseCleaner.registerRenderThread(this, resource);
-        }
-
-        if (resource.vao == -1) {
-            resource.vao = glGenVertexArrays();
-        }
-
-        glBindVertexArray(resource.vao);
-
-        if (resource.modelVbo == -1 || resource.modelEbo == -1) {
-            createStaticData();
-        }
-
-        // create instance data + grow capacity if needed
-        createOrResizeInstanceData(instanceCapacity);
-
-        glBindVertexArray(0);
-    }
-
-    private void createStaticData() {
-        if (resource == null) return;
-
+    @Override
+    protected void createStaticGeometry(InstanceResource resource) {
         if (config.renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
             var model = config.renderer.getModel();
             List<Pair<BakedQuad, Float>> quads = new ArrayList<>();
@@ -219,7 +132,6 @@ class ParticleInstanceRenderer {
 
             glVertexAttribPointer(3, 1, GL_FLOAT, false, stride, offset); // brightness
             glEnableVertexAttribArray(3);
-            offset += Float.BYTES;
 
             resource.modelEbo = glGenBuffers();
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, resource.modelEbo);
@@ -254,223 +166,42 @@ class ParticleInstanceRenderer {
         }
     }
 
-    private void createOrResizeInstanceData(int requestedMaxSize) {
-        if (resource == null) return;
+    @Override
+    protected int instanceFloats() {
+        var custom = config.additionalGPUDataSetting.getCustomDataSize();
+        return custom + (config.renderer.getRenderMode() == ParticleRendererSetting.Mode.Model
+                ? 3 + 3 + 4 + 4 + 1        // pos scale rotation color light
+                : 3 + 2 + 3 + 4 + 4 + 4 + 1); // pos size scale rotation color uv light
+    }
 
-        var newVBO = false;
-        if (resource.instanceVbo == -1) {
-            resource.instanceVbo = glGenBuffers();
-            newVBO = true;
-        }
-
-        // instanceDataSize is "floats per instance"
-        instanceDataSize = config.additionalGPUDataSetting.isEnable()
-                ? config.additionalGPUDataSetting.getCustomDataSize()
-                : 0;
-
+    @Override
+    protected void defineInstanceAttributes(int stride) {
         int attribIndex;
-        int offset;
-        int stride;
+        int offset = 0;
 
         if (config.renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
-            instanceDataSize += 3 + 3 + 4 + 4 + 1; // pos scale rotation color light
-
             attribIndex = 4;
-            offset = 0;
-            stride = instanceDataSize * Float.BYTES;
-
-            glBindBuffer(GL_ARRAY_BUFFER, resource.instanceVbo);
-
-            boolean needGrow = requestedMaxSize > maxInstancesSize;
-            if (needGrow || newVBO) {
-                maxInstancesSize = requestedMaxSize;
-                glBufferData(GL_ARRAY_BUFFER, ((long) maxInstancesSize) * instanceDataSize * Float.BYTES, GL_STREAM_DRAW);
-            }
-
-            if (newVBO) {
-                // Only (re)define attributes if first time (or if you want to be extra safe: always)
-                // Here we define them always to keep it simple and robust.
-                glVertexAttribPointer(attribIndex, 3, GL_FLOAT, false, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                attribIndex++;
-                offset += 3 * Float.BYTES;
-
-                // scale vec3
-                glVertexAttribPointer(attribIndex, 3, GL_FLOAT, false, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                attribIndex++;
-                offset += 3 * Float.BYTES;
-
-                // rotation vec4
-                glVertexAttribPointer(attribIndex, 4, GL_FLOAT, false, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                attribIndex++;
-                offset += 4 * Float.BYTES;
-
-                // color vec4
-                glVertexAttribPointer(attribIndex, 4, GL_FLOAT, false, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                attribIndex++;
-                offset += 4 * Float.BYTES;
-
-                // light int
-                glVertexAttribIPointer(attribIndex, 1, GL_UNSIGNED_INT, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                attribIndex++;
-                offset += Float.BYTES;
-            }
+            offset = floatInstanceAttrib(attribIndex++, 3, stride, offset); // pos vec3
+            offset = floatInstanceAttrib(attribIndex++, 3, stride, offset); // scale vec3
+            offset = floatInstanceAttrib(attribIndex++, 4, stride, offset); // rotation vec4
+            offset = floatInstanceAttrib(attribIndex++, 4, stride, offset); // color vec4
+            offset = intInstanceAttrib(attribIndex++, stride, offset);      // light int
         } else {
-            instanceDataSize += 3 + 2 + 3 + 4 + 4 + 4 + 1; // pos size scale rotation color uv light
-
             attribIndex = 1;
-            offset = 0;
-            stride = instanceDataSize * Float.BYTES;
-
-            glBindBuffer(GL_ARRAY_BUFFER, resource.instanceVbo);
-
-            boolean needGrow = requestedMaxSize > maxInstancesSize;
-            if (needGrow || newVBO) {
-                maxInstancesSize = requestedMaxSize;
-                glBufferData(GL_ARRAY_BUFFER, ((long) maxInstancesSize) * instanceDataSize * Float.BYTES, GL_STREAM_DRAW);
-            }
-
-            if (newVBO) {
-                glVertexAttribPointer(attribIndex, 3, GL_FLOAT, false, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                attribIndex++;
-                offset += 3 * Float.BYTES;
-
-                // size vec2
-                glVertexAttribPointer(attribIndex, 2, GL_FLOAT, false, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                attribIndex++;
-                offset += 2 * Float.BYTES;
-
-                // scale vec3
-                glVertexAttribPointer(attribIndex, 3, GL_FLOAT, false, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                attribIndex++;
-                offset += 3 * Float.BYTES;
-
-                // rotation vec4
-                glVertexAttribPointer(attribIndex, 4, GL_FLOAT, false, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                attribIndex++;
-                offset += 4 * Float.BYTES;
-
-                // color vec4
-                glVertexAttribPointer(attribIndex, 4, GL_FLOAT, false, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                attribIndex++;
-                offset += 4 * Float.BYTES;
-
-                // uv vec4
-                glVertexAttribPointer(attribIndex, 4, GL_FLOAT, false, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                offset += 4 * Float.BYTES;
-                attribIndex++;
-
-                // light int
-                glVertexAttribIPointer(attribIndex, 1, GL_UNSIGNED_INT, stride, offset);
-                glEnableVertexAttribArray(attribIndex);
-                glVertexAttribDivisor(attribIndex, 1);
-                offset += Float.BYTES;
-                attribIndex++;
-            }
+            offset = floatInstanceAttrib(attribIndex++, 3, stride, offset); // pos vec3
+            offset = floatInstanceAttrib(attribIndex++, 2, stride, offset); // size vec2
+            offset = floatInstanceAttrib(attribIndex++, 3, stride, offset); // scale vec3
+            offset = floatInstanceAttrib(attribIndex++, 4, stride, offset); // rotation vec4
+            offset = floatInstanceAttrib(attribIndex++, 4, stride, offset); // color vec4
+            offset = floatInstanceAttrib(attribIndex++, 4, stride, offset); // uv vec4
+            offset = intInstanceAttrib(attribIndex++, stride, offset);      // light int
         }
 
-        if (newVBO && config.additionalGPUDataSetting.isEnable() && config.additionalGPUDataSetting.hasCustomData()) {
-            config.additionalGPUDataSetting.instanceDataLayout(offset, attribIndex, stride);
-        }
-
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        config.additionalGPUDataSetting.instanceDataLayout(offset, stride);
     }
 
-    /**
-     * Full cleanup: delete VAO/VBO/EBO etc.
-     * Call this when render mode/layout changes, not for instance capacity growth.
-     */
-    public void dispose() {
-        if (cleanable != null) {
-            cleanable.clean();
-            cleanable = null;
-        }
-
-        resource = null;
-
-        modelEboSize = 0;
-        maxInstancesSize = 0;
-        instanceCount = 0;
-
-        initialized = false;
-    }
-
-    private static FloatBuffer getInstanceDataBuffer(int requiredCapacity) {
-        if (instanceDataBuffer == null || instanceDataBuffer.capacity() < requiredCapacity) {
-            int newCapacity = instanceDataBuffer == null ?
-                    Math.max(requiredCapacity, 10000) :
-                    Math.max(requiredCapacity, instanceDataBuffer.capacity() * 2);
-
-            instanceDataBuffer = BufferUtils.createFloatBuffer(newCapacity);
-        }
-        return instanceDataBuffer;
-    }
-
-    /**
-     * Prepare the buffers for a fresh instance-data upload: (lazy-)create GL resources, grow the
-     * instance VBO if needed, bind the VAO/VBO and return the cleared shared staging buffer the
-     * caller fills ({@code instanceDataSize} floats per instance). Returns null when GL resources
-     * are unavailable.
-     */
-    @Nullable
-    FloatBuffer beginUpload(int particleCount) {
-        init();
-        if (resource == null) return null;
-
-        if (particleCount > maxInstancesSize) {
-            resize(particleCount);
-        }
-
-        var required = particleCount * instanceDataSize;
-        var buffer = getInstanceDataBuffer(required);
-        buffer.clear();
-
-        glBindVertexArray(resource.vao);
-        glBindBuffer(GL_ARRAY_BUFFER, resource.instanceVbo);
-        return buffer;
-    }
-
-    /**
-     * Flip and upload the filled staging buffer; remembers the instance count for the draw call.
-     */
-    void endUpload(FloatBuffer buffer, int instanceCount) {
-        this.instanceCount = instanceCount;
-        buffer.flip();
-        glBufferSubData(GL_ARRAY_BUFFER, 0, buffer);
-    }
-
-    public void drawWithShader(ShaderInstance shader) {
-        // bind shader
-        shader.setDefaultUniforms(
-                VertexFormat.Mode.QUADS,
-                RenderSystem.getModelViewMatrix(),
-                RenderSystem.getProjectionMatrix(),
-                Minecraft.getInstance().getWindow()
-        );
-        shader.apply();
-
-        // draw instance
-        glDrawElementsInstanced(GL_TRIANGLES, modelEboSize, GL_UNSIGNED_INT, 0, instanceCount);
+    @Override
+    protected void zeroInactiveCustomSlots() {
+        config.additionalGPUDataSetting.zeroInactiveSlots();
     }
 }
