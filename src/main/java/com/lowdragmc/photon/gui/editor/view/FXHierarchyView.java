@@ -5,16 +5,13 @@ import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
-import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
-import com.lowdragmc.lowdraglib2.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.TextWrap;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.*;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.photon.PhotonRegistries;
@@ -30,13 +27,16 @@ import javax.annotation.Nullable;
 import java.util.*;
 
 public class FXHierarchyView extends View {
+    /** Drag payload handed to external drop targets (force-field refs, control-track lanes). */
     public record DraggingNode(FXObjectTreeNode draggedNode) {}
     public final FXEditor fxEditor;
     public final ScrollerView scrollerView = new ScrollerView();
     public final TreeList<FXObjectTreeNode> treeList = new TreeList<>();
 
     // runtime
-    private long lastClickTime = 0;
+    // guards the inspector<->selection binding so our own selection-driven inspector swaps
+    // don't fire the "deselect on inspect loss" reaction.
+    private boolean updatingInspector = false;
     @Getter @Nullable
     private FXRuntime runtime;
     @Getter @Nullable
@@ -56,6 +56,24 @@ public class FXHierarchyView extends View {
         scrollerView.addEventListener(UIEvents.MOUSE_DOWN, this::onMouseDown, true);
         scrollerView.addScrollViewChild(treeList
                 .setSupportMultipleSelection(true)
+                .setDraggable(true)
+                .setReorderValidator(req -> {
+                    var target = req.target().getKey().transform();
+                    // BEFORE/AFTER need a real parent (can't be a sibling of the root)
+                    if (req.mode() != TreeList.DropMode.INTO && target.parent() == null) {
+                        return false;
+                    }
+                    for (var dragged : req.dragged()) {
+                        var toMoved = dragged.getKey().transform();
+                        // can't drop onto self, nor into a node's own subtree
+                        if (toMoved == target || target.isInheritedParent(toMoved)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                })
+                .setOnReorder(this::reparent)
+                .setDragPayloadFactory(DraggingNode::new)
                 .setNodeUISupplier((node) -> {
                     UIElement container = (new UIElement()).layout((layout) -> {
                         layout.flexDirection(FlexDirection.ROW);
@@ -101,111 +119,27 @@ public class FXHierarchyView extends View {
                         layout.height(7);
                     });
                     nodeUI.addChildAt(eyeButton, 0);
-                    nodeUI.addEventListener(UIEvents.MOUSE_DOWN, e -> {
-                        if (e.button == 0) {
-                            lastClickTime = System.currentTimeMillis();
-                        }
-                    });
-                    nodeUI.addEventListener(UIEvents.MOUSE_LEAVE, e -> {
-                        // allow dragging the pressed node even when nothing is selected yet
-                        if (lastClickTime != 0 && isMouseDown(0)) {
-                            nodeUI.startDrag(new DraggingNode(node), new TextTexture(node.getKey().getName()));
-                        }
-                        lastClickTime = 0;
-                    }, true);
                     nodeUI.addEventListener(UIEvents.MOUSE_UP, e -> {
+                        if (e.button != 0) {
+                            return;
+                        }
                         var fxObject = node.getKey();
-                        // inspect the clicked node directly: the TreeList selection updates on the
-                        // following CLICK, so getSelected() is stale here (it would be empty on the
-                        // first click after a timeline clip/track selection cleared the tree).
-                        if (e.button == 0 && fxEditor.inspectorView.inspector.getInspectedConfigurable() != fxObject) {
-                            fxEditor.inspectorView.inspect(fxObject);
-                            fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(fxObject.transform(), () -> {
-                                fxEditor.historyView.recordSerializableObject(Component.translatable("photon.transform"), fxObject.transform(), fxObject);
-                            });
-                        }
-                        lastClickTime = 0;
-                    });
-                    nodeUI.addEventListener(UIEvents.DRAG_ENTER, e -> {
-                        if (e.dragHandler.getDraggingObject() instanceof DraggingNode(var dragged) && dragged != node) {
-                            var mode = isMouseOverNodeAbove(e) ? 0 : isMouseOverNodeCenter(e) ? 1 : isMouseOverNodeBelow(e) ? 2 : -1;
-                            e.currentElement.style(style -> style.overlayTexture(createDraggingOverlay(mode)));
-                        }
-                    });
-                    nodeUI.addEventListener(UIEvents.DRAG_END, e -> {
-                        e.currentElement.style(style -> style.overlayTexture(IGuiTexture.EMPTY));
-                    });
-                    nodeUI.addEventListener(UIEvents.DRAG_UPDATE, e -> {
-                        if (e.dragHandler.getDraggingObject() instanceof DraggingNode(var dragged) && dragged != node) {
-                            var mode = isMouseOverNodeAbove(e) ? 0 : isMouseOverNodeCenter(e) ? 1 : isMouseOverNodeBelow(e) ? 2 : -1;
-                            e.currentElement.style(style -> style.overlayTexture(createDraggingOverlay(mode)));
-                        }
-                    });
-                    nodeUI.addEventListener(UIEvents.DRAG_PERFORM, e -> {
-                        e.currentElement.style(style -> style.overlayTexture(IGuiTexture.EMPTY));
-                        if (e.dragHandler.getDraggingObject() instanceof DraggingNode(var dragged) && dragged != node) {
-                            var target = node.getKey().transform();
-                            var toMoved = dragged.getKey().transform();
-                            if (target.isInheritedParent(toMoved)) return;
-                            if (isMouseOverNodeAbove(e)) {
-                                // sibling
-                                var originalParent = toMoved.parent();
-                                var originalSiblingIndex = toMoved.getSiblingIndex();
-                                var newParent = target.parent();
-                                var newSiblingIndex = target.getSiblingIndex();
-                                if (newParent == null) return;
-                                if (originalParent == newParent) {
-                                    if (originalSiblingIndex < newSiblingIndex) {
-                                        newSiblingIndex--;
-                                    }
-                                }
-                                var finalNewSiblingIndex = newSiblingIndex;
-                                fxEditor.historyView.pushHistory(Component.translatable("photon.move_fx_object"), EditAction.of(
-                                        () -> {
-                                            toMoved.parent(newParent, true);
-                                            toMoved.setSiblingIndex(finalNewSiblingIndex);
-                                        },
-                                        () -> {
-                                            toMoved.parent(originalParent, true);
-                                            toMoved.setSiblingIndex(originalSiblingIndex);
-                                        }
-                                ));
-                            } else if (isMouseOverNodeCenter(e)) {
-                                // children
-                                var originalParent = toMoved.parent();
-
-                                fxEditor.historyView.pushHistory(Component.translatable("photon.move_fx_object"), EditAction.of(
-                                        () -> {
-                                            toMoved.parent(target, true);
-                                        },
-                                        () -> {
-                                            toMoved.parent(originalParent, true);
-                                        }
-                                ));
-                            } else if (isMouseOverNodeBelow(e)) {
-                                // sibling
-                                var originalParent = toMoved.parent();
-                                var originalSiblingIndex = toMoved.getSiblingIndex();
-                                var newParent = target.parent();
-                                var newSiblingIndex = target.getSiblingIndex() + 1;
-                                if (newParent == null) return;
-                                if (originalParent == newParent) {
-                                    if (originalSiblingIndex < newSiblingIndex) {
-                                        newSiblingIndex--;
-                                    }
-                                }
-                                var finalNewSiblingIndex = newSiblingIndex;
-                                fxEditor.historyView.pushHistory(Component.translatable("photon.move_fx_object"), EditAction.of(
-                                        () -> {
-                                            toMoved.parent(newParent, true);
-                                            toMoved.setSiblingIndex(finalNewSiblingIndex);
-                                        },
-                                        () -> {
-                                            toMoved.parent(originalParent, true);
-                                            toMoved.setSiblingIndex(originalSiblingIndex);
-                                        }
-                                ));
+                        // Drive the single-object main inspector here (not from onSelectedChanged,
+                        // whose selection updates only on the following CLICK). The onClose callback
+                        // deselects the row when the inspector later switches away or is cleared.
+                        updatingInspector = true;
+                        try {
+                            if (e.isCtrlDown() || e.isShiftDown()) {
+                                // building a multi-selection: the single-object inspector doesn't apply
+                                fxEditor.inspectorView.clear();
+                            } else if (fxEditor.inspectorView.inspector.getInspectedConfigurable() != fxObject) {
+                                fxEditor.inspectorView.inspect(fxObject, null, this::onNodeInspectorClosed);
+                                fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(fxObject.transform(), () ->
+                                        fxEditor.historyView.recordSerializableObject(
+                                                Component.translatable("photon.transform"), fxObject.transform(), fxObject));
                             }
+                        } finally {
+                            updatingInspector = false;
                         }
                     });
                 }));
@@ -230,48 +164,92 @@ public class FXHierarchyView extends View {
                 .map(Transform::parent).distinct().count() <= 1;
     }
 
-    private boolean isMouseOverNodeAbove(UIEvent event) {
-        var ui = event.currentElement;
-        var x = ui.getPositionX();
-        var y = ui.getPositionY();
-        var width = ui.getSizeWidth();
-        var height = ui.getSizeHeight();
-        return isMouseOver(x, y, width, height / 3, event.x, event.y);
-    }
-
-    private boolean isMouseOverNodeCenter(UIEvent event) {
-        var ui = event.currentElement;
-        var x = ui.getPositionX();
-        var y = ui.getPositionY();
-        var width = ui.getSizeWidth();
-        var height = ui.getSizeHeight();
-        return isMouseOver(x, y + height / 3, width, height / 3, event.x, event.y);
-    }
-
-    private boolean isMouseOverNodeBelow(UIEvent event) {
-        var ui = event.currentElement;
-        var x = ui.getPositionX();
-        var y = ui.getPositionY();
-        var width = ui.getSizeWidth();
-        var height = ui.getSizeHeight();
-        return isMouseOver(x, y + height * 2 / 3, width, height / 3, event.x, event.y);
-    }
-
-    private IGuiTexture createDraggingOverlay(int mode) {
-        if (mode == 0) {
-            return (graphics, mouseX, mouseY, x, y, width, height, partialTicks) -> {
-                DrawerHelper.drawSolidRect(graphics, x, y - 1, width, 1, ColorPattern.T_WHITE.color);
-            };
-        } else if (mode == 1) {
-            return (graphics, mouseX, mouseY, x, y, width, height, partialTicks) -> {
-                DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.T_WHITE.color);
-            };
-        } else if (mode == 2) {
-            return (graphics, mouseX, mouseY, x, y, width, height, partialTicks) -> {
-                DrawerHelper.drawSolidRect(graphics, x, y + height, width, 1, ColorPattern.T_WHITE.color);
-            };
+    /**
+     * Fired when the main inspector switches away from / clears an fx object we inspected. Guarded so
+     * our own selection-driven inspector swaps don't spuriously deselect (see {@link #updatingInspector}).
+     */
+    private void onNodeInspectorClosed() {
+        if (updatingInspector) {
+            return;
         }
-        return IGuiTexture.EMPTY;
+        treeList.setSelected(Collections.emptySet(), true);
+        fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
+    }
+
+    /**
+     * Performs a drag-reorder requested by the {@link TreeList}: moves all dragged fx objects
+     * before/into/after the target as one undoable step. Nodes that are descendants of another
+     * dragged node are skipped (moving a parent carries its children).
+     */
+    private void reparent(TreeList.ReorderRequest<FXObjectTreeNode> req) {
+        var target = req.target().getKey().transform();
+        var dragged = new ArrayList<>(req.dragged());
+        var moving = dragged.stream()
+                .filter(n -> dragged.stream().noneMatch(o -> o != n
+                        && n.getKey().transform().isInheritedParent(o.getKey().transform())))
+                .sorted(Comparator.comparingInt(n -> n.getKey().transform().getSiblingIndex()))
+                .map(FXObjectTreeNode::getKey)
+                .toList();
+        if (moving.isEmpty()) {
+            return;
+        }
+        Transform newParent = req.mode() == TreeList.DropMode.INTO ? target : target.parent();
+        if (newParent == null) {
+            return;
+        }
+        // Snapshot every affected parent's ordered children so undo restores the exact arrangement.
+        var affected = new LinkedHashSet<Transform>();
+        affected.add(newParent);
+        for (var k : moving) {
+            var p = k.transform().parent();
+            if (p != null) {
+                affected.add(p);
+            }
+        }
+        var snapshot = new LinkedHashMap<Transform, List<Transform>>();
+        for (var p : affected) {
+            snapshot.put(p, new ArrayList<>(p.children()));
+        }
+        fxEditor.historyView.pushHistory(Component.translatable("photon.move_fx_object"), EditAction.of(
+                () -> applyReparent(moving, target, newParent, req.mode()),
+                () -> {
+                    snapshot.forEach((p, order) -> {
+                        for (var child : order) {
+                            child.parent(p, true);
+                        }
+                    });
+                    snapshot.forEach((p, order) -> {
+                        for (int i = 0; i < order.size(); i++) {
+                            order.get(i).setSiblingIndex(i);
+                        }
+                    });
+                }
+        ));
+    }
+
+    private void applyReparent(List<IFXObject> moving, Transform target, Transform newParent, TreeList.DropMode mode) {
+        for (var k : moving) {
+            k.transform().parent(newParent, true);
+        }
+        var movingT = moving.stream().map(IFXObject::transform).toList();
+        var rest = new ArrayList<>(newParent.children());
+        rest.removeAll(movingT);
+        // Build the desired child order, then a left-to-right setSiblingIndex pass realizes it exactly.
+        List<Transform> desired = new ArrayList<>();
+        if (mode == TreeList.DropMode.INTO) {
+            desired.addAll(rest);
+            desired.addAll(movingT);
+        } else {
+            int ti = rest.indexOf(target);
+            int insertPos = (ti < 0) ? rest.size() : (mode == TreeList.DropMode.BEFORE ? ti : ti + 1);
+            insertPos = Math.max(0, Math.min(insertPos, rest.size()));
+            desired.addAll(rest.subList(0, insertPos));
+            desired.addAll(movingT);
+            desired.addAll(rest.subList(insertPos, rest.size()));
+        }
+        for (int i = 0; i < desired.size(); i++) {
+            desired.get(i).setSiblingIndex(i);
+        }
     }
 
     protected void onMouseDown(UIEvent event) {
