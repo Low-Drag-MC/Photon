@@ -2,6 +2,8 @@ package com.lowdragmc.photon.gui.editor.resource;
 
 import com.lowdragmc.kilagraph.editor.ShaderFunctionGraphResource;
 import com.lowdragmc.kilagraph.rendertype.ShaderFunctionGraph;
+import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderFunctionGraph;
 
 /**
@@ -18,5 +20,10 @@ public class PhotonShaderFunctionGraphResource extends ShaderFunctionGraphResour
     @Override
     public ShaderFunctionGraph createGraph() {
         return new PhotonShaderFunctionGraph();
+    }
+
+    @Override
+    public IGuiTexture getIcon() {
+        return PhotonIcons.SHADER_GRAPH_FUNCTION;
     }
 }

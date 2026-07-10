@@ -47,6 +47,7 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -120,11 +121,35 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             entry = current;
             var compiled = current == null ? null : current.getCompiled();
             values = compiled == null ? null : new KGMaterialValues(compiled);
+            if (current != null) {
+                reconcileOverrides(current);
+            }
             if (values != null) {
                 overrides.forEach(this::applyOverride);
             }
         }
         return current;
+    }
+
+    /**
+     * Drop overrides whose stored value type no longer matches the graph variable's current type.
+     * Overrides are keyed by name and persisted self-describing, so changing a variable's type in the
+     * graph (same name) leaves a stale value of the old type behind — feeding it to the new type's
+     * configurator would throw (e.g. a GradientValue into a Color editor's int cast), and it would
+     * never apply anyway. Reconciled against the graph's declared default type for each name.
+     */
+    private void reconcileOverrides(ShaderGraphRuntime.Entry entry) {
+        if (overrides.isEmpty() || entry.getGraph() == null) return;
+        var expected = new HashMap<String, Class<?>>();
+        for (var declaration : entry.getGraph().graphModel.getGraphVariableModels()) {
+            if (declaration == null) continue;
+            var def = declaration.tryGetDefaultValue(declaration.getDataType()).result().orElse(null);
+            if (def != null) expected.put(declaration.getName(), def.getClass());
+        }
+        overrides.entrySet().removeIf(e -> {
+            var cls = expected.get(e.getKey());
+            return cls != null && !cls.isInstance(e.getValue());
+        });
     }
 
     /** {@code PhotonGpuChannels} bits of the additional-data channels the compiled graph reads
@@ -466,6 +491,11 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         @Override
         public <T> T getValue() {
             var override = overrides.get(name);
+            // defensive: a stale override of the wrong type (variable type changed) would crash this
+            // row's typed configurator — fall back to the graph default (refreshEntry also prunes these)
+            if (override != null && defaultValue != null && !defaultValue.getClass().isInstance(override)) {
+                override = null;
+            }
             return (T) (override != null ? override : copyValue(defaultValue));
         }
 

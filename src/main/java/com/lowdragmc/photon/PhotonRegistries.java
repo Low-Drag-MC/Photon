@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.utils.ReflectionUtils;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlockTextureSheetMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.IModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.IShape;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
@@ -33,6 +34,9 @@ public class PhotonRegistries {
 
     @OnlyIn(Dist.CLIENT)
     public static AutoRegistry.LDLibRegisterClient<IShape, Supplier<IShape>> SHAPES;
+
+    @OnlyIn(Dist.CLIENT)
+    public static AutoRegistry.LDLibRegisterClient<IModelSource, Supplier<IModelSource>> MODEL_SOURCES;
 
     // these are stateless "type" singletons: each declares a @LDLRegisterClient static instance which we
     // register directly (no per-call creator / cache), populated via findAnnotationStaticField below.
@@ -63,6 +67,8 @@ public class PhotonRegistries {
                     .create(Photon.id("number_function"), NumberFunction.class, AutoRegistry::noArgsCreator);
             SHAPES = AutoRegistry.LDLibRegisterClient
                     .create(Photon.id("shape"), IShape.class, AutoRegistry::noArgsCreator);
+            MODEL_SOURCES = AutoRegistry.LDLibRegisterClient
+                    .create(Photon.id("model_source"), IModelSource.class, AutoRegistry::noArgsCreator);
             TIMELINE_TRACKS = new LDLRegistry.String<>(Photon.id("timeline_track"));
             registerStaticInstances(TIMELINE_TRACKS, TrackType.class);
             ANIMATED_PROPERTIES = new LDLRegistry.String<>(Photon.id("animated_property"));

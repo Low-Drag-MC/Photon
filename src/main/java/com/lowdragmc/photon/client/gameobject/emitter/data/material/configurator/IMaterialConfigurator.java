@@ -69,7 +69,7 @@ public class IMaterialConfigurator extends ValueConfigurator<IMaterial> {
         MaterialResource.INSTANCE.setPathSelectListener(path -> {
             var material = new UIResourceMaterial(path);
             // filter semantics are about the material's actual type — test the resolved target.
-            if (filter.test(material.getInternalTexture())) {
+            if (filter.test(material.getInternalMaterial())) {
                 onValueUpdatePassively(material);
                 updateValue();
             }

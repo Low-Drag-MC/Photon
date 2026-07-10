@@ -11,6 +11,9 @@ import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
+import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.ObjModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.resources.model.ModelResourceLocation;
@@ -32,6 +35,10 @@ public class MeshResource extends Resource<MeshData> {
     @Override
     public void buildBuiltin(BuiltinResourceProvider<MeshData> provider) {
         provider.addResource("block", new MeshData());
+        // unity-style primitives, shipped as obj assets (parsed at runtime, no bakery/atlas)
+        for (var primitive : new String[]{"cube", "sphere", "plane", "quad", "cylinder", "capsule"}) {
+            provider.addResource(primitive, new MeshData(new ObjModelSource(Photon.id("models/" + primitive + ".obj"))));
+        }
     }
 
     @Override
@@ -103,7 +110,10 @@ public class MeshResource extends Resource<MeshData> {
 
     public void onAdditionalModel(Consumer<ModelResourceLocation> registry) {
         for (var meshData : getLoadedResourceMeshes()) {
-            registry.accept(ModelResourceLocation.standalone(meshData.getModelLocation()));
+            // only json models go through the bakery; obj sources are parsed at runtime
+            if (meshData.getSource() instanceof JsonModelSource json) {
+                registry.accept(ModelResourceLocation.standalone(json.getModelLocation()));
+            }
         }
     }
 

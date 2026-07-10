@@ -53,7 +53,12 @@ class BeamInstanceRenderer extends InstancedRenderBackend {
 
     @Override
     protected int instanceFloats() {
-        return BASE_FLOATS + config.additionalGPUDataSetting.getCustomDataSize();
+        return BASE_FLOATS + config.additionalGPUDataSetting.attribFloats();
+    }
+
+    @Override
+    protected int dataTexelsPerInstance() {
+        return config.additionalGPUDataSetting.dataTexels();
     }
 
     @Override
@@ -66,11 +71,6 @@ class BeamInstanceRenderer extends InstancedRenderBackend {
         offset = floatInstanceAttrib(attribIndex++, 4, stride, offset); // iUV vec4
         offset = intInstanceAttrib(attribIndex++, stride, offset);      // iLight int
 
-        config.additionalGPUDataSetting.instanceDataLayout(offset, stride);
-    }
-
-    @Override
-    protected void zeroInactiveCustomSlots() {
-        config.additionalGPUDataSetting.zeroInactiveSlots();
+        config.additionalGPUDataSetting.layoutAttribs(offset, stride);
     }
 }

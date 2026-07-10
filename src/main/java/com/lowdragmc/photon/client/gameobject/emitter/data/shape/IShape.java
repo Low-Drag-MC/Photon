@@ -61,7 +61,14 @@ public interface IShape extends IConfigurable, IPersistedSerializable, ILDLRegis
 
         RenderBufferUtils.drawEdges(poseStack, buffer, edges, ColorPattern.YELLOW.color);
 
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
+        // drawEdges culls degenerate (zero-length) edges, so a non-empty edge list can still
+        // yield an empty buffer (e.g. sphere/circle with radius 0). buildOrThrow() would throw
+        // "BufferBuilder was empty" in that case, so build() + null-check instead. build() still
+        // ends the builder session when empty, keeping the shared Tesselator consistent.
+        var meshData = buffer.build();
+        if (meshData != null) {
+            BufferUploader.drawWithShader(meshData);
+        }
         RenderSystem.enableDepthTest();
         RenderSystem.enableCull();
     }

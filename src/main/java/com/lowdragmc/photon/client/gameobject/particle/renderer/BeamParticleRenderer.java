@@ -114,6 +114,7 @@ public class BeamParticleRenderer {
         if (buffer == null) return false;
 
         var setting = config.additionalGPUDataSetting;
+        var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(particles.size()) : null;
         var instanceCount = 0;
         var cameraPos = camera.getPosition().toVector3f();
         for (var p : particles) {
@@ -133,11 +134,17 @@ public class BeamParticleRenderer {
             // iLight int
             buffer.put(Float.intBitsToFloat(frame.light()));
 
-            if (setting.hasCustomData()) {
-                setting.uploadData(particle, buffer, partialTicks);
+            if (setting.hasAttribs()) {
+                setting.uploadAttribs(particle, buffer, partialTicks);
+            }
+            if (dataBuffer != null) {
+                setting.uploadDataRecord(particle, dataBuffer, partialTicks);
             }
         }
 
+        if (dataBuffer != null) {
+            instanceBackend.endDataUpload(dataBuffer);
+        }
         instanceBackend.endUpload(buffer, instanceCount);
         return instanceCount > 0;
     }

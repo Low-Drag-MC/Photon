@@ -16,35 +16,47 @@ import java.util.List;
 import java.util.Set;
 
 import static org.lwjgl.opengl.GL11.GL_FLOAT;
-import static org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER;
 import static org.lwjgl.opengl.GL20.glEnableVertexAttribArray;
-import static org.lwjgl.opengl.GL20.glVertexAttrib4f;
 import static org.lwjgl.opengl.GL20.glVertexAttribPointer;
 import static org.lwjgl.opengl.GL33.glVertexAttribDivisor;
 
 /**
- * Per-emitter selection of {@link PhotonGpuChannels} to upload as per-instance attributes.
- * Channels pack into fixed vec4 slots (see the registry); only slots with at least one enabled
- * channel exist in the instance VBO. The effective channel set is the user's toggles plus
- * whatever the pass's shadergraph materials read ({@link #setMaterialMask}); when it changes,
- * the owning render pass must rebuild the instance layout ({@link #relayoutNeeded}).
+ * Per-emitter selection of {@link PhotonGpuChannels} to expose as per-instance data. Two paths,
+ * uploaded from the same channel set but stored differently so both material kinds keep working:
+ * <ul>
+ *   <li><b>Vertex attributes (legacy):</b> the user-toggled channels ({@link #userMask()}) are laid
+ *   out one attribute per channel, sequentially from the kind's base location, in registry order —
+ *   byte-identical to the pre-packing layout. Hand-written {@code CustomShaderMaterial} shaders read
+ *   them via their own {@code layout(location = N) in ...} declarations. This layout depends ONLY on
+ *   the user toggles, never on what a shadergraph auto-enables, so those declarations never shift.</li>
+ *   <li><b>Data buffer texture (shadergraph):</b> the effective channels ({@code userMask | materialMask})
+ *   are packed into the kind's fixed vec4 slots and uploaded to the {@code PhotonData} buffer texture,
+ *   indexed by {@code gl_InstanceID}. The {@code photon_data_*()} GLSL accessors read it at a
+ *   config-independent fixed offset — so one compiled shadergraph program serves every config.</li>
+ * </ul>
+ * The two are independent: a pass batching both material kinds populates both. Only the attribute
+ * layout is a GL vertex layout ({@link #attribRelayoutNeeded()}); the TBO record size is fixed per kind.
  */
 @OnlyIn(Dist.CLIENT)
 public abstract class AdditionalGPUDataSetting extends ToggleGroup {
 
-    /** Channel → float offset inside the compacted custom-data tail of one instance. */
+    /** Channel → float offset inside the packed TBO record of one instance. */
     protected record PlannedChannel(PhotonGpuChannels.Channel channel, int floatOffset) {
     }
 
     // channels required by shadergraph materials on the pass, independent of the user toggles
     @Getter
     private long materialMask = 0;
-    // the mask the current GL layout (and upload plan) was built for; -1 = never built
-    private long lastLayoutMask = -1;
 
-    private List<PlannedChannel> uploadPlan = List.of();
-    private float[] scratch = new float[0];
-    private FloatBuffer scratchView = FloatBuffer.wrap(scratch);
+    // ---- vertex-attribute path (legacy custom shaders) ----
+    private long lastAttribMask = -1; // the userMask the current attribute layout was built for
+    private final List<PhotonGpuChannels.Channel> attribPlan = new ArrayList<>();
+
+    // ---- data-TBO record path (shadergraph accessors) ----
+    private long recordPlanMask = -1;
+    private final List<PlannedChannel> recordPlan = new ArrayList<>();
+    private float[] recordScratch = new float[0];
+    private FloatBuffer recordView = FloatBuffer.wrap(recordScratch);
 
     public abstract PhotonGpuChannels.Kind kind();
 
@@ -63,90 +75,122 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
         return PhotonGpuChannels.maskOf(kind(), enabledChannelIds());
     }
 
-    /** Channels actually uploaded: user toggles (when the group is enabled) plus material-required ones. */
+    /** Channels physically present: user toggles (when enabled) plus material-required ones. */
     public long effectiveMask() {
-        return (isEnable() ? userMask() : 0L) | materialMask;
+        return attribMask() | materialMask;
     }
 
-    /** True when the GL instance layout no longer matches the effective channel set. */
-    public boolean relayoutNeeded() {
-        return effectiveMask() != lastLayoutMask;
+    /** The channels backing the vertex-attribute layout — user toggles only, never shadergraph's. */
+    private long attribMask() {
+        return isEnable() ? userMask() : 0L;
     }
 
-    public boolean hasCustomData() {
-        return effectiveMask() != 0;
+    // ---------------------------------------------------------------------
+    // vertex-attribute path (legacy)
+    // ---------------------------------------------------------------------
+
+    /** Whether any user-toggled channel needs vertex attributes this frame. */
+    public boolean hasAttribs() {
+        return attribMask() != 0;
     }
 
-    /** Floats per instance occupied by the custom-data tail (4 per active slot). */
-    public int getCustomDataSize() {
-        return 4 * PhotonGpuChannels.activeSlots(kind(), effectiveMask()).length;
+    /** True when the vertex-attribute layout no longer matches the user toggles. */
+    public boolean attribRelayoutNeeded() {
+        return attribMask() != lastAttribMask;
+    }
+
+    /** Floats per instance the attribute tail occupies in the instance VBO (sum of enabled channel sizes). */
+    public int attribFloats() {
+        var mask = attribMask();
+        int floats = 0;
+        for (var channel : PhotonGpuChannels.CHANNELS) {
+            if ((mask & channel.bit()) != 0 && channel.supported().contains(kind()) && channel.uploadable()) {
+                floats += channel.floats();
+            }
+        }
+        return floats;
     }
 
     /**
-     * Defines the divisor-1 vec4 attributes for the active slots (instance VBO bound) at their
-     * fixed locations, and rebuilds the upload plan. Call unconditionally when (re)creating the
-     * layout — with no active slots it only records the layout mask.
+     * Defines one divisor-1 attribute per enabled channel, sequentially from the kind's base
+     * location, in registry order (the legacy layout). The instance VBO is bound. Rebuilds the
+     * upload plan. Call unconditionally when (re)creating the layout.
      */
-    public void instanceDataLayout(int offset, int stride) {
+    public void layoutAttribs(int offset, int stride) {
         var kind = kind();
-        var mask = effectiveMask();
-        lastLayoutMask = mask;
+        var mask = attribMask();
+        lastAttribMask = mask;
+        attribPlan.clear();
 
-        var slots = PhotonGpuChannels.activeSlots(kind, mask);
-        var slotLocal = new int[PhotonGpuChannels.declaredSlotCount(kind)];
-        Arrays.fill(slotLocal, -1);
-        for (int i = 0; i < slots.length; i++) {
-            var location = kind.baseAttribLocation + slots[i];
-            glVertexAttribPointer(location, 4, GL_FLOAT, false, stride, offset);
-            glEnableVertexAttribArray(location);
-            glVertexAttribDivisor(location, 1);
-            offset += 4 * Float.BYTES;
-            slotLocal[slots[i]] = i;
+        int attribIndex = kind.baseAttribLocation;
+        for (var channel : PhotonGpuChannels.CHANNELS) {
+            if ((mask & channel.bit()) == 0 || !channel.supported().contains(kind) || !channel.uploadable()) continue;
+            glVertexAttribPointer(attribIndex, channel.floats(), GL_FLOAT, false, stride, offset);
+            glEnableVertexAttribArray(attribIndex);
+            glVertexAttribDivisor(attribIndex, 1);
+            offset += channel.floats() * Float.BYTES;
+            attribIndex++;
+            attribPlan.add(channel);
         }
+    }
 
-        var plan = new ArrayList<PlannedChannel>();
+    /** Appends one instance's attribute tail (enabled channels in registry order). */
+    public void uploadAttribs(IParticle particle, FloatBuffer buffer, float partialTicks) {
+        for (var channel : attribPlan) {
+            uploadChannel(channel, particle, buffer, partialTicks);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // data-TBO record path (shadergraph accessors)
+    // ---------------------------------------------------------------------
+
+    /**
+     * Whether the data buffer texture is needed this frame — i.e. a shadergraph material on the
+     * pass reads additional channels ({@code materialMask != 0}). Hand-written custom shaders read
+     * their channels through the legacy vertex attributes instead, so a custom-shader-only pass
+     * skips the TBO entirely (the tornado etc.).
+     */
+    public boolean hasDataRecord() {
+        return materialMask != 0;
+    }
+
+    /** RGBA32F texels per instance in the {@code PhotonData} record — fixed per kind (all declared slots). */
+    public int dataTexels() {
+        return PhotonGpuChannels.declaredSlotCount(kind());
+    }
+
+    /**
+     * Appends one instance's packed record to the data staging buffer: the effective channels at
+     * their fixed canonical slots, everything else zero (so a disabled channel's accessor reads 0).
+     */
+    public void uploadDataRecord(IParticle particle, FloatBuffer buffer, float partialTicks) {
+        var mask = effectiveMask();
+        ensureRecordPlan(mask);
+        if (recordScratch.length == 0) return;
+        Arrays.fill(recordScratch, 0f);
+        for (var planned : recordPlan) {
+            recordView.position(planned.floatOffset());
+            uploadChannel(planned.channel(), particle, recordView, partialTicks);
+        }
+        buffer.put(recordScratch);
+    }
+
+    private void ensureRecordPlan(long mask) {
+        if (mask == recordPlanMask && recordScratch.length != 0) return;
+        recordPlanMask = mask;
+        var kind = kind();
+        recordScratch = new float[dataTexels() * 4];
+        recordView = FloatBuffer.wrap(recordScratch);
+        recordPlan.clear();
         for (var channel : PhotonGpuChannels.CHANNELS) {
             if ((mask & channel.bit()) == 0 || !channel.supported().contains(kind) || !channel.uploadable()) continue;
             var ref = PhotonGpuChannels.slotOf(kind, channel);
-            plan.add(new PlannedChannel(channel, slotLocal[ref.slot()] * 4 + ref.component()));
-        }
-        uploadPlan = plan;
-        scratch = new float[4 * slots.length];
-        scratchView = FloatBuffer.wrap(scratch);
-    }
-
-    /**
-     * Sets the current-value of every declared-but-inactive slot to zero before an instanced draw.
-     * Disabled attribute arrays otherwise read the GL default {@code (0,0,0,1)}, which would leak
-     * 1.0 into any channel packed into a {@code .w} component.
-     */
-    public void zeroInactiveSlots() {
-        var kind = kind();
-        var declared = PhotonGpuChannels.declaredSlotCount(kind);
-        if (declared == 0) return;
-        long activeBits = 0;
-        if (lastLayoutMask > 0) {
-            for (int slot : PhotonGpuChannels.activeSlots(kind, lastLayoutMask)) {
-                activeBits |= 1L << slot;
-            }
-        }
-        for (int slot = 0; slot < declared; slot++) {
-            if ((activeBits & (1L << slot)) == 0) {
-                glVertexAttrib4f(kind.baseAttribLocation + slot, 0, 0, 0, 0);
-            }
+            recordPlan.add(new PlannedChannel(channel, ref.slot() * 4 + ref.component()));
         }
     }
 
-    /** Appends one instance's custom-data tail (zero-filled slots, enabled channels at their packed offsets). */
-    public void uploadData(IParticle particle, FloatBuffer buffer, float partialTicks) {
-        if (scratch.length == 0) return;
-        Arrays.fill(scratch, 0f);
-        for (var planned : uploadPlan) {
-            scratchView.position(planned.floatOffset());
-            uploadChannel(planned.channel(), particle, scratchView, partialTicks);
-        }
-        buffer.put(scratch);
-    }
+    // ---------------------------------------------------------------------
 
     /** Notified when the user toggles a channel (relayout via the owning config). */
     protected void onChannelsChanged() {

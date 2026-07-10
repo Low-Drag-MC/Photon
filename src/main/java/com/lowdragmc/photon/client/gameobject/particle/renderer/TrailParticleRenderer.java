@@ -217,6 +217,7 @@ public class TrailParticleRenderer {
         if (pointBuffer == null) return false;
 
         var setting = config.additionalGPUDataSetting;
+        var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(instanceCapacity) : null;
         var instanceCount = 0;
         var pointCount = 0;
         var cameraPos = camera.getPosition().toVector3f();
@@ -242,14 +243,23 @@ public class TrailParticleRenderer {
                 // iSegV vec2 (v0, v1)
                 buffer.put(scratchV0).put(scratchV1);
 
-                if (setting.hasCustomData()) {
+                // stage the per-point channel pair (point_t/point_life) before either upload
+                if (setting.hasAttribs() || dataBuffer != null) {
                     setting.setSegmentValues(pointT[i], pointT[i + 1], pointLife[i], pointLife[i + 1]);
-                    setting.uploadData(trail, buffer, partialTicks);
+                }
+                if (setting.hasAttribs()) {
+                    setting.uploadAttribs(trail, buffer, partialTicks);
+                }
+                if (dataBuffer != null) {
+                    setting.uploadDataRecord(trail, dataBuffer, partialTicks);
                 }
                 instanceCount++;
             }
         }
 
+        if (dataBuffer != null) {
+            instanceBackend.endDataUpload(dataBuffer);
+        }
         instanceBackend.endPointUpload(pointBuffer);
         instanceBackend.endUpload(buffer, instanceCount);
         return instanceCount > 0;

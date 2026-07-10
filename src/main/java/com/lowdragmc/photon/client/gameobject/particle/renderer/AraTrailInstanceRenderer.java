@@ -133,7 +133,12 @@ class AraTrailInstanceRenderer extends InstancedRenderBackend {
     @Override
     protected int instanceFloats() {
         return (tubeMode ? BASE_FLOATS_TUBE : BASE_FLOATS_FLAT)
-                + config.additionalGPUDataSetting.getCustomDataSize();
+                + config.additionalGPUDataSetting.attribFloats();
+    }
+
+    @Override
+    protected int dataTexelsPerInstance() {
+        return config.additionalGPUDataSetting.dataTexels();
     }
 
     @Override
@@ -144,12 +149,7 @@ class AraTrailInstanceRenderer extends InstancedRenderBackend {
             offset = floatInstanceAttrib(2, 2, stride, offset); // iSegV vec2 (vA, vB)
         }
 
-        config.additionalGPUDataSetting.instanceDataLayout(offset, stride);
-    }
-
-    @Override
-    protected void zeroInactiveCustomSlots() {
-        config.additionalGPUDataSetting.zeroInactiveSlots();
+        config.additionalGPUDataSetting.layoutAttribs(offset, stride);
     }
 
     /** Whether the baked geometry no longer matches the config (mode / section polygon / tube uvWidthFactor). */

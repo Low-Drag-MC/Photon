@@ -215,7 +215,7 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
             // auto-enable whatever channels the shadergraph materials read; rebuild the layout /
             // baked geometry (mode, section polygon, tube uvWidthFactor) on change
             additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));
-            if (additionalGPUDataSetting.relayoutNeeded() || trailRenderer.geometryStale()) {
+            if (additionalGPUDataSetting.attribRelayoutNeeded() || trailRenderer.geometryStale()) {
                 clearInstance();
             }
 

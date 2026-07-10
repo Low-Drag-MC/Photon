@@ -1,26 +1,21 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.ShaderInstance;
-import net.minecraft.client.renderer.block.model.BakedQuad;
-import net.minecraft.core.Direction;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.client.model.IQuadTransformer;
-import net.neoforged.neoforge.client.model.data.ModelData;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-import org.lwjgl.system.MemoryStack;
 
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -36,8 +31,6 @@ import java.util.Collection;
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 public class TileParticleRenderer {
-    public static final Direction[] MODEL_SIDES = TileParticle.MODEL_SIDES;
-
     private final ParticleConfig config;
     private final ParticleInstanceRenderer instanceBackend;
 
@@ -83,27 +76,18 @@ public class TileParticleRenderer {
         var size = particle.getRealSize(partialTicks);
 
         if (renderMode == ParticleRendererSetting.Mode.Model) {
+            // mesh positions are already in centered model space (PhotonMesh convention)
             var transform = new Matrix4f().translate(x, y, z)
                     .rotate(computeModelQuaternion(particle, rotation))
-                    .scale(size.mul(particle.getSpaceScale()))
-                    .translate(-0.5f, -0.5f, -0.5f);
+                    .scale(size.mul(particle.getSpaceScale()));
             // draw 3d model
-            var model = config.renderer.getModel();
-            for (var side : MODEL_SIDES) {
-                var brightness = (side != null && config.renderer.isShade()) ? switch (side) {
-                    case DOWN, UP:
-                        yield 0.9F;
-                    case NORTH:
-                    case SOUTH:
-                        yield 0.8F;
-                    case WEST:
-                    case EAST:
-                        yield 0.6F;
-                } : 1f;
-                var quads = model.renderModel(null, null, null, side, particle.getRandomSource(), ModelData.EMPTY, null);
-                for (var quad : quads) {
-                    putBulkData(transform, buffer, quad, brightness, r, g, b, a, light);
-                }
+            var source = config.renderer.getModelSource();
+            var mesh = source.getMesh();
+            var remapUV = source.hasAtlasUV() && !config.renderer.isUseBlockUV();
+            var shade = config.renderer.isShade();
+            for (int quad = 0; quad < mesh.quadCount(); quad++) {
+                putMeshQuad(transform, buffer, mesh, quad, shade ? mesh.shadeBrightness(quad) : 1f,
+                        r, g, b, a, light, remapUV);
             }
         } else {
             Quaternionf quaternion;
@@ -154,49 +138,42 @@ public class TileParticleRenderer {
         }
     }
 
-    private void putBulkData(Matrix4f transform, VertexConsumer buffer, BakedQuad quad, float brightness, float red, float green, float blue, float alpha, int light) {
-        int[] vertices = quad.getVertices();
-        int points = vertices.length / 8;
+    private void putMeshQuad(Matrix4f transform, VertexConsumer buffer, PhotonMesh mesh, int quad,
+                             float brightness, float red, float green, float blue, float alpha, int light,
+                             boolean remapUV) {
+        var vertices = mesh.vertices();
+        var pivotPoint = config.renderer.getModelPivot();
+        var normalMat = transform.normal(new Matrix3f());
 
-        try (MemoryStack memoryStack = MemoryStack.stackPush()) {
-            var byteBuffer = memoryStack.malloc(DefaultVertexFormat.BLOCK.getVertexSize());
-            var intBuffer = byteBuffer.asIntBuffer();
+        float u0 = 0, v0 = 0, uw = 1, vh = 1;
+        if (remapUV) {
+            var bounds = mesh.spriteBounds();
+            u0 = bounds[quad * 4];
+            v0 = bounds[quad * 4 + 1];
+            uw = bounds[quad * 4 + 2] - u0;
+            vh = bounds[quad * 4 + 3] - v0;
+        }
 
-            var u0 = quad.getSprite().getU0();
-            var v0 = quad.getSprite().getV0();
-            var u1 = quad.getSprite().getU1();
-            var v1 = quad.getSprite().getV1();
-            var uw = u1 - u0;
-            var vh = v1 - v0;
-            var pivotPoint = config.renderer.getModelPivot();
-
-            for (int k = 0; k < points; ++k) {
-                intBuffer.clear();
-                intBuffer.put(vertices, k * 8, 8);
-                var x = byteBuffer.getFloat(0) + pivotPoint.x; // 0
-                var y = byteBuffer.getFloat(4) + pivotPoint.y; // 1
-                var z = byteBuffer.getFloat(8) + pivotPoint.z; // 2
-                var u = byteBuffer.getFloat(16); // 4 u
-                var v = byteBuffer.getFloat(20); // 5 v
-                var normalData = byteBuffer.getInt(IQuadTransformer.NORMAL * 4);
-                float nX = ((byte) normalData      ) / 127.0f;
-                float nY = ((byte)(normalData>>8 )) / 127.0f;
-                float nZ = ((byte)(normalData>>16)) / 127.0f;
-                if (!config.renderer.isUseBlockUV()) {
-                    u =  (u - u0) / uw;
-                    v =  (v - v0) / vh;
-                }
-
-                var pos = transform.transform(new Vector4f(x, y, z, 1.0F));
-                var normalMat = transform.normal(new Matrix3f());
-                var normal = new Vector3f(nX, nY, nZ).mul(normalMat).normalize();
-
-                buffer.addVertex(pos.x, pos.y, pos.z);
-                buffer.setColor(red * brightness, green * brightness, blue * brightness, alpha);
-                buffer.setUv(u, v);
-                buffer.setLight(light);
-                buffer.setNormal(normal.x, normal.y, normal.z);
+        for (int corner = 0; corner < 4; corner++) {
+            int off = PhotonMesh.vertexOffset(quad, corner);
+            var x = vertices[off] + pivotPoint.x;
+            var y = vertices[off + 1] + pivotPoint.y;
+            var z = vertices[off + 2] + pivotPoint.z;
+            var u = vertices[off + 3];
+            var v = vertices[off + 4];
+            if (remapUV) {
+                u = (u - u0) / uw;
+                v = (v - v0) / vh;
             }
+
+            var pos = transform.transform(new Vector4f(x, y, z, 1.0F));
+            var normal = new Vector3f(vertices[off + 5], vertices[off + 6], vertices[off + 7]).mul(normalMat).normalize();
+
+            buffer.addVertex(pos.x, pos.y, pos.z);
+            buffer.setColor(red * brightness, green * brightness, blue * brightness, alpha);
+            buffer.setUv(u, v);
+            buffer.setLight(light);
+            buffer.setNormal(normal.x, normal.y, normal.z);
         }
     }
 
@@ -209,12 +186,19 @@ public class TileParticleRenderer {
      * instance was uploaded (the VAO is left bound for {@link #drawInstanced}).
      */
     public boolean uploadInstances(Collection<IParticle> particles, Camera camera, float partialTicks) {
+        var renderMode = config.renderer.getRenderMode();
+        // rebuild the static geometry when the model mesh was hot-reloaded (identity compare)
+        if (renderMode == ParticleRendererSetting.Mode.Model && instanceBackend.isInitialized()
+                && instanceBackend.getBuiltMesh() != config.renderer.getModelSource().getMesh()) {
+            instanceBackend.dispose();
+        }
         var buffer = instanceBackend.beginUpload(particles.size());
         if (buffer == null) return false;
+        var setting = config.additionalGPUDataSetting;
+        var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(particles.size()) : null;
 
         var instanceCount = 0;
         var vec3 = camera.getPosition();
-        var renderMode = config.renderer.getRenderMode();
         for (var p : particles) {
             if (!(p instanceof TileParticle particle) || particle.getDelay() > 0) continue;
             instanceCount++;
@@ -274,12 +258,18 @@ public class TileParticleRenderer {
                 buffer.put(Float.intBitsToFloat(light));
             }
 
-            if (config.additionalGPUDataSetting.hasCustomData()) {
-                // append additional data
-                config.additionalGPUDataSetting.uploadData(particle, buffer, partialTicks);
+            // legacy per-channel attributes (custom shaders), + packed record for the data TBO (shadergraph)
+            if (setting.hasAttribs()) {
+                setting.uploadAttribs(particle, buffer, partialTicks);
+            }
+            if (dataBuffer != null) {
+                setting.uploadDataRecord(particle, dataBuffer, partialTicks);
             }
         }
 
+        if (dataBuffer != null) {
+            instanceBackend.endDataUpload(dataBuffer);
+        }
         instanceBackend.endUpload(buffer, instanceCount);
         return instanceCount > 0;
     }

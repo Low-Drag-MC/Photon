@@ -66,7 +66,12 @@ class TrailInstanceRenderer extends InstancedRenderBackend {
 
     @Override
     protected int instanceFloats() {
-        return BASE_FLOATS + config.additionalGPUDataSetting.getCustomDataSize();
+        return BASE_FLOATS + config.additionalGPUDataSetting.attribFloats();
+    }
+
+    @Override
+    protected int dataTexelsPerInstance() {
+        return config.additionalGPUDataSetting.dataTexels();
     }
 
     @Override
@@ -75,11 +80,6 @@ class TrailInstanceRenderer extends InstancedRenderBackend {
         offset = intInstanceAttrib(1, 2, stride, offset);   // iSeg ivec2 (point index, light)
         offset = floatInstanceAttrib(2, 2, stride, offset); // iSegV vec2 (v0, v1)
 
-        config.additionalGPUDataSetting.instanceDataLayout(offset, stride);
-    }
-
-    @Override
-    protected void zeroInactiveCustomSlots() {
-        config.additionalGPUDataSetting.zeroInactiveSlots();
+        config.additionalGPUDataSetting.layoutAttribs(offset, stride);
     }
 }

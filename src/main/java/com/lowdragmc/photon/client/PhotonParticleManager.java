@@ -59,6 +59,16 @@ public class PhotonParticleManager extends ParticleManager {
         return getRealTime() + (isPlaying ? pPartialTicks : 0);
     }
 
+    /**
+     * Timeline (0-based) time in ticks, plus the intra-tick partial while playing. Unlike
+     * {@link #getRealTime()} this EXCLUDES the seed-derived {@link #timeOffset} (which only shifts
+     * shader game time so noise varies per seed). The timeline ruler/playhead/preview and frame
+     * animation must read this, otherwise a large random seed makes the timeline time astronomical.
+     */
+    public float getTime(float pPartialTicks) {
+        return time + (isPlaying ? pPartialTicks : 0);
+    }
+
     @Override
     public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks, Predicate<ParticleRenderType> renderTypeFilter) {
         drawMode = sceneView.getDrawMode();

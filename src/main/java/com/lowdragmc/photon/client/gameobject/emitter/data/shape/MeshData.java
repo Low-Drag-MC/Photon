@@ -1,58 +1,54 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.shape;
 
-import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
-import com.lowdragmc.lowdraglib2.client.model.ModelFactory;
-import com.lowdragmc.lowdraglib2.client.renderer.impl.IModelRenderer;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
-import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
-import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorSelectorConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Scene;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
+import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib2.utils.data.BlockInfo;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
+import com.lowdragmc.photon.PhotonRegistries;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.IModelSource;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import dev.vfyjxf.taffy.style.AlignItems;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.LoadingOverlay;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.Blocks;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.client.model.IQuadTransformer;
-import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.common.util.INBTSerializable;
+import org.jetbrains.annotations.NotNull;
 import org.joml.Vector3f;
 import lombok.Getter;
-import net.minecraft.client.renderer.block.model.BakedQuad;
-import net.minecraft.client.resources.model.BlockModelRotation;
-import net.minecraft.client.resources.model.Material;
-import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.RandomSource;
 import org.lwjgl.opengl.GL11;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 
 public final class MeshData implements INBTSerializable<CompoundTag>, IConfigurable, IPersistedSerializable {
     @Getter
-    @Configurable(name = "MeshData.modelLocation")
-    private ResourceLocation modelLocation = ResourceLocation.withDefaultNamespace("block/stone");
-    // runtime
-    private boolean isLoaded = false;
+    @Persisted
+    private IModelSource source = new JsonModelSource();
+    // runtime: sampling geometry derived from the source's mesh. derivedFrom tracks which
+    // PhotonMesh instance the lists were built from — the shared cache hands out a fresh instance
+    // after any invalidation (reload listener, reload button, file polling), so an identity
+    // compare is all the staleness detection needed.
+    @Nullable
+    private volatile PhotonMesh derivedFrom = null;
     private final List<Vector3f> vertices = new ArrayList<>();
     private final List<Edge> edges = new ArrayList<>();
     private final List<Triangle> triangles = new ArrayList<>();
@@ -69,17 +65,20 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
     }
 
     public MeshData(ResourceLocation modelLocation) {
-        loadFromModel(modelLocation);
+        this(new JsonModelSource(modelLocation));
     }
 
-    @ConfigSetter(field = "modelLocation")
-    public void setModelLocation(ResourceLocation modelLocation) {
-        this.modelLocation = modelLocation;
-        clear();
+    public MeshData(IModelSource source) {
+        this.source = source;
     }
 
-    public void clear() {
-        isLoaded = false;
+    public void setSource(IModelSource source) {
+        this.source = source;
+        clearDerived();
+    }
+
+    private synchronized void clearDerived() {
+        derivedFrom = null;
         vertices.clear();
         edges.clear();
         triangles.clear();
@@ -87,63 +86,51 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
         triangleSumArea = 0;
     }
 
-    private void loadFromModel(ResourceLocation modelLocation) {
-        var random = RandomSource.create();
-        var bakedModel = ModelFactory.getUnBakedModel(modelLocation).bake(
-                ModelFactory.getModelBaker(),
-                Material::sprite,
-                BlockModelRotation.X0_Y0);
-        if (bakedModel == null) {
-            bakedModel = ModelFactory.getUnBakedModel(ResourceLocation.withDefaultNamespace("block/stone")).bake(
-                    ModelFactory.getModelBaker(),
-                    Material::sprite,
-                    BlockModelRotation.X0_Y0);
+    private void ensureLoaded() {
+        var mesh = source.getMesh();
+        if (mesh == derivedFrom) return;
+        synchronized (this) {
+            if (mesh == derivedFrom) return; // rebuilt by a parallel-sim worker meanwhile
+            vertices.clear();
+            edges.clear();
+            triangles.clear();
+            rebuildFrom(mesh);
+            derivedFrom = mesh;
         }
-        var quads = new ArrayList<>(bakedModel.getQuads(null, null, random, ModelData.EMPTY, null));
-        for (var side : Direction.values()) {
-            quads.addAll(bakedModel.getQuads(null, side, random, ModelData.EMPTY, null));
-        }
-        loadFromQuads(quads);
     }
 
-    private void loadFromQuads(List<BakedQuad> quads) {
-        // do not access the model during reloading
-        if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
-            return;
-        }
-        clear();
+    private void rebuildFrom(PhotonMesh mesh) {
         double sumLength = 0;
         double sumArea = 0;
-        for (var quad : quads) {
-            var vertices = quad.getVertices();
-            Vector3f[] points = new Vector3f[4];
-            for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++) {
-                int offset = vertexIndex * IQuadTransformer.STRIDE + IQuadTransformer.POSITION;
-                points[vertexIndex] = new Vector3f(Float.intBitsToFloat(vertices[offset]) - 0.5f,
-                        Float.intBitsToFloat(vertices[offset + 1]) - 0.5f,
-                        Float.intBitsToFloat(vertices[offset + 2]) - 0.5f);
-                // add vertexes
-                this.vertices.add(points[vertexIndex]);
+        var data = mesh.vertices();
+        var points = new Vector3f[4];
+        for (int quad = 0; quad < mesh.quadCount(); quad++) {
+            // degenerate quads (corner 3 == corner 2) are real triangles: 3 vertices, 3 edges, 1
+            // triangle — so duplicate corners/edges don't skew the weighted sampling
+            boolean triangle = mesh.isTriangle(quad);
+            int corners = triangle ? 3 : 4;
+            for (int corner = 0; corner < corners; corner++) {
+                int off = PhotonMesh.vertexOffset(quad, corner);
+                points[corner] = new Vector3f(data[off], data[off + 1], data[off + 2]);
+                this.vertices.add(points[corner]);
             }
-            // add edges
-            sumLength += addEdge(points[0], points[1]);
-            sumLength += addEdge(points[1], points[2]);
-            sumLength += addEdge(points[2], points[3]);
-            sumLength += addEdge(points[3], points[0]);
-            sumLength += addEdge(points[1], points[3]);
-            // add triangles
-            sumArea += addTriangle(points[0], points[1], points[2]);
-            sumArea += addTriangle(points[2], points[3], points[0]);
+            if (triangle) {
+                sumLength += addEdge(points[0], points[1]);
+                sumLength += addEdge(points[1], points[2]);
+                sumLength += addEdge(points[2], points[0]);
+                sumArea += addTriangle(points[0], points[1], points[2]);
+            } else {
+                sumLength += addEdge(points[0], points[1]);
+                sumLength += addEdge(points[1], points[2]);
+                sumLength += addEdge(points[2], points[3]);
+                sumLength += addEdge(points[3], points[0]);
+                sumLength += addEdge(points[1], points[3]);
+                sumArea += addTriangle(points[0], points[1], points[2]);
+                sumArea += addTriangle(points[2], points[3], points[0]);
+            }
         }
         this.edgeSumLength = sumLength;
         this.triangleSumArea = sumArea;
-        isLoaded = true;
-    }
-
-    private void ensureLoaded() {
-        if (!isLoaded) {
-            loadFromModel(modelLocation);
-        }
     }
 
     public List<Vector3f> getVertices() {
@@ -214,6 +201,22 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
         return abc.area;
     }
 
+    @Override
+    public void deserializeNBT(HolderLookup.@NotNull Provider provider, @NotNull CompoundTag nbt) {
+        IPersistedSerializable.super.deserializeNBT(provider, nbt);
+        if (!nbt.contains("source")) {
+            // legacy (pre-v5) payloads store a bare json model id; editor resource files and pasted
+            // NBT bypass the project datafixer, so keep these in-place fallbacks
+            if (nbt.contains("modelLocation", Tag.TAG_STRING)) {
+                source = new JsonModelSource(ResourceLocation.parse(nbt.getString("modelLocation")));
+            } else if (nbt.contains("type", Tag.TAG_STRING)) {
+                // a bare IModelSource wrapper {type, data} (renderer payloads before MeshData wrapping)
+                source = IModelSource.deserializeWrapper(nbt);
+            }
+        }
+        clearDerived();
+    }
+
     @OnlyIn(Dist.CLIENT)
     public Scene createPreviewScene() {
         var level = new TrackedDummyWorld();
@@ -233,6 +236,8 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
             layout.paddingAll(3);
         });
         scene.style(style -> style.backgroundTexture(Sprites.BORDER1_RT1));
+        scene.moveInlineAsDefault();
+        scene.addClass("preview_bg");
         return scene;
     }
 
@@ -264,6 +269,7 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
             f1 /= f3;
             f2 /= f3;
 
+            // +0.5: mesh space is centered, the preview block spans 0..1 (origin sits at block center)
             buffer.addVertex(mat, a.x + 0.5f, a.y + 0.5f, a.z + 0.5f).setColor(-1).setNormal(poseStack.last(), f, f1, f2);
             buffer.addVertex(mat, b.x + 0.5f, b.y + 0.5f, b.z + 0.5f).setColor(-1).setNormal(poseStack.last(), f, f1, f2);
         }
@@ -277,38 +283,15 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
     @OnlyIn(Dist.CLIENT)
     public void buildConfigurator(ConfiguratorGroup father) {
         father.addConfigurators(new Configurator("ldlib.gui.editor.group.preview").addChild(createPreviewScene()));
-        IConfigurable.super.buildConfigurator(father);
-        var buttonConfigurator = new Configurator();
-        buttonConfigurator.addInlineChild(new Button().setText("ldlib.gui.editor.tips.select_model").setOnClick(e -> {
-            var mui = e.currentElement.getModularUI();
-            if (mui == null) return;
-            Dialog.showFileDialog("ldlib.gui.editor.tips.select_model", LDLib2.getAssetsDir(), true, node -> {
-                if (!node.getKey().isFile() || node.getKey().getName().toLowerCase().endsWith(".json".toLowerCase())) {
-                    if (node.getKey().isFile()) {
-                        return IModelRenderer.getModelFromFile(node.getKey()) != null;
-                    }
-                    return true; // allow directories
-                }
-                return false;
-            }, r -> {
-                if (r != null && r.isFile()) {
-                    var newModel = IModelRenderer.getModelFromFile(r);
-                    if (newModel == null) return;
-                    if (newModel.equals(modelLocation)) return;
-                    setModelLocation(newModel);
-                    buttonConfigurator.notifyChanges();
-                }
-            }).show(mui.ui.rootElement);
-        }).layout(layout -> layout.alignSelf(AlignItems.CENTER)));
-
-        var reloadButton = new Configurator().addInlineChild(new Button()
-                .setOnClick(event -> Minecraft.getInstance().reloadResourcePacks().thenAccept(v ->
-                        Minecraft.getInstance().execute(() -> {
-                            clear();
-                            buttonConfigurator.notifyChanges();
-                        })
-                )).setText("photon.reload_mesh").layout(layout -> layout.alignSelf(AlignItems.CENTER)));
-        father.addConfigurators(buttonConfigurator, reloadButton);
+        father.addConfigurator(new ConfiguratorSelectorConfigurator<>(
+                "photon.model_source",
+                () -> source.name(),
+                name -> setSource(PhotonRegistries.MODEL_SOURCES.get(name).value().get()),
+                "json_model",
+                true,
+                PhotonRegistries.MODEL_SOURCES.keys().stream().toList(),
+                s -> "photon.model_source." + s,
+                (name, group) -> source.buildConfigurator(group)));
     }
 
     public static class Edge {
@@ -345,11 +328,11 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         MeshData meshData = (MeshData) o;
-        return Objects.equals(modelLocation, meshData.modelLocation);
+        return source.equals(meshData.source);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(modelLocation);
+        return source.hashCode();
     }
 }

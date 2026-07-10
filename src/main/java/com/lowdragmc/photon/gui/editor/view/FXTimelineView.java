@@ -181,7 +181,7 @@ public class FXTimelineView extends View implements TimelineContext {
     @Override @Nullable public FXRuntime runtime() { return fxEditor.runtime; }
     @Override public float scale() { return scale; }
     @Override public float scrollTicks() { return scrollTicks; }
-    @Override public long currentTimeTicks() { return fxEditor.sceneView.particleManager.getRealTime(); }
+    @Override public long currentTimeTicks() { return fxEditor.sceneView.particleManager.getTime(); }
     @Override public double majorTickInterval() { return niceInterval(60 / scale); }
     @Override public void pushEdit(String name, Runnable doFn, Runnable undoFn) {
         fxEditor.historyView.pushHistory(Component.translatable(name), EditAction.of(doFn, undoFn));
@@ -221,7 +221,7 @@ public class FXTimelineView extends View implements TimelineContext {
 
     @Override
     public void drawPlayhead(GuiGraphics graphics, float x, float y, float width, float height, float partialTick) {
-        var playheadX = originX() + (fxEditor.sceneView.particleManager.getRealTime(partialTick) - scrollTicks) * scale;
+        var playheadX = originX() + (fxEditor.sceneView.particleManager.getTime(partialTick) - scrollTicks) * scale;
         if (playheadX < x || playheadX > x + width) return;
         DrawerHelper.drawSolidRect(graphics, playheadX, y, 1, height, ColorPattern.RED.color);
     }
@@ -230,7 +230,7 @@ public class FXTimelineView extends View implements TimelineContext {
     public void beginScrub() {
         var pm = fxEditor.sceneView.particleManager;
         wasPlaying = pm.isPlaying();
-        previewTime = pm.getRealTime();
+        previewTime = pm.getTime();
         pm.pause();
     }
 

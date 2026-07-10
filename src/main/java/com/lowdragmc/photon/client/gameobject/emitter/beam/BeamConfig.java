@@ -169,7 +169,7 @@ public class BeamConfig implements IConfigurable, IPersistedSerializable {
         protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
             // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change
             additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));
-            if (additionalGPUDataSetting.relayoutNeeded()) {
+            if (additionalGPUDataSetting.attribRelayoutNeeded()) {
                 clearInstance();
             }
 

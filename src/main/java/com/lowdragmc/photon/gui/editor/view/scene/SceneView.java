@@ -265,7 +265,7 @@ public class SceneView extends View {
                 }
             }
             if (fxObjectAnimationView.isDisplayed() && fxEditor.runtime != null) {
-                fxObjectAnimationView.runFrameAnimation(fxEditor.runtime.root.transform(), particleManager.getRealTime(partialTicks));
+                fxObjectAnimationView.runFrameAnimation(fxEditor.runtime.root.transform(), particleManager.getTime(partialTicks));
             }
             super.renderAfterWorld(bufferSource, partialTicks);
         }

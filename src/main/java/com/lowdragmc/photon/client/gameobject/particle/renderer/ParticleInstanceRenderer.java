@@ -1,19 +1,10 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
-import com.lowdragmc.lowdraglib2.LDLib2;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
-import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import net.minecraft.client.renderer.block.model.BakedQuad;
-import net.neoforged.neoforge.client.model.IQuadTransformer;
-import net.neoforged.neoforge.client.model.data.ModelData;
-import org.apache.commons.lang3.tuple.Pair;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.BufferUtils;
-import org.lwjgl.system.MemoryStack;
-
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.lwjgl.opengl.GL30.*;
 
@@ -25,9 +16,17 @@ import static org.lwjgl.opengl.GL30.*;
 class ParticleInstanceRenderer extends InstancedRenderBackend {
 
     private final ParticleConfig config;
+    /** Mesh baked into the current static VBO, for hot-reload staleness checks (identity compare). */
+    @Nullable
+    private PhotonMesh builtMesh;
 
     public ParticleInstanceRenderer(ParticleConfig config) {
         this.config = config;
+    }
+
+    @Nullable
+    PhotonMesh getBuiltMesh() {
+        return builtMesh;
     }
 
     @Override
@@ -38,72 +37,49 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     @Override
     protected void createStaticGeometry(InstanceResource resource) {
         if (config.renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
-            var model = config.renderer.getModel();
-            List<Pair<BakedQuad, Float>> quads = new ArrayList<>();
-            for (var side : TileParticle.MODEL_SIDES) {
-                var brightness = 1f;
-                if (config.renderer.isShade() && side != null) {
-                    brightness = switch (side) {
-                        case DOWN, UP -> 0.9F;
-                        case NORTH, SOUTH -> 0.8F;
-                        case WEST, EAST -> 0.6F;
-                    };
-                }
-                for (var quad : model.renderModel(null, null, null, side, LDLib2.RANDOM, ModelData.EMPTY, null)) {
-                    quads.add(Pair.of(quad, brightness));
-                }
-            }
+            var source = config.renderer.getModelSource();
+            var mesh = source.getMesh();
+            var remapUV = source.hasAtlasUV() && !config.renderer.isUseBlockUV();
+            var shade = config.renderer.isShade();
 
             // pos 3, uv 2, normal 3, brightness 1
             int floatsPerVertex = 3 + 2 + 3 + 1;
-            var vertexBuffer = BufferUtils.createFloatBuffer(quads.size() * 4 * floatsPerVertex);
-            var indexBuffer = BufferUtils.createIntBuffer(quads.size() * 6);
+            int quadCount = mesh.quadCount();
+            var vertexBuffer = BufferUtils.createFloatBuffer(quadCount * 4 * floatsPerVertex);
+            var indexBuffer = BufferUtils.createIntBuffer(quadCount * 6);
             var vertexBase = 0;
             var pivotPoint = config.renderer.getModelPivot();
+            var vertices = mesh.vertices();
+            var bounds = mesh.spriteBounds();
 
-            for (Pair<BakedQuad, Float> pair : quads) {
-                var brightness = pair.getRight();
-                var quad = pair.getLeft();
-
-                int[] vertices = quad.getVertices();
-                int points = vertices.length / 8;
-
-                try (MemoryStack memoryStack = MemoryStack.stackPush()) {
-                    var byteBuffer = memoryStack.malloc(DefaultVertexFormat.BLOCK.getVertexSize());
-                    var intBuffer = byteBuffer.asIntBuffer();
-
-                    var u0 = quad.getSprite().getU0();
-                    var v0 = quad.getSprite().getV0();
-                    var u1 = quad.getSprite().getU1();
-                    var v1 = quad.getSprite().getV1();
-                    var uw = u1 - u0;
-                    var vh = v1 - v0;
-
-                    for (int k = 0; k < points; ++k) {
-                        intBuffer.clear();
-                        intBuffer.put(vertices, k * 8, 8);
-                        var x = byteBuffer.getFloat(0) + pivotPoint.x; // 0
-                        var y = byteBuffer.getFloat(4) + pivotPoint.y; // 1
-                        var z = byteBuffer.getFloat(8) + pivotPoint.z; // 2
-                        var u = byteBuffer.getFloat(16); // 4 u
-                        var v = byteBuffer.getFloat(20); // 5 v
-                        var normalData = byteBuffer.getInt(IQuadTransformer.NORMAL * 4);
-                        float nX = ((byte) normalData      ) / 127.0f;
-                        float nY = ((byte)(normalData>>8 )) / 127.0f;
-                        float nZ = ((byte)(normalData>>16)) / 127.0f;
-                        if (!config.renderer.isUseBlockUV()) {
-                            u =  (u - u0) / uw;
-                            v =  (v - v0) / vh;
-                        }
-
-                        vertexBuffer.put(x).put(y).put(z); // pos
-                        vertexBuffer.put(u).put(v); // uv
-                        vertexBuffer.put(nX).put(nY).put(nZ); // normal
-                        vertexBuffer.put(brightness); // brightness
-                    }
+            for (int quad = 0; quad < quadCount; quad++) {
+                var brightness = shade ? mesh.shadeBrightness(quad) : 1f;
+                float u0 = 0, v0 = 0, uw = 1, vh = 1;
+                if (remapUV) {
+                    u0 = bounds[quad * 4];
+                    v0 = bounds[quad * 4 + 1];
+                    uw = bounds[quad * 4 + 2] - u0;
+                    vh = bounds[quad * 4 + 3] - v0;
                 }
 
-                // index
+                for (int corner = 0; corner < 4; corner++) {
+                    int off = PhotonMesh.vertexOffset(quad, corner);
+                    var u = vertices[off + 3];
+                    var v = vertices[off + 4];
+                    if (remapUV) {
+                        u = (u - u0) / uw;
+                        v = (v - v0) / vh;
+                    }
+
+                    vertexBuffer.put(vertices[off] + pivotPoint.x)
+                            .put(vertices[off + 1] + pivotPoint.y)
+                            .put(vertices[off + 2] + pivotPoint.z); // pos
+                    vertexBuffer.put(u).put(v); // uv
+                    vertexBuffer.put(vertices[off + 5]).put(vertices[off + 6]).put(vertices[off + 7]); // normal
+                    vertexBuffer.put(brightness); // brightness
+                }
+
+                // index (triangles are degenerate quads — the second triangle has zero area)
                 indexBuffer.put(vertexBase).put(vertexBase + 1).put(vertexBase + 2);
                 indexBuffer.put(vertexBase + 2).put(vertexBase + 3).put(vertexBase);
                 vertexBase += 4;
@@ -136,7 +112,8 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
             resource.modelEbo = glGenBuffers();
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, resource.modelEbo);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL_DYNAMIC_DRAW);
-            modelEboSize = 6 * quads.size();
+            modelEboSize = 6 * quadCount;
+            builtMesh = mesh;
 
         } else {
             // particle quad
@@ -168,10 +145,15 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
 
     @Override
     protected int instanceFloats() {
-        var custom = config.additionalGPUDataSetting.getCustomDataSize();
+        var custom = config.additionalGPUDataSetting.attribFloats();
         return custom + (config.renderer.getRenderMode() == ParticleRendererSetting.Mode.Model
                 ? 3 + 3 + 4 + 4 + 1        // pos scale rotation color light
                 : 3 + 2 + 3 + 4 + 4 + 4 + 1); // pos size scale rotation color uv light
+    }
+
+    @Override
+    protected int dataTexelsPerInstance() {
+        return config.additionalGPUDataSetting.dataTexels();
     }
 
     @Override
@@ -197,11 +179,6 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
             offset = intInstanceAttrib(attribIndex++, stride, offset);      // light int
         }
 
-        config.additionalGPUDataSetting.instanceDataLayout(offset, stride);
-    }
-
-    @Override
-    protected void zeroInactiveCustomSlots() {
-        config.additionalGPUDataSetting.zeroInactiveSlots();
+        config.additionalGPUDataSetting.layoutAttribs(offset, stride);
     }
 }

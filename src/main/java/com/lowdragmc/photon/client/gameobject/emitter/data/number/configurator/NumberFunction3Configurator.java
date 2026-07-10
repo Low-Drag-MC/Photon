@@ -60,8 +60,8 @@ public class NumberFunction3Configurator extends ValueConfigurator<NumberFunctio
         ).layout(layout -> {
             layout.gapAll(2);
             layout.marginLeft(2);
-            layout.flexDirection(FlexDirection.ROW);
-            layout.wrap(FlexWrap.WRAP);
+//            layout.flexDirection(FlexDirection.ROW);
+//            layout.wrap(FlexWrap.WRAP);
         });
         x.layout(layout -> {
             layout.flex(1);

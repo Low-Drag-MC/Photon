@@ -44,7 +44,8 @@ public class ShaderGraph extends RenderTypeGraph {
      */
     private static final Set<Class<? extends Node>> EXCLUDED_NODES = Set.of(
             VertexAttributeInputNode.class,
-            VertexPositionBlock.class);
+            VertexPositionBlock.class
+    );
 
     /**
      * The fixed compile settings: BLOCK vertex format (all Photon passes), QUADS, translucent-ish preview

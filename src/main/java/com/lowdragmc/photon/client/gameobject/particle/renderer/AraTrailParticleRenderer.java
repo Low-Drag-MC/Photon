@@ -82,6 +82,8 @@ public class AraTrailParticleRenderer {
     private final Vector3f collectTmp = new Vector3f();
     @javax.annotation.Nullable
     private java.nio.FloatBuffer collectPointBuffer;
+    @javax.annotation.Nullable
+    private java.nio.FloatBuffer collectDataBuffer;
     private boolean collectTube;
     private int collectPointCount;
     private int collectSpanBase;
@@ -753,8 +755,10 @@ public class AraTrailParticleRenderer {
         if (pointBuffer == null) return false;
 
         var setting = config.additionalGPUDataSetting;
+        var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(pointCapacity) : null;
         collectTube = instanceBackend.isTubeMode();
         collectPointBuffer = pointBuffer;
+        collectDataBuffer = dataBuffer;
         collectPointCount = 0;
         collectInstanceCount = 0;
         var cameraPos = camera.getPosition().toVector3f();
@@ -776,6 +780,10 @@ public class AraTrailParticleRenderer {
         }
 
         collectPointBuffer = null;
+        collectDataBuffer = null;
+        if (dataBuffer != null) {
+            instanceBackend.endDataUpload(dataBuffer);
+        }
         instanceBackend.endPointUpload(pointBuffer);
         instanceBackend.endUpload(buffer, collectInstanceCount);
         return collectInstanceCount > 0;
@@ -843,9 +851,15 @@ public class AraTrailParticleRenderer {
                 // iSegV vec2 (vA, vB)
                 buffer.put(vA).put(vB);
             }
-            if (setting.hasCustomData()) {
+            // stage the per-point channel pair before either upload
+            if (setting.hasAttribs() || collectDataBuffer != null) {
                 setting.setSegmentValues(spanPointT[w], spanPointT[w + 1], spanPointLife[w], spanPointLife[w + 1]);
-                setting.uploadData(trail, buffer, partialTicks);
+            }
+            if (setting.hasAttribs()) {
+                setting.uploadAttribs(trail, buffer, partialTicks);
+            }
+            if (collectDataBuffer != null) {
+                setting.uploadDataRecord(trail, collectDataBuffer, partialTicks);
             }
             collectInstanceCount++;
         }

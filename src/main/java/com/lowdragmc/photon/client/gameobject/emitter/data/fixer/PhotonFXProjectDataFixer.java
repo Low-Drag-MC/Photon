@@ -23,9 +23,11 @@ public final class PhotonFXProjectDataFixer {
         var schema3 = builder.addSchema(3, SAME);
         // V4 introduces the optional Timeline (additive, no field migration needed)
         var schema4 = builder.addSchema(4, SAME);
+        var schema5 = builder.addSchema(5, SAME);
 
         builder.addFixer(new MaterialToRendererMaterialsFix(schema2));
         builder.addFixer(new UVAnimationTilesFix(schema3));
+        builder.addFixer(new ModelLocationToModelSourceFix(schema5));
         this.dataFixer = builder.build().fixer();
     }
     

@@ -4,11 +4,8 @@ package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
  import com.lowdragmc.photon.Photon;
  import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
  import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.ShaderGraphMaterial;
-import com.lowdragmc.photon.client.gameobject.particle.IParticle;
+ import com.lowdragmc.photon.client.gameobject.emitter.data.material.*;
+ import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
@@ -147,11 +144,18 @@ public abstract class PhotonFXRenderPass {
     protected static long shaderGraphChannelMask(List<MaterialSetting> materials) {
         long mask = 0;
         for (var materialSetting : materials) {
-            if (materialSetting.getMaterial() instanceof ShaderGraphMaterial shaderGraphMaterial) {
+            if (getRawMaterial(materialSetting.getMaterial()) instanceof ShaderGraphMaterial shaderGraphMaterial) {
                 mask |= shaderGraphMaterial.getUsedChannelMask();
             }
         }
         return mask;
+    }
+
+    private static IMaterial getRawMaterial(IMaterial material) {
+        if (material instanceof UIResourceMaterial uiResourceMaterial) {
+            return uiResourceMaterial.getRawMaterial();
+        }
+        return material;
     }
 
     protected List<MaterialSetting> getMaterials(RenderPassPipeline pipeline) {

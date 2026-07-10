@@ -30,7 +30,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 
 public class FXProject implements IProject {
-    public static int VERSION = 4;
+    public static int VERSION = 5;
     public static final ProjectType TYPE = ProjectType.of(IGuiTexture.EMPTY, "fx_project", ".fxproj", FXProject::new);
 
     @Getter

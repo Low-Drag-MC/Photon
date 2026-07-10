@@ -10,12 +10,11 @@ layout(location = 5) in vec4 iColor;
 layout(location = 6) in vec4 iUV;
 layout(location = 7) in int iLight;
 
-// additional GPU data slots — MIRRORED FROM PhotonGpuChannels (keep in lockstep)
-layout(location = 8) in vec4 iCustom0;
-layout(location = 9) in vec4 iCustom1;
-layout(location = 10) in vec4 iCustom2;
-layout(location = 11) in vec4 iCustom3;
-layout(location = 12) in vec4 iCustom4;
+// additional GPU data: pulled from PhotonData by gl_InstanceID (see photon_data_*()); the raw
+// vertex attributes above stop at iLight — custom shaders declare their own legacy channel
+// attributes at location 8+. Record = 5 texels — MIRRORED FROM PhotonGpuChannels (keep in lockstep).
+uniform samplerBuffer PhotonData;
+#define PHOTON_DATA_TEXELS 5
 
 #elif defined(PARTICLE_MODEL_INSTANCE)
 
@@ -30,12 +29,10 @@ layout(location = 6) in vec4 iRot;
 layout(location = 7) in vec4 iColor;
 layout(location = 8) in int iLight;
 
-// additional GPU data slots — MIRRORED FROM PhotonGpuChannels (keep in lockstep)
-layout(location = 9) in vec4 iCustom0;
-layout(location = 10) in vec4 iCustom1;
-layout(location = 11) in vec4 iCustom2;
-layout(location = 12) in vec4 iCustom3;
-layout(location = 13) in vec4 iCustom4;
+// additional GPU data: pulled from PhotonData by gl_InstanceID; custom shaders declare their own
+// legacy channel attributes at location 9+. Record = 5 texels — MIRRORED FROM PhotonGpuChannels.
+uniform samplerBuffer PhotonData;
+#define PHOTON_DATA_TEXELS 5
 
 #elif defined(TRAIL_INSTANCE)
 
@@ -49,13 +46,11 @@ layout(location = 0) in vec2 aPos;
 layout(location = 1) in ivec2 iSeg;  // (point index of curr, packed light)
 layout(location = 2) in vec2 iSegV;  // (v0, v1)
 
-// additional GPU data slots — MIRRORED FROM PhotonGpuChannels (keep in lockstep)
-layout(location = 3) in vec4 iCustom0;
-layout(location = 4) in vec4 iCustom1;
-layout(location = 5) in vec4 iCustom2;
-layout(location = 6) in vec4 iCustom3;
-
 uniform samplerBuffer PhotonPoints;
+// additional GPU data: pulled from PhotonData by gl_InstanceID; custom shaders declare their own
+// legacy channel attributes at location 3+. Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
+uniform samplerBuffer PhotonData;
+#define PHOTON_DATA_TEXELS 4
 
 #elif defined(ARA_TRAIL_INSTANCE)
 
@@ -68,13 +63,11 @@ layout(location = 0) in vec2 aPos;
 layout(location = 1) in int iSeg;    // point index of curr
 layout(location = 2) in vec2 iSegV;  // (vA, vB): cross-ribbon v of the +side / -side
 
-// additional GPU data slots — MIRRORED FROM PhotonGpuChannels (keep in lockstep)
-layout(location = 3) in vec4 iCustom0;
-layout(location = 4) in vec4 iCustom1;
-layout(location = 5) in vec4 iCustom2;
-layout(location = 6) in vec4 iCustom3;
-
 uniform samplerBuffer PhotonPoints;
+// additional GPU data: pulled from PhotonData by gl_InstanceID; custom shaders declare their own
+// legacy channel attributes at location 3+. Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
+uniform samplerBuffer PhotonData;
+#define PHOTON_DATA_TEXELS 4
 
 #elif defined(ARA_TRAIL_TUBE_INSTANCE)
 
@@ -85,13 +78,11 @@ layout(location = 0) in vec4 aPos;
 
 layout(location = 1) in int iSeg;    // point index of curr
 
-// additional GPU data slots — MIRRORED FROM PhotonGpuChannels (keep in lockstep)
-layout(location = 3) in vec4 iCustom0;
-layout(location = 4) in vec4 iCustom1;
-layout(location = 5) in vec4 iCustom2;
-layout(location = 6) in vec4 iCustom3;
-
 uniform samplerBuffer PhotonPoints;
+// additional GPU data: pulled from PhotonData by gl_InstanceID; custom shaders declare their own
+// legacy channel attributes at location 3+. Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
+uniform samplerBuffer PhotonData;
+#define PHOTON_DATA_TEXELS 4
 
 #elif defined(BEAM_INSTANCE)
 
@@ -104,10 +95,10 @@ layout(location = 3) in vec4 iColor;
 layout(location = 4) in vec4 iUV;    // (u0, v0, u1, v1), uv-scroll baked in
 layout(location = 5) in int iLight;
 
-// additional GPU data slots — MIRRORED FROM PhotonGpuChannels (keep in lockstep)
-layout(location = 6) in vec4 iCustom0;
-layout(location = 7) in vec4 iCustom1;
-layout(location = 8) in vec4 iCustom2;
+// additional GPU data: pulled from PhotonData by gl_InstanceID; custom shaders declare their own
+// legacy channel attributes at location 6+. Record = 3 texels — MIRRORED FROM PhotonGpuChannels.
+uniform samplerBuffer PhotonData;
+#define PHOTON_DATA_TEXELS 3
 
 #else
 
@@ -156,8 +147,8 @@ ParticleData getParticleData() {
 #elif defined(PARTICLE_MODEL_INSTANCE)
 
     mat3 rotMat = quatToMat(iRot);
-    vec3 centeredPos = aPos - vec3(0.5);   // centered
-    data.Position = (rotMat * (centeredPos * iScale)) + iPos;
+    // aPos is already in centered model space (PhotonMesh convention)
+    data.Position = (rotMat * (aPos * iScale)) + iPos;
     data.Color = vec4(iColor.rgb * aBrightness, iColor.a);
     data.UV = aUV;
     // vanilla UV2 order is (block, sky); java packs sky<<20 | block<<4
@@ -251,22 +242,29 @@ ParticleData getParticleData() {
 }
 
 // ---------------------------------------------------------------------------
-// additional GPU data accessors — MIRRORED FROM PhotonGpuChannels (keep in lockstep).
-// Channels a variant does not support (and the whole CPU path) read 0.
+// additional GPU data accessors — MIRRORED FROM PhotonGpuChannels packing (keep in lockstep).
+// Instanced variants pull the packed record from the PhotonData buffer texture by gl_InstanceID
+// (VERTEX STAGE ONLY — gl_InstanceID is undefined in the fragment stage; the shadergraph routes
+// these through a varying). Channels a variant doesn't support (and the whole CPU path) read 0.
 // ---------------------------------------------------------------------------
+#if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE) || defined(TRAIL_INSTANCE) \
+ || defined(ARA_TRAIL_INSTANCE) || defined(ARA_TRAIL_TUBE_INSTANCE) || defined(BEAM_INSTANCE)
+#define PHOTON_DATA_SLOT(slot) texelFetch(PhotonData, gl_InstanceID * PHOTON_DATA_TEXELS + (slot))
+#endif
+
 #if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE)
 
-float photon_data_random()          { return iCustom0.x; }
-float photon_data_t()               { return iCustom0.y; }
-float photon_data_age()             { return iCustom0.z; }
-float photon_data_lifetime()        { return iCustom0.w; }
-vec3  photon_data_position()        { return iCustom1.xyz; }
-float photon_data_isCollided()      { return iCustom1.w; }
-vec3  photon_data_velocity()        { return iCustom2.xyz; }
-float photon_data_emitter_t()       { return iCustom2.w; }
-float photon_data_emitter_age()     { return iCustom3.x; }
-vec3  photon_data_emitter_position(){ return iCustom3.yzw; }
-vec3  photon_data_emitter_velocity(){ return iCustom4.xyz; }
+float photon_data_random()          { return PHOTON_DATA_SLOT(0).x; }
+float photon_data_t()               { return PHOTON_DATA_SLOT(0).y; }
+float photon_data_age()             { return PHOTON_DATA_SLOT(0).z; }
+float photon_data_lifetime()        { return PHOTON_DATA_SLOT(0).w; }
+vec3  photon_data_position()        { return PHOTON_DATA_SLOT(1).xyz; }
+float photon_data_isCollided()      { return PHOTON_DATA_SLOT(1).w; }
+vec3  photon_data_velocity()        { return PHOTON_DATA_SLOT(2).xyz; }
+float photon_data_emitter_t()       { return PHOTON_DATA_SLOT(2).w; }
+float photon_data_emitter_age()     { return PHOTON_DATA_SLOT(3).x; }
+vec3  photon_data_emitter_position(){ return PHOTON_DATA_SLOT(3).yzw; }
+vec3  photon_data_emitter_velocity(){ return PHOTON_DATA_SLOT(4).xyz; }
 float photon_data_point_t()         { return 0.0; }
 float photon_data_point_life()      { return 0.0; }
 vec3  photon_data_beam_direction()  { return vec3(0.0); }
@@ -274,36 +272,36 @@ float photon_data_beam_length()     { return 0.0; }
 
 #elif defined(TRAIL_INSTANCE) || defined(ARA_TRAIL_INSTANCE) || defined(ARA_TRAIL_TUBE_INSTANCE)
 
-float photon_data_random()          { return iCustom0.x; }
-float photon_data_t()               { return iCustom0.y; }
+float photon_data_random()          { return PHOTON_DATA_SLOT(0).x; }
+float photon_data_t()               { return PHOTON_DATA_SLOT(0).y; }
 float photon_data_age()             { return 0.0; }
 float photon_data_lifetime()        { return 0.0; }
 vec3  photon_data_position()        { return vec3(0.0); }
 float photon_data_isCollided()      { return 0.0; }
 vec3  photon_data_velocity()        { return vec3(0.0); }
-float photon_data_emitter_t()       { return iCustom0.z; }
-float photon_data_emitter_age()     { return iCustom0.w; }
-vec3  photon_data_emitter_position(){ return iCustom1.xyz; }
-vec3  photon_data_emitter_velocity(){ return iCustom2.xyz; }
+float photon_data_emitter_t()       { return PHOTON_DATA_SLOT(0).z; }
+float photon_data_emitter_age()     { return PHOTON_DATA_SLOT(0).w; }
+vec3  photon_data_emitter_position(){ return PHOTON_DATA_SLOT(1).xyz; }
+vec3  photon_data_emitter_velocity(){ return PHOTON_DATA_SLOT(2).xyz; }
 // per-point channels: (value at curr, value at next) mixed by the corner
-float photon_data_point_t()         { return mix(iCustom3.x, iCustom3.y, aPos.x); }
-float photon_data_point_life()      { return mix(iCustom3.z, iCustom3.w, aPos.x); }
+float photon_data_point_t()         { return mix(PHOTON_DATA_SLOT(3).x, PHOTON_DATA_SLOT(3).y, aPos.x); }
+float photon_data_point_life()      { return mix(PHOTON_DATA_SLOT(3).z, PHOTON_DATA_SLOT(3).w, aPos.x); }
 vec3  photon_data_beam_direction()  { return vec3(0.0); }
 float photon_data_beam_length()     { return 0.0; }
 
 #elif defined(BEAM_INSTANCE)
 
-float photon_data_random()          { return iCustom0.x; }
-float photon_data_t()               { return iCustom0.y; }
+float photon_data_random()          { return PHOTON_DATA_SLOT(0).x; }
+float photon_data_t()               { return PHOTON_DATA_SLOT(0).y; }
 float photon_data_age()             { return 0.0; }
 float photon_data_lifetime()        { return 0.0; }
 vec3  photon_data_position()        { return vec3(0.0); }
 float photon_data_isCollided()      { return 0.0; }
 vec3  photon_data_velocity()        { return vec3(0.0); }
-float photon_data_emitter_t()       { return iCustom0.z; }
-float photon_data_emitter_age()     { return iCustom0.w; }
-vec3  photon_data_emitter_position(){ return iCustom1.xyz; }
-vec3  photon_data_emitter_velocity(){ return iCustom2.xyz; }
+float photon_data_emitter_t()       { return PHOTON_DATA_SLOT(0).z; }
+float photon_data_emitter_age()     { return PHOTON_DATA_SLOT(0).w; }
+vec3  photon_data_emitter_position(){ return PHOTON_DATA_SLOT(1).xyz; }
+vec3  photon_data_emitter_velocity(){ return PHOTON_DATA_SLOT(2).xyz; }
 float photon_data_point_t()         { return 0.0; }
 float photon_data_point_life()      { return 0.0; }
 // derived from the base beam attributes, nothing uploaded

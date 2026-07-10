@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
-import com.lowdragmc.lowdraglib2.client.renderer.impl.IModelRenderer;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.accessors.Vector3fAccessor;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
@@ -14,6 +13,10 @@ import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.IModelSource;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource;
+import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
+import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshDataConfigurator;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -76,7 +79,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     protected Mode renderMode = Mode.Billboard;
     @Nullable
     @EqualsAndHashCode.Include
-    protected IModelRenderer model;
+    protected MeshData model;
     @Persisted
     @EqualsAndHashCode.Include
     protected boolean shade = true;
@@ -150,8 +153,10 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
             );
         }
         if (mode == Mode.Model) {
-            getModel().buildConfigurator(group);
             group.addConfigurators(
+                    // drag a mesh resource in, or click the button to open the resource dialog;
+                    // shade/useBlockUV are functional no-ops for raw-UV (obj) meshes by construction
+                    new MeshDataConfigurator("model", this::getModel, this::setModel, new MeshData(), true),
                     new BooleanConfigurator("shade", this::isShade, this::setShade, true, true)
                             .setTips("photon.emitter.config.renderer.renderMode.model.shade"),
                     new BooleanConfigurator("useBlockUV", this::isUseBlockUV, this::setUseBlockUV, true, true)
@@ -172,11 +177,16 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         }
     }
 
-    public IModelRenderer getModel() {
+    public MeshData getModel() {
         if (model == null) {
-            model = new IModelRenderer(ResourceLocation.parse("block/dirt"));
+            model = new MeshData(new JsonModelSource(ResourceLocation.parse("block/dirt")));
         }
         return model;
+    }
+
+    /** Shortcut to the model's geometry source (render paths need mesh + UV semantics only). */
+    public IModelSource getModelSource() {
+        return getModel().getSource();
     }
 
     @ConfigSetter(field = "renderMode")
@@ -185,7 +195,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         config.particleRenderType.clearInstance();
     }
 
-    public void setModel(IModelRenderer model) {
+    public void setModel(MeshData model) {
         this.model = model;
         config.particleRenderType.clearInstance();
     }
@@ -230,11 +240,9 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         if (facingMode == null) {
             facingMode = FacingMode.DEFAULT;
         }
-        if (renderMode == Mode.Model) {
-            if (model == null) {
-                model = new IModelRenderer(ResourceLocation.parse("block/dirt"));
-            }
-            model.deserializeNBT(provider, tag.getCompound("model"));
+        if (renderMode == Mode.Model && tag.contains("model")) {
+            // MeshData's deserializer tolerates legacy payloads (bare modelLocation / source wrapper)
+            model = new MeshData(tag.getCompound("model"));
         }
     }
 
@@ -242,7 +250,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     public CompoundTag serializeNBT(HolderLookup.@NotNull Provider provider) {
         var tag = IPersistedSerializable.super.serializeNBT(provider);
         if (renderMode == Mode.Model && model != null) {
-            tag.put("model", getModel().serializeNBT(provider));
+            tag.put("model", model.serializeNBT(provider));
         }
         return tag;
     }

@@ -32,6 +32,9 @@ abstract class InstancedRenderBackend {
         // optional per-point buffer texture (vertex pulling), see pointTexelsPerPoint()
         protected int pointTbo = -1;
         protected int pointTex = -1;
+        // optional per-instance additional-data buffer texture (shadergraph), see dataTexelsPerInstance()
+        protected int dataTbo = -1;
+        protected int dataTex = -1;
 
         @Override
         public void close() {
@@ -64,13 +67,26 @@ abstract class InstancedRenderBackend {
                 glDeleteBuffers(pointTbo);
                 pointTbo = -1;
             }
+
+            if (dataTex != -1) {
+                glDeleteTextures(dataTex);
+                dataTex = -1;
+            }
+
+            if (dataTbo != -1) {
+                glDeleteBuffers(dataTbo);
+                dataTbo = -1;
+            }
         }
     }
 
     /** Vertex-shader sampler name of the per-point buffer texture (vertex pulling). */
     public static final String POINT_SAMPLER = "PhotonPoints";
-    /** Texture unit the point buffer binds to (combined limit is >= 48 on GL 3.3). */
+    /** Vertex-shader sampler name of the per-instance additional-data buffer texture. */
+    public static final String DATA_SAMPLER = "PhotonData";
+    /** Texture units the buffer textures bind to (combined limit is >= 48 on GL 3.3; MC uses 0-11). */
     private static final int POINT_SAMPLER_UNIT = 15;
+    private static final int DATA_SAMPLER_UNIT = 14;
 
     @Getter
     private boolean initialized = false;
@@ -84,11 +100,14 @@ abstract class InstancedRenderBackend {
     protected int instanceDataSize = 0; // number of floats per instance
     private int maxInstancesSize = 0;
     private int maxPointsSize = 0;
+    private int maxDataSize = 0;
     private int instanceCount = 0;
     @Nullable
     private static FloatBuffer instanceDataBuffer = null;
     @Nullable
     private static FloatBuffer pointDataBuffer = null;
+    @Nullable
+    private static FloatBuffer recordDataBuffer = null;
 
     /** Uploads the static base mesh into {@code resource.modelVbo}/{@code modelEbo} (the VAO is bound), sets the static attribute pointers and {@link #modelEboSize}. */
     protected abstract void createStaticGeometry(InstanceResource resource);
@@ -102,10 +121,6 @@ abstract class InstancedRenderBackend {
     /** Instance capacity to allocate on first init (the buffer grows on demand afterwards). */
     protected abstract int initialInstanceCapacity();
 
-    /** Resets declared-but-inactive custom attribute slots before a draw (see the additional-GPU-data packing). */
-    protected void zeroInactiveCustomSlots() {
-    }
-
     /**
      * RGBA32F texels per point in the {@value #POINT_SAMPLER} buffer texture, or 0 for backends
      * without vertex pulling. Instances then reference points by index and the vertex shader
@@ -113,6 +128,15 @@ abstract class InstancedRenderBackend {
      * practical driver limits are far higher).
      */
     protected int pointTexelsPerPoint() {
+        return 0;
+    }
+
+    /**
+     * RGBA32F texels per instance in the {@value #DATA_SAMPLER} buffer texture (the packed
+     * additional-data record), or 0 for backends without it. Fixed per config; the shadergraph
+     * {@code photon_data_*()} accessors read it by {@code gl_InstanceID}.
+     */
+    protected int dataTexelsPerInstance() {
         return 0;
     }
 
@@ -218,9 +242,12 @@ abstract class InstancedRenderBackend {
         modelEboSize = 0;
         maxInstancesSize = 0;
         maxPointsSize = 0;
+        maxDataSize = 0;
         instanceCount = 0;
-        lastSamplerShader = null;
-        lastSamplerLocation = -1;
+        lastPointSamplerShader = null;
+        lastPointSamplerLocation = -1;
+        lastDataSamplerShader = null;
+        lastDataSamplerLocation = -1;
 
         initialized = false;
     }
@@ -245,6 +272,58 @@ abstract class InstancedRenderBackend {
             pointDataBuffer = BufferUtils.createFloatBuffer(newCapacity);
         }
         return pointDataBuffer;
+    }
+
+    private static FloatBuffer getRecordDataBuffer(int requiredCapacity) {
+        if (recordDataBuffer == null || recordDataBuffer.capacity() < requiredCapacity) {
+            int newCapacity = recordDataBuffer == null ?
+                    Math.max(requiredCapacity, 10000) :
+                    Math.max(requiredCapacity, recordDataBuffer.capacity() * 2);
+
+            recordDataBuffer = BufferUtils.createFloatBuffer(newCapacity);
+        }
+        return recordDataBuffer;
+    }
+
+    /**
+     * Prepare the additional-data buffer texture for a fresh upload: (lazy-)create/grow the TBO and
+     * return the cleared shared record staging buffer ({@link #dataTexelsPerInstance()} x 4 floats
+     * per instance). Call after {@link #beginUpload}. Null when unsupported or GL unavailable.
+     */
+    @Nullable
+    FloatBuffer beginDataUpload(int instanceCapacity) {
+        var texels = dataTexelsPerInstance();
+        if (resource == null || texels <= 0) return null;
+
+        var newTbo = resource.dataTbo == -1;
+        if (newTbo) {
+            resource.dataTbo = glGenBuffers();
+        }
+        if (newTbo || instanceCapacity > maxDataSize) {
+            maxDataSize = Math.max(instanceCapacity, maxDataSize + (maxDataSize >> 1));
+            glBindBuffer(GL_TEXTURE_BUFFER, resource.dataTbo);
+            glBufferData(GL_TEXTURE_BUFFER, ((long) maxDataSize) * texels * 4 * Float.BYTES, GL_STREAM_DRAW);
+            glBindBuffer(GL_TEXTURE_BUFFER, 0);
+        }
+        if (resource.dataTex == -1) {
+            resource.dataTex = glGenTextures();
+            glBindTexture(GL_TEXTURE_BUFFER, resource.dataTex);
+            glTexBuffer(GL_TEXTURE_BUFFER, GL_RGBA32F, resource.dataTbo);
+            glBindTexture(GL_TEXTURE_BUFFER, 0);
+        }
+
+        var buffer = getRecordDataBuffer(instanceCapacity * texels * 4);
+        buffer.clear();
+        return buffer;
+    }
+
+    /** Flip and upload the filled additional-data staging buffer into the TBO. */
+    void endDataUpload(FloatBuffer buffer) {
+        if (resource == null || resource.dataTbo == -1) return;
+        buffer.flip();
+        glBindBuffer(GL_TEXTURE_BUFFER, resource.dataTbo);
+        glBufferSubData(GL_TEXTURE_BUFFER, 0, buffer);
+        glBindBuffer(GL_TEXTURE_BUFFER, 0);
     }
 
     /**
@@ -335,38 +414,55 @@ abstract class InstancedRenderBackend {
         );
         shader.apply();
 
-        bindPointSampler(shader);
-        zeroInactiveCustomSlots();
+        if (resource != null) {
+            bindBufferSampler(shader, POINT_SAMPLER, POINT_SAMPLER_UNIT, resource.pointTex, POINT_MEMO);
+            bindBufferSampler(shader, DATA_SAMPLER, DATA_SAMPLER_UNIT, resource.dataTex, DATA_MEMO);
+        }
 
         // draw instance
         glDrawElementsInstanced(GL_TRIANGLES, modelEboSize, GL_UNSIGNED_INT, 0, instanceCount);
     }
 
-    // per-shader memo of the sampler's uniform location (the per-draw glGetUniformLocation string
-    // lookup is measurable at small batch sizes); keyed by instance identity — a recompiled shader
-    // is a new object
+    // per-shader memo of each buffer sampler's uniform location (the per-draw glGetUniformLocation
+    // string lookup is measurable at small batch sizes); keyed by shader identity — a recompiled
+    // shader is a new object
+    private static final int POINT_MEMO = 0;
+    private static final int DATA_MEMO = 1;
     @Nullable
-    private ShaderInstance lastSamplerShader;
-    private int lastSamplerLocation = -1;
+    private ShaderInstance lastPointSamplerShader;
+    private int lastPointSamplerLocation = -1;
+    @Nullable
+    private ShaderInstance lastDataSamplerShader;
+    private int lastDataSamplerLocation = -1;
 
     /**
-     * Binds the point buffer texture to {@value #POINT_SAMPLER} via raw GL (after apply(), the
-     * program is bound). Raw lookup works uniformly for core-shader JSONs and KilaGraph-compiled
-     * programs — no sampler metadata needed. The TEXTURE_BUFFER target is separate from the 2D
-     * bindings GlStateManager tracks, and the active unit is saved/restored through
-     * GlStateManager's client-side cache (no synchronous glGet).
+     * Binds a buffer texture to {@code samplerName} via raw GL (after apply(), the program is bound).
+     * Raw lookup works uniformly for core-shader JSONs and KilaGraph-compiled programs — no sampler
+     * metadata needed. The TEXTURE_BUFFER target is separate from the 2D bindings GlStateManager
+     * tracks, and the active unit is saved/restored through its client-side cache (no synchronous
+     * glGet). A missing uniform (location < 0) just skips — shaders that don't pull are unaffected.
      */
-    private void bindPointSampler(ShaderInstance shader) {
-        if (resource == null || resource.pointTex == -1) return;
-        if (shader != lastSamplerShader) {
-            lastSamplerShader = shader;
-            lastSamplerLocation = glGetUniformLocation(shader.getId(), POINT_SAMPLER);
+    private void bindBufferSampler(ShaderInstance shader, String samplerName, int unit, int tex, int memo) {
+        if (tex == -1) return;
+        int location;
+        if (memo == POINT_MEMO) {
+            if (shader != lastPointSamplerShader) {
+                lastPointSamplerShader = shader;
+                lastPointSamplerLocation = glGetUniformLocation(shader.getId(), samplerName);
+            }
+            location = lastPointSamplerLocation;
+        } else {
+            if (shader != lastDataSamplerShader) {
+                lastDataSamplerShader = shader;
+                lastDataSamplerLocation = glGetUniformLocation(shader.getId(), samplerName);
+            }
+            location = lastDataSamplerLocation;
         }
-        if (lastSamplerLocation < 0) return;
-        glUniform1i(lastSamplerLocation, POINT_SAMPLER_UNIT);
+        if (location < 0) return;
+        glUniform1i(location, unit);
         int previousUnit = GlStateManager._getActiveTexture();
-        GlStateManager._activeTexture(GL_TEXTURE0 + POINT_SAMPLER_UNIT);
-        glBindTexture(GL_TEXTURE_BUFFER, resource.pointTex);
+        GlStateManager._activeTexture(GL_TEXTURE0 + unit);
+        glBindTexture(GL_TEXTURE_BUFFER, tex);
         GlStateManager._activeTexture(previousUnit);
     }
 }

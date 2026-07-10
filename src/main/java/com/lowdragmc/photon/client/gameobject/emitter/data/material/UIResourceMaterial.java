@@ -40,24 +40,30 @@ public final class UIResourceMaterial implements IMaterial {
     }
 
     /** The referenced material, re-resolved from the library on every call (cheap cached lookup). */
-    public IMaterial getInternalTexture() {
+    public IMaterial getInternalMaterial() {
         var material = MaterialResource.INSTANCE.getResourceInstance().getResource(getResourcePath());
         return material == null ? IMaterial.MISSING : material;
     }
 
+    public IMaterial getRawMaterial() {
+        var material = getInternalMaterial();
+        if (material instanceof UIResourceMaterial resourceMaterial) return resourceMaterial.getRawMaterial();
+        return material;
+    }
+
     @Override
     public ShaderInstance begin(@Nonnull MaterialContext context) {
-        return getInternalTexture().begin(context);
+        return getInternalMaterial().begin(context);
     }
 
     @Override
     public void end(@Nonnull MaterialContext context) {
-        getInternalTexture().end(context);
+        getInternalMaterial().end(context);
     }
 
     @Override
     public IGuiTexture preview() {
-        return getInternalTexture().preview();
+        return getInternalMaterial().preview();
     }
 
     @Override
