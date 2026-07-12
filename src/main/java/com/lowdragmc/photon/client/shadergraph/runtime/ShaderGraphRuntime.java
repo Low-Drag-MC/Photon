@@ -63,19 +63,24 @@ public final class ShaderGraphRuntime {
         /** {@code PhotonGpuChannels} bits of the additional-data channels the graph reads. */
         @Getter
         private final long usedChannelMask;
+        /** Whether the graph reads any user custom-data stream (a {@code CustomDataNode}). */
+        @Getter
+        private final boolean usesCustomData;
 
         private Entry(CompoundTag sourceTag, @Nullable ShaderGraph graph,
                       @Nullable CompiledShaderGraph compiled, String errorMessage) {
-            this(sourceTag, graph, compiled, errorMessage, 0);
+            this(sourceTag, graph, compiled, errorMessage, 0, false);
         }
 
         private Entry(CompoundTag sourceTag, @Nullable ShaderGraph graph,
-                      @Nullable CompiledShaderGraph compiled, String errorMessage, long usedChannelMask) {
+                      @Nullable CompiledShaderGraph compiled, String errorMessage, long usedChannelMask,
+                      boolean usesCustomData) {
             this.sourceTag = sourceTag;
             this.graph = graph;
             this.compiled = compiled;
             this.errorMessage = errorMessage;
             this.usedChannelMask = usedChannelMask;
+            this.usesCustomData = usesCustomData;
         }
 
         public boolean isValid() {
@@ -153,7 +158,7 @@ public final class ShaderGraphRuntime {
             if (compiled.hasStageErrors()) {
                 return new Entry(tag, graph, null, compiled.stageErrors().getFirst().message());
             }
-            return new Entry(tag, graph, compiled, "", compiler.getUsedChannelMask());
+            return new Entry(tag, graph, compiled, "", compiler.getUsedChannelMask(), compiler.isUsesCustomData());
         } catch (Throwable e) {
             Photon.LOGGER.error("Failed to compile shader graph", e);
             return new Entry(tag, null, null, String.valueOf(e.getMessage()));

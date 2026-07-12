@@ -25,6 +25,13 @@ public class PhotonParticleManager extends ParticleManager {
     @Getter
     private static SceneView.DrawMode drawMode = null;
     /**
+     * Whether the editor scene should run the bloom post-processing pass. Default {@code true} keeps
+     * in-game particle bloom following the mod config; the editor's top-bar toggle relays its
+     * {@link SceneView#isBloomEnabled()} here only for the duration of its own render.
+     */
+    @Getter
+    private static boolean sceneBloomEnabled = true;
+    /**
      * True while a timeline seek replays ticks that will never be rendered: particles may skip
      * pure per-tick visual recomputes (color/rotation/light — see TileParticle.updateChanges).
      * Volatile: read by parallelUpdate worker threads during the replayed ticks.
@@ -72,6 +79,7 @@ public class PhotonParticleManager extends ParticleManager {
     @Override
     public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks, Predicate<ParticleRenderType> renderTypeFilter) {
         drawMode = sceneView.getDrawMode();
+        sceneBloomEnabled = sceneView.isBloomEnabled();
         RenderSystem.setShaderGameTime(getRealTime(), isPlaying ? pPartialTicks : 0);
 
         var startTime = System.nanoTime();
@@ -86,6 +94,7 @@ public class PhotonParticleManager extends ParticleManager {
             RenderSystem.setShaderGameTime(Minecraft.getInstance().level.getGameTime(), pPartialTicks);
         }
         drawMode = null;
+        sceneBloomEnabled = true;
     }
 
     @Override

@@ -6,7 +6,6 @@ package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
  import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
  import com.lowdragmc.photon.client.gameobject.emitter.data.material.*;
  import com.lowdragmc.photon.client.gameobject.particle.IParticle;
-import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
  import lombok.EqualsAndHashCode;
@@ -151,6 +150,22 @@ public abstract class PhotonFXRenderPass {
         return mask;
     }
 
+    /**
+     * Whether any shadergraph material on the pass reads user custom data (a {@code CustomDataNode}) —
+     * fed into {@code AdditionalGPUDataSetting.setCustomDataMaterialUsed} so instanced passes upload the
+     * {@code PhotonCustomData} buffer texture only when needed (custom shaders read custom data through
+     * their appended vertex attributes instead).
+     */
+    protected static boolean shaderGraphUsesCustomData(List<MaterialSetting> materials) {
+        for (var materialSetting : materials) {
+            if (getRawMaterial(materialSetting.getMaterial()) instanceof ShaderGraphMaterial shaderGraphMaterial
+                    && shaderGraphMaterial.usesCustomData()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static IMaterial getRawMaterial(IMaterial material) {
         if (material instanceof UIResourceMaterial uiResourceMaterial) {
             return uiResourceMaterial.getRawMaterial();
@@ -160,7 +175,7 @@ public abstract class PhotonFXRenderPass {
 
     protected List<MaterialSetting> getMaterials(RenderPassPipeline pipeline) {
         var materials = rendererSetting.getMaterials();
-        if (pipeline.getDrawMode() == SceneView.DrawMode.WIREFRAME) {
+        if (pipeline.isWireframeSubPass()) {
             materials = List.of(WIREFRAME_MATERIAL);
         }
         return materials;

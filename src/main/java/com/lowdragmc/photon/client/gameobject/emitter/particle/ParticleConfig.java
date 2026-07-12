@@ -216,6 +216,7 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
 
             // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change
             additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));
+            additionalGPUDataSetting.setCustomDataMaterialUsed(shaderGraphUsesCustomData(materials));
             if (additionalGPUDataSetting.attribRelayoutNeeded()) {
                 clearInstance();
             }

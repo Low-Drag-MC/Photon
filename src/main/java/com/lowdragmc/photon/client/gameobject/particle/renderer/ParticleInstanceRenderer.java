@@ -157,6 +157,12 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     }
 
     @Override
+    protected int customTexelsPerInstance() {
+        return config.additionalGPUDataSetting.hasCustomRecord()
+                ? config.additionalGPUDataSetting.customDataTexels() : 0;
+    }
+
+    @Override
     protected void defineInstanceAttributes(int stride) {
         int attribIndex;
         int offset = 0;

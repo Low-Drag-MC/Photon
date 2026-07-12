@@ -48,7 +48,8 @@ public class SceneView extends View {
     }
     public enum DrawMode {
         DRAW("draw_mode.draw"),
-        WIREFRAME("draw_mode.wireframe");
+        WIREFRAME("draw_mode.wireframe"),
+        BOTH("draw_mode.both");
 
         public final String translateKey;
 
@@ -71,6 +72,8 @@ public class SceneView extends View {
     private SceneMode sceneMode = SceneMode.PLATFORM;
     @Getter @Setter
     private DrawMode drawMode = DrawMode.DRAW;
+    @Getter @Setter
+    private boolean bloomEnabled = true;
     @Getter
     private int sceneRange = 6;
     // runtime
@@ -140,6 +143,9 @@ public class SceneView extends View {
     public void drawContents(@NotNull GUIContext context) {
         // flush before the children draw so the seek result is visible this frame
         flushPendingSimulate();
+        // keep the floating panels pinned to their anchor corner when the scene is resized
+        fxObjectInfoView.reflowIfSceneResized();
+        fxObjectAnimationView.reflowIfSceneResized();
         super.drawContents(context);
     }
 
@@ -232,6 +238,10 @@ public class SceneView extends View {
     public class ParticleSceneEditor extends SceneEditor {
         public static final IGuiTexture SHAPE_OUTLINE = Icons.icon(Photon.MOD_ID, "shape_outline");
         public static final IGuiTexture CULL_BOX = Icons.icon(Photon.MOD_ID, "cull_box");
+        public static final IGuiTexture DRAW_SHADED = Icons.icon(Photon.MOD_ID, "draw_shaded");
+        public static final IGuiTexture DRAW_WIREFRAME = Icons.icon(Photon.MOD_ID, "draw_wireframe");
+        public static final IGuiTexture DRAW_BOTH = Icons.icon(Photon.MOD_ID, "draw_both");
+        public static final IGuiTexture BLOOM = Icons.icon(Photon.MOD_ID, "bloom");
 
         public SceneView sceneView() {
             return SceneView.this;
@@ -276,6 +286,17 @@ public class SceneView extends View {
             var sceneRangeScroller = new Scroller.Horizontal();
             sceneRangeScroller.headButton.setDisplay(false);
             sceneRangeScroller.tailButton.setDisplay(false);
+            // draw-mode radio group: shaded / wireframe / shaded+wireframe (exactly one active)
+            var drawModeGroup = new Toggle.ToggleGroup();
+            var drawModeToggles = new UIElement().layout(layout -> {
+                layout.heightPercent(100);
+                layout.flexDirection(FlexDirection.ROW);
+                layout.gapAll(1);
+            }).addChildren(
+                    drawModeToggle(drawModeGroup, DrawMode.DRAW, DRAW_SHADED, "photon.draw_mode.shaded"),
+                    drawModeToggle(drawModeGroup, DrawMode.WIREFRAME, DRAW_WIREFRAME, "photon.draw_mode.wireframe"),
+                    drawModeToggle(drawModeGroup, DrawMode.BOTH, DRAW_BOTH, "photon.draw_mode.both")
+            );
             var sceneSettings = new UIElement().layout(layout -> {
                 layout.heightPercent(100);
                 layout.flexDirection(FlexDirection.ROW);
@@ -303,27 +324,7 @@ public class SceneView extends View {
                                     }
                                 }
                             }),
-                    new Selector<DrawMode>()
-                            .setCandidates(List.of(DrawMode.values()))
-                            .setValue(getDrawMode(), false)
-                            .setOnValueChanged(SceneView.this::setDrawMode)
-                            .setCandidateUIProvider(candidate -> new Label()
-                                    .textStyle(style -> style
-                                            .textAlignHorizontal(Horizontal.LEFT)
-                                            .textAlignVertical(Vertical.CENTER))
-                                    .setText(candidate == null ? "---" : candidate.translateKey))
-                            .layout(layout -> {
-                                layout.heightPercent(100);
-                                layout.flex(1);
-                            })
-                            .style(style -> style.tooltips("editor.draw_mode"))
-                            .addEventListener(UIEvents.TICK, event -> {
-                                if (event.currentElement instanceof Selector selector) {
-                                    if (selector.getValue() != getDrawMode()) {
-                                        selector.setValue(getDrawMode(), false);
-                                    }
-                                }
-                            }),
+                    drawModeToggles,
                     sceneRangeScroller.setRange(1, 10).setValue((float) getSceneRange(), false)
                             .setScrollBarSize(10).setOnValueChanged(value -> setSceneRange(Mth.clamp((int) value, 1, 10))).layout(layout -> {
                         layout.heightPercent(100);
@@ -337,6 +338,11 @@ public class SceneView extends View {
             });
 
             rightMost.addChildren(
+                    new SceneToggleBuilder(SceneView.this::isBloomEnabled,
+                            SceneView.this::setBloomEnabled)
+                            .icon(BLOOM)
+                            .tooltipKey("photon.is_bloom_visible")
+                            .build(),
                     new SceneToggleBuilder(SceneView.this::isShapeVisible,
                             SceneView.this::setShapeVisible)
                             .icon(SHAPE_OUTLINE)
@@ -360,6 +366,17 @@ public class SceneView extends View {
             );
 
             topBar.addChildren(sceneSettings, rightMost);
+        }
+
+        private Toggle drawModeToggle(Toggle.ToggleGroup group, DrawMode mode, IGuiTexture icon, String tooltipKey) {
+            var toggle = new SceneToggleBuilder(
+                    () -> SceneView.this.getDrawMode() == mode,
+                    on -> { if (on) SceneView.this.setDrawMode(mode); })
+                    .icon(icon)
+                    .tooltipKey(tooltipKey)
+                    .build();
+            toggle.setToggleGroup(group);
+            return toggle;
         }
     }
 

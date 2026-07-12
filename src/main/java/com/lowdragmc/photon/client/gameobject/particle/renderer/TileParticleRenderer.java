@@ -196,6 +196,7 @@ public class TileParticleRenderer {
         if (buffer == null) return false;
         var setting = config.additionalGPUDataSetting;
         var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(particles.size()) : null;
+        var customBuffer = setting.hasCustomRecord() ? instanceBackend.beginCustomUpload(particles.size()) : null;
 
         var instanceCount = 0;
         var vec3 = camera.getPosition();
@@ -265,10 +266,16 @@ public class TileParticleRenderer {
             if (dataBuffer != null) {
                 setting.uploadDataRecord(particle, dataBuffer, partialTicks);
             }
+            if (customBuffer != null) {
+                setting.uploadCustomRecord(particle, customBuffer, partialTicks);
+            }
         }
 
         if (dataBuffer != null) {
             instanceBackend.endDataUpload(dataBuffer);
+        }
+        if (customBuffer != null) {
+            instanceBackend.endCustomUpload(customBuffer);
         }
         instanceBackend.endUpload(buffer, instanceCount);
         return instanceCount > 0;

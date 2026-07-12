@@ -35,6 +35,9 @@ abstract class InstancedRenderBackend {
         // optional per-instance additional-data buffer texture (shadergraph), see dataTexelsPerInstance()
         protected int dataTbo = -1;
         protected int dataTex = -1;
+        // optional per-instance custom-data buffer texture (shadergraph CustomDataNode), see customTexelsPerInstance()
+        protected int customTbo = -1;
+        protected int customTex = -1;
 
         @Override
         public void close() {
@@ -77,6 +80,16 @@ abstract class InstancedRenderBackend {
                 glDeleteBuffers(dataTbo);
                 dataTbo = -1;
             }
+
+            if (customTex != -1) {
+                glDeleteTextures(customTex);
+                customTex = -1;
+            }
+
+            if (customTbo != -1) {
+                glDeleteBuffers(customTbo);
+                customTbo = -1;
+            }
         }
     }
 
@@ -84,9 +97,12 @@ abstract class InstancedRenderBackend {
     public static final String POINT_SAMPLER = "PhotonPoints";
     /** Vertex-shader sampler name of the per-instance additional-data buffer texture. */
     public static final String DATA_SAMPLER = "PhotonData";
+    /** Vertex-shader sampler name of the per-instance custom-data buffer texture. */
+    public static final String CUSTOM_SAMPLER = "PhotonCustomData";
     /** Texture units the buffer textures bind to (combined limit is >= 48 on GL 3.3; MC uses 0-11). */
     private static final int POINT_SAMPLER_UNIT = 15;
     private static final int DATA_SAMPLER_UNIT = 14;
+    private static final int CUSTOM_SAMPLER_UNIT = 13;
 
     @Getter
     private boolean initialized = false;
@@ -101,6 +117,7 @@ abstract class InstancedRenderBackend {
     private int maxInstancesSize = 0;
     private int maxPointsSize = 0;
     private int maxDataSize = 0;
+    private int maxCustomSize = 0;
     private int instanceCount = 0;
     @Nullable
     private static FloatBuffer instanceDataBuffer = null;
@@ -108,6 +125,8 @@ abstract class InstancedRenderBackend {
     private static FloatBuffer pointDataBuffer = null;
     @Nullable
     private static FloatBuffer recordDataBuffer = null;
+    @Nullable
+    private static FloatBuffer customDataBuffer = null;
 
     /** Uploads the static base mesh into {@code resource.modelVbo}/{@code modelEbo} (the VAO is bound), sets the static attribute pointers and {@link #modelEboSize}. */
     protected abstract void createStaticGeometry(InstanceResource resource);
@@ -137,6 +156,16 @@ abstract class InstancedRenderBackend {
      * {@code photon_data_*()} accessors read it by {@code gl_InstanceID}.
      */
     protected int dataTexelsPerInstance() {
+        return 0;
+    }
+
+    /**
+     * RGBA32F texels per instance in the {@value #CUSTOM_SAMPLER} buffer texture (the user custom-data
+     * record), or 0 for backends without it / when no shadergraph on the pass reads custom data. The
+     * shadergraph {@code photon_custom_data(i)} accessor reads it by {@code gl_InstanceID} with a
+     * constant stride (see {@code AdditionalGPUDataSetting.MAX_CUSTOM_DATA}).
+     */
+    protected int customTexelsPerInstance() {
         return 0;
     }
 
@@ -243,11 +272,14 @@ abstract class InstancedRenderBackend {
         maxInstancesSize = 0;
         maxPointsSize = 0;
         maxDataSize = 0;
+        maxCustomSize = 0;
         instanceCount = 0;
         lastPointSamplerShader = null;
         lastPointSamplerLocation = -1;
         lastDataSamplerShader = null;
         lastDataSamplerLocation = -1;
+        lastCustomSamplerShader = null;
+        lastCustomSamplerLocation = -1;
 
         initialized = false;
     }
@@ -283,6 +315,58 @@ abstract class InstancedRenderBackend {
             recordDataBuffer = BufferUtils.createFloatBuffer(newCapacity);
         }
         return recordDataBuffer;
+    }
+
+    private static FloatBuffer getCustomDataBuffer(int requiredCapacity) {
+        if (customDataBuffer == null || customDataBuffer.capacity() < requiredCapacity) {
+            int newCapacity = customDataBuffer == null ?
+                    Math.max(requiredCapacity, 10000) :
+                    Math.max(requiredCapacity, customDataBuffer.capacity() * 2);
+
+            customDataBuffer = BufferUtils.createFloatBuffer(newCapacity);
+        }
+        return customDataBuffer;
+    }
+
+    /**
+     * Prepare the custom-data buffer texture for a fresh upload: (lazy-)create/grow the TBO and
+     * return the cleared shared custom staging buffer ({@link #customTexelsPerInstance()} x 4 floats
+     * per instance). Call after {@link #beginUpload}. Null when unsupported or GL unavailable.
+     */
+    @Nullable
+    FloatBuffer beginCustomUpload(int instanceCapacity) {
+        var texels = customTexelsPerInstance();
+        if (resource == null || texels <= 0) return null;
+
+        var newTbo = resource.customTbo == -1;
+        if (newTbo) {
+            resource.customTbo = glGenBuffers();
+        }
+        if (newTbo || instanceCapacity > maxCustomSize) {
+            maxCustomSize = Math.max(instanceCapacity, maxCustomSize + (maxCustomSize >> 1));
+            glBindBuffer(GL_TEXTURE_BUFFER, resource.customTbo);
+            glBufferData(GL_TEXTURE_BUFFER, ((long) maxCustomSize) * texels * 4 * Float.BYTES, GL_STREAM_DRAW);
+            glBindBuffer(GL_TEXTURE_BUFFER, 0);
+        }
+        if (resource.customTex == -1) {
+            resource.customTex = glGenTextures();
+            glBindTexture(GL_TEXTURE_BUFFER, resource.customTex);
+            glTexBuffer(GL_TEXTURE_BUFFER, GL_RGBA32F, resource.customTbo);
+            glBindTexture(GL_TEXTURE_BUFFER, 0);
+        }
+
+        var buffer = getCustomDataBuffer(instanceCapacity * texels * 4);
+        buffer.clear();
+        return buffer;
+    }
+
+    /** Flip and upload the filled custom-data staging buffer into the TBO. */
+    void endCustomUpload(FloatBuffer buffer) {
+        if (resource == null || resource.customTbo == -1) return;
+        buffer.flip();
+        glBindBuffer(GL_TEXTURE_BUFFER, resource.customTbo);
+        glBufferSubData(GL_TEXTURE_BUFFER, 0, buffer);
+        glBindBuffer(GL_TEXTURE_BUFFER, 0);
     }
 
     /**
@@ -417,6 +501,7 @@ abstract class InstancedRenderBackend {
         if (resource != null) {
             bindBufferSampler(shader, POINT_SAMPLER, POINT_SAMPLER_UNIT, resource.pointTex, POINT_MEMO);
             bindBufferSampler(shader, DATA_SAMPLER, DATA_SAMPLER_UNIT, resource.dataTex, DATA_MEMO);
+            bindBufferSampler(shader, CUSTOM_SAMPLER, CUSTOM_SAMPLER_UNIT, resource.customTex, CUSTOM_MEMO);
         }
 
         // draw instance
@@ -428,12 +513,16 @@ abstract class InstancedRenderBackend {
     // shader is a new object
     private static final int POINT_MEMO = 0;
     private static final int DATA_MEMO = 1;
+    private static final int CUSTOM_MEMO = 2;
     @Nullable
     private ShaderInstance lastPointSamplerShader;
     private int lastPointSamplerLocation = -1;
     @Nullable
     private ShaderInstance lastDataSamplerShader;
     private int lastDataSamplerLocation = -1;
+    @Nullable
+    private ShaderInstance lastCustomSamplerShader;
+    private int lastCustomSamplerLocation = -1;
 
     /**
      * Binds a buffer texture to {@code samplerName} via raw GL (after apply(), the program is bound).
@@ -451,12 +540,18 @@ abstract class InstancedRenderBackend {
                 lastPointSamplerLocation = glGetUniformLocation(shader.getId(), samplerName);
             }
             location = lastPointSamplerLocation;
-        } else {
+        } else if (memo == DATA_MEMO) {
             if (shader != lastDataSamplerShader) {
                 lastDataSamplerShader = shader;
                 lastDataSamplerLocation = glGetUniformLocation(shader.getId(), samplerName);
             }
             location = lastDataSamplerLocation;
+        } else {
+            if (shader != lastCustomSamplerShader) {
+                lastCustomSamplerShader = shader;
+                lastCustomSamplerLocation = glGetUniformLocation(shader.getId(), samplerName);
+            }
+            location = lastCustomSamplerLocation;
         }
         if (location < 0) return;
         glUniform1i(location, unit);

@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.ResourceMeshSource;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Setter;
@@ -46,22 +47,30 @@ public class MeshDataConfigurator extends ValueConfigurator<MeshData> {
         setCanDropPredicate(obj -> obj instanceof MeshData && filter.test((MeshData) obj));
     }
 
-    /** Pick a mesh from the editor's mesh resources; selection applies live, cancel restores. */
+    /**
+     * Pick a mesh from the editor's mesh resources. Selecting assigns a LIVE reference
+     * ({@link ResourceMeshSource}) — the same semantics as dragging a tile — so later edits to the
+     * library resource keep propagating to this slot. The path arrives via MeshResource's selection
+     * listener (the stock dialog callback only reports the value, and a copy would freeze the mesh).
+     */
     protected void showMeshDialog(UIEvent event) {
         var previous = getValue();
+        MeshResource.INSTANCE.setPathSelectListener(path -> {
+            var meshData = new MeshData(new ResourceMeshSource(path));
+            if (filter.test(meshData) && !meshData.equals(getValue())) {
+                onValueUpdatePassively(meshData);
+                updateValue();
+            }
+        });
         var dialog = MeshResource.INSTANCE.getResourceInstance().createSelectorDialog(event.x, event.y,
-                meshData -> {
-                    if (meshData != null && filter.test(meshData) && !meshData.equals(getValue())) {
-                        onValueUpdatePassively(meshData);
-                        updateValue();
-                    }
-                },
+                meshData -> { },
                 () -> {
                     if (previous != null && !previous.equals(getValue())) {
                         onValueUpdatePassively(previous);
                         updateValue();
                     }
                 });
+        dialog.setOnClose(() -> MeshResource.INSTANCE.setPathSelectListener(null));
         dialog.show(getModularUI());
     }
 

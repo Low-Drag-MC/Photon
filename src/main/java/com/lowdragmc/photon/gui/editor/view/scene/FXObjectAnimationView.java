@@ -37,8 +37,7 @@ public class FXObjectAnimationView extends FloatView {
 
     public FXObjectAnimationView(SceneView sceneView) {
         super(sceneView, Component.translatable("photon.animation"));
-        getLayout().leftPercent(0);
-        getLayout().topPercent(100);
+        setAnchor(HAnchor.LEFT, VAnchor.BOTTOM, 0, 0);
 
         initBasicInfo();
         hide();

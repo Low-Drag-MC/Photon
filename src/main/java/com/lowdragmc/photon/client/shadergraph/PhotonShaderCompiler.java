@@ -45,6 +45,10 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
     @Getter
     private long usedChannelMask;
 
+    /** Whether the graph reads any user custom-data stream (a {@code CustomDataNode}). */
+    @Getter
+    private boolean usesCustomData;
+
     public PhotonShaderCompiler(ShaderGraph graph) {
         super(graph);
     }
@@ -56,6 +60,10 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
 
     public void markChannelUsed(PhotonGpuChannels.Channel channel) {
         usedChannelMask |= channel.bit();
+    }
+
+    public void markCustomDataUsed() {
+        usesCustomData = true;
     }
 
     @Override

@@ -2,13 +2,16 @@ package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.data.AdditionalGPUDataSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomData;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import org.apache.logging.log4j.util.TriConsumer;
 
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -53,6 +56,8 @@ public class ParticleAdditionalGPUDataSetting extends AdditionalGPUDataSetting {
     private final ParticleConfig config;
     @Persisted
     private final Set<String> additionalData = new HashSet<>();
+    /** User custom-data streams; persisted manually by {@link AdditionalGPUDataSetting} via NBT. */
+    private final List<CustomData> customData = new ArrayList<>();
 
     public ParticleAdditionalGPUDataSetting(ParticleConfig particleConfig) {
         super();
@@ -69,6 +74,16 @@ public class ParticleAdditionalGPUDataSetting extends AdditionalGPUDataSetting {
     @Override
     protected Set<String> enabledChannelIds() {
         return additionalData;
+    }
+
+    @Override
+    protected List<CustomData> customDataList() {
+        return customData;
+    }
+
+    @Override
+    protected boolean supportsCustomData() {
+        return true;
     }
 
     @Override

@@ -289,7 +289,9 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
                 name -> setSource(PhotonRegistries.MODEL_SOURCES.get(name).value().get()),
                 "json_model",
                 true,
-                PhotonRegistries.MODEL_SOURCES.keys().stream().toList(),
+                // resource_mesh is a live reference, not a first-class geometry source — it exists only
+                // for drag/dialog picks, so a resource shouldn't be able to reference another resource
+                PhotonRegistries.MODEL_SOURCES.keys().stream().filter(k -> !k.equals("resource_mesh")).toList(),
                 s -> "photon.model_source." + s,
                 (name, group) -> source.buildConfigurator(group)));
     }

@@ -159,6 +159,13 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         return entry != null && entry.isValid() ? entry.getUsedChannelMask() : 0L;
     }
 
+    /** Whether the compiled graph reads any user custom-data stream (a {@code CustomDataNode}) —
+     *  lets instanced render passes upload the {@code PhotonCustomData} buffer texture only when needed. */
+    public boolean usesCustomData() {
+        var entry = refreshEntry();
+        return entry != null && entry.isValid() && entry.isUsesCustomData();
+    }
+
     @Override
     public ShaderInstance getShader(MaterialContext context) {
         var entry = refreshEntry();

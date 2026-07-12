@@ -12,6 +12,7 @@ import com.lowdragmc.photon.Photon;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.LoadingOverlay;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -78,7 +79,15 @@ public class ObjModelSource implements IModelSource {
         return copy;
     }
 
+    /** {@code null} = "can't load right now, don't cache" (retry next call); see {@link PhotonMeshCache#get}. */
+    @Nullable
     private PhotonMesh load() {
+        // The resource manager is mid-swap during a reload (F3+T / resource reload also clears our
+        // cache). Loading now can transiently fail; caching EMPTY would blank the mesh until the next
+        // invalidation. Retry after the reload instead — mirrors JsonModelSource's overlay guard.
+        if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
+            return null;
+        }
         try (var in = Minecraft.getInstance().getResourceManager().open(modelLocation)) {
             var mesh = ObjMeshParser.parse(in, flipV);
             // track the editable disk copy (if any) so pollFileChanges can hot-reload it

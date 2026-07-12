@@ -36,6 +36,9 @@ public class RenderPassPipeline extends BufferBuilder {
     // runtime
     @Getter
     private SceneView.DrawMode drawMode = SceneView.DrawMode.DRAW;
+    /** True while the wireframe overlay sub-pass is drawing (WIREFRAME, or the second pass of BOTH). */
+    @Getter
+    private boolean wireframeSubPass = false;
     @Nullable
     @Getter
     private static RenderPassPipeline current = null;
@@ -77,6 +80,34 @@ public class RenderPassPipeline extends BufferBuilder {
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
         // the draw target was freshly copied from the scene in beforeRendering -> stale sampler
         markSceneSamplerDirty();
+
+        // shaded sub-pass (DRAW and BOTH)
+        if (drawMode != SceneView.DrawMode.WIREFRAME) {
+            wireframeSubPass = false;
+            renderQueuedPasses();
+        }
+        // wireframe overlay sub-pass (WIREFRAME and BOTH): global polygon LINE mode + the inverse
+        // material draws each mesh as inverted-color lines over the (optional) shaded pass.
+        if (drawMode != SceneView.DrawMode.DRAW) {
+            wireframeSubPass = true;
+            GL30.glPolygonMode(GL30.GL_FRONT_AND_BACK, GL30.GL_LINE);
+            GL30.glEnable(GL30.GL_POLYGON_OFFSET_LINE);
+            GL30.glPolygonOffset(-1.0f, -1.0f);
+            renderQueuedPasses();
+            GL30.glPolygonOffset(0f, 0f);
+            GL30.glDisable(GL30.GL_POLYGON_OFFSET_LINE);
+            GL30.glPolygonMode(GL30.GL_FRONT_AND_BACK, GL30.GL_FILL);
+            wireframeSubPass = false;
+        }
+
+        clearRenderingState();
+        afterRendering();
+        return null;
+    }
+
+    /** Draw all queued render passes once for the current sub-pass. The queues are iterated (not
+     * drained), so this can safely run twice for {@link SceneView.DrawMode#BOTH}. */
+    private void renderQueuedPasses() {
         for (var entry : particles.entrySet()) {
             var renderPass = entry.getKey();
             var particleQueue = entry.getValue();
@@ -91,22 +122,15 @@ public class RenderPassPipeline extends BufferBuilder {
                 }
             }
         }
-        clearRenderingState();
-        afterRendering();
-        return null;
     }
 
     private void beforeRendering() {
         current = this;
+        var mode = PhotonParticleManager.getDrawMode();
+        drawMode = mode == null ? SceneView.DrawMode.DRAW : mode;
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
         prepareTarget(mainTarget.width, mainTarget.height);
         PhotonPostProcessing.prepareTarget(mainTarget.width, mainTarget.height);
-        if (PhotonParticleManager.getDrawMode() == SceneView.DrawMode.WIREFRAME) {
-            drawMode = SceneView.DrawMode.WIREFRAME;
-            GL30.glPolygonMode(GL30.GL_FRONT_AND_BACK, GL30.GL_LINE);
-            GL30.glEnable(GL30.GL_POLYGON_OFFSET_LINE);
-            GL30.glPolygonOffset(-1.0f, -1.0f);
-        }
     }
 
     public static HDRTarget resize(@Nullable HDRTarget target, int width, int height, boolean useDepth) {
@@ -179,12 +203,6 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     private void afterRendering() {
-        if (PhotonParticleManager.getDrawMode() == SceneView.DrawMode.WIREFRAME) {
-            GL30.glPolygonOffset(0f, 0f);
-            GL30.glDisable(GL30.GL_POLYGON_OFFSET_LINE);
-            GL30.glPolygonMode(GL30.GL_FRONT_AND_BACK, GL30.GL_FILL);
-            drawMode = SceneView.DrawMode.DRAW;
-        }
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
         var lastViewport = PositionedRect.of(GlStateManager.Viewport.x(), GlStateManager.Viewport.y(), GlStateManager.Viewport.width(), GlStateManager.Viewport.height());
         var background = Minecraft.getInstance().getMainRenderTarget();
@@ -197,7 +215,7 @@ public class RenderPassPipeline extends BufferBuilder {
             RenderSystem.viewport(0, 0, background.width, background.height);
         }
 
-        var doBloom = PhotonConfig.INSTANCE.enableBloom.get() && (!Photon.isUsingShaderPack() || PhotonConfig.INSTANCE.enableBloomWithIrisShader.get());
+        var doBloom = PhotonParticleManager.isSceneBloomEnabled() && PhotonConfig.INSTANCE.enableBloom.get() && (!Photon.isUsingShaderPack() || PhotonConfig.INSTANCE.enableBloomWithIrisShader.get());
         RenderTarget outputTarget;
         if (doBloom) {
             outputTarget = PhotonPostProcessing.postTarget(DRAW_TARGET);

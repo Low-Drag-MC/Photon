@@ -16,6 +16,11 @@ layout(location = 7) in int iLight;
 uniform samplerBuffer PhotonData;
 #define PHOTON_DATA_TEXELS 5
 
+// user custom data: pulled from PhotonCustomData by gl_InstanceID (see photon_custom_data()).
+// Constant stride — MIRRORED FROM AdditionalGPUDataSetting.MAX_CUSTOM_DATA (keep in lockstep).
+uniform samplerBuffer PhotonCustomData;
+#define PHOTON_CUSTOM_TEXELS 4
+
 #elif defined(PARTICLE_MODEL_INSTANCE)
 
 layout(location = 0) in vec3 aPos;
@@ -33,6 +38,11 @@ layout(location = 8) in int iLight;
 // legacy channel attributes at location 9+. Record = 5 texels — MIRRORED FROM PhotonGpuChannels.
 uniform samplerBuffer PhotonData;
 #define PHOTON_DATA_TEXELS 5
+
+// user custom data: pulled from PhotonCustomData by gl_InstanceID (see photon_custom_data()).
+// Constant stride — MIRRORED FROM AdditionalGPUDataSetting.MAX_CUSTOM_DATA (keep in lockstep).
+uniform samplerBuffer PhotonCustomData;
+#define PHOTON_CUSTOM_TEXELS 4
 
 #elif defined(TRAIL_INSTANCE)
 
@@ -326,4 +336,19 @@ float photon_data_point_life()      { return 0.0; }
 vec3  photon_data_beam_direction()  { return vec3(0.0); }
 float photon_data_beam_length()     { return 0.0; }
 
+#endif
+
+// ---------------------------------------------------------------------------
+// user custom data accessor — one vec4 per stream, pulled from PhotonCustomData by gl_InstanceID
+// with a config-independent constant stride (PHOTON_CUSTOM_TEXELS). Streams beyond what the emitter
+// defines, unsupported kinds, and the whole CPU path read vec4(0). (VERTEX STAGE ONLY — the
+// shadergraph routes it through a varying.)
+// ---------------------------------------------------------------------------
+#if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE)
+vec4 photon_custom_data(int i) {
+    return (i < 0 || i >= PHOTON_CUSTOM_TEXELS) ? vec4(0.0)
+        : texelFetch(PhotonCustomData, gl_InstanceID * PHOTON_CUSTOM_TEXELS + i);
+}
+#else
+vec4 photon_custom_data(int i) { return vec4(0.0); }
 #endif
