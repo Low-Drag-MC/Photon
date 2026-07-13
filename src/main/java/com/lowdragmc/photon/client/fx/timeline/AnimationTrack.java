@@ -40,6 +40,24 @@ public class AnimationTrack extends Track {
         return null;
     }
 
+    /**
+     * Content lasts until the last curve keyframe (the track has no clips). Curves hold their last
+     * key's value forever, so nothing changes past it. Expression clips are deliberately NOT counted:
+     * the legacy expr-clip migration produces effectively-infinite clips (1e9 ticks), and an
+     * expression only matters while its target object is otherwise playing anyway.
+     */
+    @Override
+    public double contentEnd() {
+        double end = super.contentEnd();
+        for (var property : properties) {
+            var times = property.keyframeTimes();
+            if (!times.isEmpty()) {
+                end = Math.max(end, times.getLast());
+            }
+        }
+        return end;
+    }
+
     /** Drive {@code target}'s local transform from every property sampled at {@code time}. */
     public void sampleInto(FXObject target, double time) {
         for (var property : properties) {

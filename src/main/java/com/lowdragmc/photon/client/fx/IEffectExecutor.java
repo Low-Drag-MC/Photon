@@ -8,9 +8,12 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.world.level.Level;
 
 /**
- * @author KilaBash
- * @date 2023/7/17
- * @implNote IEffect
+ * The context an {@link com.lowdragmc.photon.client.fx.FXRuntime} plays inside: supplies the level
+ * and receives per-tick / per-frame callbacks from every emitted {@link IFXObject}.
+ * <p>
+ * Implementations anchor the FX to something and keep it in sync (or kill it): e.g.
+ * {@link EntityEffectExecutor} follows an entity, {@link BlockEffectExecutor} a block, and the
+ * editor's {@code FXProjectEffectExecutor} just provides a level + seeded RNG for previews.
  */
 @OnlyIn(Dist.CLIENT)
 public interface IEffectExecutor {

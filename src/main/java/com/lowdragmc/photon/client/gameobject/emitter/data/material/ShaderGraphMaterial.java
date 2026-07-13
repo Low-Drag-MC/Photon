@@ -146,10 +146,12 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             var def = declaration.tryGetDefaultValue(declaration.getDataType()).result().orElse(null);
             if (def != null) expected.put(declaration.getName(), def.getClass());
         }
-        overrides.entrySet().removeIf(e -> {
+        if (overrides.entrySet().removeIf(e -> {
             var cls = expected.get(e.getKey());
             return cls != null && !cls.isInstance(e.getValue());
-        });
+        })) {
+            invalidateOverridesCache();
+        }
     }
 
     /** {@code PhotonGpuChannels} bits of the additional-data channels the compiled graph reads
@@ -276,6 +278,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
     @Override
     public void deserializeAdditionalNBT(Tag tag, HolderLookup.@NotNull Provider provider) {
         overrides.clear();
+        invalidateOverridesCache();
         entry = null; // force value-store rebuild (defaults + overrides) on next use
         values = null;
         if (!(tag instanceof CompoundTag compound)) return;
@@ -355,6 +358,52 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         copied.deserializeAdditionalNBT(serializeAdditionalNBT(com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry()),
                 com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry());
         return copied;
+    }
+
+    /**
+     * Serialized-overrides cache backing {@link #equals}/{@link #hashCode} — the render-pass batching
+     * TreeMap runs them every frame, and serializing per comparison would allocate NBT trees each
+     * time. Invalidated ({@link #invalidateOverridesCache()}) on every {@code overrides} mutation.
+     */
+    @Nullable
+    private CompoundTag cachedOverridesTag;
+    private int cachedOverridesHash;
+
+    private CompoundTag overridesTag() {
+        if (cachedOverridesTag == null) {
+            cachedOverridesTag = (CompoundTag) serializeAdditionalNBT(com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry());
+            cachedOverridesHash = cachedOverridesTag.hashCode();
+        }
+        return cachedOverridesTag;
+    }
+
+    private void invalidateOverridesCache() {
+        cachedOverridesTag = null;
+    }
+
+    /**
+     * Value equality by (graph path, serialized overrides) so two separately-deserialized materials
+     * referencing the same graph with the same values merge into ONE render pass (cross-FX batching).
+     * The override comparison uses cached serialized tags: override values (GradientValue, vectors,
+     * ...) don't implement equals reliably, while CompoundTag.equals is deep.
+     */
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ShaderGraphMaterial that)) return false;
+        if (!getGraphPath().equals(that.getGraphPath())) return false;
+        return overridesTag().equals(that.overridesTag());
+    }
+
+    /**
+     * MUST include the overrides: the render-pass TreeMap comparator tie-breaks unequal passes by
+     * {@code Integer.compare(hashCode, hashCode)} — a graph-path-only hash made two same-graph
+     * passes with different overrides compare as 0 and merge, rendering one with the other's values.
+     */
+    @Override
+    public int hashCode() {
+        overridesTag(); // ensure cachedOverridesHash is computed
+        return getGraphPath().hashCode() * 31 + cachedOverridesHash;
     }
 
     // ---- inspector -------------------------------------------------------------------------------
@@ -491,6 +540,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         public void setValue(Object value) {
             if (value == null) return;
             overrides.put(name, value);
+            invalidateOverridesCache();
             applyOverride(name, value);
         }
 

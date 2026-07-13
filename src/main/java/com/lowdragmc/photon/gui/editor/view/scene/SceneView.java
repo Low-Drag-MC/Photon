@@ -117,7 +117,7 @@ public class SceneView extends View {
 
     public void play() {
         if (fxEditor.runtime != null) {
-            fxEditor.runtime.emmit(effect);
+            fxEditor.runtime.emit(effect);
             particleManager.play();
         }
     }
@@ -168,7 +168,7 @@ public class SceneView extends View {
         } else {
             reset();
             if (fxEditor.runtime != null) {
-                fxEditor.runtime.emmit(effect);
+                fxEditor.runtime.emit(effect);
                 runSimulationTicks(time);
                 particleManager.setTime(time);
             }

@@ -27,6 +27,16 @@ public class SignalTrack extends Track {
         return signals;
     }
 
+    /** Content lasts until the last signal fires (the track has no clips). */
+    @Override
+    public double contentEnd() {
+        double end = super.contentEnd();
+        for (var signal : signals) {
+            end = Math.max(end, signal.time());
+        }
+        return end;
+    }
+
     @Override
     protected void copyExtra(Track target) {
         if (target instanceof SignalTrack signalTrack) {

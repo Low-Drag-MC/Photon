@@ -12,9 +12,9 @@ import org.joml.Vector3f;
 import java.util.*;
 
 /**
- * @author KilaBash
- * @date 2023/6/5
- * @implNote EntityEffect
+ * Plays an FX attached to an entity: the FX root follows the entity's eye position every frame
+ * (plus the configured offset/rotation, optionally auto-rotated to the entity's facing) and the FX
+ * is destroyed when the entity dies. All accesses run on the client tick/render thread.
  */
 @OnlyIn(Dist.CLIENT)
 public class EntityEffectExecutor extends FXEffectExecutor {
@@ -36,14 +36,16 @@ public class EntityEffectExecutor extends FXEffectExecutor {
 
     @Override
     public void updateFXObjectTick(IFXObject fxObject) {
-        if (runtime != null && fxObject == runtime.root) {
-            if (!entity.isAlive()) {
-                runtime.destroy(forcedDeath);
-                CACHE.computeIfAbsent(entity, p -> new ArrayList<>()).remove(this);
-                if (CACHE.get(entity).isEmpty()) {
-                    CACHE.remove(entity);
-                }
-            }
+        if (runtime == null || fxObject != runtime.root) {
+            return;
+        }
+        if (!entity.isAlive()) {
+            // anchor gone: stop the FX (force drops remnants immediately) and retire right away
+            runtime.destroy(forcedDeath);
+            retire(CACHE, entity);
+        } else if (runtimeEnded()) {
+            // self-evict finished runtimes instead of lingering until the next same-key start()
+            retire(CACHE, entity);
         }
     }
 
@@ -91,26 +93,16 @@ public class EntityEffectExecutor extends FXEffectExecutor {
         if (!entity.isAlive()) return;
 
         var effects = CACHE.computeIfAbsent(entity, p -> new ArrayList<>());
-        if (!allowMulti) {
-            var iter = effects.iterator();
-            while (iter.hasNext()) {
-                var effect = iter.next();
-                boolean removed = false;
-                if (effect.runtime != null && !effect.runtime.isAlive()) {
-                    iter.remove();
-                    removed = true;
-                }
-                if ((effect.fx.equals(fx) || Objects.equals(effect.fx.getFxLocation(), fx.getFxLocation())) && !removed) {
-                    return;
-                }
-            }
+        if (shouldSkipStart(effects)) {
+            return;
         }
+        resetFinishedNotification();
         this.runtime = fx.createRuntime();
         var root = this.runtime.getRoot();
         root.updatePos(entity.getEyePosition().toVector3f().add(offset.x, offset.y, offset.z));
         root.updateRotation(rotation);
         root.updateScale(scale);
-        this.runtime.emmit(this, delay);
+        this.runtime.emit(this, delay);
         effects.add(this);
     }
 }

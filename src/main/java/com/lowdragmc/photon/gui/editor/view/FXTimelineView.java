@@ -1245,7 +1245,7 @@ public class FXTimelineView extends View implements TimelineContext {
         pm.pause();
         fxEditor.sceneView.reset();
         if (fxEditor.runtime != null) {
-            fxEditor.runtime.emmit(fxEditor.sceneView.effect);
+            fxEditor.runtime.emit(fxEditor.sceneView.effect);
         }
     }
 

@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.fx.compat;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.gui.editor.FXProject;
 import net.minecraft.nbt.*;
 
 import java.io.IOException;
@@ -31,6 +32,8 @@ public class FXCompat {
                 try {
                     CompoundTag photon1FX = NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap());
                     CompoundTag photon2FX = mapEffect(photon1FX);
+                    // the mappers emit the current format; stamp it so the datafixer stays a no-op
+                    photon2FX.putInt("version", FXProject.VERSION);
                     NbtIo.writeCompressed(photon2FX, Path.of(LDLib2.getAssetsDir() + "/photon/fx/" + path.getFileName()));
                     count.getAndIncrement();
                 }

@@ -537,7 +537,12 @@ public class ParticleEmitter extends Emitter {
 
     @Override
     public int getParticleAmount() {
-        return getParticles().values().stream().mapToInt(Collection::size).sum() + waitToAdded.size();
+        // plain loop: called every tick from isAlive/isPlaying — a Stream here is pure allocation churn
+        var amount = waitToAdded.size();
+        for (var queue : getParticles().values()) {
+            amount += queue.size();
+        }
+        return amount;
     }
 
     @Override

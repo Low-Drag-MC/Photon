@@ -153,10 +153,24 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         return useTranslucentPipeline() ? ParticleQueueRenderType.TRANSLUCENT_QUEUE : ParticleQueueRenderType.OPAQUE_QUEUE;
     }
 
+    /** This emitter's own contribution: active AND (still emitting or still showing particles). */
+    private boolean isEmitting() {
+        return isActive() && (!removed || getParticleAmount() != 0);
+    }
+
+    /**
+     * Engine retention: an emitter that is still doing/showing something must also be active — a
+     * timeline-deactivated emitter is frozen+hidden and survives clip gaps only through the runtime
+     * keep-alive (in {@code super.isAlive()}), then dies with the timeline instead of lingering forever.
+     */
     @Override
     public boolean isAlive() {
-        if (!removed || getParticleAmount() != 0) return true;
-        return super.isAlive();
+        return isEmitting() || super.isAlive(); // super = runtime keep-alive || live children
+    }
+
+    @Override
+    public boolean isPlaying() {
+        return isEmitting() || super.isPlaying();
     }
 
     @Override

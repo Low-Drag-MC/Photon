@@ -12,9 +12,11 @@ import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 
 /**
- * FX is a definition of a FX.
- * <br>
- * In general, use {@link #createRuntime()} to create a runtime of this FX.
+ * An FX definition: the authored object tree + timeline, as saved by the editor / a {@code .fx} file.
+ * <p>
+ * Loaded via {@link FXHelper#getFX} (which also sets {@link #getFxLocation()}). A definition is not
+ * playable by itself — call {@link #createRuntime()} for a playable instance; each runtime works on
+ * its own copy of the data, so one definition can play many times concurrently.
  */
 @Getter
 @MethodsReturnNonnullByDefault

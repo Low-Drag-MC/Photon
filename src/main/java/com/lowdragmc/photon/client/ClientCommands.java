@@ -11,6 +11,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQue
 import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
 import com.lowdragmc.photon.client.fx.EntityEffectExecutor;
 import com.lowdragmc.photon.client.fx.FXHelper;
+import com.lowdragmc.photon.client.fx.VanillaParticleHost;
 import com.lowdragmc.photon.core.mixins.accessor.ParticleEngineAccessor;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -59,6 +60,7 @@ public class ClientCommands {
                                                 entry.getKey() instanceof ParticleQueueRenderType ||
                                                 entry.getKey() == FXObject.NO_RENDER_RENDER_TYPE);
                                     }
+                                    VanillaParticleHost.onWipe(); // cached FXRuntimes turn invalid immediately
                                     EntityEffectExecutor.CACHE.clear();
                                     BlockEffectExecutor.CACHE.clear();
                                     return 1;

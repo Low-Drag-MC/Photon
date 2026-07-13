@@ -2,11 +2,14 @@ package com.lowdragmc.photon.client;
 
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonCommonProxy;
+import com.lowdragmc.photon.client.fx.fxpack.FXPacks;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMeshCache;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.PackType;
+import net.neoforged.neoforge.event.AddPackFindersEvent;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.bus.api.IEventBus;
@@ -26,6 +29,15 @@ public class PhotonClientProxy extends PhotonCommonProxy {
         eventBus.addListener(this::shaderRegistry);
         eventBus.addListener(this::registerModels);
         eventBus.addListener(this::registerReloadListeners);
+        eventBus.addListener(this::addPackFinders);
+    }
+
+    /** Mount every .fxpack as a hidden, always-on, lowest-priority resource pack; see {@link FXPacks}. */
+    @SubscribeEvent
+    public void addPackFinders(AddPackFindersEvent event) {
+        if (event.getPackType() == PackType.CLIENT_RESOURCES) {
+            event.addRepositorySource(FXPacks.repositorySource());
+        }
     }
 
     @SubscribeEvent

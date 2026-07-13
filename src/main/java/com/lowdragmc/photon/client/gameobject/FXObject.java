@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.IScene;
 import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
+import com.lowdragmc.photon.client.fx.ParticleTickHost;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
@@ -27,6 +28,7 @@ import net.minecraft.world.level.Level;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 @OnlyIn(Dist.CLIENT)
@@ -84,6 +86,24 @@ public abstract class FXObject extends Particle implements IFXObject {
     @Nullable
     @Getter
     protected IEffectExecutor effectExecutor;
+    /**
+     * Runtime wiring (set by {@code FXRuntime}, not persisted, not touched by {@link #reset()}): while
+     * it returns true the particle engine must retain this object even if it is otherwise done — used
+     * to keep timeline objects available for future clip restarts and the root alive to drive the clock.
+     */
+    @Setter
+    @Nullable
+    protected BooleanSupplier keepAlive;
+    /**
+     * Heartbeat wiring for {@code FXRuntime.isValid()} (set on the ROOT object only): every actual
+     * tick records the host's tick counter into {@link #lastHostTick}; a stale reading means the
+     * engine no longer ticks this runtime (it was discarded without notice).
+     */
+    @Setter
+    @Nullable
+    protected ParticleTickHost tickHost;
+    @Setter
+    protected long lastHostTick;
 
     protected FXObject() {
         super(null, 0, 0, 0);
@@ -117,10 +137,32 @@ public abstract class FXObject extends Particle implements IFXObject {
         this.scene = scene;
     }
 
+    /**
+     * Vanilla-engine retention contract: "should the particle engine keep ticking me?". True while the
+     * runtime keeps this object for the timeline ({@link #keepAlive}) or any child is still alive.
+     * NOT the "is the FX done" signal — that is {@link #isPlaying()} (an object retained only by
+     * keep-alive, e.g. deactivated during a clip gap, is alive but not playing).
+     */
     @Override
     public boolean isAlive() {
+        if (keepAlive != null && keepAlive.getAsBoolean()) {
+            return true;
+        }
         for (var child : transform.children()) {
             if (child.sceneObject() instanceof FXObject fxObject && fxObject.isAlive()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean isPlaying() {
+        if (!isActive()) {
+            return false;
+        }
+        for (var child : transform.children()) {
+            if (child.sceneObject() instanceof IFXObject fxObject && fxObject.isPlaying()) {
                 return true;
             }
         }
@@ -165,6 +207,11 @@ public abstract class FXObject extends Particle implements IFXObject {
         return this.realLevel.isLoaded(blockPos) ? LevelRenderer.getLightColor(this.realLevel, blockPos) : 0;
     }
 
+    /**
+     * Contract: {@code force} means "drop every visible remnant immediately"; non-force means "stop
+     * doing new work and let remnants (live particles/trails) drain naturally". The base object has
+     * no remnants, so both just mark this particle removed; emitters override to honor {@code force}.
+     */
     @Override
     public void remove(boolean force) {
         remove();
@@ -172,6 +219,10 @@ public abstract class FXObject extends Particle implements IFXObject {
 
     @Override
     public final void tick() {
+        // heartbeat first — it must beat during the start delay too
+        if (tickHost != null) {
+            lastHostTick = tickHost.tickCount();
+        }
         lastTick++;
         if (delay > 0) {
             delay--;

@@ -55,6 +55,23 @@ public class Timeline implements INBTSerializable<CompoundTag> {
         }
     }
 
+    /**
+     * The timeline's content end in master-clock ticks: the max {@link Track#contentEnd()} over all
+     * non-muted leaf tracks (a muted leaf or muted group subtree contributes nothing, matching what
+     * the player evaluates). 0 for an empty timeline. The timeline is finished once the clock passes
+     * it — after that, activator/control-gated objects stay permanently inactive and no signal,
+     * animation key, or audio clip remains. Cheap on-demand tree walk; not cached here (the player
+     * snapshots it per playback in {@code TimelinePlayer.begin}).
+     */
+    public double getDuration() {
+        double duration = 0;
+        for (var track : leafTracks(false)) {
+            if (track.mute()) continue;
+            duration = Math.max(duration, track.contentEnd());
+        }
+        return duration;
+    }
+
     /** The children-list (root list or a group's children) that directly contains {@code track}, or null. */
     @Nullable
     public List<Track> parentListOf(Track track) {

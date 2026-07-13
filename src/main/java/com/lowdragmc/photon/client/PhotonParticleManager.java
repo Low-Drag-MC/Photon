@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
+import com.lowdragmc.photon.client.fx.ParticleTickHost;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -18,8 +19,13 @@ import java.util.Arrays;
 import java.util.function.Predicate;
 
 @OnlyIn(Dist.CLIENT)
-public class PhotonParticleManager extends ParticleManager {
+public class PhotonParticleManager extends ParticleManager implements ParticleTickHost {
     public final SceneView sceneView;
+    /** {@link ParticleTickHost} heartbeat. NOT {@link #time}: that is the timeline clock and resets
+     *  in {@link #clear()}, while this must stay monotonic for {@code FXRuntime.isValid()}. */
+    private long tickCounter = 0;
+    /** {@link ParticleTickHost} wipe generation, bumped in {@link #clear()}. */
+    private int generation = 0;
     // runtime
     @Nullable
     @Getter
@@ -111,6 +117,7 @@ public class PhotonParticleManager extends ParticleManager {
     }
 
     public void tickInternal() {
+        tickCounter++;
         super.tick();
         time++;
     }
@@ -134,8 +141,18 @@ public class PhotonParticleManager extends ParticleManager {
     }
 
     public void clear() {
+        generation++; // mass-discard: cached FXRuntimes emitted into this manager turn invalid
         clearAllParticles();
         time = 0;
     }
 
+    @Override
+    public long tickCount() {
+        return tickCounter;
+    }
+
+    @Override
+    public int generation() {
+        return generation;
+    }
 }

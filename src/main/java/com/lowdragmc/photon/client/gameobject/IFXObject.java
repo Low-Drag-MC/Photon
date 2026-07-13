@@ -78,7 +78,20 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
 
     void setLevel(Level level);
 
+    /**
+     * Particle-engine retention: whether the engine should keep this object (vanilla {@code Particle}
+     * contract). Includes runtime keep-alive (timeline not finished). For "is this object still doing
+     * something", use {@link #isPlaying()}.
+     */
     boolean isAlive();
+
+    /**
+     * Whether this object still contributes activity to its FX: it is {@link #isActive() active} and is
+     * (or has a descendant that is) emitting/showing something. Drives {@code FXRuntime.isFinished()}.
+     * Unlike {@link #isAlive()}, a timeline-deactivated object is never playing, and runtime keep-alive
+     * does not count.
+     */
+    boolean isPlaying();
 
     float getDeltaTime();
 
@@ -189,13 +202,29 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
     }
 
     /**
-     * emit to a given level.
+     * Emit this object into the executor's level: resets its runtime state and adds it (as a vanilla
+     * {@link Particle}) to the owning particle engine, which drives tick/render/removal from then on.
      */
-    default void emmit(@Nonnull IEffectExecutor effect) {
-        emmit(effect, null, null, null);
+    default void emit(@Nonnull IEffectExecutor effect) {
+        emit(effect, null, null, null);
     }
 
+    /** @deprecated typo; use {@link #emit(IEffectExecutor)}. */
+    @Deprecated
+    default void emmit(@Nonnull IEffectExecutor effect) {
+        emit(effect);
+    }
+
+    /** @deprecated typo; use {@link #emit(IEffectExecutor, Vector3f, Quaternionf, Vector3f)}. */
+    @Deprecated
     default void emmit(@Nonnull IEffectExecutor effect, @Nullable Vector3f position, @Nullable Quaternionf rotation, @Nullable Vector3f scale) {
+        emit(effect, position, rotation, scale);
+    }
+
+    /**
+     * Emit this object with an optional transform override. See {@link #emit(IEffectExecutor)}.
+     */
+    default void emit(@Nonnull IEffectExecutor effect, @Nullable Vector3f position, @Nullable Quaternionf rotation, @Nullable Vector3f scale) {
         setEffect(effect);
         reset();
         if (position != null) {

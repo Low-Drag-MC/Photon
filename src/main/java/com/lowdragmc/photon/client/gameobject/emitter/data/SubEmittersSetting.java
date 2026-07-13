@@ -169,7 +169,7 @@ public class SubEmittersSetting extends ToggleGroup {
                     () -> father.getMemRandom("sub_emitter_probability")).floatValue()) {
                 return;
             }
-            // FXHelper.getFX + FXRuntime.emmit (particle engine) are not thread-safe: particle updates
+            // FXHelper.getFX + FXRuntime.emit (particle engine) are not thread-safe: particle updates
             // may run on parallelStream workers, so defer the spawn to the game thread — the owning
             // emitter drains it at the end of the same tick (deferred in serial mode too, so ordering
             // is mode-independent; a dead particle's fields stay valid until next tick's removal).
@@ -205,7 +205,7 @@ public class SubEmittersSetting extends ToggleGroup {
                     }
                 }
             }
-            runtime.emmit(father.getEmitter().getEffectExecutor());
+            runtime.emit(father.getEmitter().getEffectExecutor());
         }
 
         @Override

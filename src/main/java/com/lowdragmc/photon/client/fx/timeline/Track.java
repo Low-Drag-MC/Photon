@@ -97,6 +97,19 @@ public abstract class Track {
     }
 
     /**
+     * The last master-clock tick at which this track still has content to play (used by
+     * {@code Timeline.getDuration()}). Base = the latest clip end; subclasses extend it with their
+     * own content (signal times, animation keyframes, ...). 0 for an empty track.
+     */
+    public double contentEnd() {
+        double end = 0;
+        for (var clip : clips) {
+            end = Math.max(end, clip.end());
+        }
+        return end;
+    }
+
+    /**
      * An independent copy of this track (same registered type, copied target + clips). Provider-free
      * so it can be used from {@code FXData.copy(boolean)}.
      */

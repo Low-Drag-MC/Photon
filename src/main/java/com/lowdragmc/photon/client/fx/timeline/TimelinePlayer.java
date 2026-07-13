@@ -22,7 +22,7 @@ import java.util.function.Supplier;
  * (see {@code FXRuntime}), so it runs identically in the editor (deterministically replayed by
  * {@code SceneView.simulateTo}) and in-world.
  * <p>
- * It does not emit or remove objects — every object is emitted once by {@code FXRuntime.emmit}. Each
+ * It does not emit or remove objects — every object is emitted once by {@code FXRuntime.emit}. Each
  * tick the player resolves, per controlled object, two flags via {@link TimelineState}:
  * <ul>
  *   <li>{@code selfActive} (ticking) and {@code selfTimelineVisible} (rendering), set on the object;
@@ -44,6 +44,11 @@ public class TimelinePlayer {
     @Nullable
     private IEffectExecutor effect;
     private long localTime = 0;
+    /** Content end of the current playback, snapshotted from {@link Timeline#getDuration()} in
+     *  {@link #begin} (in-world data never changes mid-play; the editor re-begins on every replay). */
+    private double duration = 0;
+    /** Set by {@link #stop()} (FX destroyed): the timeline is finished regardless of the clock. */
+    private boolean stopped = false;
     /** Time of the most recent {@link #evaluate}, so {@link #frame} can interpolate within the tick. */
     private double lastEvalTime = 0;
     /** When recording (editor only), the per-frame re-apply is frozen so gizmo/inspector edits to the
@@ -71,10 +76,12 @@ public class TimelinePlayer {
         return timeline.isEmpty();
     }
 
-    /** Called from {@code FXRuntime.emmit} after all objects are emitted; resets the clock. */
+    /** Called from {@code FXRuntime.emit} after all objects are emitted; resets the clock. */
     public void begin(IEffectExecutor effect) {
         this.effect = effect;
         this.localTime = 0;
+        this.duration = timeline.getDuration();
+        this.stopped = false;
         this.lastSignalTick = -1;
         this.lastControlClip.clear();
         this.lastControlled.clear();
@@ -88,6 +95,30 @@ public class TimelinePlayer {
     public void tick() {
         evaluate(localTime);
         localTime++;
+    }
+
+    /**
+     * Whether this playback has no future content: the timeline is empty, {@link #stop()} was called,
+     * or the master clock passed the content end. Boundary: {@link #tick()} evaluates at {@code localTime}
+     * <i>then</i> increments, so content exactly at the duration (e.g. a signal at t=D, fired in the
+     * window {@code (last, D]}) is evaluated before this turns true.
+     * <p>
+     * Objects keep-alive on this (see {@code FXRuntime}): while unfinished, timeline objects must stay
+     * in the particle engine for future clips to reactivate/restart them.
+     */
+    public boolean isFinished() {
+        return isEmpty() || stopped || localTime > duration;
+    }
+
+    /** The content end (ticks) snapshotted for the current playback; see {@link Timeline#getDuration()}. */
+    public double getDuration() {
+        return duration;
+    }
+
+    /** Finish this playback for good (FX destroyed): silences audio and makes {@link #isFinished()} true. */
+    public void stop() {
+        stopped = true;
+        stopAllAudio();
     }
 
     /**

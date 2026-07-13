@@ -6,14 +6,14 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 /**
- * @author KilaBash
- * @date 2023/6/5
- * @implNote IFXEffect
+ * An {@link IEffectExecutor} that owns a whole {@link FX} playback: configure transform/delay/flags,
+ * then call {@link #start()} to create the runtime and emit it. This is the primary entry point for
+ * mods spawning an FX in-world (see {@link EntityEffectExecutor} / {@link BlockEffectExecutor}).
  */
 @OnlyIn(Dist.CLIENT)
 public interface IFXEffectExecutor extends IEffectExecutor {
     /**
-     * get all emitters included in this effect.
+     * the FX definition this executor plays.
      */
     FX getFx();
 
