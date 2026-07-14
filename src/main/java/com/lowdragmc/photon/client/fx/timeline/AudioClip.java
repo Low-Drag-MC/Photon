@@ -13,7 +13,7 @@ import net.neoforged.api.distmarker.OnlyIn;
  * {@code net.minecraft}-free base {@link Clip}) so it can reference the sound registry types directly.
  * <p>
  * The sound is <b>always looping</b>; the clip length decides when the timeline stops it (a clip
- * shorter than the sound cuts it early, a longer one loops into the next round). {@link #loopLength}
+ * shorter than the sound cuts it early, a longer one loops into the next round). {@link #duration()}
  * is a purely visual hint (ticks per loop) used to draw the repeat sub-divisions inside the clip.
  */
 @OnlyIn(Dist.CLIENT)

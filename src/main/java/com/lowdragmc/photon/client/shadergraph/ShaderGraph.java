@@ -10,12 +10,10 @@ import com.lowdragmc.kilagraph.rendertype.nodes.input.vertex.VertexAttributeInpu
 import com.lowdragmc.kilagraph.rendertype.nodes.texture.TextureNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.vertex.VertexPositionBlock;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.GraphNodeRegistry;
-import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.BlockNode;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.graph.CustomGraphModelImpl;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.NodeModel;
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.shadergraph.nodes.ParticlePositionBlock;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,9 +36,11 @@ public class ShaderGraph extends RenderTypeGraph {
             GraphNodeRegistry.create(Photon.id("shader_graph"), ShaderGraph.class);
 
     /**
-     * KilaGraph nodes that don't apply to the Photon pipeline: raw vertex-attribute reads (inputs come
-     * from {@code getParticleData()}, whose layout varies per instancing define) and KilaGraph's vertex
-     * position block (replaced by {@link ParticlePositionBlock}'s fixed particle transform + offset).
+     * KilaGraph nodes that don't apply to the Photon pipeline: raw vertex-attribute reads (inputs come from
+     * {@code getParticleData()}, whose layout varies per instancing define) and the advanced clip-space
+     * {@code glPosition} block (it would bypass Photon's fixed particle transform — Photon takes the standard
+     * {@code ProjMat · ModelViewMat · getParticleData().Position} path, plus KilaGraph's default model-space
+     * {@code VertexModelPositionBlock}/{@code VertexModelNormalBlock} for world-position/normal offset).
      */
     private static final Set<Class<? extends Node>> EXCLUDED_NODES = Set.of(
             VertexAttributeInputNode.class,
@@ -113,11 +113,6 @@ public class ShaderGraph extends RenderTypeGraph {
     @Override
     protected String defaultVertexColorMode() {
         return VertexColorNode.MODE_BLOCK;
-    }
-
-    @Override
-    protected Class<? extends BlockNode> defaultVertexPositionBlockClass() {
-        return ParticlePositionBlock.class;
     }
 
     /** The default shader samples Photon's soft-circle particle texture instead of dirt. */

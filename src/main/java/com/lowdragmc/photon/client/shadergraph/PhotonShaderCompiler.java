@@ -99,10 +99,59 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
         return super.attributeRef(element);
     }
 
-    /** Particles carry no chunk {@code ModelOffset}; the position is the camera-relative world position. */
+    // modelPosition() is deliberately NOT overridden: the base composes it from attributeRef(POSITION)
+    // (= kg_pd.Position, our single input seam) + ModelOffset — which KGBuiltinUniforms binds to 0 for
+    // particles (they carry no chunk offset) — AND it honors a driven VertexModelPositionBlock's displaced
+    // position. So the whole vertex stage (gl_Position, the kg_modelPos varying, fog distances, view dir)
+    // follows vertex animation uniformly. Overriding it to return kg_pd.Position directly silently dropped
+    // that displacement, making world-position-offset / vsh position animation a no-op.
+
+    // ---- coordinate-space seams --------------------------------------------------------------
+    // Photon's vertices arrive already in (camera-relative) WORLD space via getParticleData(), and the
+    // object->world transform lives in that GPU expansion (rotMat/iScale/iPos), NOT in a matrix. So WORLD is
+    // the primary space and OBJECT is a SEPARATE source (ParticleData.ObjectPosition/ObjectNormal) — neither
+    // is derived from the other by a matrix; view derives from world. worldSpaceNormal is inherited: the
+    // base's mat3(IViewMat·ModelViewMat)·objectNormal round-trips an already-world normal back to world and
+    // honors a driven VertexModelNormalBlock.
+
+    /** Object/model space (model instancing = mesh-local; billboards = centered quad coord; else world),
+     *  from {@code ParticleData.ObjectPosition}. */
     @Override
-    protected ShaderExpr modelPosition() {
-        return new ShaderExpr(PARTICLE_DATA + ".Position", GlslType.VEC3);
+    protected ShaderExpr objectSpacePosition() {
+        return varyingInput("photon_objectPos", GlslType.VEC3,
+                () -> new ShaderExpr(PARTICLE_DATA + ".ObjectPosition", GlslType.VEC3),
+                new ShaderExpr("vPos", GlslType.VEC3));
+    }
+
+    /** Absolute world = camera-relative world ({@code kg_pd.Position} via {@code meshPosition()}, honoring vsh
+     *  displacement) + the camera world position. */
+    @Override
+    protected ShaderExpr worldSpacePosition() {
+        return new ShaderExpr("(" + meshPosition().code() + " + " + cameraWorldPos().code() + ")", GlslType.VEC3);
+    }
+
+    /** Eye/view space: {@code ModelViewMat · <camera-relative world>} (ModelViewMat is world→view for particles). */
+    @Override
+    protected ShaderExpr viewSpacePosition() {
+        String mv = useBuiltinUniform("ModelViewMat", GlslType.MAT4);
+        return new ShaderExpr("(" + mv + " * vec4(" + meshPosition().code() + ", 1.0)).xyz", GlslType.VEC3);
+    }
+
+    /** Object/model-space normal (model instancing = mesh-local {@code aNormal}; else world), from
+     *  {@code ParticleData.ObjectNormal}, normalized. */
+    @Override
+    protected ShaderExpr objectSpaceNormal() {
+        ShaderExpr n = varyingInput("photon_objectNormal", GlslType.VEC3,
+                () -> new ShaderExpr(PARTICLE_DATA + ".ObjectNormal", GlslType.VEC3),
+                new ShaderExpr("vNormal", GlslType.VEC3));
+        return new ShaderExpr("normalize(" + n.code() + ")", GlslType.VEC3);
+    }
+
+    /** Eye/view-space normal: the world normal rotated world→view. */
+    @Override
+    protected ShaderExpr viewSpaceNormal() {
+        String mv = useBuiltinUniform("ModelViewMat", GlslType.MAT4);
+        return new ShaderExpr("normalize(mat3(" + mv + ") * " + worldSpaceNormal().code() + ")", GlslType.VEC3);
     }
 
     /**

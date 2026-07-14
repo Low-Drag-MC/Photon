@@ -27,8 +27,8 @@ import java.util.List;
  *
  * <p>The {@code space} option says what {@code Position} is measured in:
  * <ul>
- *   <li><b>absolute</b> (default) — world/block coordinates; the camera position ({@code kg_CameraPos}) is
- *       subtracted for you (1.21 renders camera-relative).</li>
+ *   <li><b>absolute</b> (default) — world/block coordinates; the camera position ({@code cameraWorldPos()})
+ *       is subtracted for you (1.21 renders camera-relative).</li>
  *   <li><b>camera_relative</b> — already relative to the camera (e.g. {@code ParticleData.Position}),
  *       projected directly.</li>
  * </ul></p>
@@ -61,10 +61,11 @@ public class WorldToScreenUVNode extends ShaderNode {
     @Override
     public void compile(ShaderCompileContext ctx) {
         String pos = ctx.input("position").code();
-        // absolute world coords -> camera-relative: 1.21 renders camera-relative, and kg_CameraPos is the
-        // absolute world camera position bound each frame by KGBuiltinUniforms.
+        // absolute world coords -> camera-relative: 1.21 renders camera-relative, and cameraWorldPos() is the
+        // absolute world camera position (KG's precision-split kg_CameraBlockPos - kg_CameraOffset), bound each
+        // frame by KGBuiltinUniforms and overridden to the pipeline's render camera by ShaderGraphMaterial.
         if (ctx.option("space", String.class, "absolute").equals("absolute")) {
-            String camPos = ctx.useBuiltinUniform("kg_CameraPos", GlslType.VEC3);
+            String camPos = ctx.cameraWorldPos().code();
             pos = "(" + pos + " - " + camPos + ")";
         }
         String proj = ctx.useBuiltinUniform("ProjMat", GlslType.MAT4);

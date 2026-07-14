@@ -139,6 +139,11 @@ struct ParticleData {
     vec2 UV;
     ivec2 LightUV;
     vec3 Normal;
+    // object/local space: the mesh vertex BEFORE the per-instance rotate/scale/translate that getParticleData
+    // bakes into Position. Meaningful on the instanced paths (model instancing = mesh-local; billboards =
+    // centered quad coord); degenerates to Position/Normal (world) on the CPU/trail/beam paths.
+    vec3 ObjectPosition;
+    vec3 ObjectNormal;
 };
 
 ParticleData getParticleData() {
@@ -153,6 +158,9 @@ ParticleData getParticleData() {
     // vanilla UV2 order is (block, sky); java packs sky<<20 | block<<4
     data.LightUV = ivec2(iLight & 0xFFFF, (iLight >> 16) & 0xFFFF);
     data.Normal = normalize(rotMat * vec3(0, 0, 1));
+    // object space: the local billboard corner (aPos.xy = centered quad coord), facing +z pre-rotation
+    data.ObjectPosition = aPos;
+    data.ObjectNormal = vec3(0.0, 0.0, 1.0);
 
 #elif defined(PARTICLE_MODEL_INSTANCE)
 
@@ -164,6 +172,9 @@ ParticleData getParticleData() {
     // vanilla UV2 order is (block, sky); java packs sky<<20 | block<<4
     data.LightUV = ivec2(iLight & 0xFFFF, (iLight >> 16) & 0xFFFF);
     data.Normal = normalize(rotMat * aNormal);
+    // object space: the mesh's own centered model-space vertex + normal
+    data.ObjectPosition = aPos;
+    data.ObjectNormal = aNormal;
 
 #elif defined(TRAIL_INSTANCE)
 
@@ -246,6 +257,12 @@ ParticleData getParticleData() {
     data.LightUV = UV2;
     data.Normal = Normal;
 
+#endif
+
+    // Paths with no meaningful object space (CPU quads, trails, beams) degenerate object -> world.
+#if !defined(PARTICLE_INSTANCE) && !defined(PARTICLE_MODEL_INSTANCE)
+    data.ObjectPosition = data.Position;
+    data.ObjectNormal = data.Normal;
 #endif
 
     return data;

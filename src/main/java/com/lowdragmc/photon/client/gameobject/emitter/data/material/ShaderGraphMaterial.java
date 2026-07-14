@@ -195,18 +195,22 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             viewport.set((float) GlStateManager.Viewport.x(), (float) GlStateManager.Viewport.y(),
                     (float) GlStateManager.Viewport.width(), (float) GlStateManager.Viewport.height());
         }
-        // KGBuiltinUniforms binds kg_CameraPos to the GAME's main camera — wrong in the editor SceneView
-        // (orbit camera). Override with the pipeline's actual render camera, the one particles are rendered
-        // camera-relative to, so CameraNode / WorldToScreenUV "absolute" are correct in the editor scene and
-        // in-world alike (mirrors CustomShaderMaterial's U_CameraPosition). Runs after KGBuiltinUniforms.bind
-        // in getShader(), so it wins.
-        var cameraPos = shader.getUniform("kg_CameraPos");
-        if (cameraPos != null) {
+        // KilaGraph's world-space nodes (Camera / Position "world" / WorldToScreenUV "absolute") read the
+        // absolute camera position as KG's precision-split kg_CameraBlockPos - kg_CameraOffset, which
+        // KGBuiltinUniforms binds from the GAME's main camera — wrong in the editor SceneView (orbit camera).
+        // Override both halves with the pipeline's actual render camera (the one particles are rendered
+        // camera-relative to), so those nodes are correct in the editor scene and in-world alike (mirrors
+        // CustomShaderMaterial's U_CameraPosition). Runs after KGBuiltinUniforms.bind in getShader(), so it wins.
+        var cameraBlockPos = shader.getUniform("kg_CameraBlockPos");
+        var cameraOffset = shader.getUniform("kg_CameraOffset");
+        if (cameraBlockPos != null || cameraOffset != null) {
             var camera = Optional.ofNullable(RenderPassPipeline.getCurrent())
                     .map(RenderPassPipeline::getCamera).orElse(null);
             if (camera != null) {
                 var p = camera.getPosition();
-                cameraPos.set((float) p.x, (float) p.y, (float) p.z);
+                double bx = Math.floor(p.x), by = Math.floor(p.y), bz = Math.floor(p.z);
+                if (cameraBlockPos != null) cameraBlockPos.set((float) bx, (float) by, (float) bz);
+                if (cameraOffset != null) cameraOffset.set((float) (bx - p.x), (float) (by - p.y), (float) (bz - p.z));
             }
         }
         // Same story: KGBuiltinUniforms binds kg_Time (the Time node) from the WORLD clock

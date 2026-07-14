@@ -1,9 +1,6 @@
 package com.lowdragmc.photon.gui.editor.view.timeline;
 
-import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
-import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
-import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.*;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
@@ -17,6 +14,8 @@ import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+
+import java.util.List;
 
 /** Editor for {@code control} tracks: a name header + per-clip object-bound clips with seeds. */
 @OnlyIn(Dist.CLIENT)
@@ -125,10 +124,19 @@ public class ControlTrackEditor extends ClipTrackEditor {
 
     @Override
     protected void buildClipConfigurator(ConfiguratorGroup group, TimelineContext ctx, Track track, Clip clip) {
-        group.addConfigurator(new BooleanConfigurator("randomSeed", clip::randomSeed,
-                v -> { clip.randomSeed(v); ctx.refreshPreview(); }, clip.randomSeed(), true));
-        group.addConfigurator(new NumberConfigurator("seed", () -> (double) clip.seed(),
-                v -> { clip.seed(v.longValue()); ctx.refreshPreview(); }, (double) clip.seed(), true));
+        group.addConfigurator(new ConfiguratorSelectorConfigurator<>("photon.gui.editor.timeline.edit_clip.random_seed", clip::randomSeed,
+                v -> { clip.randomSeed(v); ctx.refreshPreview(); }, clip.randomSeed(), true,
+                List.of(true, false),
+                (randomSeed) -> randomSeed ?
+                        "photon.gui.editor.timeline.edit_clip.random_seed.random" :
+                        "photon.gui.editor.timeline.edit_clip.random_seed.fixed",
+                (randomSeed, subGroup) -> {
+                    if (!randomSeed) {
+                        subGroup.addConfigurator(new NumberConfigurator("photon.gui.editor.timeline.edit_clip.random_seed.seed", () -> (double) clip.seed(),
+                                v -> { clip.seed(v.longValue()); ctx.refreshPreview(); }, (double) clip.seed(), true));
+                    }
+                })
+        );
     }
 
     @Override

@@ -23,10 +23,10 @@ public class Clip {
     /** Control-track clips bind an FXObject (its transform id); {@code null} for activator clips. */
     @Nullable
     private UUID targetId;
+    /** When true, a fresh random seed is used on each restart instead of {@link #seed}. */
+    private boolean randomSeed = true;
     /** Random seed applied to the bound object when a control clip restarts it. */
     private long seed;
-    /** When true, a fresh random seed is used on each restart instead of {@link #seed}. */
-    private boolean randomSeed;
 
     public Clip() {
         this(0.0, 1.0, 1.0f);
