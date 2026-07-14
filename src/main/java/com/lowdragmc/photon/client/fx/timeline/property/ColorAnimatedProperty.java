@@ -150,6 +150,16 @@ public class ColorAnimatedProperty extends AnimatedProperty {
     }
 
     @Override
+    public void insertTime(double atTick, double delta) {
+        super.insertTime(atTick, delta); // no bezier channels, but shifts nothing (count 0) — safe
+        for (var stop : stops) {
+            if (stop.tick >= atTick) stop.tick += (float) delta;
+        }
+        sort();
+        for (var clip : gradientClips) shiftSubClip(clip, atTick, delta);
+    }
+
+    @Override
     public void apply(FXObject target, double time) {
         if (type() instanceof ColorPropertyType color) {
             color.applyFunction(target, sampleFunction((float) time));

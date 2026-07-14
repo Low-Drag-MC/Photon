@@ -14,6 +14,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.gui.editor.FXEditor;
@@ -236,12 +237,7 @@ public class SceneView extends View {
     }
 
     public class ParticleSceneEditor extends SceneEditor {
-        public static final IGuiTexture SHAPE_OUTLINE = Icons.icon(Photon.MOD_ID, "shape_outline");
-        public static final IGuiTexture CULL_BOX = Icons.icon(Photon.MOD_ID, "cull_box");
-        public static final IGuiTexture DRAW_SHADED = Icons.icon(Photon.MOD_ID, "draw_shaded");
-        public static final IGuiTexture DRAW_WIREFRAME = Icons.icon(Photon.MOD_ID, "draw_wireframe");
-        public static final IGuiTexture DRAW_BOTH = Icons.icon(Photon.MOD_ID, "draw_both");
-        public static final IGuiTexture BLOOM = Icons.icon(Photon.MOD_ID, "bloom");
+
 
         public SceneView sceneView() {
             return SceneView.this;
@@ -293,9 +289,9 @@ public class SceneView extends View {
                 layout.flexDirection(FlexDirection.ROW);
                 layout.gapAll(1);
             }).addChildren(
-                    drawModeToggle(drawModeGroup, DrawMode.DRAW, DRAW_SHADED, "photon.draw_mode.shaded"),
-                    drawModeToggle(drawModeGroup, DrawMode.WIREFRAME, DRAW_WIREFRAME, "photon.draw_mode.wireframe"),
-                    drawModeToggle(drawModeGroup, DrawMode.BOTH, DRAW_BOTH, "photon.draw_mode.both")
+                    drawModeToggle(drawModeGroup, DrawMode.DRAW, PhotonIcons.DRAW_SHADED, "photon.draw_mode.shaded"),
+                    drawModeToggle(drawModeGroup, DrawMode.WIREFRAME, PhotonIcons.DRAW_WIREFRAME, "photon.draw_mode.wireframe"),
+                    drawModeToggle(drawModeGroup, DrawMode.BOTH, PhotonIcons.DRAW_BOTH, "photon.draw_mode.both")
             );
             var sceneSettings = new UIElement().layout(layout -> {
                 layout.heightPercent(100);
@@ -340,17 +336,17 @@ public class SceneView extends View {
             rightMost.addChildren(
                     new SceneToggleBuilder(SceneView.this::isBloomEnabled,
                             SceneView.this::setBloomEnabled)
-                            .icon(BLOOM)
+                            .icon(PhotonIcons.BLOOM)
                             .tooltipKey("photon.is_bloom_visible")
                             .build(),
                     new SceneToggleBuilder(SceneView.this::isShapeVisible,
                             SceneView.this::setShapeVisible)
-                            .icon(SHAPE_OUTLINE)
+                            .icon(PhotonIcons.SHAPE_OUTLINE)
                             .tooltipKey("photon.is_shape_visible")
                             .build(),
                     new SceneToggleBuilder(SceneView.this::isCullBoxVisible,
                             SceneView.this::setCullBoxVisible)
-                            .icon(CULL_BOX)
+                            .icon(PhotonIcons.CULL_BOX)
                             .tooltipKey("photon.is_cull_visible")
                             .build(),
                     new SceneToggleBuilder(fxObjectAnimationView::isDisplayed,

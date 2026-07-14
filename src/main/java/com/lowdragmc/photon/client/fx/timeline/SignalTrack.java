@@ -38,6 +38,16 @@ public class SignalTrack extends Track {
     }
 
     @Override
+    public void insertTime(double atTick, double deltaTicks) {
+        super.insertTime(atTick, deltaTicks);
+        for (var signal : signals) {
+            if (signal.time() >= atTick) {
+                signal.time(signal.time() + deltaTicks);
+            }
+        }
+    }
+
+    @Override
     protected void copyExtra(Track target) {
         if (target instanceof SignalTrack signalTrack) {
             for (var signal : signals) {

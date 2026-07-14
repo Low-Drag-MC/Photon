@@ -28,6 +28,14 @@ public class TrackGroup extends Track {
     }
 
     @Override
+    public void insertTime(double atTick, double deltaTicks) {
+        super.insertTime(atTick, deltaTicks);
+        for (var child : children) {
+            child.insertTime(atTick, deltaTicks);
+        }
+    }
+
+    @Override
     protected void copyExtra(Track target) {
         if (target instanceof TrackGroup group) {
             for (var child : children) {

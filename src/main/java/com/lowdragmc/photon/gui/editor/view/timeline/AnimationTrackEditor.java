@@ -20,6 +20,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.OreSprites;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
+import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigPropertyType;
 import dev.vfyjxf.taffy.style.TaffyPosition;
 import org.lwjgl.glfw.GLFW;
@@ -330,8 +331,8 @@ public class AnimationTrackEditor extends TrackEditor {
         var toggle = new Toggle().noText().setOn(ctx.isRecording(track))
                 .setOnToggleChanged(on -> ctx.setRecordingTrack(on ? track : null));
         toggle.getToggleStyle()
-                .markTexture(ColorPattern.RED.rectTexture())
-                .unmarkTexture(ColorPattern.T_DARK_GRAY.rectTexture());
+                .markTexture(IGuiTexture.group(ColorPattern.RED.rectTexture(), Icons.STOP))
+                .unmarkTexture(IGuiTexture.group(ColorPattern.T_DARK_GRAY.rectTexture(), PhotonIcons.RECORDING));
         toggle.setId("timeline.trackHeader.record").layout(layout -> layout.aspectRatio(1).heightPercent(100))
                 .style(style -> style.tooltips("photon.gui.editor.timeline.record"));
         return toggle;
@@ -482,7 +483,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var animation = (AnimationTrack) track;
         var lane = new UIElement().setId("timeline.trackLane").layout(layout -> {
             layout.widthPercent(100);
-            layout.height(TimelineContext.ROW_HEIGHT);
+            layout.height(state.rowHeight);
         }).setOverflowVisible(false).style(style -> style
                 .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);

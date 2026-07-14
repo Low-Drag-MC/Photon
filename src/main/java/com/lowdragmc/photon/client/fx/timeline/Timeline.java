@@ -24,9 +24,15 @@ import java.util.List;
 @ParametersAreNonnullByDefault
 public class Timeline implements INBTSerializable<CompoundTag> {
     private final List<Track> tracks = new ArrayList<>();
+    /** Named bookmarks on the master clock: snapping aids + visual markers (see {@link Marker}). */
+    private final List<Marker> markers = new ArrayList<>();
 
     public List<Track> tracks() {
         return tracks;
+    }
+
+    public List<Marker> markers() {
+        return markers;
     }
 
     public boolean isEmpty() {
@@ -72,6 +78,21 @@ public class Timeline implements INBTSerializable<CompoundTag> {
         return duration;
     }
 
+    /**
+     * Ripple-insert {@code deltaTicks} of empty time at {@code atTick} across the whole timeline: every
+     * marker and every track's content at or after the insertion point shifts later by {@code delta}
+     * (each track decides how — see {@link Track#insertTime}). A no-op for {@code delta == 0}.
+     */
+    public void insertTime(double atTick, double deltaTicks) {
+        if (deltaTicks == 0) {
+            return;
+        }
+        Marker.insertTime(markers, atTick, deltaTicks);
+        for (var track : tracks) {
+            track.insertTime(atTick, deltaTicks);
+        }
+    }
+
     /** The children-list (root list or a group's children) that directly contains {@code track}, or null. */
     @Nullable
     public List<Track> parentListOf(Track track) {
@@ -107,6 +128,9 @@ public class Timeline implements INBTSerializable<CompoundTag> {
         for (var track : tracks) {
             copied.tracks.add(track.copy());
         }
+        for (var marker : markers) {
+            copied.markers.add(marker.copy());
+        }
         return copied;
     }
 
@@ -140,6 +164,14 @@ public class Timeline implements INBTSerializable<CompoundTag> {
             list.add(writeTrack(track, provider));
         }
         tag.put("tracks", list);
+        var markerList = new ListTag();
+        for (var marker : markers) {
+            var m = new CompoundTag();
+            m.putDouble("tick", marker.tick());
+            m.putString("name", marker.name());
+            markerList.add(m);
+        }
+        tag.put("markers", markerList);
         return tag;
     }
 
@@ -152,6 +184,13 @@ public class Timeline implements INBTSerializable<CompoundTag> {
                 if (track != null) {
                     tracks.add(track);
                 }
+            }
+        }
+        markers.clear();
+        // absent "markers" key (legacy .fx) deserializes to an empty list — backward compatible
+        for (var element : tag.getList("markers", Tag.TAG_COMPOUND)) {
+            if (element instanceof CompoundTag m) {
+                markers.add(new Marker(m.getDouble("tick"), m.getString("name")));
             }
         }
     }

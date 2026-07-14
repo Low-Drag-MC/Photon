@@ -112,7 +112,7 @@ public class TrackGroupEditor extends TrackEditor {
         var group = (TrackGroup) track;
         var lane = new UIElement().setId("timeline.trackLane").layout(layout -> {
             layout.widthPercent(100);
-            layout.height(TimelineContext.ROW_HEIGHT);
+            layout.height(state.rowHeight);
         }).setOverflowVisible(false).style(style -> style
                 .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_DARK_GRAY.color);

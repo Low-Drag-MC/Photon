@@ -58,6 +58,14 @@ public class AnimationTrack extends Track {
         return end;
     }
 
+    @Override
+    public void insertTime(double atTick, double deltaTicks) {
+        super.insertTime(atTick, deltaTicks);
+        for (var property : properties) {
+            property.insertTime(atTick, deltaTicks);
+        }
+    }
+
     /** Drive {@code target}'s local transform from every property sampled at {@code time}. */
     public void sampleInto(FXObject target, double time) {
         for (var property : properties) {

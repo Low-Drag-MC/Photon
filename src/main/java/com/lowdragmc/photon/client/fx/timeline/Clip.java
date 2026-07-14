@@ -147,6 +147,22 @@ public class Clip {
     }
 
     /**
+     * Ripple-insert {@code delta} ticks at {@code atTick} into {@code clips}: a clip starting at or
+     * after the insertion point shifts later by {@code delta}; a clip straddling it grows by
+     * {@code delta} (the gap opens inside it). Clips fully before {@code atTick} are untouched. Used by
+     * {@code Track.insertTime}. Kept here (MC-free) so it stays unit-testable.
+     */
+    public static void insertTime(List<Clip> clips, double atTick, double delta) {
+        for (var clip : clips) {
+            if (clip.start >= atTick) {
+                clip.start += delta;
+            } else if (clip.end() > atTick) {
+                clip.duration += delta;
+            }
+        }
+    }
+
+    /**
      * Transition between the previously-active clip and the now-active clip on the same track,
      * used by the timeline player to drive emit/remove of the bound object.
      */

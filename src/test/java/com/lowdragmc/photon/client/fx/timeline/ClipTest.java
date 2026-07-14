@@ -86,6 +86,40 @@ class ClipTest {
     }
 
     @Test
+    void insertTimeShiftsClipsAtOrAfterAndGrowsStraddling() {
+        var before = new Clip(0.0, 5.0, 1.0f);      // fully before the insertion point
+        var straddle = new Clip(8.0, 6.0, 1.0f);    // [8,14): the insertion point 10 falls inside
+        var after = new Clip(20.0, 5.0, 1.0f);      // starts after the insertion point
+        var clips = List.of(before, straddle, after);
+        Clip.insertTime(clips, 10.0, 4.0);
+        assertEquals(0.0, before.start(), "clip before the point is untouched");
+        assertEquals(5.0, before.duration());
+        assertEquals(8.0, straddle.start(), "straddling clip keeps its start");
+        assertEquals(10.0, straddle.duration(), "straddling clip grows by delta (gap opens inside it)");
+        assertEquals(24.0, after.start(), "clip at/after the point shifts later by delta");
+        assertEquals(5.0, after.duration());
+    }
+
+    @Test
+    void insertTimeAtClipStartShiftsIt() {
+        var clip = new Clip(10.0, 5.0, 1.0f);
+        Clip.insertTime(List.of(clip), 10.0, 3.0); // start == atTick counts as "at or after"
+        assertEquals(13.0, clip.start());
+        assertEquals(5.0, clip.duration());
+    }
+
+    @Test
+    void insertTimeNegativeDeltaIsTheInverse() {
+        var a = new Clip(0.0, 5.0, 1.0f);
+        var b = new Clip(20.0, 5.0, 1.0f);
+        var clips = List.of(a, b);
+        Clip.insertTime(clips, 10.0, 4.0);
+        Clip.insertTime(clips, 10.0, -4.0);
+        assertEquals(0.0, a.start(), "forward then inverse returns to the original layout");
+        assertEquals(20.0, b.start());
+    }
+
+    @Test
     void transitionBetweenClips() {
         var a = new Clip(0.0, 5.0, 1.0f);
         var b = new Clip(10.0, 5.0, 1.0f);

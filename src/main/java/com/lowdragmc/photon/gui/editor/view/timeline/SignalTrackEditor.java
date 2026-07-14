@@ -152,7 +152,7 @@ public class SignalTrackEditor extends TrackEditor {
         var st = (SignalTrackUIState) state;
         var lane = new UIElement().setId("timeline.trackLane").layout(layout -> {
             layout.widthPercent(100);
-            layout.height(TimelineContext.ROW_HEIGHT);
+            layout.height(state.rowHeight);
         }).setOverflowVisible(false).style(style -> style
                 .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);

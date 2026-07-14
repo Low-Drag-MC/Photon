@@ -110,6 +110,16 @@ public abstract class Track {
     }
 
     /**
+     * Ripple-insert {@code deltaTicks} of empty time at {@code atTick}: content at or after the
+     * insertion point moves later by {@code delta}. The base shifts this track's clips (see
+     * {@link Clip#insertTime}); subclasses override to also shift their own content (keyframes,
+     * signals, child tracks, ...) and call {@code super}.
+     */
+    public void insertTime(double atTick, double deltaTicks) {
+        Clip.insertTime(clips, atTick, deltaTicks);
+    }
+
+    /**
      * An independent copy of this track (same registered type, copied target + clips). Provider-free
      * so it can be used from {@code FXData.copy(boolean)}.
      */

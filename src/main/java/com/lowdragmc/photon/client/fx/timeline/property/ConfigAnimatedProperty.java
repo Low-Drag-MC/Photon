@@ -62,6 +62,14 @@ public class ConfigAnimatedProperty extends AnimatedProperty {
         super.apply(target, time);
     }
 
+    @Override
+    public void insertTime(double atTick, double delta) {
+        super.insertTime(atTick, delta); // base keyframe channels + expression clips
+        for (var list : curveClips) {
+            for (var clip : list) shiftSubClip(clip, atTick, delta);
+        }
+    }
+
     public List<CurveClip> snapshotCurveClips(int axis) {
         var copy = new ArrayList<CurveClip>();
         for (var c : curveClips[axis]) copy.add(c.copy());

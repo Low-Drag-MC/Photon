@@ -220,6 +220,37 @@ public class AnimatedProperty {
         return new ArrayList<>(times);
     }
 
+    // ------------------------------------------------------------------ ripple insert
+
+    /**
+     * Ripple-insert {@code delta} ticks at {@code atTick}: shift every keyframe point (and sub-clip
+     * start) at or after the insertion point later by {@code delta}. A curve segment straddling the
+     * insertion point stretches (its later endpoint/handles shift). Subclasses override to also shift
+     * their own timed data (color stops, gradient/curve clips) and call {@code super}.
+     */
+    public void insertTime(double atTick, double delta) {
+        for (var curve : channels) {
+            for (var seg : curve.getSegments()) {
+                shiftPoint(seg.p0, atTick, delta);
+                shiftPoint(seg.c0, atTick, delta);
+                shiftPoint(seg.c1, atTick, delta);
+                shiftPoint(seg.p1, atTick, delta);
+            }
+        }
+        for (var list : exprClips) {
+            for (var clip : list) shiftSubClip(clip, atTick, delta);
+        }
+    }
+
+    private static void shiftPoint(Vector2f p, double atTick, double delta) {
+        if (p.x >= atTick) p.x += (float) delta;
+    }
+
+    /** Shift a sub-clip's start later by {@code delta} when it begins at or after {@code atTick}. */
+    protected static void shiftSubClip(SubClip clip, double atTick, double delta) {
+        if (clip.start() >= atTick) clip.start(clip.start() + delta);
+    }
+
     // ------------------------------------------------------------------ keyframe editing
 
     private static boolean isSingleKey(ECBCurves curve) {

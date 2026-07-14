@@ -104,7 +104,7 @@ public abstract class ClipTrackEditor extends TrackEditor {
     public UIElement buildLane(TimelineContext ctx, Track track, TrackUIState state) {
         var lane = new UIElement().setId("timeline.trackLane").layout(layout -> {
             layout.widthPercent(100);
-            layout.height(TimelineContext.ROW_HEIGHT);
+            layout.height(state.rowHeight);
         }).setOverflowVisible(false).style(style -> style
                 .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
                     DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
@@ -139,11 +139,11 @@ public abstract class ClipTrackEditor extends TrackEditor {
     private UIElement createClipElement(TimelineContext ctx, Track track, ClipTrackUIState st, Clip clip) {
         var baseColor = chipColor();
         var fillColor = clipFillColor();
-        var clipHeight = TimelineContext.ROW_HEIGHT - 6;
+        var clipHeight = st.rowHeight - 6;
         var element = new UIElement().setId("timeline.clip").layout(layout -> {
             layout.positionType(TaffyPosition.ABSOLUTE);
             layout.left(ctx.tickToLocalX(clip.start()));
-            layout.top((TimelineContext.ROW_HEIGHT - clipHeight) / 2f);
+            layout.top((st.rowHeight - clipHeight) / 2f);
             layout.width((float) Math.max(2, clip.duration() * ctx.scale()));
             layout.height(clipHeight);
             layout.paddingAll(2);

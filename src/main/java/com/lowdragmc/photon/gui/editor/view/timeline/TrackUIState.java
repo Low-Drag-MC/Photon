@@ -10,4 +10,6 @@ public class TrackUIState {
     public boolean expanded = false;
     /** Height (px) of the expanded panel (user-resizable). */
     public int expandedHeight = TimelineContext.EXPANDED_HEIGHT;
+    /** Fixed height (px) of this track's header + lane row (Ctrl+wheel adjustable, Unity-style). */
+    public int rowHeight = TimelineContext.ROW_HEIGHT;
 }

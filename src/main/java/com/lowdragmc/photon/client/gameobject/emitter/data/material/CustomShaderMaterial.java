@@ -43,6 +43,7 @@ import java.io.File;
 import java.lang.ref.Cleaner;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
@@ -215,7 +216,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         if (context.getShaderDefine().isEmpty()) {
             return shaderHolder.getShaderInstance();
         }
-        return shaderHolder.getShaderInstance(List.of(context.getShaderDefine()));
+        return shaderHolder.getShaderInstance(Set.of(context.getShaderDefine()));
     }
 
     @Override
