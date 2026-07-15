@@ -149,7 +149,20 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     public final ParticleAdditionalGPUDataSetting additionalGPUDataSetting = new ParticleAdditionalGPUDataSetting(this);
 
     // runtime
-    public final RenderPass particleRenderType = new RenderPass();
+    /** Shared default render runtime (no overrides → reads config) that the shared pass draws with;
+     *  per-emitter overriding runtimes come from {@code ParticleRuntime.renderer}. */
+    public final ParticleRendererSetting.Runtime defaultRenderRuntime = renderer.createRuntime();
+    public final RenderPass particleRenderType = createRenderPass(defaultRenderRuntime);
+
+    /**
+     * Build a tile render pass bound to {@code renderRuntime} (the slot-or-config render runtime): the
+     * shared {@link #particleRenderType} uses {@link #defaultRenderRuntime}; a per-emitter override builds
+     * another with that emitter's overriding runtime (see {@code ParticleRuntime.renderer}). Equal
+     * effective values produce equal passes, so the pipeline still merges them into one draw.
+     */
+    public RenderPass createRenderPass(ParticleRendererSetting.Runtime renderRuntime) {
+        return new RenderPass(renderRuntime);
+    }
 
     public enum Space {
         Local,
@@ -159,6 +172,9 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
 
     public ParticleConfig() {
         renderer.getMaterials().add(new MaterialSetting());
+        // route the shared renderer's structure-change teardown to the shared pass (a per-emitter
+        // override copy routes to its own override pass instead — see ParticleRendererSetting.copy)
+        renderer.setOwnerRenderPass(particleRenderType);
     }
 
     private void createSpaceConfigurator(Space space, ConfiguratorGroup group) {
@@ -186,12 +202,15 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
 
     @ParametersAreNonnullByDefault
     public class RenderPass extends PhotonFXRenderPass {
-        // not named "renderer": that would shadow ParticleConfig.renderer inside this inner class.
-        // NOT part of equals/hashCode — the batching key stays rendererSetting + mode + format.
-        private final TileParticleRenderer tileParticleRenderer = new TileParticleRenderer(ParticleConfig.this);
+        // the slot-or-config render runtime this pass draws with (typed; the base `renderer` field holds
+        // the same object). Not named "renderer" (would shadow ParticleConfig.renderer here).
+        private final ParticleRendererSetting.Runtime renderRuntime;
+        private final TileParticleRenderer tileParticleRenderer;
 
-        public RenderPass() {
-            super(renderer, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+        public RenderPass(ParticleRendererSetting.Runtime renderRuntime) {
+            super(renderRuntime, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+            this.renderRuntime = renderRuntime;
+            this.tileParticleRenderer = new TileParticleRenderer(ParticleConfig.this, renderRuntime);
         }
 
         /** Tear down the instanced GL resources (render mode / model / instance layout changed). */
@@ -206,12 +225,12 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
 
         @Override
         protected boolean useInstancing() {
-            return renderer.isUseGPUInstance() && renderer.getRenderMode() != ParticleRendererSetting.Mode.None;
+            return renderRuntime.isUseGPUInstance() && renderRuntime.getRenderMode() != ParticleRendererSetting.Mode.None;
         }
 
         @Override
         protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
-            var context = renderer.getRenderMode() == ParticleRendererSetting.Mode.Model ?
+            var context = renderRuntime.getRenderMode() == ParticleRendererSetting.Mode.Model ?
                     MaterialContext.PARTICLE_MODEL_INSTANCE : MaterialContext.PARTICLE_INSTANCE;
 
             // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change

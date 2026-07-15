@@ -142,6 +142,12 @@ class AraTrailInstanceRenderer extends InstancedRenderBackend {
     }
 
     @Override
+    protected int customTexelsPerInstance() {
+        return config.additionalGPUDataSetting.hasCustomRecord()
+                ? config.additionalGPUDataSetting.customDataTexels() : 0;
+    }
+
+    @Override
     protected void defineInstanceAttributes(int stride) {
         int offset = 0;
         offset = intInstanceAttrib(1, 1, stride, offset);       // iSeg int (point index)

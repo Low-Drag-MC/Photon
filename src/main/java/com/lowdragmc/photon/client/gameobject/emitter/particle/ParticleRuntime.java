@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
 import com.lowdragmc.photon.client.gameobject.emitter.data.ColorOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ColorBySpeedSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataRuntime;
 import com.lowdragmc.photon.client.gameobject.emitter.data.EmissionSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ExternalForcesSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ForceOverLifetimeSetting;
@@ -22,6 +23,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.TrailsSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.VelocityOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Per-{@link ParticleEmitter}-instance runtime layer. It aggregates one runtime per animatable
@@ -52,6 +55,8 @@ public class ParticleRuntime {
     public final UVAnimationSetting.Runtime uvAnimation;
     public final TrailsSetting.Runtime trails;
     public final SubEmittersSetting.Runtime subEmitters;
+    /** Per-instance override of the additional-GPU custom-data VALUES (structure stays from config). */
+    public final CustomDataRuntime customData;
 
     // top-level ParticleConfig values (read directly by the emitter/particle, not via a setting)
     public final RuntimeValue<NumberFunction> startColor;
@@ -65,6 +70,13 @@ public class ParticleRuntime {
     public final RuntimeValue<Integer> maxParticles;
     public final RuntimeValue<Boolean> looping;
     public final RuntimeValue<Boolean> parallelUpdate;
+
+    /** Co-located per-instance render-override slots (material / renderer settings): {@code getX()} reads
+     *  slot-or-config per field, no whole-renderer copy. Sits alongside the other {@code createRuntime()}
+     *  layers. Batching-safe via equals-merge (see the lazy {@link #overridePass}). */
+    public final ParticleRendererSetting.Runtime renderer;
+    /** The per-emitter override render pass (lazy; wraps {@link #renderer}), or null while no slot is set. */
+    @Nullable private PhotonFXRenderPass overridePass;
 
     public ParticleRuntime(ParticleConfig config) {
         this.config = config;
@@ -98,6 +110,41 @@ public class ParticleRuntime {
         this.uvAnimation = config.uvAnimation.createRuntime();
         this.trails = config.trails.createRuntime();
         this.subEmitters = config.subEmitters.createRuntime();
+        this.customData = new CustomDataRuntime(config.additionalGPUDataSetting);
+        this.renderer = config.renderer.createRuntime();
+    }
+
+    /**
+     * The render pass this emitter draws through: its per-instance override pass when any render slot is
+     * overridden (lazily built to wrap {@link #renderer}), else the shared {@code config.particleRenderType}
+     * (fast path, unchanged batching). Reverting all slots disposes the override pass.
+     */
+    public PhotonFXRenderPass effectiveRenderPass() {
+        if (renderer.hasOverride()) {
+            if (overridePass == null) {
+                overridePass = config.createRenderPass(renderer);
+            }
+            return overridePass;
+        }
+        if (overridePass != null) {
+            overridePass.clearInstance();
+            overridePass = null;
+        }
+        return config.particleRenderType;
+    }
+
+    /** Whether this emitter currently has any render-override slot set (drives {@link #effectiveRenderPass()}). */
+    public boolean hasRenderOverride() {
+        return renderer.hasOverride();
+    }
+
+    /** Drop every render-override slot (revert to the shared pass) and free the override pass's GL. */
+    public void clearRenderOverride() {
+        renderer.clear();
+        if (overridePass != null) {
+            overridePass.clearInstance();
+            overridePass = null;
+        }
     }
 
     /** Clear every timeline override (fall back to authored config). Called on emitter reset. */
@@ -132,5 +179,7 @@ public class ParticleRuntime {
         uvAnimation.clear();
         trails.clear();
         subEmitters.clear();
+        customData.clear();
+        clearRenderOverride();
     }
 }

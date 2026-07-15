@@ -16,17 +16,28 @@ import static org.lwjgl.opengl.GL30.*;
 class ParticleInstanceRenderer extends InstancedRenderBackend {
 
     private final ParticleConfig config;
+    /** Effective renderer runtime (slot-or-config per field); drives render-mode-dependent geometry +
+     *  layout. Custom GPU data still comes from the config. */
+    private final ParticleRendererSetting.Runtime renderer;
     /** Mesh baked into the current static VBO, for hot-reload staleness checks (identity compare). */
     @Nullable
     private PhotonMesh builtMesh;
+    /** Whether the current static geometry/layout was baked for Model mode (vs billboard family); a
+     *  runtime renderMode override crossing this boundary forces a rebuild. */
+    private boolean builtModelMode;
 
-    public ParticleInstanceRenderer(ParticleConfig config) {
+    public ParticleInstanceRenderer(ParticleConfig config, ParticleRendererSetting.Runtime renderer) {
         this.config = config;
+        this.renderer = renderer;
     }
 
     @Nullable
     PhotonMesh getBuiltMesh() {
         return builtMesh;
+    }
+
+    boolean wasBuiltForModel() {
+        return builtModelMode;
     }
 
     @Override
@@ -36,11 +47,12 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
 
     @Override
     protected void createStaticGeometry(InstanceResource resource) {
-        if (config.renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
-            var source = config.renderer.getModelSource();
+        this.builtModelMode = renderer.getRenderMode() == ParticleRendererSetting.Mode.Model;
+        if (renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
+            var source = renderer.getModelSource();
             var mesh = source.getMesh();
-            var remapUV = source.hasAtlasUV() && !config.renderer.isUseBlockUV();
-            var shade = config.renderer.isShade();
+            var remapUV = source.hasAtlasUV() && !renderer.isUseBlockUV();
+            var shade = renderer.isShade();
 
             // pos 3, uv 2, normal 3, brightness 1
             int floatsPerVertex = 3 + 2 + 3 + 1;
@@ -48,7 +60,7 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
             var vertexBuffer = BufferUtils.createFloatBuffer(quadCount * 4 * floatsPerVertex);
             var indexBuffer = BufferUtils.createIntBuffer(quadCount * 6);
             var vertexBase = 0;
-            var pivotPoint = config.renderer.getModelPivot();
+            var pivotPoint = renderer.getModelPivot();
             var vertices = mesh.vertices();
             var bounds = mesh.spriteBounds();
 
@@ -146,7 +158,7 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     @Override
     protected int instanceFloats() {
         var custom = config.additionalGPUDataSetting.attribFloats();
-        return custom + (config.renderer.getRenderMode() == ParticleRendererSetting.Mode.Model
+        return custom + (renderer.getRenderMode() == ParticleRendererSetting.Mode.Model
                 ? 3 + 3 + 4 + 4 + 1        // pos scale rotation color light
                 : 3 + 2 + 3 + 4 + 4 + 4 + 1); // pos size scale rotation color uv light
     }
@@ -167,7 +179,7 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         int attribIndex;
         int offset = 0;
 
-        if (config.renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
+        if (renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
             attribIndex = 4;
             offset = floatInstanceAttrib(attribIndex++, 3, stride, offset); // pos vec3
             offset = floatInstanceAttrib(attribIndex++, 3, stride, offset); // scale vec3

@@ -9,10 +9,13 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.FXRuntime;
+import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
+import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
@@ -62,6 +65,24 @@ public class ParticleEmitter extends Emitter {
         @Override
         public List<RuntimeBinding> runtimeBindings() {
             return RUNTIME_BINDINGS;
+        }
+
+        // custom-data channels are per-CONFIG dynamic (variable stream/channel count), so they can't live
+        // in the static RUNTIME_BINDINGS / cached type-level list — enumerate them per target instance.
+        @Override
+        public List<AnimatedPropertyType> animatableProperties(FXObject target) {
+            if (!(target instanceof ParticleEmitter emitter)) {
+                return animatableProperties();
+            }
+            return CustomDataBindings.appendAnimatable(animatableProperties(),
+                    emitter.config.additionalGPUDataSetting.customDataStreams(),
+                    o -> ((ParticleEmitter) o).runtime().customData);
+        }
+
+        @Override
+        public RuntimeBinding resolveRuntimeBinding(FXObject target, String path) {
+            var b = super.resolveRuntimeBinding(target, path);
+            return b != null ? b : CustomDataBindings.resolve(path, o -> ((ParticleEmitter) o).runtime().customData);
         }
     };
 
@@ -220,7 +241,17 @@ public class ParticleEmitter extends Emitter {
             new RuntimeBinding("trails.inheritParticleColor", "TrailsSetting.inheritParticleColor", ConfigValueType.BOOL,
                     o -> ((ParticleEmitter) o).runtime().trails.inheritParticleColor),
             new RuntimeBinding("trails.colorOverLifetime", "TrailsSetting.colorOverLifetime", ConfigValueType.COLOR,
-                    o -> ((ParticleEmitter) o).runtime().trails.colorOverLifetime));
+                    o -> ((ParticleEmitter) o).runtime().trails.colorOverLifetime),
+            // ---- render settings (pass-level: animating any of these gives the emitter its own override
+            //      pass; only per-frame-read fields with no GL baking are exposed — see ParticleRendererSetting.Runtime)
+            new RuntimeBinding("renderer.orderInLayer", "photon.emitter.config.renderer.orderInLayer", ConfigValueType.INT,
+                    o -> ((ParticleEmitter) o).runtime().renderer.orderInLayer),
+            new RuntimeBinding("renderer.useGPUInstance", "ParticleRendererSetting.useGPUInstance", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().renderer.useGPUInstance),
+            new RuntimeBinding("renderer.velocityScale", "photon.emitter.config.renderer.renderMode.stretchedBillboard.velocityScale", ConfigValueType.FLOAT,
+                    o -> ((ParticleEmitter) o).runtime().renderer.velocityScale),
+            new RuntimeBinding("renderer.lengthScale", "photon.emitter.config.renderer.renderMode.stretchedBillboard.lengthScale", ConfigValueType.FLOAT,
+                    o -> ((ParticleEmitter) o).runtime().renderer.lengthScale));
 
     @Persisted(subPersisted = true)
     public final ParticleConfig config;
@@ -520,13 +551,21 @@ public class ParticleEmitter extends Emitter {
 
     @Override
     public boolean useTranslucentPipeline() {
-        return config.renderer.getLayer() == RendererSetting.Layer.Translucent;
+        // slot-or-config layer: honour a per-instance layer override for the pipeline choice too
+        return runtime().renderer.getLayer() == RendererSetting.Layer.Translucent;
+    }
+
+    /** The render pass this emitter draws through (per-instance override pass, or the shared singleton). */
+    public PhotonFXRenderPass effectiveRenderPass() {
+        return runtime().effectiveRenderPass();
     }
 
     public void prepareRenderPass(RenderPassPipeline buffer) {
         if (isVisible()) {
-            for(var entry : this.particles.entrySet()) {
-                var pass = entry.getKey();
+            // all of this emitter's particles draw through its single effective pass (the override
+            // pass when overridden, else the shared config singleton); equal effective passes merge
+            var pass = effectiveRenderPass();
+            for (var entry : this.particles.entrySet()) {
                 var queue = entry.getValue();
                 if (!queue.isEmpty()) {
                     buffer.pipeQueue(pass, queue);
@@ -548,7 +587,9 @@ public class ParticleEmitter extends Emitter {
     @Override
     @Nullable
     public AABB getCullBox(float partialTicks) {
-        return config.renderer.getCull().isEnable() ? config.renderer.getCull().getCullAABB(this, partialTicks) : null;
+        // per-emitter cull (slot-or-config); not a batching concern, so it never forces an override pass
+        var cull = runtime().renderer.getCull();
+        return cull.isEnable() ? cull.getCullAABB(this, partialTicks) : null;
     }
 
     @Override
@@ -557,6 +598,9 @@ public class ParticleEmitter extends Emitter {
         if (force) {
             particles.clear();
             pendingSubEmitterSpawns.clear();
+            if (runtime != null) {
+                runtime.clearRenderOverride(); // free the per-instance override pass's GL on force removal
+            }
         }
     }
 

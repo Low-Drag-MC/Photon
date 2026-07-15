@@ -120,7 +120,17 @@ public class BeamConfig implements IConfigurable, IPersistedSerializable {
     }
 
     // runtime
-    public final PhotonFXRenderPass particleRenderType = new RenderPass();
+    public final InstancedRendererSetting.Runtime defaultRenderRuntime = renderer.createRuntime();
+    public final PhotonFXRenderPass particleRenderType = createRenderPass(defaultRenderRuntime);
+
+    /**
+     * Build a beam render pass bound to {@code renderRuntime} (slot-or-config): the shared pass uses
+     * {@link #defaultRenderRuntime}; a per-emitter override uses that emitter's runtime (see
+     * {@code BeamRuntime.renderer}). Equal effective values produce equal passes → one draw.
+     */
+    public PhotonFXRenderPass createRenderPass(InstancedRendererSetting.Runtime renderRuntime) {
+        return new RenderPass(renderRuntime);
+    }
 
     public BeamConfig() {
         renderer.getMaterials().add(new MaterialSetting(Optional.ofNullable(MaterialResource.INSTANCE.getResourceInstance()
@@ -143,11 +153,13 @@ public class BeamConfig implements IConfigurable, IPersistedSerializable {
     }
 
     private class RenderPass extends PhotonFXRenderPass {
-        // NOT part of equals/hashCode — the batching key stays rendererSetting + mode + format.
-        private final BeamParticleRenderer beamParticleRenderer = new BeamParticleRenderer(BeamConfig.this);
+        private final InstancedRendererSetting.Runtime renderRuntime;
+        private final BeamParticleRenderer beamParticleRenderer;
 
-        public RenderPass() {
-            super(renderer, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+        public RenderPass(InstancedRendererSetting.Runtime renderRuntime) {
+            super(renderRuntime, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+            this.renderRuntime = renderRuntime;
+            this.beamParticleRenderer = new BeamParticleRenderer(BeamConfig.this);
         }
 
         @Override
@@ -162,7 +174,7 @@ public class BeamConfig implements IConfigurable, IPersistedSerializable {
 
         @Override
         protected boolean useInstancing() {
-            return renderer.isUseGPUInstance();
+            return renderRuntime.isUseGPUInstance();
         }
 
         @Override

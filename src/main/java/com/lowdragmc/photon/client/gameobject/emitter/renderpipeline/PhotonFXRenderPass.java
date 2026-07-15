@@ -8,7 +8,6 @@ package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
  import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
- import lombok.EqualsAndHashCode;
  import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
@@ -18,7 +17,8 @@ import org.jetbrains.annotations.Nullable;
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Collection;
- import java.util.List;
+import java.util.List;
+import java.util.Objects;
 
 /**
  * @author KilaBash
@@ -27,7 +27,6 @@ import java.util.Collection;
  */
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
-@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public abstract class PhotonFXRenderPass {
     public final static CustomShaderMaterial INVERSE = new CustomShaderMaterial(Photon.id("inverse"));
     protected static final MaterialSetting WIREFRAME_MATERIAL = new MaterialSetting();
@@ -38,15 +37,15 @@ public abstract class PhotonFXRenderPass {
         WIREFRAME_MATERIAL.setDepthTest(false);
     }
 
-    @EqualsAndHashCode.Include
-    public final RendererSetting rendererSetting;
-    @EqualsAndHashCode.Include
+    /** The per-emitter render-override runtime this pass draws with (config.renderer's default runtime for
+     *  the shared pass, an emitter's overriding runtime for an override pass). Its <b>effective</b> values
+     *  (slot-or-config) are the batching key — see {@link #equals}/{@link #hashCode}. */
+    public final RendererSetting.Runtime renderer;
     public final VertexFormat.Mode mode;
-    @EqualsAndHashCode.Include
     public final VertexFormat format;
 
-    public PhotonFXRenderPass(RendererSetting rendererSetting, VertexFormat.Mode mode, VertexFormat format) {
-        this.rendererSetting = rendererSetting;
+    public PhotonFXRenderPass(RendererSetting.Runtime renderer, VertexFormat.Mode mode, VertexFormat format) {
+        this.renderer = renderer;
         this.mode = mode;
         this.format = format;
     }
@@ -174,7 +173,7 @@ public abstract class PhotonFXRenderPass {
     }
 
     protected List<MaterialSetting> getMaterials(RenderPassPipeline pipeline) {
-        var materials = rendererSetting.getMaterials();
+        var materials = renderer.getMaterials();
         if (pipeline.isWireframeSubPass()) {
             materials = List.of(WIREFRAME_MATERIAL);
         }
@@ -208,7 +207,7 @@ public abstract class PhotonFXRenderPass {
      * @return the order of the layer as an integer, where lower values typically indicate earlier rendering.
      */
     public int layerOrder() {
-        return rendererSetting.getOrderInLayer();
+        return renderer.getOrderInLayer();
     }
 
     /**
@@ -219,6 +218,24 @@ public abstract class PhotonFXRenderPass {
      * @return the VertexSorting configuration, or null if no sorting is defined.
      */
     public @Nullable VertexSorting getSorting() {
-        return rendererSetting.getVertexSortingMode().getVertexSorting();
+        return renderer.getVertexSortingMode().getVertexSorting();
+    }
+
+    /**
+     * The batching key: two passes merge iff same {@code mode} + {@code format} and equal <b>effective</b>
+     * renderer values ({@link RendererSetting.Runtime#effectiveEquals}). Hand-written (was lombok over the
+     * config {@code RendererSetting}) so the key reflects the runtime's slot-or-config values. Concrete
+     * passes further gate on their own type via {@code o instanceof RenderPass && super.equals}.
+     */
+    @Override
+    public boolean equals(@Nullable Object o) {
+        if (this == o) return true;
+        if (!(o instanceof PhotonFXRenderPass that)) return false;
+        return mode == that.mode && format.equals(that.format) && renderer.effectiveEquals(that.renderer);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(renderer.effectiveHashCode(), mode, format);
     }
 }

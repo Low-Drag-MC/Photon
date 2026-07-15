@@ -28,10 +28,12 @@ import net.minecraft.nbt.Tag;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -122,6 +124,38 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
     /** Whether this kind exposes the custom-data editor / upload (per-particle instanced kinds). */
     protected boolean supportsCustomData() {
         return false;
+    }
+
+    /** Read-only view of the custom-data streams (for the editor / timeline enumeration; empty when unsupported). */
+    public List<CustomData> customDataStreams() {
+        return customDataList();
+    }
+
+    /**
+     * Per-particle custom-data override resolver for stream {@code streamIndex}, or {@code null} when the
+     * particle's emitter has no override for it (the common case). Overriding kinds (tile) resolve it
+     * against the particle's {@code ParticleRuntime.customData}; only the sampled channel functions can
+     * change (structure stays from config), so batching / the GPU layout are untouched. Returning null
+     * keeps the fast, authored-value path.
+     */
+    @Nullable
+    protected CustomData.ChannelResolver customResolver(IParticle particle, int streamIndex) {
+        return null;
+    }
+
+    /**
+     * The sampling {@code t} for a custom-data stream, per its {@link CustomData.TSource}. Base falls back
+     * to the particle's own t for every source; each concrete kind overrides to resolve {@code EMITTER}
+     * (the emitter's t) and, for trail/ara, {@code SELF}/{@code LENGTH} from the staged per-segment values.
+     */
+    protected float customSampleT(IParticle particle, CustomData.TSource source, float partialTicks) {
+        return particle.getT(partialTicks);
+    }
+
+    /** The t-sources selectable in the custom-data editor for this kind. Default = the per-particle ones
+     *  (no {@code LENGTH}); trail/ara add {@code LENGTH}. */
+    protected Set<CustomData.TSource> availableTSources() {
+        return EnumSet.of(CustomData.TSource.EMITTER, CustomData.TSource.SELF);
     }
 
     public void setMaterialMask(long materialMask) {
@@ -216,9 +250,10 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
         int count = lastCustomDataCount;
         if (count > 0) {
             var list = customDataList();
-            float t = particle.getT(partialTicks);
             for (int i = 0; i < count && i < list.size(); i++) {
-                list.get(i).sampleInto(customScratch, t, randomFor(particle, i));
+                var stream = list.get(i);
+                float t = customSampleT(particle, stream.getTSource(), partialTicks);
+                stream.sampleInto(customScratch, t, randomFor(particle, i), customResolver(particle, i));
                 buffer.put(customScratch[0]).put(customScratch[1]).put(customScratch[2]).put(customScratch[3]);
             }
         }
@@ -304,10 +339,11 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
     public void uploadCustomRecord(IParticle particle, FloatBuffer buffer, float partialTicks) {
         var list = customDataList();
         int count = customDataCount();
-        float t = particle.getT(partialTicks);
         for (int i = 0; i < MAX_CUSTOM_DATA; i++) {
             if (i < count && i < list.size()) {
-                list.get(i).sampleInto(customScratch, t, randomFor(particle, i));
+                var stream = list.get(i);
+                float t = customSampleT(particle, stream.getTSource(), partialTicks);
+                stream.sampleInto(customScratch, t, randomFor(particle, i), customResolver(particle, i));
                 buffer.put(customScratch[0]).put(customScratch[1]).put(customScratch[2]).put(customScratch[3]);
             } else {
                 buffer.put(0f).put(0f).put(0f).put(0f);
@@ -450,6 +486,20 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
                 CustomData.Type.VECTOR, true,
                 List.of(CustomData.Type.VECTOR, CustomData.Type.COLOR),
                 type -> I18n.get("photon.custom_data.type." + type.name().toLowerCase())));
+
+        // sampling-t source selector — options depend on the kind (trail/ara add LENGTH)
+        var tSources = new ArrayList<>(availableTSources());
+        if (tSources.size() > 1) {
+            itemGroup.addConfigurator(new SelectorConfigurator<>("photon.custom_data.t_source",
+                    data::getTSource,
+                    source -> {
+                        data.setTSource(source);
+                        setter.accept(data);
+                    },
+                    CustomData.TSource.SELF, true,
+                    tSources,
+                    source -> I18n.get("photon.custom_data.t_source." + source.name().toLowerCase())));
+        }
         itemGroup.addConfigurator(countSelector);
 
         rebuildCustomDataChannels(channelsGroup, data, setter);

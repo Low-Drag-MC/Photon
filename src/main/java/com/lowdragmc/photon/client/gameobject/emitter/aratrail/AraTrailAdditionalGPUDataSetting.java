@@ -2,13 +2,18 @@ package com.lowdragmc.photon.client.gameobject.emitter.aratrail;
 
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.data.AdditionalGPUDataSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomData;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle;
 import org.apache.logging.log4j.util.TriConsumer;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -16,7 +21,7 @@ import java.util.Set;
  * AraTrail bindings for the {@link PhotonGpuChannels} registry (kind ARA_TRAIL). Per-point
  * channels (point_t = head 1 / tail 0 along the arc length, point_life = normalized segment age)
  * carry the value at the segment's curr and next points, staged per instance by the renderer via
- * {@link #setSegmentValues} right before {@link #uploadData}.
+ * {@link #setSegmentValues} right before {@link #uploadDataRecord}.
  */
 public class AraTrailAdditionalGPUDataSetting extends AdditionalGPUDataSetting {
 
@@ -42,6 +47,8 @@ public class AraTrailAdditionalGPUDataSetting extends AdditionalGPUDataSetting {
     private final AraTrailConfig config;
     @Persisted
     private final Set<String> additionalData = new HashSet<>();
+    /** User custom-data streams; persisted by base {@link AdditionalGPUDataSetting} via NBT. */
+    private final List<CustomData> customData = new ArrayList<>();
 
     // per-segment staging (render thread only), set by the renderer before each uploadData
     private float pointTCurr, pointTNext, pointLifeCurr, pointLifeNext;
@@ -67,6 +74,44 @@ public class AraTrailAdditionalGPUDataSetting extends AdditionalGPUDataSetting {
     @Override
     protected Set<String> enabledChannelIds() {
         return additionalData;
+    }
+
+    @Override
+    protected List<CustomData> customDataList() {
+        return customData;
+    }
+
+    @Override
+    protected boolean supportsCustomData() {
+        return true;
+    }
+
+    @Override
+    protected Set<CustomData.TSource> availableTSources() {
+        return EnumSet.of(CustomData.TSource.EMITTER, CustomData.TSource.SELF, CustomData.TSource.LENGTH);
+    }
+
+    @Nullable
+    @Override
+    protected CustomData.ChannelResolver customResolver(IParticle particle, int streamIndex) {
+        if (particle instanceof AraTrailParticle araParticle) {
+            var cd = araParticle.runtime.customData;
+            if (cd.hasOverride(streamIndex)) {
+                return cd.resolverFor(streamIndex);
+            }
+        }
+        return null;
+    }
+
+    @Override
+    protected float customSampleT(IParticle particle, CustomData.TSource source, float partialTicks) {
+        // custom-data is per-segment (= per instance); SELF/LENGTH read the segment values staged by
+        // setSegmentValues (curr endpoint = the segment's representative t)
+        return switch (source) {
+            case EMITTER -> particle instanceof AraTrailParticle ap ? ap.emitter.getT(partialTicks) : particle.getT(partialTicks);
+            case SELF -> pointLifeCurr;
+            case LENGTH -> pointTCurr;
+        };
     }
 
     @Override

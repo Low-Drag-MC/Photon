@@ -218,6 +218,7 @@ public class TrailParticleRenderer {
 
         var setting = config.additionalGPUDataSetting;
         var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(instanceCapacity) : null;
+        var customBuffer = setting.hasCustomRecord() ? instanceBackend.beginCustomUpload(instanceCapacity) : null;
         var instanceCount = 0;
         var pointCount = 0;
         var cameraPos = camera.getPosition().toVector3f();
@@ -243,8 +244,9 @@ public class TrailParticleRenderer {
                 // iSegV vec2 (v0, v1)
                 buffer.put(scratchV0).put(scratchV1);
 
-                // stage the per-point channel pair (point_t/point_life) before either upload
-                if (setting.hasAttribs() || dataBuffer != null) {
+                // stage the per-point channel pair (point_t/point_life) before any upload — this is also
+                // the representative segment t/length the per-segment custom-data sampling reads (curr end)
+                if (setting.hasAttribs() || dataBuffer != null || customBuffer != null) {
                     setting.setSegmentValues(pointT[i], pointT[i + 1], pointLife[i], pointLife[i + 1]);
                 }
                 if (setting.hasAttribs()) {
@@ -253,12 +255,18 @@ public class TrailParticleRenderer {
                 if (dataBuffer != null) {
                     setting.uploadDataRecord(trail, dataBuffer, partialTicks);
                 }
+                if (customBuffer != null) {
+                    setting.uploadCustomRecord(trail, customBuffer, partialTicks);
+                }
                 instanceCount++;
             }
         }
 
         if (dataBuffer != null) {
             instanceBackend.endDataUpload(dataBuffer);
+        }
+        if (customBuffer != null) {
+            instanceBackend.endCustomUpload(customBuffer);
         }
         instanceBackend.endPointUpload(pointBuffer);
         instanceBackend.endUpload(buffer, instanceCount);

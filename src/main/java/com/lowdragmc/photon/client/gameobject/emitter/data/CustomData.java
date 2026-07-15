@@ -7,6 +7,7 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,9 +35,20 @@ public class CustomData {
 
     public enum Type { VECTOR, COLOR }
 
+    /**
+     * Which normalized time value the stream's functions are sampled by:
+     * <ul><li>{@code EMITTER} — the emitter's t (all kinds).</li>
+     * <li>{@code SELF} — the particle's own t (tile: particle lifetime; beam: beam lifetime;
+     * trail/ara: the segment's normalized life).</li>
+     * <li>{@code LENGTH} — position along the trail (trail/ara only).</li></ul>
+     */
+    public enum TSource { EMITTER, SELF, LENGTH }
+
     public static final int MAX_CHANNELS = 4;
 
     private Type type = Type.VECTOR;
+    /** The sampling-t source (see {@link TSource}); defaults to SELF (the per-particle/segment t). */
+    private TSource tSource = TSource.SELF;
     private int channelCount = 1;
     /** VECTOR: {@code channelCount} scalar functions; COLOR: a single color function. */
     private final List<NumberFunction> channels = new ArrayList<>();
@@ -72,6 +84,14 @@ public class CustomData {
             }
         }
         resizeNames();
+    }
+
+    public TSource getTSource() {
+        return tSource;
+    }
+
+    public void setTSource(TSource tSource) {
+        this.tSource = tSource == null ? TSource.SELF : tSource;
     }
 
     public int getChannelCount() {
@@ -128,10 +148,23 @@ public class CustomData {
      * have length >= 4 and is fully written (unused components zeroed).
      */
     public void sampleInto(float[] out, float t, Supplier<Float> lerp) {
+        sampleInto(out, t, lerp, null);
+    }
+
+    /**
+     * As {@link #sampleInto(float[], float, Supplier)} but each channel's function may be swapped by
+     * {@code resolver} (a per-emitter runtime override) before sampling — it maps the channel index +
+     * config function to the effective function; returning the config function keeps the authored value.
+     * Structure (type / channelCount) always stays from this config stream, so the GPU layout / batching
+     * is unaffected.
+     */
+    public void sampleInto(float[] out, float t, Supplier<Float> lerp, @Nullable ChannelResolver resolver) {
         out[0] = out[1] = out[2] = out[3] = 0f;
         if (type == Type.COLOR) {
             if (channels.isEmpty()) return;
-            int argb = channels.getFirst().get(t, lerp).intValue();
+            var fn = channels.getFirst();
+            if (resolver != null) fn = resolver.resolve(0, fn);
+            int argb = fn.get(t, lerp).intValue();
             out[0] = ((argb >> 16) & 0xFF) / 255f; // r
             out[1] = ((argb >> 8) & 0xFF) / 255f;  // g
             out[2] = (argb & 0xFF) / 255f;         // b
@@ -139,9 +172,20 @@ public class CustomData {
         } else {
             int n = Math.min(channelCount, channels.size());
             for (int c = 0; c < n && c < MAX_CHANNELS; c++) {
-                out[c] = channels.get(c).get(t, lerp).floatValue();
+                var fn = channels.get(c);
+                if (resolver != null) fn = resolver.resolve(c, fn);
+                out[c] = fn.get(t, lerp).floatValue();
             }
         }
+    }
+
+    /**
+     * Per-emitter override hook for {@link #sampleInto(float[], float, Supplier, ChannelResolver)}: maps
+     * a channel's config function to the effective (possibly runtime-overridden) function.
+     */
+    @FunctionalInterface
+    public interface ChannelResolver {
+        NumberFunction resolve(int channelIndex, NumberFunction configFn);
     }
 
     public CustomData copy() {
@@ -149,12 +193,15 @@ public class CustomData {
         for (var channel : channels) {
             copied.add(channel.copy());
         }
-        return new CustomData(type, channelCount, copied, channelNames);
+        var copy = new CustomData(type, channelCount, copied, channelNames);
+        copy.tSource = tSource;
+        return copy;
     }
 
     public CompoundTag toNBT() {
         var tag = new CompoundTag();
         tag.putString("type", type.name());
+        tag.putString("tSource", tSource.name());
         tag.putInt("channelCount", channelCount);
         var list = new ListTag();
         for (var channel : channels) {
@@ -189,6 +236,14 @@ public class CustomData {
         for (int i = 0; i < nameList.size(); i++) {
             names.add(nameList.getString(i));
         }
-        return new CustomData(type, channelCount, channels, names);
+        var result = new CustomData(type, channelCount, channels, names);
+        // absent tSource (legacy data) → SELF, matching the original per-particle sampling
+        try {
+            if (tag.contains("tSource")) {
+                result.tSource = TSource.valueOf(tag.getString("tSource"));
+            }
+        } catch (IllegalArgumentException ignored) {
+        }
+        return result;
     }
 }

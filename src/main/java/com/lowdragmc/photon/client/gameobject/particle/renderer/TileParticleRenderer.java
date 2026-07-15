@@ -32,11 +32,16 @@ import java.util.Collection;
 @ParametersAreNonnullByDefault
 public class TileParticleRenderer {
     private final ParticleConfig config;
+    /** The renderer runtime this pass draws with (slot-or-config per field): the config's default runtime
+     *  for the shared pass, or a per-emitter overriding runtime for an override pass. Custom GPU data
+     *  still comes from the config. */
+    private final ParticleRendererSetting.Runtime renderer;
     private final ParticleInstanceRenderer instanceBackend;
 
-    public TileParticleRenderer(ParticleConfig config) {
+    public TileParticleRenderer(ParticleConfig config, ParticleRendererSetting.Runtime renderer) {
         this.config = config;
-        this.instanceBackend = new ParticleInstanceRenderer(config);
+        this.renderer = renderer;
+        this.instanceBackend = new ParticleInstanceRenderer(config, renderer);
     }
 
     // ---------------------------------------------------------------------
@@ -44,7 +49,7 @@ public class TileParticleRenderer {
     // ---------------------------------------------------------------------
 
     public void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
-        if (config.renderer.getRenderMode() == ParticleRendererSetting.Mode.None) {
+        if (renderer.getRenderMode() == ParticleRendererSetting.Mode.None) {
             return;
         }
         for (var particle : particles) {
@@ -71,7 +76,7 @@ public class TileParticleRenderer {
         var light = particle.getRealLight(partialTicks);
 
         var rotation = particle.getRealRotation(partialTicks);
-        var renderMode = config.renderer.getRenderMode();
+        var renderMode = renderer.getRenderMode();
 
         var size = particle.getRealSize(partialTicks);
 
@@ -81,10 +86,10 @@ public class TileParticleRenderer {
                     .rotate(computeModelQuaternion(particle, rotation))
                     .scale(size.mul(particle.getSpaceScale()));
             // draw 3d model
-            var source = config.renderer.getModelSource();
+            var source = renderer.getModelSource();
             var mesh = source.getMesh();
-            var remapUV = source.hasAtlasUV() && !config.renderer.isUseBlockUV();
-            var shade = config.renderer.isShade();
+            var remapUV = source.hasAtlasUV() && !renderer.isUseBlockUV();
+            var shade = renderer.isShade();
             for (int quad = 0; quad < mesh.quadCount(); quad++) {
                 putMeshQuad(transform, buffer, mesh, quad, shade ? mesh.shadeBrightness(quad) : 1f,
                         r, g, b, a, light, remapUV);
@@ -142,7 +147,7 @@ public class TileParticleRenderer {
                              float brightness, float red, float green, float blue, float alpha, int light,
                              boolean remapUV) {
         var vertices = mesh.vertices();
-        var pivotPoint = config.renderer.getModelPivot();
+        var pivotPoint = renderer.getModelPivot();
         var normalMat = transform.normal(new Matrix3f());
 
         float u0 = 0, v0 = 0, uw = 1, vh = 1;
@@ -186,10 +191,13 @@ public class TileParticleRenderer {
      * instance was uploaded (the VAO is left bound for {@link #drawInstanced}).
      */
     public boolean uploadInstances(Collection<IParticle> particles, Camera camera, float partialTicks) {
-        var renderMode = config.renderer.getRenderMode();
-        // rebuild the static geometry when the model mesh was hot-reloaded (identity compare)
-        if (renderMode == ParticleRendererSetting.Mode.Model && instanceBackend.isInitialized()
-                && instanceBackend.getBuiltMesh() != config.renderer.getModelSource().getMesh()) {
+        var renderMode = renderer.getRenderMode();
+        // rebuild the static geometry when the model mesh was hot-reloaded (identity compare), OR when a
+        // runtime renderMode override crossed the Model/non-Model boundary (different instance layout)
+        if (instanceBackend.isInitialized()
+                && (instanceBackend.wasBuiltForModel() != (renderMode == ParticleRendererSetting.Mode.Model)
+                    || (renderMode == ParticleRendererSetting.Mode.Model
+                        && instanceBackend.getBuiltMesh() != renderer.getModelSource().getMesh()))) {
             instanceBackend.dispose();
         }
         var buffer = instanceBackend.beginUpload(particles.size());
@@ -348,7 +356,7 @@ public class TileParticleRenderer {
         );
         var quaternion = new Quaternionf().setFromNormalized(mat);
 
-        float stretch = config.renderer.getLengthScale() + speed * config.renderer.getVelocityScale();
+        float stretch = renderer.getLengthScale() + speed * renderer.getVelocityScale();
         float stretchedSizeX = size.x * stretch;
 
         float offsetAmount = (stretchedSizeX - size.x) * spaceScale.x;

@@ -6,12 +6,16 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
+import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
 import net.minecraft.world.phys.AABB;
@@ -49,6 +53,24 @@ public class TrailEmitter extends Emitter {
         @Override
         public List<RuntimeBinding> runtimeBindings() {
             return RUNTIME_BINDINGS;
+        }
+
+        // custom-data channels are per-CONFIG dynamic (variable stream/channel count), so they can't live
+        // in the static RUNTIME_BINDINGS / cached type-level list — enumerate them per target instance.
+        @Override
+        public List<AnimatedPropertyType> animatableProperties(FXObject target) {
+            if (!(target instanceof TrailEmitter emitter)) {
+                return animatableProperties();
+            }
+            return CustomDataBindings.appendAnimatable(animatableProperties(),
+                    emitter.config.additionalGPUDataSetting.customDataStreams(),
+                    o -> ((TrailEmitter) o).runtime().customData);
+        }
+
+        @Override
+        public RuntimeBinding resolveRuntimeBinding(FXObject target, String path) {
+            var b = super.resolveRuntimeBinding(target, path);
+            return b != null ? b : CustomDataBindings.resolve(path, o -> ((TrailEmitter) o).runtime().customData);
         }
     };
 
@@ -190,12 +212,17 @@ public class TrailEmitter extends Emitter {
 
     @Override
     public boolean useTranslucentPipeline() {
-        return config.renderer.getLayer() == RendererSetting.Layer.Translucent;
+        return runtime().renderer.getLayer() == RendererSetting.Layer.Translucent;
+    }
+
+    /** The render pass this emitter draws through (per-instance override pass, or the shared singleton). */
+    public PhotonFXRenderPass effectiveRenderPass() {
+        return runtime().effectiveRenderPass();
     }
 
     public void prepareRenderPass(RenderPassPipeline buffer) {
         if (isVisible()) {
-            buffer.pipeQueue(trailParticle.getRenderType(), Collections.singleton(trailParticle));
+            buffer.pipeQueue(effectiveRenderPass(), Collections.singleton(trailParticle));
         }
     }
 
@@ -206,7 +233,8 @@ public class TrailEmitter extends Emitter {
     @Override
     @Nullable
     public AABB getCullBox(float partialTicks) {
-        return config.renderer.getCull().isEnable() ? config.renderer.getCull().getCullAABB(this, partialTicks) : null;
+        var cull = runtime().renderer.getCull();
+        return cull.isEnable() ? cull.getCullAABB(this, partialTicks) : null;
     }
 
     @Override
@@ -215,6 +243,9 @@ public class TrailEmitter extends Emitter {
         super.remove(force);
         if (force) {
             trailParticle.getTails().clear();
+            if (runtime != null) {
+                runtime.clearRenderOverride(); // free the per-instance override pass's GL on force removal
+            }
         }
     }
 }

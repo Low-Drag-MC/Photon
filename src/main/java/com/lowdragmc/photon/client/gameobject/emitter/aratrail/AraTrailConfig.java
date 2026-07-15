@@ -179,18 +179,31 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     public final AraTrailAdditionalGPUDataSetting additionalGPUDataSetting = new AraTrailAdditionalGPUDataSetting(this);
 
     // runtime
-    public final PhotonFXRenderPass particleRenderType = new RenderPass();
+    public final InstancedRendererSetting.Runtime defaultRenderRuntime = renderer.createRuntime();
+    public final PhotonFXRenderPass particleRenderType = createRenderPass(defaultRenderRuntime);
+
+    /**
+     * Build an ara-trail render pass bound to {@code renderRuntime} (slot-or-config): the shared pass uses
+     * {@link #defaultRenderRuntime}; a per-emitter override uses that emitter's runtime (see
+     * {@code AraTrailRuntime.renderer}). Equal effective values produce equal passes → one draw.
+     */
+    public PhotonFXRenderPass createRenderPass(InstancedRendererSetting.Runtime renderRuntime) {
+        return new RenderPass(renderRuntime);
+    }
 
     public AraTrailConfig() {
         renderer.getMaterials().add(new MaterialSetting());
     }
 
     private class RenderPass extends PhotonFXRenderPass {
+        private final InstancedRendererSetting.Runtime renderRuntime;
         // stateful (mesh scratch buffers) -> per-config instance; NOT part of equals/hashCode
-        private final AraTrailParticleRenderer trailRenderer = new AraTrailParticleRenderer(AraTrailConfig.this);
+        private final AraTrailParticleRenderer trailRenderer;
 
-        public RenderPass() {
-            super(renderer, VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.BLOCK);
+        public RenderPass(InstancedRendererSetting.Runtime renderRuntime) {
+            super(renderRuntime, VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.BLOCK);
+            this.renderRuntime = renderRuntime;
+            this.trailRenderer = new AraTrailParticleRenderer(AraTrailConfig.this);
         }
 
         @Override
@@ -206,7 +219,7 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
         @Override
         protected boolean useInstancing() {
             // high-quality corners emit a data-dependent fan topology (flat mode only) -> CPU path
-            return renderer.isUseGPUInstance()
+            return renderRuntime.isUseGPUInstance()
                     && (section.isEnable() || !(highQualityCorners && alignment != TrailAlignment.Local));
         }
 

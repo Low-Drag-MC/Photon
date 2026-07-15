@@ -12,6 +12,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
 import net.minecraft.nbt.CompoundTag;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -115,5 +116,29 @@ public abstract class FXObjectType {
      */
     public List<RuntimeBinding> runtimeBindings() {
         return List.of();
+    }
+
+    /**
+     * The animatable properties for a SPECIFIC object instance — the type-level {@link #animatableProperties()}
+     * plus any per-instance/per-config dynamic ones (e.g. a ParticleEmitter's user custom-data channels,
+     * whose count varies per config). Base = type-level only. Used by the add-property menu.
+     */
+    public List<AnimatedPropertyType> animatableProperties(FXObject target) {
+        return animatableProperties();
+    }
+
+    /**
+     * Resolve the runtime slot binding for {@code path} on {@code target}. Base = search the static
+     * {@link #runtimeBindings()}; object kinds with DYNAMIC bindings (custom-data channels) override to
+     * synthesize one for their paths. Returns {@code null} if the path is unknown to this type.
+     */
+    @Nullable
+    public RuntimeBinding resolveRuntimeBinding(FXObject target, String path) {
+        for (var b : runtimeBindings()) {
+            if (b.path.equals(path)) {
+                return b;
+            }
+        }
+        return null;
     }
 }

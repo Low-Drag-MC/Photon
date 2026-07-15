@@ -84,6 +84,8 @@ public class AraTrailParticleRenderer {
     private java.nio.FloatBuffer collectPointBuffer;
     @javax.annotation.Nullable
     private java.nio.FloatBuffer collectDataBuffer;
+    @javax.annotation.Nullable
+    private java.nio.FloatBuffer collectCustomBuffer;
     private boolean collectTube;
     private int collectPointCount;
     private int collectSpanBase;
@@ -756,9 +758,11 @@ public class AraTrailParticleRenderer {
 
         var setting = config.additionalGPUDataSetting;
         var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(pointCapacity) : null;
+        var customBuffer = setting.hasCustomRecord() ? instanceBackend.beginCustomUpload(pointCapacity) : null;
         collectTube = instanceBackend.isTubeMode();
         collectPointBuffer = pointBuffer;
         collectDataBuffer = dataBuffer;
+        collectCustomBuffer = customBuffer;
         collectPointCount = 0;
         collectInstanceCount = 0;
         var cameraPos = camera.getPosition().toVector3f();
@@ -781,8 +785,12 @@ public class AraTrailParticleRenderer {
 
         collectPointBuffer = null;
         collectDataBuffer = null;
+        collectCustomBuffer = null;
         if (dataBuffer != null) {
             instanceBackend.endDataUpload(dataBuffer);
+        }
+        if (customBuffer != null) {
+            instanceBackend.endCustomUpload(customBuffer);
         }
         instanceBackend.endPointUpload(pointBuffer);
         instanceBackend.endUpload(buffer, collectInstanceCount);
@@ -851,8 +859,9 @@ public class AraTrailParticleRenderer {
                 // iSegV vec2 (vA, vB)
                 buffer.put(vA).put(vB);
             }
-            // stage the per-point channel pair before either upload
-            if (setting.hasAttribs() || collectDataBuffer != null) {
+            // stage the per-point channel pair before any upload — also the representative segment
+            // t/length the per-segment custom-data sampling reads (curr endpoint)
+            if (setting.hasAttribs() || collectDataBuffer != null || collectCustomBuffer != null) {
                 setting.setSegmentValues(spanPointT[w], spanPointT[w + 1], spanPointLife[w], spanPointLife[w + 1]);
             }
             if (setting.hasAttribs()) {
@@ -860,6 +869,9 @@ public class AraTrailParticleRenderer {
             }
             if (collectDataBuffer != null) {
                 setting.uploadDataRecord(trail, collectDataBuffer, partialTicks);
+            }
+            if (collectCustomBuffer != null) {
+                setting.uploadCustomRecord(trail, collectCustomBuffer, partialTicks);
             }
             collectInstanceCount++;
         }

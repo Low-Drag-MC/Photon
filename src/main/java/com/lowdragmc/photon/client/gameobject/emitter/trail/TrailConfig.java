@@ -105,18 +105,30 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
     public final TrailAdditionalGPUDataSetting additionalGPUDataSetting = new TrailAdditionalGPUDataSetting(this);
 
     // runtime
-    public final PhotonFXRenderPass particleRenderType = new RenderPass();
+    public final InstancedRendererSetting.Runtime defaultRenderRuntime = renderer.createRuntime();
+    public final PhotonFXRenderPass particleRenderType = createRenderPass(defaultRenderRuntime);
+
+    /**
+     * Build a trail render pass bound to {@code renderRuntime} (slot-or-config): the shared pass uses
+     * {@link #defaultRenderRuntime}; a per-emitter override uses that emitter's runtime (see
+     * {@code TrailRuntime.renderer}). Equal effective values produce equal passes → one draw.
+     */
+    public PhotonFXRenderPass createRenderPass(InstancedRendererSetting.Runtime renderRuntime) {
+        return new RenderPass(renderRuntime);
+    }
 
     public TrailConfig() {
         renderer.getMaterials().add(new MaterialSetting());
     }
 
     private class RenderPass extends PhotonFXRenderPass {
-        // NOT part of equals/hashCode — the batching key stays rendererSetting + mode + format.
-        private final TrailParticleRenderer trailParticleRenderer = new TrailParticleRenderer(TrailConfig.this);
+        private final InstancedRendererSetting.Runtime renderRuntime;
+        private final TrailParticleRenderer trailParticleRenderer;
 
-        public RenderPass() {
-            super(renderer, VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.BLOCK);
+        public RenderPass(InstancedRendererSetting.Runtime renderRuntime) {
+            super(renderRuntime, VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.BLOCK);
+            this.renderRuntime = renderRuntime;
+            this.trailParticleRenderer = new TrailParticleRenderer(TrailConfig.this);
         }
 
         @Override
@@ -131,7 +143,7 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
 
         @Override
         protected boolean useInstancing() {
-            return renderer.isUseGPUInstance();
+            return renderRuntime.isUseGPUInstance();
         }
 
         @Override

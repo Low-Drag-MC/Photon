@@ -7,6 +7,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import org.apache.logging.log4j.util.TriConsumer;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
@@ -92,6 +93,30 @@ public class ParticleAdditionalGPUDataSetting extends AdditionalGPUDataSetting {
         if (uploader != null) {
             uploader.accept((TileParticle) particle, target, partialTicks);
         }
+    }
+
+    @Nullable
+    @Override
+    protected CustomData.ChannelResolver customResolver(IParticle particle, int streamIndex) {
+        // route sampling through the particle's own emitter runtime, so per-instance value overrides
+        // apply even when several emitters' particles are merged into one draw (values only; structure
+        // stays from this shared config, so the layout/batching key is unchanged)
+        if (particle instanceof TileParticle tileParticle) {
+            var customData = tileParticle.getRuntime().customData;
+            if (customData.hasOverride(streamIndex)) {
+                return customData.resolverFor(streamIndex);
+            }
+        }
+        return null;
+    }
+
+    @Override
+    protected float customSampleT(IParticle particle, CustomData.TSource source, float partialTicks) {
+        // tile has no LENGTH; SELF = the particle's lifetime t (the original behaviour)
+        if (source == CustomData.TSource.EMITTER && particle instanceof TileParticle tileParticle) {
+            return tileParticle.getEmitter().getT(partialTicks);
+        }
+        return particle.getT(partialTicks);
     }
 
     @Override

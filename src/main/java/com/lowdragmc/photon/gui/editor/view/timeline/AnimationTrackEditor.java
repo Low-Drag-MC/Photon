@@ -915,7 +915,7 @@ public class AnimationTrackEditor extends TrackEditor {
         // "config.physics.friction" -> config > physics > friction), so the menu branches by category
         var root = new MenuNode();
         var any = false;
-        for (var type : fxObject.getFXObjectType().animatableProperties()) {
+        for (var type : fxObject.getFXObjectType().animatableProperties(fxObject)) {
             if (track.property(type) != null) continue; // only show not-yet-added properties
             any = true;
             var segments = type.path().split("\\.");

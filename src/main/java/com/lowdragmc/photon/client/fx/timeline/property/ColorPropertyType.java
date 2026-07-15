@@ -52,13 +52,8 @@ public class ColorPropertyType implements AnimatedPropertyType {
         var type = target.getFXObjectType();
         if (boundType != type) {
             boundType = type;
-            binding = null;
-            for (var b : type.runtimeBindings()) {
-                if (b.path.equals(storeKey)) {
-                    binding = b;
-                    break;
-                }
-            }
+            // resolveRuntimeBinding also synthesizes dynamic bindings (e.g. custom-data COLOR streams)
+            binding = type.resolveRuntimeBinding(target, storeKey);
         }
         return binding;
     }

@@ -64,13 +64,8 @@ public class ConfigPropertyType implements AnimatedPropertyType {
         var type = target.getFXObjectType();
         if (boundType != type) {
             boundType = type;
-            binding = null;
-            for (var b : type.runtimeBindings()) {
-                if (b.path.equals(storeKey)) {
-                    binding = b;
-                    break;
-                }
-            }
+            // resolveRuntimeBinding also synthesizes dynamic bindings (e.g. custom-data channels)
+            binding = type.resolveRuntimeBinding(target, storeKey);
         }
         return binding;
     }
@@ -282,7 +277,8 @@ public class ConfigPropertyType implements AnimatedPropertyType {
     /** The effective override object written into the runtime slot (built once per apply). */
     private Object buildEffective(float[] v) {
         return switch (valueType) {
-            case INT, FLOAT -> v[0];
+            case INT -> Math.round(v[0]); // box an Integer, not a Float — the slot is RuntimeValue<Integer>
+            case FLOAT -> v[0];
             case BOOL -> v[0] >= 0.5f;
             case NUMBER_FUNCTION -> NumberFunction.constant(v[0]);
             case NUMBER_FUNCTION3 -> new NumberFunction3(v[0], v[1], v[2]);

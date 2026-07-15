@@ -12,6 +12,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorSelectorConfigurato
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.IModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource;
@@ -32,6 +33,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.lang.reflect.Field;
+import java.util.Objects;
 
 @Getter
 @Setter
@@ -41,7 +43,8 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     public enum Mode {
         None((p, c, t) -> new Quaternionf()),
         Billboard((p, c, t) -> {
-            var renderer = p.getConfig().renderer;
+            // read the per-particle emitter's runtime so a per-instance facing override takes effect
+            var renderer = p.getRuntime().renderer;
             return renderer.getFacingMode().compute(renderer.getFacingDirection(), p, c, t);
         }),
         Horizontal(0, -90),
@@ -107,6 +110,105 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
 
     public ParticleRendererSetting(ParticleConfig config) {
         this.config = config;
+    }
+
+    /**
+     * Slot-based per-emitter render override (see {@link RendererSetting.Runtime}) plus the tile-only
+     * fields. Overriding one field writes ONE {@link RuntimeValue} slot — no whole-renderer copy — and
+     * {@code getX()} falls back per-field to the immutable config. The render pipeline reads through this.
+     */
+    public static class Runtime extends RendererSetting.Runtime {
+        private final ParticleRendererSetting config;
+        public final RuntimeValue<Mode> renderMode;
+        public final RuntimeValue<MeshData> model;
+        public final RuntimeValue<Boolean> shade;
+        public final RuntimeValue<Boolean> useBlockUV;
+        public final RuntimeValue<Vector3f> modelPivot;
+        public final RuntimeValue<Float> velocityScale;
+        public final RuntimeValue<Float> lengthScale;
+        public final RuntimeValue<Boolean> useGPUInstance;
+        public final RuntimeValue<FacingMode> facingMode;
+        public final RuntimeValue<FacingDirectionSetting> facingDirection;
+
+        private Runtime(ParticleRendererSetting config) {
+            super(config);
+            this.config = config;
+            this.renderMode = new RuntimeValue<>(config::getRenderMode);
+            this.model = new RuntimeValue<>(config::getModel);
+            this.shade = new RuntimeValue<>(config::isShade);
+            this.useBlockUV = new RuntimeValue<>(config::isUseBlockUV);
+            this.modelPivot = new RuntimeValue<>(config::getModelPivot);
+            this.velocityScale = new RuntimeValue<>(config::getVelocityScale);
+            this.lengthScale = new RuntimeValue<>(config::getLengthScale);
+            this.useGPUInstance = new RuntimeValue<>(config::isUseGPUInstance);
+            this.facingMode = new RuntimeValue<>(config::getFacingMode);
+            this.facingDirection = new RuntimeValue<>(config::getFacingDirection);
+        }
+
+        public Mode getRenderMode() { return renderMode.get(); }
+        public MeshData getModel() { return model.get(); }
+        public IModelSource getModelSource() { return getModel().getSource(); }
+        public boolean isShade() { return shade.get(); }
+        public boolean isUseBlockUV() { return useBlockUV.get(); }
+        public Vector3f getModelPivot() { return modelPivot.get(); }
+        public float getVelocityScale() { return velocityScale.get(); }
+        public float getLengthScale() { return lengthScale.get(); }
+        public boolean isUseGPUInstance() { return useGPUInstance.get(); }
+        public FacingMode getFacingMode() { return facingMode.get(); }
+        public FacingDirectionSetting getFacingDirection() { return facingDirection.get(); }
+
+        @Override
+        public boolean hasOverride() {
+            // only PASS-level fields (the batching key) force a separate render pass. facingMode/
+            // facingDirection are read per-particle (the Billboard lambda reads p.getRuntime()), so
+            // overriding them needs no pass — excluded here and from effectiveEquals.
+            return super.hasOverride() || renderMode.isOverridden() || model.isOverridden()
+                    || shade.isOverridden() || useBlockUV.isOverridden() || modelPivot.isOverridden()
+                    || velocityScale.isOverridden() || lengthScale.isOverridden()
+                    || useGPUInstance.isOverridden();
+        }
+
+        @Override
+        public void clear() {
+            super.clear();
+            renderMode.clear();
+            model.clear();
+            shade.clear();
+            useBlockUV.clear();
+            modelPivot.clear();
+            velocityScale.clear();
+            lengthScale.clear();
+            useGPUInstance.clear();
+            facingMode.clear();
+            facingDirection.clear();
+        }
+
+        // NOTE: facingMode/facingDirection are intentionally NOT part of the batching key — they are read
+        // per-particle (the Billboard lambda reads p.getRuntime()), so emitters differing only in facing
+        // still merge into one draw (each particle reads its own emitter's value). This diverges from the
+        // authored ParticleRendererSetting's @EqualsAndHashCode on purpose.
+        @Override
+        public boolean effectiveEquals(RendererSetting.Runtime o) {
+            if (!super.effectiveEquals(o) || !(o instanceof Runtime other)) return false;
+            return getRenderMode() == other.getRenderMode()
+                    && Objects.equals(getModel(), other.getModel())
+                    && isShade() == other.isShade()
+                    && isUseBlockUV() == other.isUseBlockUV()
+                    && Objects.equals(getModelPivot(), other.getModelPivot())
+                    && getVelocityScale() == other.getVelocityScale()
+                    && getLengthScale() == other.getLengthScale()
+                    && isUseGPUInstance() == other.isUseGPUInstance();
+        }
+
+        @Override
+        public int effectiveHashCode() {
+            return Objects.hash(super.effectiveHashCode(), getRenderMode(), getModel(), isShade(), isUseBlockUV(),
+                    getModelPivot(), getVelocityScale(), getLengthScale(), isUseGPUInstance());
+        }
+    }
+
+    public Runtime createRuntime() {
+        return new Runtime(this);
     }
 
     public void buildSubConfigurator(Mode mode, ConfiguratorGroup group) {
@@ -192,46 +294,46 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     @ConfigSetter(field = "renderMode")
     public void setRenderMode(Mode mode) {
         this.renderMode = mode;
-        config.particleRenderType.clearInstance();
+        clearRenderPassInstance();
     }
 
     public void setModel(MeshData model) {
         this.model = model;
-        config.particleRenderType.clearInstance();
+        clearRenderPassInstance();
     }
 
     public void setShade(boolean shade) {
         this.shade = shade;
-        config.particleRenderType.clearInstance();
+        clearRenderPassInstance();
     }
 
     public void setUseBlockUV(boolean useBlockUV) {
         this.useBlockUV = useBlockUV;
-        config.particleRenderType.clearInstance();
+        clearRenderPassInstance();
     }
 
     public void setModelPivot(Vector3f modelPivot) {
         this.modelPivot = modelPivot;
-        config.particleRenderType.clearInstance();
+        clearRenderPassInstance();
     }
 
     public void setVelocityScale(float velocityScale) {
         this.velocityScale = velocityScale;
-        config.particleRenderType.clearInstance();
+        clearRenderPassInstance();
     }
 
     public void setLengthScale(float lengthScale) {
         this.lengthScale = lengthScale;
-        config.particleRenderType.clearInstance();
+        clearRenderPassInstance();
     }
 
     public void setFacingMode(FacingMode facingMode) {
         this.facingMode = facingMode == null ? FacingMode.DEFAULT : facingMode;
-        config.particleRenderType.clearInstance();
+        clearRenderPassInstance();
     }
 
     private void onFacingSettingChanged() {
-        config.particleRenderType.clearInstance();
+        clearRenderPassInstance();
     }
 
     @Override

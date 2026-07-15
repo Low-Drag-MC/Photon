@@ -75,6 +75,12 @@ class TrailInstanceRenderer extends InstancedRenderBackend {
     }
 
     @Override
+    protected int customTexelsPerInstance() {
+        return config.additionalGPUDataSetting.hasCustomRecord()
+                ? config.additionalGPUDataSetting.customDataTexels() : 0;
+    }
+
+    @Override
     protected void defineInstanceAttributes(int stride) {
         int offset = 0;
         offset = intInstanceAttrib(1, 2, stride, offset);   // iSeg ivec2 (point index, light)
