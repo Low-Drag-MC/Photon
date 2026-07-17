@@ -84,7 +84,7 @@ public class FullscreenShaderGraphResource extends RenderTypeGraphResource {
 
     @Override
     public IGuiTexture getIcon() {
-        return PhotonIcons.SHADER_GRAPH;
+        return PhotonIcons.FULL_SCREEN_GRAPH;
     }
 
     @Override

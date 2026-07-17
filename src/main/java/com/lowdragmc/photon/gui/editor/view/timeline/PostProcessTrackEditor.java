@@ -78,14 +78,18 @@ public class PostProcessTrackEditor extends ClipTrackEditor {
     protected void buildClipConfigurator(ConfiguratorGroup group, TimelineContext ctx, Track track, Clip clip) {
         if (!(clip instanceof PostProcessClip post)) return;
         var paramsGroup = new ConfiguratorGroup("photon.gui.editor.timeline.post_process.params", false);
-        group.addConfigurator(effectGraphPicker(post, paramsGroup, ctx));
-        group.addConfigurator(new NumberFunctionConfigurator(
+        paramsGroup.setTips("photon.gui.editor.timeline.post_process.params.tip");
+        group.addConfigurator(effectGraphPicker(post, paramsGroup, ctx)
+                .setTips("photon.gui.editor.timeline.post_process.effect_graph.tip"));
+        var weightRow = new NumberFunctionConfigurator(
                 "photon.gui.editor.timeline.post_process.weight",
                 post::weight,
                 fn -> {
                     post.weight(fn);
                     ctx.refreshPreview();
-                }, true, WEIGHT_CONFIG));
+                }, true, WEIGHT_CONFIG);
+        weightRow.setTips("photon.gui.editor.timeline.post_process.weight.tip");
+        group.addConfigurator(weightRow);
         rebuildParamRows(paramsGroup, post, ctx);
         group.addConfigurator(paramsGroup);
     }

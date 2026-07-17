@@ -1,0 +1,11 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/add_mix",
+    "samplers": [
+        { "name": "DiffuseSampler" },
+        { "name": "AddSampler" }
+    ],
+    "uniforms": [
+        { "name": "Strength", "type": "float", "count": 1, "values": [ 1.0 ] }
+    ]
+}

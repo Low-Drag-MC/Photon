@@ -1,0 +1,10 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/posterize",
+    "samplers": [
+        { "name": "DiffuseSampler" }
+    ],
+    "uniforms": [
+        { "name": "Levels", "type": "float", "count": 1, "values": [ 6.0 ] }
+    ]
+}

@@ -1,0 +1,10 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/bright",
+    "samplers": [
+        { "name": "DiffuseSampler" }
+    ],
+    "uniforms": [
+        { "name": "Threshold", "type": "float", "count": 1, "values": [ 1.0 ] }
+    ]
+}

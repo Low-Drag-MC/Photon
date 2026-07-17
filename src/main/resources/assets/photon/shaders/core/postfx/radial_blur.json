@@ -1,0 +1,11 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/radial_blur",
+    "samplers": [
+        { "name": "DiffuseSampler" }
+    ],
+    "uniforms": [
+        { "name": "Center", "type": "float", "count": 2, "values": [ 0.5, 0.5 ] },
+        { "name": "Strength", "type": "float", "count": 1, "values": [ 0.15 ] }
+    ]
+}

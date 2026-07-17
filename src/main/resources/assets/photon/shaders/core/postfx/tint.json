@@ -1,0 +1,10 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/tint",
+    "samplers": [
+        { "name": "DiffuseSampler" }
+    ],
+    "uniforms": [
+        { "name": "TintColor", "type": "float", "count": 4, "values": [ 1.0, 1.0, 1.0, 1.0 ] }
+    ]
+}

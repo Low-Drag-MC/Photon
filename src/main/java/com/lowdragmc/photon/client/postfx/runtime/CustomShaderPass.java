@@ -53,7 +53,15 @@ public final class CustomShaderPass {
             "photon:postfx/glitch",
             "photon:postfx/blur_h",
             "photon:postfx/blur_v",
-            "photon:postfx/outline");
+            "photon:postfx/outline",
+            "photon:postfx/tint",
+            "photon:postfx/sharpen",
+            "photon:postfx/posterize",
+            "photon:postfx/radial_blur",
+            "photon:postfx/lens_distortion",
+            "photon:postfx/bright",
+            "photon:postfx/add_mix",
+            "photon:postfx/dof_composite");
 
     /** One introspected uniform: {@code count} 1..4 maps to FLOAT/VEC2/VEC3/VEC4 ports. */
     public record UniformSpec(String name, int count, float[] defaults) {}

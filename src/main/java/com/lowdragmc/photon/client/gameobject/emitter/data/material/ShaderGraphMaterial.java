@@ -426,8 +426,10 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         var variablesGroup = new ConfiguratorGroup("photon.shader_graph.variables");
         variablesGroup.setCollapse(false);
         variablesGroup.setCanCollapse(false);
+        variablesGroup.setTips("photon.shader_graph.variables.tip");
 
         var graphRow = new Configurator("photon.shader_graph.graph");
+        graphRow.setTips("photon.shader_graph.graph.tip");
         var selectButton = new Button();
         selectButton.setText(getGraphPath().getResourceName().isEmpty() ? "photon.shader_graph.select"
                 : getGraphPath().getResourceName());
@@ -505,8 +507,45 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             var sub = new ConfiguratorGroup(name);
             sub.setCollapse(false);
             row.buildConfigurator(sub);
+            attachOverrideReset(sub, group, name);
             group.addConfigurators(sub);
         }
+    }
+
+    /** Property#createConfigurator-style reset on a variable group header: a small REPLAY square,
+     *  shown while the variable is overridden (orange title); clicking drops the override and
+     *  rebuilds the live value store from the graph defaults. */
+    private void attachOverrideReset(ConfiguratorGroup sub, ConfiguratorGroup variablesGroup, String name) {
+        var reset = new com.lowdragmc.lowdraglib2.gui.ui.elements.Button().noText().setOnClick(event -> {
+            if (overrides.remove(name) == null) return;
+            invalidateOverridesCache();
+            entry = null; // force a value-store rebuild (defaults + remaining overrides) on next use
+            values = null;
+            reloadVariableConfigurators(variablesGroup);
+        });
+        reset.layout(layout -> {
+            layout.height(14);
+            layout.width(14);
+        }).addChild(new com.lowdragmc.lowdraglib2.gui.ui.UIElement()
+                .layout(layout -> {
+                    layout.height(10);
+                    layout.width(10);
+                })
+                .style(style -> style.backgroundTexture(com.lowdragmc.lowdraglib2.gui.texture.Icons.REPLAY)
+                        .tooltips("photon.shader_graph.variable_reset")));
+        sub.lineContainer.addChildAt(reset, sub.tip.getSiblingIndex());
+        var mark = new java.util.concurrent.atomic.AtomicBoolean(false);
+        Runnable sync = () -> {
+            boolean overridden = overrides.containsKey(name);
+            if (overridden == mark.get()) return;
+            mark.set(overridden);
+            reset.setDisplay(overridden);
+            sub.label.setText(sub.label.getText().copy().withStyle(style -> style.withColor(
+                    overridden ? com.lowdragmc.lowdraglib2.gui.ColorPattern.ORANGE.color : -1)));
+        };
+        mark.set(!overrides.containsKey(name)); // force the initial apply
+        sync.run();
+        sub.addEventListener(com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents.TICK, event -> sync.run());
     }
 
     /** Deep-copy mutable values so editors never alias the graph's default instances. */

@@ -25,6 +25,7 @@ import com.lowdragmc.photon.client.postfx.graph.gui.RenderGraphView;
 import com.lowdragmc.photon.client.postfx.graph.nodes.OutputNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.PassNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.SceneColorInputNode;
+import com.lowdragmc.photon.client.postfx.graph.nodes.SceneDepthInputNode;
 import com.lowdragmc.photon.client.postfx.shadergraph.FullscreenShaderGraph;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
 import net.minecraft.nbt.CompoundTag;
@@ -76,6 +77,13 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
         addVerified(provider, "glitch", () -> buildShaderEffect("photon:postfx/glitch"));
         addVerified(provider, "gaussian_blur", this::buildGaussianBlur);
         addVerified(provider, "outline", this::buildOutline);
+        addVerified(provider, "tint", () -> buildShaderEffect("photon:postfx/tint"));
+        addVerified(provider, "sharpen", () -> buildShaderEffect("photon:postfx/sharpen"));
+        addVerified(provider, "posterize", () -> buildShaderEffect("photon:postfx/posterize"));
+        addVerified(provider, "radial_blur", () -> buildShaderEffect("photon:postfx/radial_blur"));
+        addVerified(provider, "lens_distortion", () -> buildShaderEffect("photon:postfx/lens_distortion"));
+        addVerified(provider, "bloom_effect", this::buildBloomEffect);
+        addVerified(provider, "depth_of_field", this::buildDepthOfField);
     }
 
     /** Build + round-trip-verify a builtin (deserialize the serialized tag and compile it) —
@@ -214,6 +222,75 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
         graph.graphModel.createWire(horizontal.getInputsById().get("Radius"), radiusNode.getOutputPort());
         graph.graphModel.createWire(vertical.getInputsById().get("Radius"), radiusNode.getOutputPort());
         return graph;
+    }
+
+    /** SceneColor -> bright(×0.5, Threshold) -> blur pair -> add_mix(scene + blurred × Strength):
+     *  the multi-pass bloom sample (also demonstrates INPUT_RELATIVE sizing). */
+    private RenderGraph buildBloomEffect() {
+        var graph = new RenderGraph();
+        var sceneColor = findSceneColor(graph);
+        var bright = addShaderPass(graph, "photon:postfx/bright", 40, -80);
+        RenderGraph.setNodeOption(bright, PassNode.OPTION_SIZE, com.lowdragmc.photon.client.postfx.graph.PassSize.DEFAULT
+                .withMode(com.lowdragmc.photon.client.postfx.graph.SizeSpec.Mode.SCREEN_RELATIVE).withScale(0.5f));
+        graph.graphModel.createWire(bright.getInputsById().get(MAIN_SAMPLER),
+                sceneColor.getOutputsById().get(SceneColorInputNode.OUTPUT_PORT));
+        var blurred = addBlurChain(graph, bright, PassNode.OUTPUT_PORT, 220, -80, 1f);
+        var composite = addShaderPass(graph, "photon:postfx/add_mix", 580, -80);
+        var colorPort = graph.getOutputNodeModel().getInputsById().get(OutputNode.COLOR_PORT);
+        graph.graphModel.deleteWires(colorPort.getConnectedWires());
+        graph.graphModel.createWire(composite.getInputsById().get(MAIN_SAMPLER),
+                sceneColor.getOutputsById().get(SceneColorInputNode.OUTPUT_PORT));
+        graph.graphModel.createWire(composite.getInputsById().get("AddSampler"),
+                blurred.getOutputsById().get(PassNode.OUTPUT_PORT));
+        graph.graphModel.createWire(colorPort, composite.getOutputsById().get(PassNode.OUTPUT_PORT));
+        promoteUniformsToParams(graph, bright, "photon:postfx/bright", -40, 60);
+        promoteUniformsToParams(graph, composite, "photon:postfx/add_mix", -40, 120);
+        return graph;
+    }
+
+    /** SceneColor -> half-res blur pair; dof_composite blends sharp/blurred by linearized depth
+     *  distance from the autofocus point (depth under Center). */
+    private RenderGraph buildDepthOfField() {
+        var graph = new RenderGraph();
+        var sceneColor = findSceneColor(graph);
+        var blurred = addBlurChain(graph, sceneColor, SceneColorInputNode.OUTPUT_PORT, 60, -180, 0.5f);
+        var depth = graph.addNode(SceneDepthInputNode.class, -160, 40);
+        var composite = addShaderPass(graph, "photon:postfx/dof_composite", 460, -80);
+        var colorPort = graph.getOutputNodeModel().getInputsById().get(OutputNode.COLOR_PORT);
+        graph.graphModel.deleteWires(colorPort.getConnectedWires());
+        graph.graphModel.createWire(composite.getInputsById().get(MAIN_SAMPLER),
+                sceneColor.getOutputsById().get(SceneColorInputNode.OUTPUT_PORT));
+        graph.graphModel.createWire(composite.getInputsById().get("BlurSampler"),
+                blurred.getOutputsById().get(PassNode.OUTPUT_PORT));
+        graph.graphModel.createWire(composite.getInputsById().get("DepthSampler"),
+                depth.getOutputsById().get(SceneDepthInputNode.OUTPUT_PORT));
+        graph.graphModel.createWire(colorPort, composite.getOutputsById().get(PassNode.OUTPUT_PORT));
+        promoteUniformsToParams(graph, composite, "photon:postfx/dof_composite", -40, 140);
+        return graph;
+    }
+
+    /** blur_h(INPUT_RELATIVE × {@code firstScale}) -> blur_v(matching), fed from {@code source}'s
+     *  {@code sourcePort}; ONE shared Radius parameter drives both. Returns the blur_v node. */
+    private NodeModel addBlurChain(RenderGraph graph, NodeModel source, String sourcePort,
+                                   float x, float y, float firstScale) {
+        var horizontal = addShaderPass(graph, "photon:postfx/blur_h", (int) x, (int) y);
+        RenderGraph.setNodeOption(horizontal, PassNode.OPTION_SIZE, com.lowdragmc.photon.client.postfx.graph.PassSize.DEFAULT
+                .withMode(com.lowdragmc.photon.client.postfx.graph.SizeSpec.Mode.INPUT_RELATIVE)
+                .withScale(firstScale).withInputPort(MAIN_SAMPLER));
+        var vertical = addShaderPass(graph, "photon:postfx/blur_v", (int) x + 180, (int) y);
+        RenderGraph.setNodeOption(vertical, PassNode.OPTION_SIZE, com.lowdragmc.photon.client.postfx.graph.PassSize.DEFAULT
+                .withMode(com.lowdragmc.photon.client.postfx.graph.SizeSpec.Mode.INPUT_RELATIVE)
+                .withScale(1f).withInputPort(MAIN_SAMPLER));
+        graph.graphModel.createWire(horizontal.getInputsById().get(MAIN_SAMPLER),
+                source.getOutputsById().get(sourcePort));
+        graph.graphModel.createWire(vertical.getInputsById().get(MAIN_SAMPLER),
+                horizontal.getOutputsById().get(PassNode.OUTPUT_PORT));
+        var radius = (VariableDeclarationModelBase) graph.graphModel.createVariable(
+                "Radius", TypeHandles.FLOAT, 2.0f, VariableKind.INPUT);
+        var radiusNode = graph.graphModel.createVariableNode(radius, new org.joml.Vector2f(x - 40, y + 100), null, null);
+        graph.graphModel.createWire(horizontal.getInputsById().get("Radius"), radiusNode.getOutputPort());
+        graph.graphModel.createWire(vertical.getInputsById().get("Radius"), radiusNode.getOutputPort());
+        return vertical;
     }
 
     /**

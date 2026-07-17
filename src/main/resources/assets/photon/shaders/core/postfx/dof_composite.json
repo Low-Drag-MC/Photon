@@ -1,0 +1,15 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/dof_composite",
+    "samplers": [
+        { "name": "DiffuseSampler" },
+        { "name": "BlurSampler" },
+        { "name": "DepthSampler" }
+    ],
+    "uniforms": [
+        { "name": "Center", "type": "float", "count": 2, "values": [ 0.5, 0.5 ] },
+        { "name": "FocusRange", "type": "float", "count": 1, "values": [ 8.0 ] },
+        { "name": "Near", "type": "float", "count": 1, "values": [ 0.05 ] },
+        { "name": "Far", "type": "float", "count": 1, "values": [ 768.0 ] }
+    ]
+}

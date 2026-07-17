@@ -332,7 +332,7 @@ public class AnimationTrackEditor extends TrackEditor {
                 .setOnToggleChanged(on -> ctx.setRecordingTrack(on ? track : null));
         toggle.getToggleStyle()
                 .markTexture(IGuiTexture.group(ColorPattern.RED.rectTexture(), Icons.STOP))
-                .unmarkTexture(IGuiTexture.group(ColorPattern.T_DARK_GRAY.rectTexture(), PhotonIcons.RECORDING));
+                .unmarkTexture(IGuiTexture.group(ColorPattern.T_DARK_GRAY.rectTexture(), PhotonIcons.RECORDING.copy().scale(0.8f)));
         toggle.setId("timeline.trackHeader.record").layout(layout -> layout.aspectRatio(1).heightPercent(100))
                 .style(style -> style.tooltips("photon.gui.editor.timeline.record"));
         return toggle;
