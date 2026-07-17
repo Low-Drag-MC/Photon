@@ -75,6 +75,8 @@ public class SceneView extends View {
     private DrawMode drawMode = DrawMode.DRAW;
     @Getter @Setter
     private boolean bloomEnabled = true;
+    @Getter @Setter
+    private boolean effectsEnabled = true;
     @Getter
     private int sceneRange = 6;
     // runtime
@@ -338,6 +340,11 @@ public class SceneView extends View {
                             SceneView.this::setBloomEnabled)
                             .icon(PhotonIcons.BLOOM)
                             .tooltipKey("photon.is_bloom_visible")
+                            .build(),
+                    new SceneToggleBuilder(SceneView.this::isEffectsEnabled,
+                            SceneView.this::setEffectsEnabled)
+                            .icon(PhotonIcons.SHADER_GRAPH)
+                            .tooltipKey("photon.is_effects_visible")
                             .build(),
                     new SceneToggleBuilder(SceneView.this::isShapeVisible,
                             SceneView.this::setShapeVisible)

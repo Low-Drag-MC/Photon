@@ -86,6 +86,10 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks, Predicate<ParticleRenderType> renderTypeFilter) {
         drawMode = sceneView.getDrawMode();
         sceneBloomEnabled = sceneView.isBloomEnabled();
+        // route post-effect submission/consumption to the isolated editor-scene stack
+        com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.setEditorSceneRendering(true);
+        com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE
+                .setEffectsEnabled(sceneView.isEffectsEnabled());
         RenderSystem.setShaderGameTime(getRealTime(), isPlaying ? pPartialTicks : 0);
 
         var startTime = System.nanoTime();
@@ -101,6 +105,7 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         }
         drawMode = null;
         sceneBloomEnabled = true;
+        com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.setEditorSceneRendering(false);
     }
 
     @Override

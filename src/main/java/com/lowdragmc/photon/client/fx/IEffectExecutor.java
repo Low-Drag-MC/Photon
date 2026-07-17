@@ -55,4 +55,10 @@ public interface IEffectExecutor {
      */
     default void onTimelineSignal(String channel, String name, CompoundTag data, double time) {
     }
+
+    /** The post-effect request sink this execution context feeds — timeline PostProcess clips
+     *  submit here every frame. The editor executor overrides to its isolated scene stack. */
+    default com.lowdragmc.photon.client.postfx.runtime.PostEffectStack postEffectSink() {
+        return com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.GLOBAL;
+    }
 }

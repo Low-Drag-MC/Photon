@@ -1,0 +1,11 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/hue_saturation",
+    "samplers": [
+        { "name": "DiffuseSampler" }
+    ],
+    "uniforms": [
+        { "name": "Hue", "type": "float", "count": 1, "values": [ 0.0 ] },
+        { "name": "Saturation", "type": "float", "count": 1, "values": [ 0.0 ] }
+    ]
+}

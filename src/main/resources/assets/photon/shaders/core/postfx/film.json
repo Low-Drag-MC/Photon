@@ -1,0 +1,13 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/film",
+    "samplers": [
+        { "name": "DiffuseSampler" }
+    ],
+    "uniforms": [
+        { "name": "NoiseIntensity", "type": "float", "count": 1, "values": [ 0.35 ] },
+        { "name": "ScanlineIntensity", "type": "float", "count": 1, "values": [ 0.25 ] },
+        { "name": "ScanlineCount", "type": "float", "count": 1, "values": [ 800.0 ] },
+        { "name": "GameTime", "type": "float", "count": 1, "values": [ 0.0 ] }
+    ]
+}

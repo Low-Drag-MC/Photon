@@ -22,6 +22,8 @@ import com.lowdragmc.photon.client.fx.fxpack.FXPackExporter;
 import com.lowdragmc.photon.client.fx.fxpack.FXPacks;
 import com.lowdragmc.photon.client.gameobject.emitter.data.fixer.PhotonFXProjectDataFixer;
 import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
+import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
+import com.lowdragmc.photon.gui.editor.resource.RenderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.CurveResource;
 import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
@@ -55,6 +57,8 @@ public class FXProject implements IProject {
                 MaterialResource.INSTANCE,
                 ShaderGraphResource.INSTANCE,
                 PhotonShaderFunctionGraphResource.INSTANCE,
+                FullscreenShaderGraphResource.INSTANCE,
+                RenderGraphResource.INSTANCE,
                 ColorsResource.INSTANCE,
                 CurveResource.INSTANCE,
                 GradientResource.INSTANCE,

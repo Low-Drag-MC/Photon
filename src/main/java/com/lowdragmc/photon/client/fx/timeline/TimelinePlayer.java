@@ -128,8 +128,27 @@ public class TimelinePlayer {
      * gates it), so the pose stays put when stopped.
      */
     public void frame(float partialTicks) {
+        // post effects are per-render-frame requests (stop submitting = effect stops next frame);
+        // they keep applying in record mode — recording only freezes transform animation
+        applyPostProcess(lastEvalTime + partialTicks);
         if (recording) return; // keep the user's live edits to the recording target
         applyAnimations(lastEvalTime + partialTicks);
+    }
+
+    /** Submit every active post-process clip's effect (weighted by its fade envelope) to the
+     *  execution context's sink for THIS frame. */
+    private void applyPostProcess(double time) {
+        if (effect == null) return;
+        for (var track : timeline.leafTracks(false)) {
+            if (track.mute() || !(track instanceof PostProcessTrack)) continue;
+            if (!(track.clipAt(time) instanceof PostProcessClip clip)) continue;
+            var path = clip.effectPath();
+            if (path == null) continue;
+            var local = clip.localTime(time);
+            float weight = clip.weightAt(local);
+            if (weight <= 0) continue;
+            effect.postEffectSink().submit(path, clip.sampleParams(local), weight);
+        }
     }
 
     /** Editor-only: freeze the per-frame re-apply so record mode can capture live target edits. */

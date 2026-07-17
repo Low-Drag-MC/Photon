@@ -1,0 +1,11 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:weight_mix",
+    "samplers": [
+        { "name": "SamplerA" },
+        { "name": "SamplerB" }
+    ],
+    "uniforms": [
+        { "name": "Weight", "type": "float", "count": 1, "values": [ 1 ] }
+    ]
+}

@@ -9,6 +9,7 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
+import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
 import com.lowdragmc.photon.core.mixins.iris.ExtendedShaderAccessor;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
@@ -216,11 +217,19 @@ public class RenderPassPipeline extends BufferBuilder {
         }
 
         var doBloom = PhotonParticleManager.isSceneBloomEnabled() && PhotonConfig.INSTANCE.enableBloom.get() && (!Photon.isUsingShaderPack() || PhotonConfig.INSTANCE.enableBloomWithIrisShader.get());
-        RenderTarget outputTarget;
-        if (doBloom) {
-            outputTarget = PhotonPostProcessing.postTarget(DRAW_TARGET);
-        } else {
-            outputTarget = DRAW_TARGET;
+        // the post-effect chain (builtin bloom at priority 0 + this frame's requested custom effects);
+        // once per frame — the second queue's build passes through (previously bloom ran twice)
+        RenderTarget outputTarget = PostEffectStack.currentSink().consumeAndExecute(DRAW_TARGET, doBloom);
+
+        // a sub-viewport means this scene is embedded inside a larger frame (the editor scene view):
+        // the chain processed the whole frame, but the write-back must not touch pixels outside the
+        // viewport — UI drawn before the scene would get post-processed too
+        int[] uiScissorBox = null;
+        if (hasDifferentViewPort) {
+            uiScissorBox = new int[4];
+            GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, uiScissorBox);
+            RenderSystem.enableScissor(lastViewport.position.x, lastViewport.position.y,
+                    lastViewport.size.width, lastViewport.size.height);
         }
 
         // we need it because extended shaders only work while the main target bound.
@@ -257,6 +266,12 @@ public class RenderPassPipeline extends BufferBuilder {
             GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainTarget.frameBufferId);
         } else {
             ShaderUtils.fastBlit(outputTarget, mainTarget);
+        }
+
+        // restore the UI clip state the scene render suspended (the box outlives the disabled test)
+        if (uiScissorBox != null) {
+            RenderSystem.disableScissor();
+            GlStateManager._scissorBox(uiScissorBox[0], uiScissorBox[1], uiScissorBox[2], uiScissorBox[3]);
         }
 
         // restore view port

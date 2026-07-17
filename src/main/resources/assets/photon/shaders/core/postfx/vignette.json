@@ -1,0 +1,11 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/vignette",
+    "samplers": [
+        { "name": "DiffuseSampler" }
+    ],
+    "uniforms": [
+        { "name": "Offset", "type": "float", "count": 1, "values": [ 1.0 ] },
+        { "name": "Darkness", "type": "float", "count": 1, "values": [ 1.0 ] }
+    ]
+}

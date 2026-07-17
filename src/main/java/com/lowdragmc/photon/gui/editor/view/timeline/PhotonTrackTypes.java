@@ -40,4 +40,10 @@ public class PhotonTrackTypes {
 
     @LDLRegisterClient(name = "audio", registry = "photon:timeline_track")
     public static final TrackType AUDIO = new TrackType(AudioTrack.class, AudioTrack::new, new AudioTrackEditor());
+
+    @LDLRegisterClient(name = "post_process", registry = "photon:timeline_track")
+    public static final TrackType POST_PROCESS = new TrackType(
+            com.lowdragmc.photon.client.fx.timeline.PostProcessTrack.class,
+            com.lowdragmc.photon.client.fx.timeline.PostProcessTrack::new,
+            new PostProcessTrackEditor());
 }

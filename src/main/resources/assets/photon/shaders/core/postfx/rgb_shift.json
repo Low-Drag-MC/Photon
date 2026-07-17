@@ -1,0 +1,11 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/rgb_shift",
+    "samplers": [
+        { "name": "DiffuseSampler" }
+    ],
+    "uniforms": [
+        { "name": "Amount", "type": "float", "count": 1, "values": [ 0.005 ] },
+        { "name": "Angle", "type": "float", "count": 1, "values": [ 0.0 ] }
+    ]
+}

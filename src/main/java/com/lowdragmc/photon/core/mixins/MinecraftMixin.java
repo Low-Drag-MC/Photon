@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.core.mixins;
 
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
+import com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -16,5 +17,6 @@ public class MinecraftMixin {
             at = @At(value = "RETURN"))
     private void photon$resizeDisplay(CallbackInfo ci) {
         RenderPassPipeline.markDrawTargetDirty();
+        PostFXTargetPool.invalidateAll();
     }
 }

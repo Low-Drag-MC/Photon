@@ -1,0 +1,11 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/pixelate",
+    "samplers": [
+        { "name": "DiffuseSampler" }
+    ],
+    "uniforms": [
+        { "name": "PixelSize", "type": "float", "count": 1, "values": [ 8.0 ] },
+        { "name": "DiffuseSampler_TexelSize", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] }
+    ]
+}

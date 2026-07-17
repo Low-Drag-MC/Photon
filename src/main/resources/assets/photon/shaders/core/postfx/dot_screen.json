@@ -1,0 +1,12 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/dot_screen",
+    "samplers": [
+        { "name": "DiffuseSampler" }
+    ],
+    "uniforms": [
+        { "name": "Scale", "type": "float", "count": 1, "values": [ 1.0 ] },
+        { "name": "Angle", "type": "float", "count": 1, "values": [ 1.57 ] },
+        { "name": "DiffuseSampler_TexelSize", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] }
+    ]
+}

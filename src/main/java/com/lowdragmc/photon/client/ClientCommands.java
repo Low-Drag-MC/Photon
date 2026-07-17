@@ -12,9 +12,13 @@ import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
 import com.lowdragmc.photon.client.fx.EntityEffectExecutor;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.client.fx.VanillaParticleHost;
+import com.lowdragmc.photon.client.postfx.PhotonPostFX;
 import com.lowdragmc.photon.core.mixins.accessor.ParticleEngineAccessor;
 import com.lowdragmc.photon.gui.editor.FXEditor;
+import com.mojang.brigadier.arguments.FloatArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.ClickEvent;
 import net.neoforged.api.distmarker.Dist;
@@ -52,6 +56,29 @@ public class ClientCommands {
                     minecraft.setScreen(screen);
                     return 1;
                 }),
+                // post-effect smoke test: keeps requesting the effect every frame until "clear".
+                // The effect path is a builtin fullscreen-graph name (e.g. "invert") or a full
+                // "type(path)" resource path.
+                (LiteralArgumentBuilder<S>) createLiteral("photonfx")
+                        .then(createLiteral("test")
+                                .then(Commands.argument("effect", StringArgumentType.string())
+                                        .executes(context -> startTestEffect(context, 1f))
+                                        .then(Commands.argument("weight", FloatArgumentType.floatArg(0f, 1f))
+                                                .executes(context -> startTestEffect(context,
+                                                        FloatArgumentType.getFloat(context, "weight"))))))
+                        .then(createLiteral("clear")
+                                .executes(context -> {
+                                    PhotonPostFX.clearTestEffect();
+                                    feedback("photonfx: test effect cleared");
+                                    return 1;
+                                }))
+                        .then(createLiteral("list")
+                                .executes(context -> {
+                                    var paths = PhotonPostFX.listEffectPaths();
+                                    feedback("photonfx: %d effect(s) available:".formatted(paths.size()));
+                                    paths.forEach(path -> feedback("  " + path));
+                                    return 1;
+                                })),
                 (LiteralArgumentBuilder<S>) createLiteral("photon_client")
                         .then(createLiteral("clear_particles")
                                 .executes(context -> {
@@ -96,5 +123,24 @@ public class ClientCommands {
                                     return 1;
                                 }))
         );
+    }
+
+    private static <S> int startTestEffect(CommandContext<S> context, float weight) {
+        var text = StringArgumentType.getString(context, "effect");
+        var path = PhotonPostFX.parsePath(text);
+        if (path == null) {
+            feedback("photonfx: cannot parse effect path '" + text + "'");
+            return 0;
+        }
+        PhotonPostFX.setTestEffect(path, weight);
+        feedback("photonfx: testing '" + text + "' at weight " + weight + " (stop with /photonfx clear)");
+        return 1;
+    }
+
+    private static void feedback(String message) {
+        var player = Minecraft.getInstance().player;
+        if (player != null) {
+            player.sendSystemMessage(Component.literal(message));
+        }
     }
 }

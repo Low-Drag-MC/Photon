@@ -29,4 +29,10 @@ public class FXProjectEffectExecutor implements IEffectExecutor {
     public void reset() {
         randomSource.setSeed(seed);
     }
+
+    /** Editor previews feed the isolated scene stack — never the world's post-effect chain. */
+    @Override
+    public com.lowdragmc.photon.client.postfx.runtime.PostEffectStack postEffectSink() {
+        return com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE;
+    }
 }
