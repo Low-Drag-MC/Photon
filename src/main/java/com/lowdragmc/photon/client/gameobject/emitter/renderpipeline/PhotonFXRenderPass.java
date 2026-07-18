@@ -30,11 +30,42 @@ import java.util.Objects;
 public abstract class PhotonFXRenderPass {
     public final static CustomShaderMaterial INVERSE = new CustomShaderMaterial(Photon.id("inverse"));
     protected static final MaterialSetting WIREFRAME_MATERIAL = new MaterialSetting();
+    /** The mask value (0..1) of the pass currently drawing in the mask sub-pass — staged into the
+     *  shared mask shader by {@link #MASK}'s begin() (covers the CPU and every instanced path). */
+    private static float CURRENT_MASK_VALUE = 0f;
+    /** Alpha-clip cutoff of the current mask draw (0 = flat geometry mask). */
+    private static float CURRENT_MASK_CUTOFF = 0f;
+    /** The texture the alpha clip samples (the pass's first texture material), null = none. */
+    @Nullable
+    private static net.minecraft.resources.ResourceLocation CURRENT_MASK_TEXTURE = null;
+    /** The mask sub-pass material: flat {@code MaskValue} output over the shared particle vertex
+     *  transform ({@code getParticleData()}), variant-selected per render path like INVERSE. */
+    public final static CustomShaderMaterial MASK = new CustomShaderMaterial(Photon.id("mask")) {
+        @Override
+        public net.minecraft.client.renderer.ShaderInstance begin(MaterialContext context) {
+            var shader = super.begin(context);
+            shader.safeGetUniform("MaskValue").set(CURRENT_MASK_VALUE);
+            shader.safeGetUniform("AlphaCutoff").set(CURRENT_MASK_CUTOFF);
+            if (CURRENT_MASK_TEXTURE != null) {
+                // Sampler0 rides RenderSystem's shader-texture slot: the CPU path pulls it in
+                // drawWithShader, the instanced path in setDefaultUniforms — same as TextureMaterial
+                RenderSystem.setShaderTexture(0, CURRENT_MASK_TEXTURE);
+            }
+            return shader;
+        }
+    };
+    protected static final MaterialSetting MASK_MATERIAL = new MaterialSetting();
     static {
         WIREFRAME_MATERIAL.setMaterial(INVERSE);
         WIREFRAME_MATERIAL.setCull(false);
         WIREFRAME_MATERIAL.setDepthMask(false);
         WIREFRAME_MATERIAL.setDepthTest(false);
+        // mask draws depth-test against the scene depth pre-copied into MASK_TARGET and WRITE their
+        // own depth there (= custom depth) — the main depth buffer is never touched
+        MASK_MATERIAL.setMaterial(MASK);
+        MASK_MATERIAL.setCull(false);
+        MASK_MATERIAL.setDepthMask(true);
+        MASK_MATERIAL.setDepthTest(true);
     }
 
     /** The per-emitter render-override runtime this pass draws with (config.renderer's default runtime for
@@ -65,6 +96,14 @@ public abstract class PhotonFXRenderPass {
     public final boolean drawParticles(RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
         var materials = getMaterials(pipeline);
         if (materials.isEmpty()) return false;
+        if (pipeline.isMaskSubPass()) {
+            CURRENT_MASK_VALUE = com.lowdragmc.photon.client.postfx.runtime.MaskGroups
+                    .idOf(renderer.getMaskGroup()) / 255f;
+            var cutoff = renderer.getMaskAlphaCutoff();
+            CURRENT_MASK_TEXTURE = cutoff > 0 ? findMaskClipTexture() : null;
+            // no clippable texture on the pass -> fall back to the flat geometry mask
+            CURRENT_MASK_CUTOFF = CURRENT_MASK_TEXTURE != null ? cutoff : 0f;
+        }
         return drawParticlesInternal(materials, pipeline, particles, camera, partialTicks);
     }
 
@@ -165,6 +204,17 @@ public abstract class PhotonFXRenderPass {
         return false;
     }
 
+    /** The texture the mask alpha clip samples: the pass's first texture material's texture. */
+    @Nullable
+    private net.minecraft.resources.ResourceLocation findMaskClipTexture() {
+        for (var materialSetting : renderer.getMaterials()) {
+            if (getRawMaterial(materialSetting.getMaterial()) instanceof TextureMaterial textureMaterial) {
+                return textureMaterial.getTexture();
+            }
+        }
+        return null;
+    }
+
     private static IMaterial getRawMaterial(IMaterial material) {
         if (material instanceof UIResourceMaterial uiResourceMaterial) {
             return uiResourceMaterial.getRawMaterial();
@@ -173,6 +223,10 @@ public abstract class PhotonFXRenderPass {
     }
 
     protected List<MaterialSetting> getMaterials(RenderPassPipeline pipeline) {
+        if (pipeline.isMaskSubPass()) {
+            // only flagged passes participate in the mask sub-pass (empty = skipped entirely)
+            return renderer.isWriteCustomMask() ? List.of(MASK_MATERIAL) : List.of();
+        }
         var materials = renderer.getMaterials();
         if (pipeline.isWireframeSubPass()) {
             materials = List.of(WIREFRAME_MATERIAL);

@@ -22,7 +22,12 @@ public class FormatTarget extends HDRTarget {
     private final TargetFormat format;
 
     public FormatTarget(int width, int height, int filterMode, TargetFormat format) {
-        super(width, height, filterMode, false);
+        this(width, height, filterMode, format, false);
+    }
+
+    /** {@code useDepth} variant — the CustomMask target is an R8 color WITH its own depth. */
+    public FormatTarget(int width, int height, int filterMode, TargetFormat format, boolean useDepth) {
+        super(width, height, filterMode, useDepth);
         this.format = format;
         respecColor();
     }
@@ -45,6 +50,8 @@ public class FormatTarget extends HDRTarget {
                     this.width, this.height, 0, GL30.GL_RG, GL30.GL_FLOAT, null);
             case R16F -> GlStateManager._texImage2D(GL30.GL_TEXTURE_2D, 0, GL30.GL_R16F,
                     this.width, this.height, 0, GL30.GL_RED, GL30.GL_FLOAT, null);
+            case R8 -> GlStateManager._texImage2D(GL30.GL_TEXTURE_2D, 0, GL30.GL_R8,
+                    this.width, this.height, 0, GL30.GL_RED, GL30.GL_UNSIGNED_BYTE, null);
             default -> { }
         }
         GlStateManager._bindTexture(0);

@@ -1,0 +1,8 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:postfx/show_mask",
+    "samplers": [
+        { "name": "MaskSampler" }
+    ],
+    "uniforms": []
+}

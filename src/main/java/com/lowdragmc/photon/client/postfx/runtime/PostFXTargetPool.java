@@ -77,7 +77,8 @@ public final class PostFXTargetPool {
                 .addLast(new Pooled(target, FRAME_ID));
     }
 
-    /** Advance the frame clock and destroy free targets untouched for {@link #EVICT_AFTER_FRAMES}. */
+    /** Advance the frame clock, destroy free targets untouched for {@link #EVICT_AFTER_FRAMES},
+     *  then enforce the configured VRAM budget over the remaining free targets (oldest-first). */
     public static void endFrame() {
         FRAME_ID++;
         var buckets = FREE.values().iterator();
@@ -92,6 +93,41 @@ public final class PostFXTargetPool {
             });
             if (bucket.isEmpty()) buckets.remove();
         }
+        enforceBudget();
+    }
+
+    /** Evict oldest free targets while the pool exceeds the configured budget (in-use targets are
+     *  frame-transient and never counted — the cap bounds what persists across frames). */
+    private static void enforceBudget() {
+        long budgetBytes = com.lowdragmc.photon.PhotonConfig.INSTANCE.postFxPoolBudgetMB.get() * 1024L * 1024L;
+        long totalBytes = 0;
+        for (var bucket : FREE.values()) {
+            for (var pooled : bucket) {
+                totalBytes += byteSize(pooled.target);
+            }
+        }
+        if (totalBytes <= budgetBytes) return;
+        var all = new java.util.ArrayList<Pooled>();
+        FREE.values().forEach(all::addAll);
+        all.sort(java.util.Comparator.comparingLong(pooled -> pooled.lastUsedFrame));
+        for (var pooled : all) {
+            if (totalBytes <= budgetBytes) break;
+            totalBytes -= byteSize(pooled.target);
+            pooled.target.destroyBuffers();
+            FREE.values().forEach(bucket -> bucket.remove(pooled));
+        }
+        FREE.values().removeIf(ArrayDeque::isEmpty);
+    }
+
+    private static long byteSize(HDRTarget target) {
+        var format = target instanceof FormatTarget formatTarget ? formatTarget.getFormat() : TargetFormat.RGBA16F;
+        long bytesPerPixel = switch (format) {
+            case RGBA16F -> 8;
+            case RGBA8, RG16F -> 4;
+            case R16F -> 2;
+            case R8 -> 1;
+        };
+        return (long) target.width * target.height * bytesPerPixel;
     }
 
     /** Destroy every free target (window resize — screen-relative sizes all change at once). */

@@ -51,11 +51,14 @@ public final class RenderGraphExecutor {
      * Run {@code effect} over {@code chainInput}. Returns the pooled output target, or null when any
      * pass failed to resolve/compile — the chain passes through unchanged.
      *
-     * @param sceneDepthTexture the GL texture id SCENE_DEPTH inputs bind (-1 = none available)
+     * @param sceneDepthTexture  the GL texture id SCENE_DEPTH inputs bind (-1 = none available)
+     * @param maskTexture        the CustomMask color texture (-1 = no mask this frame)
+     * @param customDepthTexture the mask target's depth texture (-1 = no mask this frame)
      */
     @Nullable
     public static HDRTarget execute(CompiledEffect effect, float weight, Map<String, Object> params,
-                                    RenderTarget chainInput, int sceneDepthTexture) {
+                                    RenderTarget chainInput, int sceneDepthTexture,
+                                    int maskTexture, int customDepthTexture) {
         if (effect.passes().isEmpty()) return null; // no-op effect: chain passthrough
         int resourceCount = effect.resources().size();
         int[] widths = new int[resourceCount];
@@ -167,6 +170,22 @@ public final class RenderGraphExecutor {
                         }
                         case SCENE_DEPTH -> {
                             textureId = sceneDepthTexture;
+                            textureWidth = chainInput.width;
+                            textureHeight = chainInput.height;
+                        }
+                        case CUSTOM_MASK -> {
+                            // -1 must not reach setSampler: vanilla apply() skips binding at -1 and
+                            // the sampler reads whatever texture the unit last held (garbage). The
+                            // stack already skips mask-reading effects on maskless frames; this
+                            // guards the remaining callers (editor preview).
+                            if (maskTexture == -1) return null;
+                            textureId = maskTexture;
+                            textureWidth = chainInput.width;
+                            textureHeight = chainInput.height;
+                        }
+                        case CUSTOM_DEPTH -> {
+                            if (customDepthTexture == -1) return null;
+                            textureId = customDepthTexture;
                             textureWidth = chainInput.width;
                             textureHeight = chainInput.height;
                         }

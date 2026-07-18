@@ -11,6 +11,8 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.NodeModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.PortModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.variable.VariableDeclarationModelBase;
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
+import com.lowdragmc.photon.client.postfx.graph.nodes.CustomDepthInputNode;
+import com.lowdragmc.photon.client.postfx.graph.nodes.CustomMaskInputNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.EffectWeightNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.OutputNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.PassNode;
@@ -75,8 +77,10 @@ public final class RenderGraphCompiler {
 
         var state = new State();
         var outputRef = state.resolveTextureSource(colorPort);
-        if (outputRef.source() == ResourceRef.Source.SCENE_DEPTH) {
-            throw new CompileError("the effect output cannot be scene depth");
+        if (outputRef.source() == ResourceRef.Source.SCENE_DEPTH
+                || outputRef.source() == ResourceRef.Source.CUSTOM_MASK
+                || outputRef.source() == ResourceRef.Source.CUSTOM_DEPTH) {
+            throw new CompileError("the effect output must be a color source (a Pass or scene color)");
         }
         if (outputRef.source() == ResourceRef.Source.SCENE_COLOR) {
             // scene color wired straight through (the fresh-graph starter): a valid no-op effect
@@ -145,6 +149,8 @@ public final class RenderGraphCompiler {
             var sourceNode = nodeOf(sourceModel);
             if (sourceNode instanceof SceneColorInputNode) return ResourceRef.SCENE_COLOR_REF;
             if (sourceNode instanceof SceneDepthInputNode) return ResourceRef.SCENE_DEPTH_REF;
+            if (sourceNode instanceof CustomMaskInputNode) return ResourceRef.CUSTOM_MASK_REF;
+            if (sourceNode instanceof CustomDepthInputNode) return ResourceRef.CUSTOM_DEPTH_REF;
             if (sourceNode instanceof PassNode pass) return ResourceRef.of(visitPass(sourceModel, pass));
             throw new CompileError("texture input '%s' has an unsupported source".formatted(inputPort.getName()));
         }

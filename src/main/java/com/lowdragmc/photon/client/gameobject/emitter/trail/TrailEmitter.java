@@ -103,7 +103,11 @@ public class TrailEmitter extends Emitter {
             new RuntimeBinding("uvAnimation.startFrame", "UVAnimationSetting.startFrame", ConfigValueType.NUMBER_FUNCTION,
                     o -> ((TrailEmitter) o).runtime().uvAnimation.startFrame),
             new RuntimeBinding("uvAnimation.cycle", "UVAnimationSetting.cycle", ConfigValueType.FLOAT,
-                    o -> ((TrailEmitter) o).runtime().uvAnimation.cycle));
+                    o -> ((TrailEmitter) o).runtime().uvAnimation.cycle),
+            new RuntimeBinding("renderer.writeCustomMask", "photon.emitter.config.renderer.writeCustomMask", ConfigValueType.BOOL,
+                    o -> ((TrailEmitter) o).runtime().renderer.writeCustomMask),
+            new RuntimeBinding("renderer.maskAlphaCutoff", "photon.emitter.config.renderer.maskAlphaCutoff", ConfigValueType.FLOAT,
+                    o -> ((TrailEmitter) o).runtime().renderer.maskAlphaCutoff));
 
     @Persisted(subPersisted = true)
     public final TrailConfig config;

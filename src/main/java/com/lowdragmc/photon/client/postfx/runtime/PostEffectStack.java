@@ -18,6 +18,7 @@ import org.joml.Vector4f;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +29,8 @@ import java.util.Map;
  * {@link #consumeAndExecute} — called from {@code RenderPassPipeline.afterRendering()} — groups them by
  * effect, blends parameters by weight (Unity-Volume-style: ascending-weight sequential lerp, non-lerpable
  * take the highest weight, blended weight {@code 1-Π(1-wᵢ)}), sorts by effect priority around the builtin
- * bloom (priority 0), and runs each effect once over the HDR chain.
+ * bloom (priority 0), and runs each effect once over the HDR chain — except requests carrying the
+ * reserved {@code Independent} param, which skip merging and run once EACH (UE-material-instance-style).
  *
  * <p>The {@code consumedFrame} guard makes consumption once-per-frame — the OPAQUE and TRANSLUCENT
  * particle queues each own a pipeline whose {@code build()} can run in the same frame, which previously
@@ -66,7 +68,27 @@ public final class PostEffectStack {
 
     private record Request(IResourcePath effect, Map<String, Object> params, float weight) {}
 
-    private record Invocation(CompiledEffect effect, float weight, Map<String, Object> params) {}
+    /** {@code maskGroups}: null = fullscreen; empty = any mask group; else the exact set of group
+     *  names — the COVERAGE UNION of the effect's requests (any unmasked request wins fullscreen;
+     *  several groups bake an exact union mask at execution). */
+    private record Invocation(CompiledEffect effect, float weight, Map<String, Object> params,
+                              @Nullable java.util.Set<String> maskGroups) {}
+
+    /** The mask coverage a request asks for: null = fullscreen, empty = any group, else groups.
+     *  Accepts the string form (group name, blank = any) and the legacy numeric form. */
+    @Nullable
+    private static java.util.Set<String> requestMaskGroups(Request request) {
+        var value = request.params().get(CompiledEffect.MASK_FILTER_PARAM);
+        if (value instanceof String groupName) {
+            return groupName.isBlank() ? java.util.Set.of() : java.util.Set.of(groupName);
+        }
+        if (value instanceof Number legacy) {
+            if (legacy.floatValue() < 0) return null;
+            int id = Math.round(legacy.floatValue());
+            return id == 0 ? java.util.Set.of() : java.util.Set.of(String.valueOf(id));
+        }
+        return null;
+    }
 
     /** Phase-1 effect resolution: a fullscreen graph path adapts to a single-pass effect, cached and
      *  identity-checked against its runtime entry (Phase 2 checks the render-graph library first). */
@@ -95,6 +117,19 @@ public final class PostEffectStack {
         return !requests.isEmpty();
     }
 
+    /** Whether any pending request would consume the CustomMask this frame (a MaskFilter request,
+     *  or an effect whose graph reads the Custom Mask/Depth inputs) — the pipeline skips the whole
+     *  mask sub-pass otherwise, so flagged emitters cost nothing while no effect looks at them. */
+    public boolean hasPendingMaskConsumer() {
+        if (!effectsEnabled || !com.lowdragmc.photon.PhotonConfig.INSTANCE.enableCustomEffects.get()) return false;
+        for (var request : requests) {
+            if (request.params().containsKey(CompiledEffect.MASK_FILTER_PARAM)) return true;
+            var effect = resolveEffect(request.effect());
+            if (effect != null && effect.usesCustomMask()) return true;
+        }
+        return false;
+    }
+
     /** Whether this stack already ran its chain this frame (keyed on the pool's frame clock). */
     public boolean isConsumedThisFrame() {
         return consumedFrame == PostFXTargetPool.currentFrame();
@@ -118,7 +153,7 @@ public final class PostEffectStack {
         consumedFrame = frame;
         PostFXPreview.captureIfRequested(chainInput); // editors preview against the clean scene
 
-        if (!effectsEnabled) {
+        if (!effectsEnabled || !com.lowdragmc.photon.PhotonConfig.INSTANCE.enableCustomEffects.get()) {
             requests.clear();
             return doBuiltinBloom ? PhotonPostProcessing.postTarget(chainInput) : chainInput;
         }
@@ -145,19 +180,71 @@ public final class PostEffectStack {
                     setPostRenderState(); // renderBloom restores world state at its end
                 }
 
+                // CustomMask/CustomDepth ride the pipeline's frame statics (-1 on maskless frames,
+                // and on the standalone fallback path which never runs the mask sub-pass)
+                int maskTexture = com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline.getMaskColorTexture();
+                var maskGroups = invocation.maskGroups();
+                boolean masked = maskGroups != null;
+                // no mask this frame: a mask-culled request applies nowhere, and a mask-READING
+                // graph must not run either — binding -1 leaves stale unit contents in the sampler
+                // (vanilla apply() skips -1), which garbles the whole output
+                if (maskTexture == -1 && (masked || invocation.effect().usesCustomMask())) continue;
+
+                var params = invocation.params();
+                boolean effectOwnsMask = masked && invocation.effect().declaresMaskFilter();
+                if (effectOwnsMask) {
+                    // the graph declared a MaskFilter param = "I match the mask myself" (e.g. an
+                    // outline's edge pixels live OUTSIDE the mask — the universal mix would cut
+                    // them): inject the resolved group id and skip the mix culling below
+                    var owned = new HashMap<>(params);
+                    owned.put(CompiledEffect.MASK_FILTER_PARAM, maskGroups.size() == 1
+                            ? (float) MaskGroups.idOf(maskGroups.iterator().next()) : 0f);
+                    params = owned;
+                }
+
                 var output = RenderGraphExecutor.execute(invocation.effect(), invocation.weight(),
-                        invocation.params(), chain, sceneDepthTexture);
+                        params, chain, sceneDepthTexture, maskTexture,
+                        com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline.getMaskDepthTexture());
                 if (output == null) continue; // broken effect: chain passes through
 
+                boolean mixCulling = masked && !effectOwnsMask;
                 var result = output;
-                if (invocation.effect().autoBlend() && invocation.weight() < FULL_WEIGHT) {
-                    // universal fade: mix(chain, effect, weight) — no graph cooperation needed
+                if (mixCulling || (invocation.effect().autoBlend() && invocation.weight() < FULL_WEIGHT)) {
+                    // universal fade + per-object culling: mix(chain, effect, weight * match(mask))
+                    // — no graph cooperation needed. autoBlend=false effects handle weight
+                    // themselves, so the masked mix then blends by mask match alone.
+                    HDRTarget unionMask = null;
+                    int mixMaskTexture = maskTexture;
+                    float mixFilter = 0f;
+                    if (mixCulling && maskGroups.size() == 1) {
+                        mixFilter = MaskGroups.idOf(maskGroups.iterator().next());
+                    } else if (mixCulling && maskGroups.size() > 1 && maskGroups.size() <= MAX_UNION_GROUPS
+                            && PhotonShaders.getMaskUnionShader() != null) {
+                        // several groups: bake their EXACT union as a binary mask (R=1 where any
+                        // of them wrote), then match "any" against it — no over-coverage
+                        unionMask = buildUnionMask(maskGroups, chain.width, chain.height, maskTexture);
+                        mixMaskTexture = unionMask.getColorTextureId();
+                    } // empty (any group) / >MAX groups / no union shader: filter 0 on the raw mask
+                    var mixShader = mixCulling ? PhotonShaders.getWeightMaskMixShader()
+                            : PhotonShaders.getWeightMixShader();
+                    if (mixShader == null) { // partial shader registration: degrade to the raw output
+                        if (unionMask != null) PostFXTargetPool.release(unionMask);
+                        if (pooledChain != null) PostFXTargetPool.release(pooledChain);
+                        pooledChain = result;
+                        chain = result;
+                        continue;
+                    }
                     var mixed = PostFXTargetPool.acquire(chain.width, chain.height);
-                    var mixShader = PhotonShaders.getWeightMixShader();
                     mixShader.setSampler("SamplerA", chain.getColorTextureId());
                     mixShader.setSampler("SamplerB", output.getColorTextureId());
-                    mixShader.safeGetUniform("Weight").set(invocation.weight());
+                    mixShader.safeGetUniform("Weight").set(
+                            invocation.effect().autoBlend() ? invocation.weight() : 1f);
+                    if (mixCulling) {
+                        mixShader.setSampler("MaskSampler", mixMaskTexture);
+                        mixShader.safeGetUniform("MaskFilter").set(mixFilter);
+                    }
                     PhotonPostProcessing.blitShader(mixShader, mixed, false);
+                    if (unionMask != null) PostFXTargetPool.release(unionMask);
                     PostFXTargetPool.release(output);
                     result = mixed;
                 }
@@ -191,6 +278,29 @@ public final class PostEffectStack {
         requests.clear();
     }
 
+    /** Number of distinct groups one baked union mask can express (two vec4 id uniforms). */
+    private static final int MAX_UNION_GROUPS = 8;
+
+    /** Bake "mask id ∈ groups" into a pooled binary mask (R=1 where matched; R8 — one channel is
+     *  all a binary mask needs). */
+    private static HDRTarget buildUnionMask(java.util.Set<String> groups, int width, int height, int maskTexture) {
+        var target = PostFXTargetPool.acquire(width, height,
+                com.lowdragmc.photon.client.postfx.graph.TargetFormat.R8);
+        var shader = PhotonShaders.getMaskUnionShader();
+        var ids = new float[MAX_UNION_GROUPS];
+        int count = 0;
+        for (var groupName : groups) {
+            if (count >= MAX_UNION_GROUPS) break;
+            ids[count++] = MaskGroups.idOf(groupName);
+        }
+        shader.setSampler("MaskSampler", maskTexture);
+        shader.safeGetUniform("IdsA").set(ids[0], ids[1], ids[2], ids[3]);
+        shader.safeGetUniform("IdsB").set(ids[4], ids[5], ids[6], ids[7]);
+        shader.safeGetUniform("IdCount").set((float) count);
+        PhotonPostProcessing.blitShader(shader, target, false);
+        return target;
+    }
+
     // ---- blending --------------------------------------------------------------------------------
 
     /** Group requests by effect, blend weights + parameters, order by priority (path tie-break). */
@@ -204,13 +314,45 @@ public final class PostEffectStack {
         grouped.forEach((path, group) -> {
             var effect = resolveEffect(path);
             if (effect == null) return;
+            // REQUEST-level opt-out of merging (the reserved "Independent" param, e.g. the clip
+            // toggle): each such request runs its OWN fullscreen execution with its own
+            // params/weight/mask filter (UE-material-instance-style); the rest merge as usual
+            group.removeIf(request -> {
+                if (!(request.params().get(CompiledEffect.INDEPENDENT_PARAM) instanceof Boolean independent)
+                        || !independent) {
+                    return false;
+                }
+                if (request.weight() >= MIN_WEIGHT) {
+                    invocations.add(new Invocation(effect, request.weight(),
+                            blendParams(effect, List.of(request)), requestMaskGroups(request)));
+                }
+                return true;
+            });
+            if (group.isEmpty()) return;
             group.sort(Comparator.comparingDouble(Request::weight));
             float weight = 0f;
+            boolean sawMasked = false;
+            boolean sawUnmasked = false;
+            boolean anyGroup = false;
+            var union = new HashSet<String>();
             for (var request : group) {
                 weight += (1f - weight) * request.weight(); // sequential lerp of the implicit Weight=1
+                var groups = requestMaskGroups(request);
+                if (groups == null) {
+                    sawUnmasked = true;
+                } else {
+                    sawMasked = true;
+                    if (groups.isEmpty()) anyGroup = true;
+                    else union.addAll(groups);
+                }
             }
+            // COVERAGE UNION across the same effect's requests (one execution per effect per frame):
+            // any fullscreen request already covers every mask -> fullscreen; an "any group" request
+            // covers every group; several named groups keep the exact set (baked to a union mask)
+            java.util.Set<String> maskGroups = !sawMasked || sawUnmasked ? null
+                    : (anyGroup ? java.util.Set.of() : union);
             if (weight < MIN_WEIGHT) return;
-            invocations.add(new Invocation(effect, weight, blendParams(effect, group)));
+            invocations.add(new Invocation(effect, weight, blendParams(effect, group), maskGroups));
         });
         invocations.sort(Comparator.comparingInt((Invocation inv) -> inv.effect().priority())
                 .thenComparing(inv -> inv.effect().source().toString()));

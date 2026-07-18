@@ -73,6 +73,48 @@ public class RendererSetting {
     @EqualsAndHashCode.Include
     protected SortMode vertexSortingMode = SortMode.NONE;
 
+    /** CustomMask (Unreal CustomDepth/Stencil-style): when enabled, this emitter's passes redraw a
+     *  flat mask id into the pipeline's mask target, which post effects read via the Custom
+     *  Mask/Depth input nodes. Part of the batching key — passes with different mask settings must
+     *  not merge ({@link CustomMaskSetting#equals}). */
+    @Configurable(name = "photon.emitter.config.renderer.customMask", subConfigurable = true, tips = "photon.emitter.config.renderer.writeCustomMask.tips")
+    @EqualsAndHashCode.Include
+    protected final CustomMaskSetting customMask = new CustomMaskSetting();
+
+    public static class CustomMaskSetting extends ToggleGroup {
+        /** The named mask group this emitter writes (session ids are assigned by {@code MaskGroups};
+         *  every persisted form is the string). Effects/clips filter by the same name. */
+        @Getter
+        @Setter
+        @Configurable(name = "photon.emitter.config.renderer.maskGroup", tips = "photon.emitter.config.renderer.maskGroup.tips")
+        protected String maskGroup = "default";
+
+        /** 0 = off (the mask covers the whole geometry, i.e. a rectangle for billboards); above 0
+         *  the mask sub-pass samples the pass's texture and discards fragments below the cutoff,
+         *  clipping the mask to the sprite's shape (needs a texture material on the pass). */
+        @Getter
+        @Setter
+        @Configurable(name = "photon.emitter.config.renderer.maskAlphaCutoff", tips = "photon.emitter.config.renderer.maskAlphaCutoff.tips")
+        @ConfigNumber(range = {0, 1})
+        protected float maskAlphaCutoff = 0f;
+
+        @Override
+        public boolean equals(@Nullable Object o) {
+            return o instanceof CustomMaskSetting that && isEnable() == that.isEnable()
+                    && Objects.equals(maskGroup, that.maskGroup)
+                    && maskAlphaCutoff == that.maskAlphaCutoff;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(isEnable(), maskGroup, maskAlphaCutoff);
+        }
+    }
+
+    public boolean isWriteCustomMask() { return customMask.isEnable(); }
+    public String getMaskGroup() { return customMask.getMaskGroup(); }
+    public float getMaskAlphaCutoff() { return customMask.getMaskAlphaCutoff(); }
+
     /**
      * The render pass whose instanced GL to tear down when this AUTHORED renderer's structure changes via
      * a setter (transient; NOT persisted / NOT in equals/hashCode). The config renderer points this at its
@@ -155,6 +197,9 @@ public class RendererSetting {
         public final RuntimeValue<Cull> cull;
         public final RuntimeValue<Integer> orderInLayer;
         public final RuntimeValue<SortMode> vertexSortingMode;
+        public final RuntimeValue<Boolean> writeCustomMask;
+        public final RuntimeValue<String> maskGroup;
+        public final RuntimeValue<Float> maskAlphaCutoff;
 
         protected Runtime(RendererSetting config) {
             this.config = config;
@@ -163,6 +208,9 @@ public class RendererSetting {
             this.cull = new RuntimeValue<>(config::getCull);
             this.orderInLayer = new RuntimeValue<>(config::getOrderInLayer);
             this.vertexSortingMode = new RuntimeValue<>(config::getVertexSortingMode);
+            this.writeCustomMask = new RuntimeValue<>(config::isWriteCustomMask);
+            this.maskGroup = new RuntimeValue<>(config::getMaskGroup);
+            this.maskAlphaCutoff = new RuntimeValue<>(config::getMaskAlphaCutoff);
         }
 
         public List<MaterialSetting> getMaterials() { return materials.get(); }
@@ -170,6 +218,9 @@ public class RendererSetting {
         public Cull getCull() { return cull.get(); }
         public int getOrderInLayer() { return orderInLayer.get(); }
         public SortMode getVertexSortingMode() { return vertexSortingMode.get(); }
+        public boolean isWriteCustomMask() { return writeCustomMask.get(); }
+        public String getMaskGroup() { return maskGroup.get(); }
+        public float getMaskAlphaCutoff() { return maskAlphaCutoff.get(); }
 
         /**
          * Whether a PASS-LEVEL slot is overridden — i.e. this emitter needs its own render pass instead
@@ -179,7 +230,9 @@ public class RendererSetting {
          */
         public boolean hasOverride() {
             return materials.isOverridden() || layer.isOverridden()
-                    || orderInLayer.isOverridden() || vertexSortingMode.isOverridden();
+                    || orderInLayer.isOverridden() || vertexSortingMode.isOverridden()
+                    || writeCustomMask.isOverridden() || maskGroup.isOverridden()
+                    || maskAlphaCutoff.isOverridden();
         }
 
         /** Clear every override slot (fall back to the authored config). */
@@ -189,6 +242,9 @@ public class RendererSetting {
             cull.clear();
             orderInLayer.clear();
             vertexSortingMode.clear();
+            writeCustomMask.clear();
+            maskGroup.clear();
+            maskAlphaCutoff.clear();
         }
 
         /**
@@ -200,11 +256,15 @@ public class RendererSetting {
             return Objects.equals(getMaterials(), o.getMaterials())
                     && getLayer() == o.getLayer()
                     && getOrderInLayer() == o.getOrderInLayer()
-                    && getVertexSortingMode() == o.getVertexSortingMode();
+                    && getVertexSortingMode() == o.getVertexSortingMode()
+                    && isWriteCustomMask() == o.isWriteCustomMask()
+                    && Objects.equals(getMaskGroup(), o.getMaskGroup())
+                    && getMaskAlphaCutoff() == o.getMaskAlphaCutoff();
         }
 
         public int effectiveHashCode() {
-            return Objects.hash(getMaterials(), getLayer(), getOrderInLayer(), getVertexSortingMode());
+            return Objects.hash(getMaterials(), getLayer(), getOrderInLayer(), getVertexSortingMode(),
+                    isWriteCustomMask(), getMaskGroup(), getMaskAlphaCutoff());
         }
     }
 

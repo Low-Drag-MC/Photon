@@ -1,0 +1,12 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:mask_union",
+    "samplers": [
+        { "name": "MaskSampler" }
+    ],
+    "uniforms": [
+        { "name": "IdsA", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+        { "name": "IdsB", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+        { "name": "IdCount", "type": "float", "count": 1, "values": [ 0.0 ] }
+    ]
+}

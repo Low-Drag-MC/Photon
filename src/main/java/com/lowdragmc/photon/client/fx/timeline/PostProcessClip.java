@@ -52,6 +52,14 @@ public class PostProcessClip extends Clip {
     private NumberFunction weight = NumberFunction.constant(1);
     /** Parameter overrides keyed by the effect's schema param name, sampled like {@link #weight}. */
     private final Map<String, ParamOverride> params = new LinkedHashMap<>();
+    /** CustomMask culling: off = fullscreen; on = apply only where the named mask group is set
+     *  ("" = any group). Submitted as the reserved MaskFilter param (a group-name string). */
+    private boolean maskCulling = false;
+    private String maskGroup = "";
+    /** Run this clip's request as its OWN fullscreen execution instead of merging with other
+     *  requests of the same effect (the reserved Independent param) — keeps this clip's params,
+     *  weight and mask filter fully separate, at the cost of an extra execution. */
+    private boolean independent = false;
 
     // runtime
     @Nullable
@@ -93,6 +101,33 @@ public class PostProcessClip extends Clip {
         return params;
     }
 
+    public boolean maskCulling() {
+        return maskCulling;
+    }
+
+    public PostProcessClip maskCulling(boolean maskCulling) {
+        this.maskCulling = maskCulling;
+        return this;
+    }
+
+    public String maskGroup() {
+        return maskGroup;
+    }
+
+    public PostProcessClip maskGroup(String maskGroup) {
+        this.maskGroup = maskGroup == null ? "" : maskGroup;
+        return this;
+    }
+
+    public boolean independent() {
+        return independent;
+    }
+
+    public PostProcessClip independent(boolean independent) {
+        this.independent = independent;
+        return this;
+    }
+
     /** The parsed effect path (cached until the string changes), or null when unset/invalid. */
     @Nullable
     public IResourcePath effectPath() {
@@ -110,11 +145,20 @@ public class PostProcessClip extends Clip {
     }
 
     /** Sample every parameter override at clip progress into schema-typed values (FLOAT→Float,
-     *  INT→rounded Integer, BOOL→sample≥0.5, COLOR→ARGB Integer, VEC2/3/4→per-channel Vector). */
+     *  INT→rounded Integer, BOOL→sample≥0.5, COLOR→ARGB Integer, VEC2/3/4→per-channel Vector),
+     *  plus the reserved MaskFilter param when mask culling is on. */
     public Map<String, Object> sampleParams(double localTime) {
-        if (params.isEmpty()) return Map.of();
+        if (params.isEmpty() && !maskCulling && !independent) return Map.of();
         float t = progress(localTime);
         var result = new LinkedHashMap<String, Object>();
+        if (maskCulling) {
+            result.put(com.lowdragmc.photon.client.postfx.runtime.CompiledEffect.MASK_FILTER_PARAM,
+                    maskGroup);
+        }
+        if (independent) {
+            result.put(com.lowdragmc.photon.client.postfx.runtime.CompiledEffect.INDEPENDENT_PARAM,
+                    Boolean.TRUE);
+        }
         params.forEach((name, override) -> result.put(name, switch (override.kind()) {
             case FLOAT -> channel(override, 0, t).floatValue();
             case INT -> Math.round(channel(override, 0, t).floatValue());
@@ -156,6 +200,9 @@ public class PostProcessClip extends Clip {
         clip.targetId(targetId()).seed(seed()).randomSeed(randomSeed());
         clip.effect = effect;
         clip.weight = weight.copy();
+        clip.maskCulling = maskCulling;
+        clip.maskGroup = maskGroup;
+        clip.independent = independent;
         params.forEach((name, override) -> clip.params.put(name, override.copy()));
         return clip;
     }

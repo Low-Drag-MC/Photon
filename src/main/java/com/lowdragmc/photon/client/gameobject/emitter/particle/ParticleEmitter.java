@@ -251,7 +251,11 @@ public class ParticleEmitter extends Emitter {
             new RuntimeBinding("renderer.velocityScale", "photon.emitter.config.renderer.renderMode.stretchedBillboard.velocityScale", ConfigValueType.FLOAT,
                     o -> ((ParticleEmitter) o).runtime().renderer.velocityScale),
             new RuntimeBinding("renderer.lengthScale", "photon.emitter.config.renderer.renderMode.stretchedBillboard.lengthScale", ConfigValueType.FLOAT,
-                    o -> ((ParticleEmitter) o).runtime().renderer.lengthScale));
+                    o -> ((ParticleEmitter) o).runtime().renderer.lengthScale),
+            new RuntimeBinding("renderer.writeCustomMask", "photon.emitter.config.renderer.writeCustomMask", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().renderer.writeCustomMask),
+            new RuntimeBinding("renderer.maskAlphaCutoff", "photon.emitter.config.renderer.maskAlphaCutoff", ConfigValueType.FLOAT,
+                    o -> ((ParticleEmitter) o).runtime().renderer.maskAlphaCutoff));
 
     @Persisted(subPersisted = true)
     public final ParticleConfig config;

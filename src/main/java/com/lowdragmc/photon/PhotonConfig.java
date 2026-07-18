@@ -26,6 +26,13 @@ public class PhotonConfig {
     public final ModConfigSpec.ConfigValue<Double> bloomIntensity;
     public final ModConfigSpec.ConfigValue<Boolean> enableBloomWithIrisShader;
     public final ModConfigSpec.ConfigValue<Boolean> irisShaderCompatibleMode;
+    /** Master switch for the custom post-processing chain (requests are dropped when off). */
+    public final ModConfigSpec.ConfigValue<Boolean> enableCustomEffects;
+    /** R3: the standalone (no-particle) fallback under Iris shader packs — the framebuffer
+     *  discovery outside the particle draw is unverified there, so it's opt-in. */
+    public final ModConfigSpec.ConfigValue<Boolean> enableCustomEffectsWithIrisShader;
+    /** VRAM cap for the pooled post-processing render targets (free targets evict oldest-first). */
+    public final ModConfigSpec.ConfigValue<Integer> postFxPoolBudgetMB;
 
     private PhotonConfig(ModConfigSpec.Builder builder) {
         enableBloom = builder.define("enable_bloom", true);
@@ -36,5 +43,9 @@ public class PhotonConfig {
 
         enableBloomWithIrisShader = builder.define("enable_bloom_with_iris_shader", true);
         irisShaderCompatibleMode = builder.define("iris_shader_compatible_mode", true);
+
+        enableCustomEffects = builder.define("enable_custom_effects", true);
+        enableCustomEffectsWithIrisShader = builder.define("enable_custom_effects_with_iris_shader", false);
+        postFxPoolBudgetMB = builder.defineInRange("postfx_pool_budget_mb", 256, 16, 4096);
     }
 }

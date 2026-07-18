@@ -111,7 +111,11 @@ public class AraTrailEmitter extends Emitter {
             new RuntimeBinding("physicsSetting.velocitySmoothing", "AraTrails.velocitySmoothing", ConfigValueType.FLOAT,
                     o -> ((AraTrailEmitter) o).runtime().physics.velocitySmoothing),
             new RuntimeBinding("physicsSetting.damping", "AraTrails.damping", ConfigValueType.FLOAT,
-                    o -> ((AraTrailEmitter) o).runtime().physics.damping));
+                    o -> ((AraTrailEmitter) o).runtime().physics.damping),
+            new RuntimeBinding("renderer.writeCustomMask", "photon.emitter.config.renderer.writeCustomMask", ConfigValueType.BOOL,
+                    o -> ((AraTrailEmitter) o).runtime().renderer.writeCustomMask),
+            new RuntimeBinding("renderer.maskAlphaCutoff", "photon.emitter.config.renderer.maskAlphaCutoff", ConfigValueType.FLOAT,
+                    o -> ((AraTrailEmitter) o).runtime().renderer.maskAlphaCutoff));
 
     @Persisted(subPersisted = true)
     public final AraTrailConfig config;

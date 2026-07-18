@@ -61,7 +61,9 @@ public final class CustomShaderPass {
             "photon:postfx/lens_distortion",
             "photon:postfx/bright",
             "photon:postfx/add_mix",
-            "photon:postfx/dof_composite");
+            "photon:postfx/dof_composite",
+            "photon:postfx/show_mask",
+            "photon:postfx/mask_outline");
 
     /** One introspected uniform: {@code count} 1..4 maps to FLOAT/VEC2/VEC3/VEC4 ports. */
     public record UniformSpec(String name, int count, float[] defaults) {}

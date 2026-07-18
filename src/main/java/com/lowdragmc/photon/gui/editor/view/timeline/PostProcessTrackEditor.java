@@ -1,7 +1,9 @@
 package com.lowdragmc.photon.gui.editor.view.timeline;
 
+import com.lowdragmc.lowdraglib2.configurator.IToggleConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
@@ -90,6 +92,16 @@ public class PostProcessTrackEditor extends ClipTrackEditor {
                 }, true, WEIGHT_CONFIG);
         weightRow.setTips("photon.gui.editor.timeline.post_process.weight.tip");
         group.addConfigurator(weightRow);
+        group.addConfigurator(maskFilterGroup(post, ctx));
+        group.addConfigurator(new com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator(
+                "photon.gui.editor.timeline.post_process.independent",
+                post::independent,
+                value -> {
+                    post.independent(value);
+                    ctx.refreshPreview();
+                },
+                false, true)
+                .setTips("photon.gui.editor.timeline.post_process.independent.tip"));
         rebuildParamRows(paramsGroup, post, ctx);
         group.addConfigurator(paramsGroup);
     }
@@ -123,6 +135,43 @@ public class PostProcessTrackEditor extends ClipTrackEditor {
         return row;
     }
 
+    /** CustomMask culling through the STOCK {@link IToggleConfigurable}
+     *  rendering (same header toggle + collapse behavior as the renderer's Custom Mask group),
+     *  adapted onto the clip's maskCulling/maskGroup fields. */
+    private Configurator maskFilterGroup(PostProcessClip post, TimelineContext ctx) {
+        var maskGroup = new ConfiguratorGroup("photon.gui.editor.timeline.post_process.mask_filter", false);
+        maskGroup.setTips("photon.gui.editor.timeline.post_process.mask_filter.tip");
+        var adapter = new IToggleConfigurable() {
+            @Override
+            public boolean isEnable() {
+                return post.maskCulling();
+            }
+
+            @Override
+            public void setEnable(boolean enable) {
+                if (post.maskCulling() == enable) return;
+                post.maskCulling(enable);
+                ctx.refreshPreview();
+            }
+
+            @Override
+            public void buildConfigurator(ConfiguratorGroup father) {
+                IToggleConfigurable.super.buildConfigurator(father);
+                father.addConfigurator(new StringConfigurator(
+                        "photon.gui.editor.timeline.post_process.mask_filter.value",
+                        post::maskGroup,
+                        value -> {
+                            post.maskGroup(value);
+                            ctx.refreshPreview();
+                        },
+                        "", true)
+                        .setTips("photon.gui.editor.timeline.post_process.mask_filter.value.tip"));
+            }
+        };
+        adapter.buildConfigurator(maskGroup);
+        return maskGroup;
+    }
+
     // ---- parameter overrides -----------------------------------------------------------------
 
     /**
@@ -140,6 +189,8 @@ public class PostProcessTrackEditor extends ClipTrackEditor {
             var kind = kindOf(spec);
             if (kind == null) continue;
             var name = spec.name();
+            // reserved: the framework fills this from the clip's 遮罩过滤 selection (group id)
+            if (CompiledEffect.MASK_FILTER_PARAM.equals(name)) continue;
             var seeded = new PostProcessClip.ParamOverride(kind, defaultChannels(kind, spec.defaultValue()));
             int count = kind.channelCount();
             for (int c = 0; c < count; c++) {

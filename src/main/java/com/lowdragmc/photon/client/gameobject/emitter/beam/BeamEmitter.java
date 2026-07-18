@@ -100,7 +100,11 @@ public class BeamEmitter extends Emitter {
             new RuntimeBinding("uvAnimation.startFrame", "UVAnimationSetting.startFrame", ConfigValueType.NUMBER_FUNCTION,
                     o -> ((BeamEmitter) o).runtime().uvAnimation.startFrame),
             new RuntimeBinding("uvAnimation.cycle", "UVAnimationSetting.cycle", ConfigValueType.FLOAT,
-                    o -> ((BeamEmitter) o).runtime().uvAnimation.cycle));
+                    o -> ((BeamEmitter) o).runtime().uvAnimation.cycle),
+            new RuntimeBinding("renderer.writeCustomMask", "photon.emitter.config.renderer.writeCustomMask", ConfigValueType.BOOL,
+                    o -> ((BeamEmitter) o).runtime().renderer.writeCustomMask),
+            new RuntimeBinding("renderer.maskAlphaCutoff", "photon.emitter.config.renderer.maskAlphaCutoff", ConfigValueType.FLOAT,
+                    o -> ((BeamEmitter) o).runtime().renderer.maskAlphaCutoff));
 
     @Getter
     @Persisted(subPersisted = true)

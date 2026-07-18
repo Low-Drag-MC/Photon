@@ -84,6 +84,9 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
         addVerified(provider, "lens_distortion", () -> buildShaderEffect("photon:postfx/lens_distortion"));
         addVerified(provider, "bloom_effect", this::buildBloomEffect);
         addVerified(provider, "depth_of_field", this::buildDepthOfField);
+        // CustomMask samples (per-object effects: flag an emitter renderer's writeCustomMask)
+        addVerified(provider, "show_mask", this::buildShowMask);
+        addVerified(provider, "mask_outline", this::buildMaskOutline);
     }
 
     /** Build + round-trip-verify a builtin (deserialize the serialized tag and compile it) —
@@ -266,6 +269,37 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
                 depth.getOutputsById().get(SceneDepthInputNode.OUTPUT_PORT));
         graph.graphModel.createWire(colorPort, composite.getOutputsById().get(PassNode.OUTPUT_PORT));
         promoteUniformsToParams(graph, composite, "photon:postfx/dof_composite", -40, 140);
+        return graph;
+    }
+
+    /** CustomMaskInput -> show_mask pass -> Output: the mask debug view. */
+    private RenderGraph buildShowMask() {
+        var graph = new RenderGraph();
+        var mask = graph.addNode(com.lowdragmc.photon.client.postfx.graph.nodes.CustomMaskInputNode.class, -160, 20);
+        var pass = addShaderPass(graph, "photon:postfx/show_mask", 140, -80);
+        var colorPort = graph.getOutputNodeModel().getInputsById().get(OutputNode.COLOR_PORT);
+        graph.graphModel.deleteWires(colorPort.getConnectedWires());
+        graph.graphModel.createWire(pass.getInputsById().get("MaskSampler"),
+                mask.getOutputsById().get(com.lowdragmc.photon.client.postfx.graph.nodes.CustomMaskInputNode.OUTPUT_PORT));
+        graph.graphModel.createWire(colorPort, pass.getOutputsById().get(PassNode.OUTPUT_PORT));
+        return graph;
+    }
+
+    /** SceneColor + CustomMaskInput -> mask_outline pass -> Output: the per-object outline sample
+     *  (MaskValue/OutlineColor/Thickness promoted, so clips can pick the group and animate color). */
+    private RenderGraph buildMaskOutline() {
+        var graph = buildShaderEffect("photon:postfx/mask_outline");
+        var mask = graph.addNode(com.lowdragmc.photon.client.postfx.graph.nodes.CustomMaskInputNode.class, -160, 20);
+        NodeModel pass = null;
+        for (var model : graph.graphModel.getNodeModels()) {
+            if (model instanceof NodeModel nm && model instanceof ICustomNodeModel custom
+                    && custom.getNode() instanceof PassNode) {
+                pass = nm;
+                break;
+            }
+        }
+        graph.graphModel.createWire(pass.getInputsById().get("MaskSampler"),
+                mask.getOutputsById().get(com.lowdragmc.photon.client.postfx.graph.nodes.CustomMaskInputNode.OUTPUT_PORT));
         return graph;
     }
 

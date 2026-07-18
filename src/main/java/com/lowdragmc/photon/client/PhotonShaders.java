@@ -39,6 +39,10 @@ public class PhotonShaders {
     private static ShaderInstance bloomFinalScatterPassShader;
     @Getter
     private static ShaderInstance weightMixShader;
+    @Getter
+    private static ShaderInstance weightMaskMixShader;
+    @Getter
+    private static ShaderInstance maskUnionShader;
 
     public static void init() {
         if (LDLibShaders.supportComputeShader()) {
@@ -55,8 +59,12 @@ public class PhotonShaders {
     }
 
     public static void registerShaders(RegisterShadersEvent registerShadersEvent) {
-        // fires on every resource reload — drop lazily-loaded custom pass shaders so they re-resolve
+        // fires on every resource reload — drop lazily-loaded custom pass shaders so they re-resolve,
+        // and compact the mask-group id table (ids are per-frame-resolved, safe to reassign)
         com.lowdragmc.photon.client.postfx.runtime.CustomShaderPass.clearAll();
+        com.lowdragmc.photon.client.postfx.runtime.MaskGroups.clearAll();
+        // compiled effects embed custom-shader port bindings — recompile against the fresh files
+        com.lowdragmc.photon.client.postfx.runtime.RenderGraphRuntime.invalidateAll();
         var resourceProvider = registerShadersEvent.getResourceProvider();
         try {
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
@@ -92,6 +100,12 @@ public class PhotonShaders {
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
                             Photon.id("weight_mix"), DefaultVertexFormat.POSITION),
                     shaderInstance -> weightMixShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("weight_mask_mix"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> weightMaskMixShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("mask_union"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> maskUnionShader = shaderInstance);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

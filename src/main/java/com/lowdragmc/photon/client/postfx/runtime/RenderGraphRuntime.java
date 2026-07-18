@@ -87,6 +87,12 @@ public final class RenderGraphRuntime {
     }
 
     /** Force-recompile {@code path} on next {@link #get}. */
+    /** Drop every compiled effect (resource reload): custom-shader pass interfaces may have
+     *  changed on disk, and compiled texture/param bindings only refresh on recompile. */
+    public static void invalidateAll() {
+        CACHE.clear();
+    }
+
     public static void invalidate(@Nullable IResourcePath path) {
         if (path == null) return;
         CACHE.remove(path);

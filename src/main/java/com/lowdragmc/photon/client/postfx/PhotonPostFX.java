@@ -93,8 +93,11 @@ public final class PhotonPostFX {
         }
         if (!stack.hasPending() || stack.isConsumedThisFrame()) return;
         // Iris keeps its own framebuffers; discovering the right one outside the particle draw is
-        // unverified (plan risk R3) — gated off under shader packs until Phase 4 adds the config.
-        if (Photon.isUsingShaderPack()) return;
+        // unverified there (plan risk R3) — opt-in via config under shader packs.
+        if (Photon.isUsingShaderPack()
+                && !com.lowdragmc.photon.PhotonConfig.INSTANCE.enableCustomEffectsWithIrisShader.get()) {
+            return;
+        }
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
         var chain = PostFXTargetPool.acquire(mainTarget.width, mainTarget.height);
         chain.copyColorFrom(mainTarget);
@@ -117,6 +120,8 @@ public final class PhotonPostFX {
         PostEffectStack.GLOBAL.onFrameEnd();
         PostEffectStack.EDITOR_SCENE.onFrameEnd();
         PostFXTargetPool.endFrame();
+        // mask textures are per-frame — a no-particle frame must not reuse last frame's mask
+        com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline.clearFrameMask();
         if (testEffect != null) {
             PostEffectStack.GLOBAL.submit(testEffect.path(), Map.of(), testEffect.weight());
         }

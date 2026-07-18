@@ -303,6 +303,14 @@ public final class FXPacks {
                 markCoreShader(shaderId, zip, referenced);
             }
         }
+        // render-graph pass sources carrying a hand-written shader (PassSource.CODEC shape) —
+        // the exporter packs its json+vsh+fsh under their original locations
+        if ("CUSTOM_SHADER".equals(tag.getString("type")) && tag.contains("shader", Tag.TAG_STRING)) {
+            var shaderId = ResourceLocation.tryParse(tag.getString("shader"));
+            if (shaderId != null) {
+                markCoreShader(shaderId, zip, referenced);
+            }
+        }
         for (var key : tag.getAllKeys()) {
             markChild(tag.get(key), zip, referenced, visited);
         }

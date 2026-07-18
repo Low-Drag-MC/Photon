@@ -77,6 +77,9 @@ public class SceneView extends View {
     private boolean bloomEnabled = true;
     @Getter @Setter
     private boolean effectsEnabled = true;
+    /** Debug view: replace the scene with the CustomMask contents (the builtin show_mask effect). */
+    @Getter @Setter
+    private boolean maskViewEnabled = false;
     @Getter
     private int sceneRange = 6;
     // runtime
@@ -345,6 +348,11 @@ public class SceneView extends View {
                             SceneView.this::setEffectsEnabled)
                             .icon(PhotonIcons.SHADER_GRAPH)
                             .tooltipKey("photon.is_effects_visible")
+                            .build(),
+                    new SceneToggleBuilder(SceneView.this::isMaskViewEnabled,
+                            SceneView.this::setMaskViewEnabled)
+                            .icon(PhotonIcons.FULL_SCREEN_GRAPH)
+                            .tooltipKey("photon.is_mask_visible")
                             .build(),
                     new SceneToggleBuilder(SceneView.this::isShapeVisible,
                             SceneView.this::setShapeVisible)

@@ -91,8 +91,10 @@ public class PostFXPreviewTool extends UIElement implements IGraphTool {
         if (!compiled.passes().isEmpty()) {
             PostEffectStack.setPostRenderState();
             try {
+                // no mask source in the preview (it runs against a clean scene capture) — mask
+                // inputs degrade to an empty sampler
                 result = RenderGraphExecutor.execute(compiled, 1f, defaultParams, source,
-                        source.getDepthTextureId());
+                        source.getDepthTextureId(), -1, -1);
             } finally {
                 PostEffectStack.restorePostRenderState();
                 Minecraft.getInstance().getMainRenderTarget().bindWrite(true);

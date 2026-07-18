@@ -19,7 +19,6 @@ import net.neoforged.api.distmarker.OnlyIn;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 /**
  * Inspector UIs for the pass node's composite option values. Both are

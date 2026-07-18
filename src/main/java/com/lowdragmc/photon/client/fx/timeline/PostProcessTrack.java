@@ -24,6 +24,11 @@ public class PostProcessTrack extends Track {
         if (clip instanceof PostProcessClip post) {
             if (!post.effect().isEmpty()) clipTag.putString("effect", post.effect());
             clipTag.put("weight", post.weight().serializeWrapper());
+            if (post.maskCulling()) {
+                clipTag.putBoolean("maskCulling", true);
+                if (!post.maskGroup().isEmpty()) clipTag.putString("maskGroup", post.maskGroup());
+            }
+            if (post.independent()) clipTag.putBoolean("independent", true);
             if (!post.params().isEmpty()) {
                 var paramsTag = new CompoundTag();
                 post.params().forEach((name, override) -> {
@@ -45,6 +50,14 @@ public class PostProcessTrack extends Track {
     protected void readClipExtra(Clip clip, CompoundTag clipTag, HolderLookup.Provider provider) {
         if (clip instanceof PostProcessClip post) {
             if (clipTag.contains("effect")) post.effect(clipTag.getString("effect"));
+            post.maskCulling(clipTag.getBoolean("maskCulling"));
+            post.maskGroup(clipTag.getString("maskGroup"));
+            if (clipTag.contains("maskFilter")) { // pre-string clips: numeric groups keep their name
+                var legacy = clipTag.getInt("maskFilter");
+                post.maskCulling(legacy >= 0);
+                post.maskGroup(legacy > 0 ? String.valueOf(legacy) : "");
+            }
+            post.independent(clipTag.getBoolean("independent"));
             if (clipTag.contains("weight")) {
                 post.weight(NumberFunction.deserializeWrapper(clipTag.getCompound("weight")));
             } else if (clipTag.contains("maxWeight")) { // pre-function clips: constant envelope

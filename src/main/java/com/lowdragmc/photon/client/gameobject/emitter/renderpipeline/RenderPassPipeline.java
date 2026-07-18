@@ -9,6 +9,8 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
+import com.lowdragmc.photon.client.postfx.graph.TargetFormat;
+import com.lowdragmc.photon.client.postfx.runtime.FormatTarget;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
 import com.lowdragmc.photon.core.mixins.iris.ExtendedShaderAccessor;
@@ -40,6 +42,19 @@ public class RenderPassPipeline extends BufferBuilder {
     /** True while the wireframe overlay sub-pass is drawing (WIREFRAME, or the second pass of BOTH). */
     @Getter
     private boolean wireframeSubPass = false;
+    /** True while the custom-mask sub-pass is drawing (flagged passes redraw flat mask ids). */
+    @Getter
+    private boolean maskSubPass = false;
+    /** CustomMask/CustomDepth target (SCENE_SAMPLER-style pipeline static): lazily created only
+     *  while any pass writes a mask; R8 color (the id encoding is 8-bit by design — 1 byte/px)
+     *  with its OWN depth, pre-filled from the scene. */
+    @Nullable
+    private static com.lowdragmc.photon.client.postfx.runtime.FormatTarget MASK_TARGET;
+    /** This frame's mask textures for the post-effect chain (-1 = no mask was written). */
+    @Getter
+    private static int maskColorTexture = -1;
+    @Getter
+    private static int maskDepthTexture = -1;
     @Nullable
     @Getter
     private static RenderPassPipeline current = null;
@@ -101,9 +116,63 @@ public class RenderPassPipeline extends BufferBuilder {
             wireframeSubPass = false;
         }
 
+        renderMaskSubPass();
+
         clearRenderingState();
         afterRendering();
         return null;
+    }
+
+    /**
+     * CustomMask/CustomDepth (Unreal CustomDepth/Stencil-style, no GL stencil): redraw every
+     * flagged pass into MASK_TARGET as a flat mask id. The target carries its own depth,
+     * pre-filled from the scene so occlusion clips the mask AND flagged passes write their own
+     * depth (= custom depth) without touching the main depth buffer. Skipped entirely — no
+     * target, no draws — while nothing is flagged.
+     */
+    private void renderMaskSubPass() {
+        boolean anyMask = false;
+        for (var entry : particles.entrySet()) {
+            if (!entry.getValue().isEmpty() && entry.getKey().renderer.isWriteCustomMask()) {
+                anyMask = true;
+                break;
+            }
+        }
+        if (!anyMask) return;
+        // demand-driven: flagged emitters cost nothing unless some pending effect this frame
+        // actually reads the mask (MaskFilter request / Custom Mask input / the editor mask view)
+        if (!PostEffectStack.currentSink().hasPendingMaskConsumer()) return;
+        // clear() rebinds with a full-target viewport — preserve the current one (the editor
+        // scene renders in a sub-viewport and the mask must stay pixel-aligned with it)
+        int viewportX = GlStateManager.Viewport.x();
+        int viewportY = GlStateManager.Viewport.y();
+        int viewportWidth = GlStateManager.Viewport.width();
+        int viewportHeight = GlStateManager.Viewport.height();
+        if (MASK_TARGET == null) {
+            MASK_TARGET = new FormatTarget(
+                    DRAW_TARGET.width, DRAW_TARGET.height, GL11.GL_LINEAR,
+                    TargetFormat.R8, true);
+        } else if (MASK_TARGET.width != DRAW_TARGET.width || MASK_TARGET.height != DRAW_TARGET.height) {
+            MASK_TARGET.resize(DRAW_TARGET.width, DRAW_TARGET.height, Minecraft.ON_OSX);
+        }
+        MASK_TARGET.setClearColor(0f, 0f, 0f, 0f);
+        MASK_TARGET.clear(Minecraft.ON_OSX);
+        MASK_TARGET.copyDepthFrom(DRAW_TARGET);
+        MASK_TARGET.bindWrite(false);
+        RenderSystem.viewport(viewportX, viewportY, viewportWidth, viewportHeight);
+        maskSubPass = true;
+        renderQueuedPasses();
+        maskSubPass = false;
+        maskColorTexture = MASK_TARGET.getColorTextureId();
+        maskDepthTexture = MASK_TARGET.getDepthTextureId();
+        DRAW_TARGET.bindWrite(false);
+    }
+
+    /** Frame boundary: mask textures are only valid for the frame their sub-pass ran in — a
+     *  no-particle frame must not feed post effects last frame's (stale) mask. */
+    public static void clearFrameMask() {
+        maskColorTexture = -1;
+        maskDepthTexture = -1;
     }
 
     /** Draw all queued render passes once for the current sub-pass. The queues are iterated (not

@@ -65,9 +65,12 @@ import java.util.Set;
  * <p>
  * CONTRACT with {@link FXPacks#gc}: gc's mark phase must be able to re-discover every packed file
  * from the fx entries ({@code file(assets/...)} strings, {@code .png}/{@code .obj} location strings,
- * the {@code custom_shader} json→vsh/fsh chain). When adding a new packed kind here, add the
+ * the {@code custom_shader} json→vsh/fsh chain, and the render-graph pass-source
+ * {@code CUSTOM_SHADER} json→vsh/fsh chain). When adding a new packed kind here, add the
  * matching mark pattern in {@code FXPacks.mark} — otherwise gc sweeps the new files right after
- * this exporter writes them.
+ * this exporter writes them. The post-processing kinds (render_graph / fullscreen_graph, incl. the
+ * nested render_graph→fullscreen_graph references) travel as {@code file(assets/...)} strings and
+ * are covered by mark's generic pattern.
  */
 @OnlyIn(Dist.CLIENT)
 public final class FXPackExporter {
@@ -174,6 +177,17 @@ public final class FXPackExporter {
         if (tag.contains("externalPathString", Tag.TAG_STRING)) {
             rewriteSubgraphRef(tag);
         }
+        // post-process clips: {effect: "type(path)", weight: {...}} (PostProcessTrack clip extras)
+        if (tag.contains("effect", Tag.TAG_STRING) && tag.contains("weight", Tag.TAG_COMPOUND)) {
+            rewriteEffectRef(tag);
+        }
+        // render-graph pass sources (PassSource.CODEC: type omitted for the GRAPH default)
+        if ("CUSTOM_SHADER".equals(tag.getString("type")) && tag.contains("shader", Tag.TAG_STRING)) {
+            packCoreShader(ResourceLocation.tryParse(tag.getString("shader")));
+        }
+        if (tag.contains("graph", Tag.TAG_STRING)) {
+            rewriteFullscreenGraphRef(tag);
+        }
         // generic recursion + raw-asset string sweep
         for (var key : tag.getAllKeys()) {
             walkChild(tag.get(key));
@@ -208,6 +222,44 @@ public final class FXPackExporter {
         var rewritten = packLibraryResource(instance, path);
         if (rewritten != null) {
             data.putString(fieldKey, rewritten);
+        }
+    }
+
+    /** A post-process clip's effect: a render-graph asset, or a bare fullscreen graph played
+     *  through the single-pass adapter (mirror {@code PostEffectStack.resolveEffect}'s order). */
+    private void rewriteEffectRef(CompoundTag clipTag) {
+        var path = IResourcePath.parse(clipTag.getString("effect"));
+        if (path == null || path instanceof BuiltinPath) return;
+        String rewritten = null;
+        var renderGraphs = com.lowdragmc.photon.gui.editor.resource.RenderGraphResource.INSTANCE.getResourceInstance();
+        if (renderGraphs.getResource(path) != null) {
+            rewritten = packLibraryResource(renderGraphs, path);
+        } else {
+            var fullscreenGraphs = com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource.INSTANCE
+                    .getResourceInstance();
+            if (fullscreenGraphs.getResource(path) != null) {
+                rewritten = packLibraryResource(fullscreenGraphs, path);
+            } else {
+                warnings.add("post-process clip effect %s not found — exported as a plain reference"
+                        .formatted(path.getPathWithType()));
+            }
+        }
+        if (rewritten != null) {
+            clipTag.putString("effect", rewritten);
+        }
+    }
+
+    /** A pass node's fullscreen-graph source. Heuristic key ("graph" string) — only rewrites when
+     *  the value actually resolves in the fullscreen library, so unrelated fields pass through. */
+    private void rewriteFullscreenGraphRef(CompoundTag sourceTag) {
+        var path = IResourcePath.parse(sourceTag.getString("graph"));
+        if (path == null || path instanceof BuiltinPath) return;
+        var instance = com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource.INSTANCE
+                .getResourceInstance();
+        if (instance.getResource(path) == null) return;
+        var rewritten = packLibraryResource(instance, path);
+        if (rewritten != null) {
+            sourceTag.putString("graph", rewritten);
         }
     }
 

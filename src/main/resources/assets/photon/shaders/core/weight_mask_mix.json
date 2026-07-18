@@ -1,0 +1,13 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:weight_mask_mix",
+    "samplers": [
+        { "name": "SamplerA" },
+        { "name": "SamplerB" },
+        { "name": "MaskSampler" }
+    ],
+    "uniforms": [
+        { "name": "Weight", "type": "float", "count": 1, "values": [ 1.0 ] },
+        { "name": "MaskFilter", "type": "float", "count": 1, "values": [ 0.0 ] }
+    ]
+}

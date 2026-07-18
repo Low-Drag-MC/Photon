@@ -48,6 +48,42 @@ public record CompiledEffect(
     /** The default priority of a bare fullscreen graph played as an effect (after builtin bloom = 0). */
     public static final int DEFAULT_PRIORITY = 100;
 
+    /** Reserved request-param name enabling CustomMask culling on ANY effect. Value = the mask
+     *  GROUP NAME string ("" = any group; absent = fullscreen). The stack's auto final mix becomes
+     *  {@code mix(scene, effect, weight * match(mask))} — no graph work. A graph that declares a
+     *  float param with this SAME name instead receives the resolved group id and handles the
+     *  masking itself ({@link #declaresMaskFilter}). */
+    public static final String MASK_FILTER_PARAM = "MaskFilter";
+
+    /** Whether the schema declares the reserved MaskFilter param — "the graph matches the mask
+     *  itself" (needed when the effect draws OUTSIDE the mask, e.g. outlines): the stack injects
+     *  the resolved group id and skips the universal mix culling. */
+    public boolean declaresMaskFilter() {
+        for (var spec : schema) {
+            if (MASK_FILTER_PARAM.equals(spec.name())) return true;
+        }
+        return false;
+    }
+
+    /** Reserved request-param name (Boolean): an independent request skips the per-effect
+     *  dedup/merge and runs its OWN fullscreen execution with its own params/weight/mask filter
+     *  (UE-material-instance-style) — the REQUESTER opts into the extra cost, not the asset. */
+    public static final String INDEPENDENT_PARAM = "Independent";
+
+    /** Whether any pass reads the CustomMask/CustomDepth inputs — lets the pipeline skip the mask
+     *  sub-pass when no pending effect (and no MaskFilter request) would consume it. */
+    public boolean usesCustomMask() {
+        for (var pass : passes) {
+            for (var ref : pass.textures().values()) {
+                if (ref.source() == ResourceRef.Source.CUSTOM_MASK
+                        || ref.source() == ResourceRef.Source.CUSTOM_DEPTH) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /** One blendable effect parameter: the graph variable's display name, its declared default, and
      *  whether requests lerp it by weight (floats/vectors/colors) or take the highest-weight value. */
     public record ParamSpec(String name, @Nullable Object defaultValue, boolean lerpable) {}
@@ -58,10 +94,14 @@ public record CompiledEffect(
 
     /** What a pass's texture input binds to. */
     public record ResourceRef(Source source, int resource) {
-        public enum Source { SCENE_COLOR, SCENE_DEPTH, RESOURCE }
+        public enum Source { SCENE_COLOR, SCENE_DEPTH, CUSTOM_MASK, CUSTOM_DEPTH, RESOURCE }
 
         public static final ResourceRef SCENE_COLOR_REF = new ResourceRef(Source.SCENE_COLOR, -1);
         public static final ResourceRef SCENE_DEPTH_REF = new ResourceRef(Source.SCENE_DEPTH, -1);
+        /** The pipeline's CustomMask target (flat mask ids of flagged FX passes; -1 when none). */
+        public static final ResourceRef CUSTOM_MASK_REF = new ResourceRef(Source.CUSTOM_MASK, -1);
+        /** The mask target's own depth (= the flagged passes' custom depth). */
+        public static final ResourceRef CUSTOM_DEPTH_REF = new ResourceRef(Source.CUSTOM_DEPTH, -1);
 
         public static ResourceRef of(int resource) {
             return new ResourceRef(Source.RESOURCE, resource);
