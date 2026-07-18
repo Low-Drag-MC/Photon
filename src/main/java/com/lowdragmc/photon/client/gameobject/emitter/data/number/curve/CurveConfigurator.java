@@ -63,6 +63,9 @@ public class CurveConfigurator extends ValueConfigurator<Curve> {
         });
 
         this.curveGraph.setOnCurveChangeListener(curves -> updateValue());
+        // the drag readout shows the mapped value (lower..upper) instead of the normalized 0..1
+        this.curveGraph.setCoordFormatter((x, y) ->
+                "(%.2f, %.2f)".formatted(x, value.getLower() + (value.getUpper() - value.getLower()) * y));
 
         inlineContainer.addChildren(curvePreview.layout(layout -> {
             layout.height(14);
