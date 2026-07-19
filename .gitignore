@@ -25,3 +25,4 @@ fabric/src/generated/resources/.cache/
 AGENTS.md
 CLAUDE.md
 /docs
+/logs

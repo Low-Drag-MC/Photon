@@ -13,9 +13,11 @@ group = maven_group
 
 configurations {
     libraries
-    // This will make sure that all dependencies that you add to the libraries configuration will also be added to the implementation configuration
-    // This way, you only need one dependency declaration for both runtime and compile dependencies
-    implementation.extendsFrom libraries
+    api.extendsFrom libraries
+
+    localImplementation
+    runtimeClasspath.extendsFrom localImplementation
+    compileOnly.extendsFrom localImplementation
 }
 
 repositories {
@@ -130,16 +132,21 @@ dependencies {
     // LDLib2
     implementation("com.lowdragmc.ldlib2:ldlib2-neoforge-${minecraft_version}:${ldlib2_version}:all")
     // KilaGraph
-    implementation("com.lowdragmc.kilagraph:kilagraph-neoforge-${minecraft_version}:${kilagraph_version}")
+    jarJar(implementation(group: 'com.lowdragmc.kilagraph', name: "kilagraph-neoforge-${minecraft_version}")) {
+        version {
+            // Version used in your workspace and bundled in mod jar
+            prefer "${kilagraph_version}"
+        }
+    }
 
     // JEI
     compileOnly("mezz.jei:jei-${minecraft_version}-common-api:${jei_version}") { transitive = false }
     compileOnly("mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}") { transitive = false }
-    implementation("mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}")
+    localImplementation("mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}")
 
     // Iris
-    implementation("maven.modrinth:sodium:${sodium_version}")
-    implementation("maven.modrinth:iris:${iris_version}")
+    localImplementation("maven.modrinth:sodium:${sodium_version}")
+    localImplementation("maven.modrinth:iris:${iris_version}")
 
     // Unit tests (JUnit 5). Only for MC-free logic such as the Timeline evaluation core.
     testImplementation(platform("org.junit:junit-bom:5.11.3"))
@@ -163,7 +170,8 @@ tasks.withType(ProcessResources).configureEach {
             "mod_name": mod_name,
             "mod_description": mod_description,
             "mod_url": mod_url,
-            "ldlib2_version_range": ldlib2_version_range
+            "ldlib2_version_range": ldlib2_version_range,
+            "kilagraph_version_range": kilagraph_version_range
     ]
     inputs.properties replaceProperties
 
