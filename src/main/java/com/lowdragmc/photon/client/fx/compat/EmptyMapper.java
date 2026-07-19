@@ -11,8 +11,8 @@ public class EmptyMapper implements Mapper{
         CompoundTag dataTag = new CompoundTag();
 
         //data tag
-        dataTag.putString("name", emitterTag.getString("name"));
-        dataTag.put("transform", MapperUtils.mapTransformTag(emitterTag.getCompound("transform")));
+        dataTag.putString("name", emitterTag.getStringOr("name", ""));
+        dataTag.put("transform", MapperUtils.mapTransformTag(emitterTag.getCompoundOrEmpty("transform")));
 
         newEmitterTag.put("data", dataTag);
 

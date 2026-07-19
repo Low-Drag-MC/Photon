@@ -1,15 +1,50 @@
 plugins {
     id 'java-library'
-    id 'eclipse'
-    id 'idea'
     id 'maven-publish'
-    id 'net.neoforged.gradle.userdev' version '7.0.181'
-    id 'org.jetbrains.kotlin.plugin.lombok' version '2.1.20'
-    id 'io.freefair.lombok' version "9.2.0"
+    id 'idea'
+    id 'net.neoforged.moddev' version '2.0.141'
+    id 'io.freefair.lombok' version '9.2.0'
+}
+
+tasks.named('wrapper', Wrapper).configure {
+    // Define wrapper values here so as to not have to always do so when updating gradlew.properties.
+    // Switching this to Wrapper.DistributionType.ALL will download the full gradle sources that comes with
+    // documentation attached on cursor hover of gradle classes and methods. However, this comes with increased
+    // file size for Gradle. If you do switch this to ALL, run the Gradle wrapper task twice afterwards.
+    // (Verify by checking gradle/wrapper/gradle-wrapper.properties to see if distributionUrl now points to `-all`)
+    distributionType = Wrapper.DistributionType.BIN
 }
 
 version = mod_version
-group = maven_group
+group = mod_group_id
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+    // LDLib2
+    maven { url = "https://maven.firstdark.dev/snapshots" }
+    // Modrinth File
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content {
+            includeGroup "maven.modrinth"
+        }
+    }
+    maven {
+        name "CaffeineMC"
+        url "https://maven.caffeinemc.net/releases" // or /snapshots
+    }
+}
+
+base {
+    archivesName = "${archives_name}"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+    withSourcesJar()
+}
 
 configurations {
     libraries
@@ -20,105 +55,82 @@ configurations {
     compileOnly.extendsFrom localImplementation
 }
 
-repositories {
-    mavenCentral()
-    mavenLocal()
-    maven {
-        name = "Modrinth"
-        url = "https://api.modrinth.com/maven"
-        content {
-            includeGroup "maven.modrinth"
+
+neoForge {
+    // Specify the version of NeoForge to use.
+    version = project.neo_version
+
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+
+    // This line is optional. Access Transformers are automatically detected
+//    accessTransformers.add('src/main/resources/META-INF/accesstransformer.cfg')
+
+    // Default run configurations.
+    // These can be tweaked, removed, or duplicated as needed.
+    runs {
+        client {
+            client()
+
+            // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
-    } // Modrinth File
-    maven {
-        // location of the maven that hosts JEI files since January 2023
-        name = "Jared's maven"
-        url = "https://maven.blamejared.com/"
-    }
-    maven {
-        // location of a maven mirror for JEI files, as a fallback
-        name = "ModMaven"
-        url = "https://modmaven.dev"
-    }
-    maven { url = "https://maven.parchmentmc.org" } // Parchment mappings
-    maven { url = "https://maven.quiltmc.org/repository/release" } // Quilt Mappings
-    // mavens for Forge-exclusives
-    maven { // Create Forge and Registrate Forge
-        url = "https://maven.tterrag.com/"
-        content {
-            includeGroup("com.tterrag.registrate")
-            includeGroup("com.simibubi.create")
+
+        server {
+            server()
+            programArgument '--nogui'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
-    }
-    maven { url = "https://jitpack.io/" } // Mixin Extras, Fabric ASM
-    // LDLib2
-    maven {
-        // location of the maven that hosts JEI files since January 2023
-        name = "Jared's maven"
-        url = "https://maven.firstdark.dev/snapshots"
-    }
-}
 
-base {
-    archivesName = "${project.name}-${minecraft_version}"
-}
+        // This run config launches GameTestServer and runs all registered gametests, then exits.
+        // By default, the server will crash when no gametests are provided.
+        // The gametest system is also enabled by default for other run configs under the /test command.
+        gameTestServer {
+            type = "gameTestServer"
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
 
-// Mojang ships Java 21 to end users in 1.20.5+, so your mod should target Java 21.
-java {
-    toolchain.languageVersion = JavaLanguageVersion.of(21)
-    withSourcesJar()
-}
+        data {
+            clientData()
 
-minecraft.accessTransformers.file rootProject.file('src/main/resources/META-INF/accesstransformer.cfg')
+            // example of overriding the workingDirectory set in configureEach above, uncomment if you want to use it
+            // gameDirectory = project.file('run-data')
 
-// Default run configurations.
-// These can be tweaked, removed, or duplicated as needed.
-runs {
-    // applies to all the run configs below
-    configureEach {
-        // Recommended logging data for a userdev environment
-        // The markers can be added/remove as needed separated by commas.
-        // "SCAN": For mods scan.
-        // "REGISTRIES": For firing of registry events.
-        // "REGISTRYDUMP": For getting the contents of all registries.
-        systemProperty 'forge.logging.markers', 'REGISTRIES'
+            // Specify the modid for data generation, where to output the resulting resource, and where to look for existing resources.
+            programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+        }
 
-        // Recommended logging level for the console
-        // You can set various levels here.
-        // Please read: https://stackoverflow.com/questions/2031163/when-to-use-the-different-log-levels
-        systemProperty 'forge.logging.console.level', 'debug'
-//        systemProperty 'mixin.debug', 'true'
+        // applies to all the run configs above
+        configureEach {
+            // Recommended logging data for a userdev environment
+            // The markers can be added/remove as needed separated by commas.
+            // "SCAN": For mods scan.
+            // "REGISTRIES": For firing of registry events.
+            // "REGISTRYDUMP": For getting the contents of all registries.
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
 
-        modSource project.sourceSets.main
-
-        dependencies {
-            runtime project.configurations.libraries
+            // Recommended logging level for the console
+            // You can set various levels here.
+            // Please read: https://stackoverflow.com/questions/2031163/when-to-use-the-different-log-levels
+            logLevel = org.slf4j.event.Level.DEBUG
         }
     }
 
-    client {
-        // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
-        systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
+    mods {
+        // define mod <-> source bindings
+        // these are used to tell the game which sources are for which mod
+        // mostly optional in a single mod project
+        // but multi mod projects should define one per mod
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
     }
 
-    server {
-        systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
-        programArgument '--nogui'
-    }
-
-    // This run config launches GameTestServer and runs all registered gametests, then exits.
-    // By default, the server will crash when no gametests are provided.
-    // The gametest system is also enabled by default for other run configs under the /test command.
-    gameTestServer {
-        systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
-    }
-
-    data {
-        // example of overriding the workingDirectory set in configureEach above, uncomment if you want to use it
-        // workingDirectory project.file('run-data')
-
-        // Specify the modid for data generation, where to output the resulting resource, and where to look for existing resources.
-        programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+    unitTest {
+        enable()
+        testedMod = mods.getByName(mod_id)
     }
 }
 
@@ -127,64 +139,60 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 
 dependencies {
-    implementation "net.neoforged:neoforge:${neo_version}"
-
     // LDLib2
-    implementation("com.lowdragmc.ldlib2:ldlib2-neoforge-${minecraft_version}:${ldlib2_version}:all")
+    implementation("com.lowdragmc.ldlib2:ldlib2-neoforge-${minecraft_version_vague}:${ldlib2_version}")
     // KilaGraph
-    jarJar(implementation(group: 'com.lowdragmc.kilagraph', name: "kilagraph-neoforge-${minecraft_version}")) {
+    jarJar(implementation(group: 'com.lowdragmc.kilagraph', name: "kilagraph-neoforge-${minecraft_version_vague}")) {
         version {
             // Version used in your workspace and bundled in mod jar
             prefer "${kilagraph_version}"
         }
     }
 
-    // JEI
-    compileOnly("mezz.jei:jei-${minecraft_version}-common-api:${jei_version}") { transitive = false }
-    compileOnly("mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}") { transitive = false }
-    localImplementation("mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}")
-
     // Iris
-    localImplementation("maven.modrinth:sodium:${sodium_version}")
+    localImplementation("net.caffeinemc:sodium-neoforge:${sodium_version}")
     localImplementation("maven.modrinth:iris:${iris_version}")
 
-    // Unit tests (JUnit 5). Only for MC-free logic such as the Timeline evaluation core.
-    testImplementation(platform("org.junit:junit-bom:5.11.3"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params:5.10.0'
 }
 
-test {
-    useJUnitPlatform()
-}
-
-tasks.withType(ProcessResources).configureEach {
-    // set up properties for filling into metadata
-    var replaceProperties = [
-            "mod_id": mod_id,
-            "version": version,
-            "loader_version": loader_version,
-            "forge_version": neo_version.split("\\.")[0], // only specify major version of forge
-            "minecraft_version": minecraft_version,
-            "mod_license": mod_license,
-            "mod_name": mod_name,
-            "mod_description": mod_description,
-            "mod_url": mod_url,
-            "ldlib2_version_range": ldlib2_version_range,
-            "kilagraph_version_range": kilagraph_version_range
-    ]
+// This block of code expands all declared replace properties in the specified resource targets.
+// A missing property will result in an error. Properties are expanded using ${} Groovy notation.
+var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
+    var replaceProperties = [minecraft_version      : minecraft_version,
+                             minecraft_version_range: minecraft_version_range,
+                             neo_version            : neo_version,
+                             neo_version_range      : neo_version_range,
+                             loader_version_range   : loader_version_range,
+                             mod_id                 : mod_id,
+                             mod_name               : mod_name,
+                             mod_license            : mod_license,
+                             mod_url                : mod_url,
+                             mod_version            : mod_version,
+                             mod_authors            : mod_authors,
+                             mod_description        : mod_description,
+                             ldlib2_version_range   : ldlib2_version_range,
+                             kilagraph_version_range   : kilagraph_version_range]
     inputs.properties replaceProperties
-
-    filesMatching(['META-INF/neoforge.mods.toml']) {
-        expand replaceProperties + [project: project]
-    }
+    expand replaceProperties
+    from "src/main/templates"
+    into "build/generated/sources/modMetadata"
 }
+
+// Include the output of "generateModMetadata" as an input directory for the build
+// this works with both building through Gradle and the IDE.
+sourceSets.main.resources.srcDir generateModMetadata
+// To avoid having to run "generateModMetadata" manually, make it run on every project reload
+neoForge.ideSyncTask generateModMetadata
 
 // Example configuration to allow publishing using the maven-publish plugin
 publishing {
     publications {
         register('mavenJava', MavenPublication) {
-            artifactId = archivesBaseName
+            artifactId = archives_name
             from components.java
         }
     }
@@ -196,5 +204,36 @@ publishing {
                 password System.getenv("MAVEN_PASS")
             }
         }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs << '-Xmaxerrs' << '5000'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+        showStandardStreams = false
+    }
+}
+
+// Configure the 'jarJar' task
+// 'all' is the default classifier
+tasks.named('jarJar') {
+    // ...
+}
+
+tasks.register("printVersion") {
+    println(mod_version)
+}
+
+// IDEA no longer automatically downloads sources/javadoc jars for dependencies, so we need to explicitly enable the behavior.
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
     }
 }

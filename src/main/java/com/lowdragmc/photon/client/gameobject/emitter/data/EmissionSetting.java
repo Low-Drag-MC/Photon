@@ -20,8 +20,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.nbt.IntTag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.util.RandomSource;
 
 import java.util.ArrayList;
@@ -36,7 +34,6 @@ import java.util.function.Supplier;
  * @author KilaBash
  * @date 2023/6/1
  */
-@OnlyIn(Dist.CLIENT)
 @Setter
 @Getter
 public class EmissionSetting implements IConfigurable, IPersistedSerializable {
@@ -187,7 +184,7 @@ public class EmissionSetting implements IConfigurable, IPersistedSerializable {
 
     private List<Burst> burstsDeserialize(IntTag tag) {
         var groups = new ArrayList<Burst>();
-        for (int i = 0; i < tag.getAsInt(); i++) {
+        for (int i = 0; i < tag.intValue(); i++) {
             groups.add(addDefaultBurst());
         }
         return groups;

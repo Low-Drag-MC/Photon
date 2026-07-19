@@ -13,17 +13,8 @@ import com.lowdragmc.photon.client.postfx.runtime.PostFXPreview;
 import com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool;
 import com.lowdragmc.photon.client.postfx.runtime.RenderGraphExecutor;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
-import com.lowdragmc.lowdraglib2.client.shader.HDRTarget;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferUploader;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Matrix4f;
 
 import java.util.Map;
 
@@ -60,8 +51,9 @@ public class PostFXPreviewTool extends UIElement implements IGraphTool {
     }
 
     @Override
-    public void drawBackgroundAdditional(GUIContext guiContext) {
-        super.drawBackgroundAdditional(guiContext);
+    public void drawBackgroundAdditional(com.lowdragmc.lowdraglib2.gui.ui.rendering.IGUIContext rawContext) {
+        super.drawBackgroundAdditional(rawContext);
+        if (!(rawContext instanceof GUIContext guiContext)) return;
         if (!(view.getGraph() instanceof RenderGraph renderGraph)) return;
 
         PostFXPreview.requestCapture(); // next frame's render hooks refresh the capture
@@ -85,27 +77,10 @@ public class PostFXPreviewTool extends UIElement implements IGraphTool {
             return;
         }
 
-        // run the chain offscreen, then hand the framebuffer back to the UI pass
-        guiContext.graphics.flush();
-        HDRTarget result = null;
-        if (!compiled.passes().isEmpty()) {
-            PostEffectStack.setPostRenderState();
-            try {
-                // no mask source in the preview (it runs against a clean scene capture) — mask
-                // inputs degrade to an empty sampler
-                result = RenderGraphExecutor.execute(compiled, 1f, defaultParams, source,
-                        source.getDepthTextureId(), -1, -1);
-            } finally {
-                PostEffectStack.restorePostRenderState();
-                Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
-            }
-        }
-
-        var shown = result != null ? result : source; // broken/no-op effect previews the clean scene
-        drawTarget(guiContext, shown, x, y, width, height);
-        if (result != null) {
-            PostFXTargetPool.release(result);
-        }
+        // TODO(M3): run the compiled chain offscreen over the scene capture and blit the result
+        // (was RenderGraphExecutor.execute + an HDRTarget aspect-fit draw — cut with the 1.21
+        // HDR pipeline). Until then the preview shows the clean capture placeholder text.
+        guiContext.drawTexture(new TextTexture("photon.render_graph.preview.no_frame"), x, y, width, height);
     }
 
     /** Recompile the LIVE graph when it (or any referenced fullscreen graph) changed. */
@@ -136,32 +111,4 @@ public class PostFXPreviewTool extends UIElement implements IGraphTool {
         return true;
     }
 
-    /** Aspect-fit blit of a render target's color texture into the panel rect (V flipped —
-     *  render targets are bottom-up). */
-    private static void drawTarget(GUIContext guiContext, HDRTarget target,
-                                   float x, float y, float width, float height) {
-        if (width <= 1 || height <= 1 || target.width <= 0 || target.height <= 0) return;
-        float targetAspect = (float) target.width / target.height;
-        float drawWidth = width;
-        float drawHeight = width / targetAspect;
-        if (drawHeight > height) {
-            drawHeight = height;
-            drawWidth = height * targetAspect;
-        }
-        float drawX = x + (width - drawWidth) / 2f;
-        float drawY = y + (height - drawHeight) / 2f;
-
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        RenderSystem.setShaderTexture(0, target.getColorTextureId());
-        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
-        RenderSystem.disableCull();
-        Matrix4f matrix = guiContext.graphics.pose().last().pose();
-        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        buffer.addVertex(matrix, drawX, drawY + drawHeight, 0).setUv(0f, 0f);
-        buffer.addVertex(matrix, drawX + drawWidth, drawY + drawHeight, 0).setUv(1f, 0f);
-        buffer.addVertex(matrix, drawX + drawWidth, drawY, 0).setUv(1f, 1f);
-        buffer.addVertex(matrix, drawX, drawY, 0).setUv(0f, 1f);
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
-        RenderSystem.enableCull();
-    }
 }

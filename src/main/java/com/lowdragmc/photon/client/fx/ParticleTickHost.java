@@ -1,7 +1,5 @@
 package com.lowdragmc.photon.client.fx;
 
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * The engine that owns a runtime's particles, as far as {@link FXRuntime#isValid()} is concerned:
@@ -15,7 +13,6 @@ import net.neoforged.api.distmarker.OnlyIn;
  *       (level change, clear commands), for immediate invalidation of the known wipe paths.</li>
  * </ul>
  */
-@OnlyIn(Dist.CLIENT)
 public interface ParticleTickHost {
     /** Monotonic engine tick counter; advances only when the engine ticks its particles. */
     long tickCount();

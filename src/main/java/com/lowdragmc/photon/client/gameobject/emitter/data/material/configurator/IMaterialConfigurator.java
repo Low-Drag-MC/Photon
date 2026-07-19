@@ -14,7 +14,7 @@ import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Setter;
 import lombok.experimental.Accessors;
-import net.minecraft.MethodsReturnNonnullByDefault;
+import com.mojang.logging.annotations.MethodsReturnNonnullByDefault;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.function.Consumer;

@@ -9,8 +9,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector4f;
 
 /**
@@ -19,7 +17,6 @@ import org.joml.Vector4f;
  * @author KilaBash
  * @date 2023/5/30
  */
-@OnlyIn(Dist.CLIENT)
 @Setter
 @Getter
 public class ColorOverLifetimeSetting extends ToggleGroup {

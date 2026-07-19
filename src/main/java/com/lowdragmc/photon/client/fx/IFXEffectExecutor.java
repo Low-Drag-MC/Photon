@@ -1,7 +1,5 @@
 package com.lowdragmc.photon.client.fx;
 
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -10,7 +8,6 @@ import org.joml.Vector3f;
  * then call {@link #start()} to create the runtime and emit it. This is the primary entry point for
  * mods spawning an FX in-world (see {@link EntityEffectExecutor} / {@link BlockEffectExecutor}).
  */
-@OnlyIn(Dist.CLIENT)
 public interface IFXEffectExecutor extends IEffectExecutor {
     /**
      * the FX definition this executor plays.

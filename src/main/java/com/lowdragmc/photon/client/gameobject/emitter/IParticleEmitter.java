@@ -7,8 +7,6 @@ import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import net.minecraft.network.chat.Component;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.AABB;
@@ -27,7 +25,6 @@ import java.util.function.Function;
  * @date 2023/6/2
  * @implNote IParticleEmitter
  */
-@OnlyIn(Dist.CLIENT)
 public interface IParticleEmitter extends IFXObject, IConfigurable {
 
     default Emitter self() {
@@ -117,10 +114,10 @@ public interface IParticleEmitter extends IFXObject, IConfigurable {
     default void inspectSceneInformation(SceneView sceneView, UIElement container) {
         var progress = new ProgressBar() {
             @Override
-            public void drawBackgroundAdditional(@Nonnull GUIContext guiContext) {
+            public void drawBackgroundAdditional(@Nonnull com.lowdragmc.lowdraglib2.gui.ui.rendering.IGUIContext guiContext) {
                 super.drawBackgroundAdditional(guiContext);
                 if (isAlive()) {
-                    this.setValue(getT(sceneView.particleManager.isPlaying() ? guiContext.partialTick : 0));
+                    this.setValue(getT(sceneView.particleManager.isPlaying() ? (guiContext instanceof com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext ctx ? ctx.partialTick : 0) : 0));
                 } else {
                     this.setValue(1f);
                 }

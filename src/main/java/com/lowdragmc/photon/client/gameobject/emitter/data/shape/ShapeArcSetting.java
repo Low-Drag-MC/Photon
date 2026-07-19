@@ -19,12 +19,9 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveCon
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import net.minecraft.util.RandomSource;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import java.lang.reflect.Field;
 
-@OnlyIn(Dist.CLIENT)
 public class ShapeArcSetting implements IConfigurable, IPersistedSerializable {
 
     @Configurable(name = "ShapeArcSetting.arcMode", tips = "photon.emitter.config.shape.arc.mode")

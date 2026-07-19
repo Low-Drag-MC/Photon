@@ -202,71 +202,9 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
 
     @ParametersAreNonnullByDefault
     public class RenderPass extends PhotonFXRenderPass {
-        // the slot-or-config render runtime this pass draws with (typed; the base `renderer` field holds
-        // the same object). Not named "renderer" (would shadow ParticleConfig.renderer here).
-        private final ParticleRendererSetting.Runtime renderRuntime;
-        private final TileParticleRenderer tileParticleRenderer;
-
+        // TODO(M1/M2): 1.21 body = CPU renderQueue + GPU-instanced draw with materials (pre/post,
+        // begin/end, instancing backend). Rebuilt as Photon render-state batches per the plan.
         public RenderPass(ParticleRendererSetting.Runtime renderRuntime) {
-            super(renderRuntime, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
-            this.renderRuntime = renderRuntime;
-            this.tileParticleRenderer = new TileParticleRenderer(ParticleConfig.this, renderRuntime);
-        }
-
-        /** Tear down the instanced GL resources (render mode / model / instance layout changed). */
-        public void clearInstance() {
-            tileParticleRenderer.dispose();
-        }
-
-        @Override
-        protected void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
-            tileParticleRenderer.renderQueue(buffer, particles, camera, partialTicks);
-        }
-
-        @Override
-        protected boolean useInstancing() {
-            return renderRuntime.isUseGPUInstance() && renderRuntime.getRenderMode() != ParticleRendererSetting.Mode.None;
-        }
-
-        @Override
-        protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
-            var context = renderRuntime.getRenderMode() == ParticleRendererSetting.Mode.Model ?
-                    MaterialContext.PARTICLE_MODEL_INSTANCE : MaterialContext.PARTICLE_INSTANCE;
-
-            // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change
-            additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));
-            additionalGPUDataSetting.setCustomDataMaterialUsed(shaderGraphUsesCustomData(materials));
-            if (additionalGPUDataSetting.attribRelayoutNeeded()) {
-                clearInstance();
-            }
-
-            var drew = false;
-            // upload to vbo
-            if (tileParticleRenderer.uploadInstances(particles, camera, partialTicks)) {
-                for (MaterialSetting materialSetting : materials) {
-                    materialSetting.pre();
-                    renderInstanceWithMaterial(materialSetting.getMaterial(), context);
-                    materialSetting.post();
-                }
-                drew = true;
-            }
-
-            // invalidate cache
-            glBindVertexArray(0);
-            BufferUploader.invalidate();
-            return drew;
-        }
-
-        protected void renderInstanceWithMaterial(IMaterial material, MaterialContext context) {
-            var shader = material.begin(context);
-            RenderSystem.setShader(() -> shader);
-            tileParticleRenderer.drawInstanced(shader);
-            material.end(context);
-        }
-
-        @Override
-        public boolean equals(@Nonnull Object o) {
-            return o instanceof RenderPass && super.equals(o);
         }
     }
 

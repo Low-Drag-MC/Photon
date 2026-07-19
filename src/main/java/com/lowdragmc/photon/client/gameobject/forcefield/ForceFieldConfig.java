@@ -15,15 +15,12 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCu
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * Pure-data force-field config (Unity {@code ParticleSystemForceField} parity, minus vector fields);
  * value-use behaviour lives on the co-located {@link Runtime}. Curves are evaluated over the affected
  * particle's normalized lifetime with per-particle memoized randoms.
  */
-@OnlyIn(Dist.CLIENT)
 @Getter
 @Setter
 public class ForceFieldConfig implements IConfigurable, IPersistedSerializable {

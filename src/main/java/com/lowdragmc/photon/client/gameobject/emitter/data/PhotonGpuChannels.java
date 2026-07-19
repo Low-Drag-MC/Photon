@@ -1,8 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import net.minecraft.network.chat.Component;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -26,7 +24,6 @@ import java.util.Map;
  * MIRRORED IN assets/photon/shaders/include/particle.glsl ({@code photon_data_*()} accessors) —
  * keep both in lockstep.
  */
-@OnlyIn(Dist.CLIENT)
 public final class PhotonGpuChannels {
 
     public enum Kind {

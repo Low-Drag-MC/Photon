@@ -49,36 +49,36 @@ public class PostProcessTrack extends Track {
     @Override
     protected void readClipExtra(Clip clip, CompoundTag clipTag, HolderLookup.Provider provider) {
         if (clip instanceof PostProcessClip post) {
-            if (clipTag.contains("effect")) post.effect(clipTag.getString("effect"));
-            post.maskCulling(clipTag.getBoolean("maskCulling"));
-            post.maskGroup(clipTag.getString("maskGroup"));
+            if (clipTag.contains("effect")) post.effect(clipTag.getStringOr("effect", ""));
+            post.maskCulling(clipTag.getBooleanOr("maskCulling", false));
+            post.maskGroup(clipTag.getStringOr("maskGroup", ""));
             if (clipTag.contains("maskFilter")) { // pre-string clips: numeric groups keep their name
-                var legacy = clipTag.getInt("maskFilter");
+                var legacy = clipTag.getIntOr("maskFilter", 0);
                 post.maskCulling(legacy >= 0);
                 post.maskGroup(legacy > 0 ? String.valueOf(legacy) : "");
             }
-            post.independent(clipTag.getBoolean("independent"));
+            post.independent(clipTag.getBooleanOr("independent", false));
             if (clipTag.contains("weight")) {
-                post.weight(NumberFunction.deserializeWrapper(clipTag.getCompound("weight")));
+                post.weight(NumberFunction.deserializeWrapper(clipTag.getCompoundOrEmpty("weight")));
             } else if (clipTag.contains("maxWeight")) { // pre-function clips: constant envelope
-                post.weight(NumberFunction.constant(clipTag.getFloat("maxWeight")));
+                post.weight(NumberFunction.constant(clipTag.getFloatOr("maxWeight", 0.0F)));
             }
-            var paramsTag = clipTag.getCompound("params");
-            for (var name : paramsTag.getAllKeys()) {
-                var overrideTag = paramsTag.getCompound(name);
+            var paramsTag = clipTag.getCompoundOrEmpty("params");
+            for (var name : paramsTag.keySet()) {
+                var overrideTag = paramsTag.getCompoundOrEmpty(name);
                 PostProcessClip.ParamKind kind;
                 try {
-                    kind = PostProcessClip.ParamKind.valueOf(overrideTag.getString("kind"));
+                    kind = PostProcessClip.ParamKind.valueOf(overrideTag.getStringOr("kind", ""));
                 } catch (IllegalArgumentException e) {
                     continue;
                 }
                 var channels = new java.util.ArrayList<NumberFunction>(kind.channelCount());
-                var channelsTag = overrideTag.getList("fns", Tag.TAG_COMPOUND);
+                var channelsTag = overrideTag.getListOrEmpty("fns");
                 for (int i = 0; i < channelsTag.size(); i++) {
-                    channels.add(NumberFunction.deserializeWrapper(channelsTag.getCompound(i)));
+                    channels.add(NumberFunction.deserializeWrapper(channelsTag.getCompoundOrEmpty(i)));
                 }
                 if (channels.isEmpty() && overrideTag.contains("fn")) { // pre-vector single-fn form
-                    channels.add(NumberFunction.deserializeWrapper(overrideTag.getCompound("fn")));
+                    channels.add(NumberFunction.deserializeWrapper(overrideTag.getCompoundOrEmpty("fn")));
                 }
                 while (channels.size() < kind.channelCount()) {
                     channels.add(NumberFunction.constant(0));

@@ -1,5 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.lowdragmc.lowdraglib2.Platform;
+import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigList;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
@@ -13,9 +15,11 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.util.FastColor;
+import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.Mth;
-import net.neoforged.neoforge.common.util.INBTSerializable;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.neoforged.neoforge.common.util.ValueIOSerializable;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -24,7 +28,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class CurveTexture implements AutoCloseable, IConfigurable, INBTSerializable<ListTag> {
+public class CurveTexture implements AutoCloseable, IConfigurable, ValueIOSerializable {
     private final int width;
     private final int height;
     @Configurable(name = "curves", canCollapse = false, collapse = false)
@@ -67,29 +71,8 @@ public class CurveTexture implements AutoCloseable, IConfigurable, INBTSerializa
     }
 
     public void uploadTexture() {
-        if (!isDirty) return;
-        RenderSystem.assertOnRenderThread();
-        if (curveTexture == null || curveTexture.getPixels() == null)  {
-            this.curveTexture = new DynamicTexture(width, height, false);
-        }
-        var pixels = curveTexture.getPixels();
-        assert pixels != null;
-        for (int h = 0; h < height; h++) {
-            if (h >= curves.size()) {
-//                for (int w = 0; w < width; w++) {
-//                    pixels.setPixelRGBA(w, h, 0);
-//                }
-                continue;
-            }
-            var curve = curves.get(h);
-            for (int w = 0; w < width; w++) {
-                var y = curve.getCurves().getCurveY(w / (width - 1f));
-                var r = Mth.clamp((int)(y * 255),0, 255);
-                pixels.setPixelRGBA(w, h, FastColor.ABGR32.color(255, 0, 0, r));
-            }
-        }
-        this.curveTexture.upload();
-        isDirty = false;
+        // TODO(M2): rebuild the curve sampler upload — DynamicTexture's ctor and NativeImage's pixel
+        // API changed (FastColor→ARGB, label-based ctor); rebuilt with the material pipeline path.
     }
 
     private Configurator buildCurveConfigurator(Supplier<Curve> getter, Consumer<Curve> setter) {
@@ -112,22 +95,27 @@ public class CurveTexture implements AutoCloseable, IConfigurable, INBTSerializa
         markAsDirty();
     }
 
+    // 26.1 note: was INBTSerializable<ListTag> (a bare list under the parent key). ValueIO-managed
+    // values must be compound-shaped, so the legacy list now lives under a "curves" key —
+    // old data needs a fixer: `field: [...]` -> `field: {curves: [...]}`.
     @Override
-    public ListTag serializeNBT(@Nonnull HolderLookup.Provider provider) {
+    public void serialize(@Nonnull ValueOutput output) {
         var listTag = new ListTag();
         for (var curve : curves) {
-            listTag.add(curve.serializeNBT(provider));
+            listTag.add(PersistedParser.serializeNBT(curve, Platform.getFrozenRegistry()));
         }
-        return listTag;
+        output.store("curves", ExtraCodecs.NBT, listTag);
     }
 
     @Override
-    public void deserializeNBT(@Nonnull HolderLookup.Provider provider, @Nonnull ListTag listTag) {
+    public void deserialize(@Nonnull ValueInput input) {
         curves.clear();
-        for (Tag tag : listTag) {
-            var curve = new Curve();
-            curve.deserializeNBT(provider, (CompoundTag) tag);
-            curves.add(curve);
+        if (input.read("curves", ExtraCodecs.NBT).orElse(null) instanceof ListTag listTag) {
+            for (Tag tag : listTag) {
+                var curve = new Curve();
+                PersistedParser.deserializeNBT((CompoundTag) tag, curve, Platform.getFrozenRegistry());
+                curves.add(curve);
+            }
         }
         markAsDirty();
     }

@@ -8,7 +8,7 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
 import java.util.List;
 
-@EventBusSubscriber(modid = Photon.MOD_ID, bus = EventBusSubscriber.Bus.GAME)
+@EventBusSubscriber(modid = Photon.MOD_ID)
 public class PhotonCommonListeners {
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {

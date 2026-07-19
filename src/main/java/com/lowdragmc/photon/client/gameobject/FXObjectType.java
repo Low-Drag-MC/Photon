@@ -64,7 +64,7 @@ public abstract class FXObjectType {
             @Override
             public <T> DataResult<Pair<IFXObject, T>> decode(DynamicOps<T> ops, T input) {
                 if (input instanceof CompoundTag tag) {
-                    return base.decode(ops, (T) fixData(tag, tag.getInt("version")));
+                    return base.decode(ops, (T) fixData(tag, tag.getIntOr("version", 0)));
                 }
                 return base.decode(ops, input);
             }

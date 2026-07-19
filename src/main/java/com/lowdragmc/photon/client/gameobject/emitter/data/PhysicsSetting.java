@@ -12,8 +12,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCu
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * Pure-data physics config. The value-use behaviour (getFriction/getGravity/… and the collision flags)
@@ -23,7 +21,6 @@ import net.neoforged.api.distmarker.OnlyIn;
  * @author KilaBash
  * @date 2023/5/31
  */
-@OnlyIn(Dist.CLIENT)
 @Setter
 @Getter
 public class PhysicsSetting extends ToggleGroup {

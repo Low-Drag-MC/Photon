@@ -18,9 +18,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayOutputStream;
@@ -72,7 +70,6 @@ import java.util.Set;
  * nested render_graph→fullscreen_graph references) travel as {@code file(assets/...)} strings and
  * are covered by mark's generic pattern.
  */
-@OnlyIn(Dist.CLIENT)
 public final class FXPackExporter {
 
     /** The namespace packed library files are exported under. */
@@ -83,18 +80,18 @@ public final class FXPackExporter {
             """;
 
     /** Export outcome for the summary log. */
-    public record Result(ResourceLocation fxId, int fileCount, List<String> warnings) {
+    public record Result(Identifier fxId, int fileCount, List<String> warnings) {
     }
 
     private final HolderLookup.Provider provider;
     /** Collected pack files (insertion-ordered for deterministic zips). */
-    private final Map<ResourceLocation, byte[]> files = new LinkedHashMap<>();
+    private final Map<Identifier, byte[]> files = new LinkedHashMap<>();
     private final List<String> warnings = new ArrayList<>();
     /** Memoized library embeds by kind+original path (also the cycle guard). */
     private final Map<String, String> packedLibraryPaths = new HashMap<>();
     private final Set<String> packingInProgress = new HashSet<>();
     /** Asset locations already handled (packed or deliberately skipped). */
-    private final Set<ResourceLocation> handledAssets = new HashSet<>();
+    private final Set<Identifier> handledAssets = new HashSet<>();
 
     private FXPackExporter(HolderLookup.Provider provider) {
         this.provider = provider;
@@ -111,7 +108,7 @@ public final class FXPackExporter {
         exporter.walk(root);
         root.putInt("version", FXProject.VERSION);
 
-        var fxId = ResourceLocation.fromNamespaceAndPath(sanitize(namespace), sanitize(fxName));
+        var fxId = Identifier.fromNamespaceAndPath(sanitize(namespace), sanitize(fxName));
         var fxBytes = new ByteArrayOutputStream();
         NbtIo.writeCompressed(root, fxBytes);
 
@@ -146,7 +143,7 @@ public final class FXPackExporter {
     private static String sanitize(String name) {
         var sanitized = name.toLowerCase().replaceAll("[^a-z0-9/._-]", "_");
         // a name with no usable characters (e.g. a file literally called ".fxpack") must not
-        // produce an empty namespace/path — ResourceLocation would reject it and abort the export
+        // produce an empty namespace/path — Identifier would reject it and abort the export
         return sanitized.isBlank() ? "fx" : sanitized;
     }
 
@@ -154,9 +151,9 @@ public final class FXPackExporter {
 
     private void walk(CompoundTag tag) {
         // typed wrapper handlers first (they may rewrite path strings inside "data")
-        if (tag.contains("type", Tag.TAG_STRING) && tag.contains("data", Tag.TAG_COMPOUND)) {
-            var data = tag.getCompound("data");
-            switch (tag.getString("type")) {
+        if (tag.getString("type").isPresent() && tag.getCompound("data").isPresent()) {
+            var data = tag.getCompoundOrEmpty("data");
+            switch (tag.getStringOr("type", "")) {
                 case "ui_resource_material" -> rewritePathField(data, "resourcePath",
                         MaterialResource.INSTANCE.getResourceInstance());
                 case "shader_graph" -> rewritePathField(data, "graphPath",
@@ -164,32 +161,32 @@ public final class FXPackExporter {
                 case "resource_mesh" -> rewritePathField(data, "resourcePath",
                         MeshResource.INSTANCE.getResourceInstance());
                 case "custom_shader" -> {
-                    if (data.contains("shaderLocation", Tag.TAG_STRING)) {
-                        packCoreShader(ResourceLocation.tryParse(data.getString("shaderLocation")));
+                    if (data.getString("shaderLocation").isPresent()) {
+                        packCoreShader(Identifier.tryParse(data.getStringOr("shaderLocation", "")));
                     }
                 }
                 case "json_model" -> warnings.add("json model '%s' cannot be packed (baked models need to ship as assets)"
-                        .formatted(data.getString("modelLocation")));
+                        .formatted(data.getStringOr("modelLocation", "")));
                 default -> { }
             }
         }
         // graph-internal external subgraph references
-        if (tag.contains("externalPathString", Tag.TAG_STRING)) {
+        if (tag.getString("externalPathString").isPresent()) {
             rewriteSubgraphRef(tag);
         }
         // post-process clips: {effect: "type(path)", weight: {...}} (PostProcessTrack clip extras)
-        if (tag.contains("effect", Tag.TAG_STRING) && tag.contains("weight", Tag.TAG_COMPOUND)) {
+        if (tag.getString("effect").isPresent() && tag.getCompound("weight").isPresent()) {
             rewriteEffectRef(tag);
         }
         // render-graph pass sources (PassSource.CODEC: type omitted for the GRAPH default)
-        if ("CUSTOM_SHADER".equals(tag.getString("type")) && tag.contains("shader", Tag.TAG_STRING)) {
-            packCoreShader(ResourceLocation.tryParse(tag.getString("shader")));
+        if ("CUSTOM_SHADER".equals(tag.getStringOr("type", "")) && tag.getString("shader").isPresent()) {
+            packCoreShader(Identifier.tryParse(tag.getStringOr("shader", "")));
         }
-        if (tag.contains("graph", Tag.TAG_STRING)) {
+        if (tag.getString("graph").isPresent()) {
             rewriteFullscreenGraphRef(tag);
         }
         // generic recursion + raw-asset string sweep
-        for (var key : tag.getAllKeys()) {
+        for (var key : tag.keySet()) {
             walkChild(tag.get(key));
         }
     }
@@ -198,7 +195,7 @@ public final class FXPackExporter {
         switch (child) {
             case CompoundTag compound -> walk(compound);
             case ListTag list -> list.forEach(this::walkChild);
-            case StringTag string -> sweepAssetString(string.getAsString());
+            case StringTag string -> sweepAssetString(string.asString().orElse(""));
             case null, default -> { }
         }
     }
@@ -206,7 +203,7 @@ public final class FXPackExporter {
     /** Any string that is a {@code .png}/{@code .obj} resource location gets packed under that location. */
     private void sweepAssetString(String value) {
         if (value.endsWith(".png") || value.endsWith(".obj")) {
-            var location = ResourceLocation.tryParse(value);
+            var location = Identifier.tryParse(value);
             if (location != null) {
                 packAsset(location);
             }
@@ -217,8 +214,8 @@ public final class FXPackExporter {
 
     /** Pack the library resource referenced by {@code data.fieldKey} and rewrite it to the packed path. */
     private <T> void rewritePathField(CompoundTag data, String fieldKey, ResourceInstance<T> instance) {
-        if (!data.contains(fieldKey, Tag.TAG_STRING)) return;
-        var path = IResourcePath.parse(data.getString(fieldKey));
+        if (!data.getString(fieldKey).isPresent()) return;
+        var path = IResourcePath.parse(data.getStringOr(fieldKey, ""));
         var rewritten = packLibraryResource(instance, path);
         if (rewritten != null) {
             data.putString(fieldKey, rewritten);
@@ -228,7 +225,7 @@ public final class FXPackExporter {
     /** A post-process clip's effect: a render-graph asset, or a bare fullscreen graph played
      *  through the single-pass adapter (mirror {@code PostEffectStack.resolveEffect}'s order). */
     private void rewriteEffectRef(CompoundTag clipTag) {
-        var path = IResourcePath.parse(clipTag.getString("effect"));
+        var path = IResourcePath.parse(clipTag.getStringOr("effect", ""));
         if (path == null || path instanceof BuiltinPath) return;
         String rewritten = null;
         var renderGraphs = com.lowdragmc.photon.gui.editor.resource.RenderGraphResource.INSTANCE.getResourceInstance();
@@ -252,7 +249,7 @@ public final class FXPackExporter {
     /** A pass node's fullscreen-graph source. Heuristic key ("graph" string) — only rewrites when
      *  the value actually resolves in the fullscreen library, so unrelated fields pass through. */
     private void rewriteFullscreenGraphRef(CompoundTag sourceTag) {
-        var path = IResourcePath.parse(sourceTag.getString("graph"));
+        var path = IResourcePath.parse(sourceTag.getStringOr("graph", ""));
         if (path == null || path instanceof BuiltinPath) return;
         var instance = com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource.INSTANCE
                 .getResourceInstance();
@@ -264,7 +261,7 @@ public final class FXPackExporter {
     }
 
     private void rewriteSubgraphRef(CompoundTag subgraphNode) {
-        var path = IResourcePath.parse(subgraphNode.getString("externalPathString"));
+        var path = IResourcePath.parse(subgraphNode.getStringOr("externalPathString", ""));
         if (path == null) return;
         // mirror ShaderGraphRuntime.RESOLVER: function-graph library first, then shader graphs
         var rewritten = packLibraryResource(PhotonShaderFunctionGraphResource.INSTANCE.getResourceInstance(), path);
@@ -317,7 +314,7 @@ public final class FXPackExporter {
             wrapper.put("data", payload);
             wrapper.putString("type", kind);
             var bytes = nbtBytes(wrapper);
-            var location = ResourceLocation.fromNamespaceAndPath(LIBRARY_NAMESPACE,
+            var location = Identifier.fromNamespaceAndPath(LIBRARY_NAMESPACE,
                     kind + "/" + Long.toHexString(FXPacks.fnv1a64(bytes)) + instance.resource.getFileExtension());
             files.put(location, bytes);
             // file(assets/photon_fx/...) round-trips into a location-carrying FilePath → resolved by
@@ -333,7 +330,7 @@ public final class FXPackExporter {
     // ---- raw assets --------------------------------------------------------------------------------
 
     /** Pack a texture/obj under its original location (mods and user packs override it naturally). */
-    private void packAsset(ResourceLocation location) {
+    private void packAsset(Identifier location) {
         if (!handledAssets.add(location)) return;
         var bytes = readPackableAsset(location);
         if (bytes != null) {
@@ -342,9 +339,9 @@ public final class FXPackExporter {
     }
 
     /** Pack a custom core shader: the json plus the vsh/fsh files it names, each under its location. */
-    private void packCoreShader(@Nullable ResourceLocation shaderId) {
+    private void packCoreShader(@Nullable Identifier shaderId) {
         if (shaderId == null) return;
-        var jsonLocation = ResourceLocation.fromNamespaceAndPath(shaderId.getNamespace(),
+        var jsonLocation = Identifier.fromNamespaceAndPath(shaderId.getNamespace(),
                 "shaders/core/" + shaderId.getPath() + ".json");
         if (!handledAssets.add(jsonLocation)) return;
         var jsonBytes = readPackableAsset(jsonLocation);
@@ -364,9 +361,9 @@ public final class FXPackExporter {
     /** Pack one program stage file when it is itself an author-local asset. */
     private void packProgramStage(com.google.gson.JsonObject json, String jsonKey, String extension) {
         if (!json.has(jsonKey)) return;
-        var programId = ResourceLocation.tryParse(json.get(jsonKey).getAsString());
+        var programId = Identifier.tryParse(json.get(jsonKey).getAsString());
         if (programId == null) return;
-        var fileLocation = ResourceLocation.fromNamespaceAndPath(programId.getNamespace(),
+        var fileLocation = Identifier.fromNamespaceAndPath(programId.getNamespace(),
                 "shaders/core/" + programId.getPath() + extension);
         if (!handledAssets.add(fileLocation)) return;
         var bytes = readPackableAsset(fileLocation);
@@ -380,7 +377,7 @@ public final class FXPackExporter {
      * vanilla or a mod jar → null (the recipient's game ships it); anything else (the ldlib2 editor
      * asset dir, resource packs, other fx packs) → bytes.
      */
-    private byte @Nullable [] readPackableAsset(ResourceLocation location) {
+    private byte @Nullable [] readPackableAsset(Identifier location) {
         var resource = Minecraft.getInstance().getResourceManager().getResource(location).orElse(null);
         if (resource == null) {
             warnings.add("referenced asset %s does not resolve — the export will look wrong wherever it's missing"

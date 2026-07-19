@@ -1,14 +1,11 @@
 package com.lowdragmc.photon.client.fx;
 
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * {@link ParticleTickHost} view of the vanilla {@code ParticleEngine} singleton. Fed by
  * {@code ParticleEngineMixin} (tick + setLevel) and Photon's clear command; consumed by
  * {@link FXRuntime#isValid()}.
  */
-@OnlyIn(Dist.CLIENT)
 public final class VanillaParticleHost implements ParticleTickHost {
     public static final VanillaParticleHost INSTANCE = new VanillaParticleHost();
 

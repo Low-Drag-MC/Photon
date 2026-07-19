@@ -3,14 +3,11 @@ package com.lowdragmc.photon.client.fx.timeline.property;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * Rotation-specific {@link AnimatedProperty}: carries the angular {@link InterpMode} (the one piece of
  * per-type state that used to live on the shared base class). Built by {@link RotationPropertyType}.
  */
-@OnlyIn(Dist.CLIENT)
 public class RotationAnimatedProperty extends AnimatedProperty {
     /** How angular channels interpolate between keyframes. */
     public enum InterpMode {

@@ -15,8 +15,6 @@ import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import org.joml.Vector3f;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.util.Mth;
 
 /**
@@ -24,7 +22,6 @@ import net.minecraft.util.Mth;
  * @date 2023/5/30
  * @implNote RotationBySpeedSetting
  */
-@OnlyIn(Dist.CLIENT)
 @Setter
 @Getter
 public class RotationBySpeedSetting extends ToggleGroup {

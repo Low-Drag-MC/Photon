@@ -5,8 +5,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -30,7 +28,6 @@ import java.util.function.Supplier;
  * Persisted manually (see {@link AdditionalGPUDataSetting#serializeAdditionalNBT}) through
  * {@link NumberFunction}'s CODEC wrapper, so the concrete function type round-trips.
  */
-@OnlyIn(Dist.CLIENT)
 public class CustomData {
 
     public enum Type { VECTOR, COLOR }
@@ -219,28 +216,28 @@ public class CustomData {
     public static CustomData fromNBT(CompoundTag tag) {
         Type type = Type.VECTOR;
         try {
-            type = Type.valueOf(tag.getString("type"));
+            type = Type.valueOf(tag.getStringOr("type", ""));
         } catch (IllegalArgumentException ignored) {
         }
-        int channelCount = Math.clamp(tag.getInt("channelCount"), 1, MAX_CHANNELS);
+        int channelCount = Math.clamp(tag.getIntOr("channelCount", 0), 1, MAX_CHANNELS);
         var channels = new ArrayList<NumberFunction>();
-        var list = tag.getList("channels", Tag.TAG_COMPOUND);
+        var list = tag.getListOrEmpty("channels");
         for (int i = 0; i < list.size(); i++) {
-            channels.add(NumberFunction.deserializeWrapper(list.getCompound(i)));
+            channels.add(NumberFunction.deserializeWrapper(list.getCompoundOrEmpty(i)));
         }
         if (channels.isEmpty()) {
             channels.add(type == Type.COLOR ? NumberFunction.color(-1) : NumberFunction.constant(0));
         }
         var names = new ArrayList<String>();
-        var nameList = tag.getList("names", Tag.TAG_STRING);
+        var nameList = tag.getListOrEmpty("names");
         for (int i = 0; i < nameList.size(); i++) {
-            names.add(nameList.getString(i));
+            names.add(nameList.getStringOr(i, ""));
         }
         var result = new CustomData(type, channelCount, channels, names);
         // absent tSource (legacy data) → SELF, matching the original per-particle sampling
         try {
             if (tag.contains("tSource")) {
-                result.tSource = TSource.valueOf(tag.getString("tSource"));
+                result.tSource = TSource.valueOf(tag.getStringOr("tSource", ""));
             }
         } catch (IllegalArgumentException ignored) {
         }

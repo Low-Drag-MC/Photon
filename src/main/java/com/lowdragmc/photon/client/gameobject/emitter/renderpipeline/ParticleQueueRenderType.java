@@ -1,39 +1,17 @@
 package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.ByteBufferBuilder;
-import com.mojang.blaze3d.vertex.Tesselator;
-import lombok.Getter;
-import net.minecraft.MethodsReturnNonnullByDefault;
-import net.minecraft.client.particle.ParticleRenderType;
-import net.minecraft.client.renderer.texture.TextureManager;
-import org.jetbrains.annotations.Nullable;
-
-import javax.annotation.ParametersAreNonnullByDefault;
 
 /**
- * @author KilaBash
- * @date 2023/6/11
- * @implNote ParticleQueueRenderType
+ * M0 stub (original in git history, 1.21 branch). In 1.21 this was a {@code ParticleRenderType}
+ * whose {@code begin()} returned the {@link RenderPassPipeline} to swap vanilla's particle buffer
+ * for Photon's pipeline. 26.1's {@code ParticleRenderType} is a plain {@code record(String name)}
+ * with no hooks.
+ * <p>
+ * TODO(M1): replaced by a registered Photon {@code ParticleGroup} (RegisterParticleGroupsEvent)
+ * whose extractRenderState feeds Photon's own render path. Until then FX objects use
+ * {@code ParticleRenderType.NO_RENDER} (tick-only, never rendered).
  */
-@MethodsReturnNonnullByDefault
-@ParametersAreNonnullByDefault
-public class ParticleQueueRenderType implements ParticleRenderType {
-
-    public static final ParticleQueueRenderType OPAQUE_QUEUE = new ParticleQueueRenderType(false);
-    public static final ParticleQueueRenderType TRANSLUCENT_QUEUE = new ParticleQueueRenderType(true);
-
-    public final RenderPassPipeline pipeline = new RenderPassPipeline(new ByteBufferBuilder(1536));
-
-    @Getter
-    public final boolean isTranslucent;
-
-    private ParticleQueueRenderType(boolean isTranslucent) {
-        this.isTranslucent = isTranslucent;
-    }
-
-    @Override
-    public @Nullable BufferBuilder begin(Tesselator tesselator, TextureManager textureManager) {
-        return pipeline;
+public final class ParticleQueueRenderType {
+    private ParticleQueueRenderType() {
     }
 }

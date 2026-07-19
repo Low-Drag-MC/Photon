@@ -1,14 +1,11 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.curve;
 
-import com.lowdragmc.lowdraglib2.client.shader.LDLibRenderTypes;
+import net.minecraft.client.renderer.RenderPipelines;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.TransformTexture;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import org.joml.Vector2f;
 
 import java.util.function.Function;
@@ -37,14 +34,10 @@ public class RandomCurveTexture extends TransformTexture {
         return this;
     }
 
-    @Override
-    @OnlyIn(Dist.CLIENT)
-    protected void drawInternal(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
+    // TODO(M4): register a GuiTextureRenderer so this draws through the 26.1 texture registry
+    protected void drawInternal(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
         // render area
-        var buffer = graphics.bufferSource().getBuffer(LDLibRenderTypes.guiOverlay());
-        RenderSystem.disableDepthTest();
-
-        var matrix = graphics.pose().last().pose();
+        // 26.1: the between-curves band as fillTriangle pairs (GUI render states, no immediate buffer)
         Function<Vector2f, Vector2f> getPointPosition = coord -> new Vector2f(x + width * coord.x, y + height * (1 - coord.y));
         if (width < 2) return;
         for (int i = 0; i < width; i++) {
@@ -56,15 +49,8 @@ public class RandomCurveTexture extends TransformTexture {
             var p2 = getPointPosition.apply(new Vector2f(x1, curves1.getCurveY(x1)));
             var p3 = getPointPosition.apply(new Vector2f(x0, curves1.getCurveY(x0)));
 
-            buffer.addVertex(matrix, p0.x, p0.y, 0.0f).setColor(ColorPattern.T_RED.color);
-            buffer.addVertex(matrix, p1.x, p1.y, 0.0f).setColor(ColorPattern.T_RED.color);
-            buffer.addVertex(matrix, p2.x, p2.y, 0.0f).setColor(ColorPattern.T_RED.color);
-            buffer.addVertex(matrix, p3.x, p3.y, 0.0f).setColor(ColorPattern.T_RED.color);
-
-            buffer.addVertex(matrix, p3.x, p3.y, 0.0f).setColor(ColorPattern.T_RED.color);
-            buffer.addVertex(matrix, p2.x, p2.y, 0.0f).setColor(ColorPattern.T_RED.color);
-            buffer.addVertex(matrix, p1.x, p1.y, 0.0f).setColor(ColorPattern.T_RED.color);
-            buffer.addVertex(matrix, p0.x, p0.y, 0.0f).setColor(ColorPattern.T_RED.color);
+            graphics.fillTriangle(RenderPipelines.GUI, p0, p1, p2, ColorPattern.T_RED.color);
+            graphics.fillTriangle(RenderPipelines.GUI, p2, p3, p0, ColorPattern.T_RED.color);
         }
 
         // render lines

@@ -4,8 +4,6 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +14,6 @@ import java.util.List;
  * fire (once, on live forward playback) when the master clock crosses their time. Signals carry a
  * {@code name + data (NBT)} and may repeat. The track has no clips.
  */
-@OnlyIn(Dist.CLIENT)
 public class SignalTrack extends Track {
     private final List<Signal> signals = new ArrayList<>();
 
@@ -68,7 +65,7 @@ public class SignalTrack extends Track {
     @Override
     protected void readExtra(CompoundTag tag, HolderLookup.Provider provider) {
         signals.clear();
-        for (var t : tag.getList("signals", Tag.TAG_COMPOUND)) {
+        for (var t : tag.getListOrEmpty("signals")) {
             if (t instanceof CompoundTag c) {
                 signals.add(Signal.readData(c));
             }

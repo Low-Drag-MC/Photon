@@ -5,8 +5,6 @@ import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
@@ -20,7 +18,6 @@ import java.util.Objects;
  * canonical {@code ResourceInstance.getResource} lookup each time keeps every user of a dragged /
  * dialog-picked mesh in sync with what the resource panel shows and edits.
  */
-@OnlyIn(Dist.CLIENT)
 @LDLRegisterClient(name = "resource_mesh", registry = "photon:model_source")
 public final class ResourceMeshSource implements IModelSource {
     @Persisted

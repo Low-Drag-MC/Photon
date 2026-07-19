@@ -1,8 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.forcefield;
 
 import net.minecraft.util.Mth;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector3f;
 import oshi.util.tuples.Pair;
 
@@ -12,7 +10,6 @@ import java.util.List;
 /**
  * Wireframe guide-line geometry (field-local space) for the force-field influence shapes.
  */
-@OnlyIn(Dist.CLIENT)
 public final class ForceFieldGizmos {
     private static final int SEGMENTS = 24;
 

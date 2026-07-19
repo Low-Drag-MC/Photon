@@ -5,8 +5,6 @@ import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
@@ -19,7 +17,6 @@ import java.util.function.Supplier;
  * {@link #requestStop() stopped} on clip exit/switch. When positional it follows a supplied world
  * position; otherwise it plays relative to the listener at full attenuation.
  */
-@OnlyIn(Dist.CLIENT)
 public class TimelineSoundInstance extends AbstractTickableSoundInstance {
     @Nullable
     private Supplier<Vector3f> positionSupplier;

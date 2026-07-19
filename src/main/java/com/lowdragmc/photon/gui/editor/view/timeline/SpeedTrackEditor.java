@@ -5,16 +5,14 @@ import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Horizontal;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.OreSprites;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
+import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
 import com.lowdragmc.photon.client.fx.timeline.SpeedTrack;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.mojang.blaze3d.systems.RenderSystem;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector2f;
 
 import javax.annotation.Nullable;
@@ -25,7 +23,6 @@ import java.util.ArrayList;
  * carries a single locked {@code speed} property (no add/remove), allows binding root (global slow-mo),
  * and has no record toggle. The curve drives the target's playback speed; see {@code SpeedTrack}.
  */
-@OnlyIn(Dist.CLIENT)
 public class SpeedTrackEditor extends AnimationTrackEditor {
 
     @Override
@@ -68,7 +65,7 @@ public class SpeedTrackEditor extends AnimationTrackEditor {
 
     /** Draw a preview of the speed curve (+ keyframe dots) in the lane row. */
     @Override
-    protected void drawLaneContent(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
+    protected void drawLaneContent(TimelineContext ctx, GUIContext graphics, AnimationTrack track, float x, float y, float width, float height) {
         if (!(track instanceof SpeedTrack speedTrack)) {
             super.drawLaneContent(ctx, graphics, track, x, y, width, height);
             return;
@@ -90,7 +87,7 @@ public class SpeedTrackEditor extends AnimationTrackEditor {
             points.add(new Vector2f(x + (t - scroll) * ctx.scale(), ny));
         }
         if (points.size() > 1) {
-            DrawerHelper.drawLines(graphics, points, ColorPattern.LIGHT_BLUE.color, ColorPattern.LIGHT_BLUE.color, 0.5f);
+            DrawerHelperClient.drawLines(graphics, points, ColorPattern.LIGHT_BLUE.color, ColorPattern.LIGHT_BLUE.color, 0.5f);
         }
         // keyframe dots
         for (int k = 0; k < property.keyCount(0); k++) {
@@ -98,7 +95,7 @@ public class SpeedTrackEditor extends AnimationTrackEditor {
             var dx = x + (float) ((key.x - ctx.scrollTicks()) * ctx.scale());
             if (dx < x || dx > x + width) continue;
             var ny = Mth.clamp(y + pad + inner * (1 - (key.y - min) / (max - min)), y, y + height);
-            DrawerHelper.drawSolidRect(graphics, dx - 1.5f, ny - 1.5f, 3, 3, ColorPattern.WHITE.color);
+            DrawerHelperClient.drawSolidRect(graphics, dx - 1.5f, ny - 1.5f, 3, 3, ColorPattern.WHITE.color);
         }
     }
 }

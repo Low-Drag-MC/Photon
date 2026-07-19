@@ -5,9 +5,6 @@ import com.lowdragmc.photon.client.gameobject.particle.BeamParticle;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.ShaderInstance;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector3f;
 
 import javax.annotation.Nonnull;
@@ -22,7 +19,6 @@ import java.util.Collection;
  * mirrored between {@link #renderBeam} and the BEAM_INSTANCE branch of photon:particle.glsl.
  * The raycast end resolution stays on the CPU in both paths.
  */
-@OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 public class BeamParticleRenderer {
 
@@ -69,7 +65,7 @@ public class BeamParticleRenderer {
     }
 
     private void renderBeam(@Nonnull VertexConsumer pBuffer, BeamParticle particle, @Nonnull Camera camera, float partialTicks) {
-        var cameraPos = camera.getPosition().toVector3f();
+        var cameraPos = camera.position().toVector3f();
         var frame = sampleBeam(particle, camera, partialTicks);
         var from = frame.from();
         var end = frame.end();
@@ -117,7 +113,7 @@ public class BeamParticleRenderer {
         var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(particles.size()) : null;
         var customBuffer = setting.hasCustomRecord() ? instanceBackend.beginCustomUpload(particles.size()) : null;
         var instanceCount = 0;
-        var cameraPos = camera.getPosition().toVector3f();
+        var cameraPos = camera.position().toVector3f();
         for (var p : particles) {
             if (!(p instanceof BeamParticle particle) || particle.getDelay() > 0) continue;
             instanceCount++;
@@ -156,9 +152,8 @@ public class BeamParticleRenderer {
         return instanceCount > 0;
     }
 
-    public void drawInstanced(ShaderInstance shader) {
-        instanceBackend.drawWithShader(shader);
-    }
+    // TODO(M2): drawInstanced — re-expressed as a RenderPass.drawIndexed(instanceCount) draw with
+    // the material pipeline when the instancing backend moves off raw GL.
 
     /**
      * Full GL teardown of the instanced resources. Call when the instance layout changes

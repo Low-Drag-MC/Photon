@@ -1,10 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.model;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -21,16 +19,15 @@ import java.util.function.Function;
  * {@link PhotonMesh}. Thread-safe: loads run per-key-atomic under {@code computeIfAbsent}
  * (the parallel particle sim and the render thread both call {@link #get}).
  */
-@OnlyIn(Dist.CLIENT)
 public final class PhotonMeshCache implements ResourceManagerReloadListener {
     public static final PhotonMeshCache INSTANCE = new PhotonMeshCache();
 
     /** JSON model geometry, keyed by the model id. */
-    public record JsonKey(ResourceLocation model) {
+    public record JsonKey(Identifier model) {
     }
 
     /** Runtime-parsed OBJ geometry; parser options are part of the key. */
-    public record ObjKey(ResourceLocation location, boolean flipV) {
+    public record ObjKey(Identifier location, boolean flipV) {
     }
 
     private record FileStamp(File file, long lastModified) {

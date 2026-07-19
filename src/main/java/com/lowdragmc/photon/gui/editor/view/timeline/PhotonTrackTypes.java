@@ -8,8 +8,6 @@ import com.lowdragmc.photon.client.fx.timeline.ControlTrack;
 import com.lowdragmc.photon.client.fx.timeline.SignalTrack;
 import com.lowdragmc.photon.client.fx.timeline.SpeedTrack;
 import com.lowdragmc.photon.client.fx.timeline.TrackGroup;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * The built-in {@link TrackType} singletons, registered into {@code photon:timeline_track} via their
@@ -17,7 +15,6 @@ import net.neoforged.api.distmarker.OnlyIn;
  * Each type bundles the {@link com.lowdragmc.photon.client.fx.timeline.Track} creator and its
  * {@link TrackEditor}. Add a new track type by registering another {@code TrackType} here (or in any mod).
  */
-@OnlyIn(Dist.CLIENT)
 public class PhotonTrackTypes {
 
     @LDLRegisterClient(name = "activator", registry = "photon:timeline_track")

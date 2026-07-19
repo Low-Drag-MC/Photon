@@ -1,10 +1,7 @@
 package com.lowdragmc.photon.client.shadergraph.runtime;
 
 import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
-import com.lowdragmc.kilagraph.rendertype.format.KGVertexFormat;
-import com.lowdragmc.kilagraph.rendertype.runtime.KGShaderResourceProvider;
 import com.lowdragmc.lowdraglib2.Platform;
-import com.lowdragmc.lowdraglib2.client.shader.LDShaderInstance;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.Graph;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphResource;
@@ -16,8 +13,6 @@ import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResourc
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
 import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
@@ -38,7 +33,6 @@ import java.util.Set;
  * recompile whose {@code contentHash} is unchanged still refreshes baked defaults (materials re-bake their
  * value stores off the new entry). Render thread only.</p>
  */
-@OnlyIn(Dist.CLIENT)
 public final class ShaderGraphRuntime {
 
     private static final Map<IResourcePath, Entry> CACHE = new HashMap<>();
@@ -57,9 +51,6 @@ public final class ShaderGraphRuntime {
         private final CompiledShaderGraph compiled;
         @Getter
         private final String errorMessage;
-        private final Map<String, LDShaderInstance> variants = new HashMap<>();
-        /** Defines whose GL build failed — remembered so a broken graph doesn't retry every frame. */
-        private final Set<String> failedVariants = new HashSet<>();
         /** {@code PhotonGpuChannels} bits of the additional-data channels the graph reads. */
         @Getter
         private final long usedChannelMask;
@@ -87,39 +78,12 @@ public final class ShaderGraphRuntime {
             return compiled != null;
         }
 
-        /**
-         * Compiling with an EMPTY define set would cache the GL program stages under their PLAIN
-         * name in the vanilla {@code Program} cache. A later DEFINED variant of the same source
-         * would then silently REUSE that stage: {@code ShaderInstance.getOrCreate}'s defines-aware
-         * lookup (LDLib2's ShaderInstanceMixin) only early-returns on a defines-key hit and falls
-         * through to the vanilla plain-name lookup — so e.g. the PARTICLE_INSTANCE variant links
-         * the CPU-attribute-layout vertex stage and renders nothing (until a reload rebuilds the
-         * variants in a luckier order). Always compile under a defines-qualified cache key —
-         * {@code LDShaderHolder} does the same via its per-holder uid define.
-         */
-        private static final String BASE_VARIANT_DEFINE = "PHOTON_VARIANT_BASE";
-
-        /** The shader for one define permutation ({@code ""} = the plain BLOCK-attribute variant), built
-         *  lazily on the render thread. Null when the graph or the GL build failed. */
-        @Nullable
-        public LDShaderInstance variant(String define) {
-            if (compiled == null || failedVariants.contains(define)) return null;
-            var existing = variants.get(define);
-            if (existing != null) return existing;
-            var format = KGVertexFormat.of(compiled.settings().vertexFormatElements());
-            var created = KGShaderResourceProvider.createShaderInstance(compiled, format,
-                    define.isEmpty() ? Set.of(BASE_VARIANT_DEFINE) : Set.of(define));
-            if (created == null) {
-                failedVariants.add(define);
-                return null;
-            }
-            variants.put(define, created);
-            return created;
-        }
+        // TODO(M2): variant(define) — the lazily-built #define GL variants (was LDShaderInstance via
+        // KGShaderResourceProvider) become RenderPipeline variants built through KilaGraph 26.1's
+        // DynamicShaderSourceRegistry + RenderTypeFactory (withShaderDefine).
 
         private void close() {
-            variants.values().forEach(LDShaderInstance::close);
-            variants.clear();
+            // nothing GL-side to free until the M2 pipeline variants exist
         }
     }
 
@@ -178,7 +142,7 @@ public final class ShaderGraphRuntime {
             if (fnTag != null) {
                 var fn = PhotonShaderFunctionGraphResource.INSTANCE.createGraph();
                 fn.graphModel.setReferenceResolver(this);
-                fn.graphModel.deserializeNBT(Platform.getFrozenRegistry(), fnTag);
+                com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(fnTag, fn.graphModel, Platform.getFrozenRegistry());
                 fn.graphModel.setReferenceResolver(this);
                 return fn;
             }

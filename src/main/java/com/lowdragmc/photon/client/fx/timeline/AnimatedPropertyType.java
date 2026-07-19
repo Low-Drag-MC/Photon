@@ -144,12 +144,12 @@ public interface AnimatedPropertyType {
 
     /** Deserialize a property of this type (counterpart of {@link #serialize}). */
     default AnimatedProperty deserialize(HolderLookup.Provider provider, CompoundTag tag) {
-        var base = AnimatedProperty.readFloatsFromTag(tag.getList("base", Tag.TAG_FLOAT));
+        var base = AnimatedProperty.readFloatsFromTag(tag.getListOrEmpty("base"));
         var channels = AnimatedProperty.readChannels(provider, tag, channelCount());
         // tolerate a base shorter/longer than the current channel count (type changed)
         var fixedBase = new float[channelCount()];
         System.arraycopy(base, 0, fixedBase, 0, Math.min(base.length, fixedBase.length));
-        var property = new AnimatedProperty(this, fixedBase, channels, tag.getFloat("rangeMin"), tag.getFloat("rangeMax"));
+        var property = new AnimatedProperty(this, fixedBase, channels, tag.getFloatOr("rangeMin", 0.0F), tag.getFloatOr("rangeMax", 0.0F));
         AnimatedProperty.readExprClips(tag, property);
         return property;
     }

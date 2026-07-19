@@ -27,7 +27,6 @@ import com.lowdragmc.photon.client.gameobject.particle.renderer.AraTrailParticle
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -196,109 +195,9 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
     }
 
     private class RenderPass extends PhotonFXRenderPass {
-        private final InstancedRendererSetting.Runtime renderRuntime;
-        // stateful (mesh scratch buffers) -> per-config instance; NOT part of equals/hashCode
-        private final AraTrailParticleRenderer trailRenderer;
-
+        // TODO(M1/M2): 1.21 body = CPU renderQueue + GPU-instanced draw with materials (pre/post,
+        // begin/end, instancing backend). Rebuilt as Photon render-state batches per the plan.
         public RenderPass(InstancedRendererSetting.Runtime renderRuntime) {
-            super(renderRuntime, VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.BLOCK);
-            this.renderRuntime = renderRuntime;
-            this.trailRenderer = new AraTrailParticleRenderer(AraTrailConfig.this);
-        }
-
-        @Override
-        public void clearInstance() {
-            trailRenderer.dispose();
-        }
-
-        @Override
-        protected void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
-            trailRenderer.renderQueue(buffer, particles, camera, partialTicks);
-        }
-
-        @Override
-        protected boolean useInstancing() {
-            // high-quality corners emit a data-dependent fan topology (flat mode only) -> CPU path
-            return renderRuntime.isUseGPUInstance()
-                    && (section.isEnable() || !(highQualityCorners && alignment != TrailAlignment.Local));
-        }
-
-        @Override
-        protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
-            // auto-enable whatever channels the shadergraph materials read; rebuild the layout /
-            // baked geometry (mode, section polygon, tube uvWidthFactor) on change
-            additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));
-            if (additionalGPUDataSetting.attribRelayoutNeeded() || trailRenderer.geometryStale()) {
-                clearInstance();
-            }
-
-            var drew = false;
-            // upload to vbo + point texture
-            if (trailRenderer.uploadInstances(particles, camera, partialTicks)) {
-                var context = section.isEnable() ? MaterialContext.ARA_TRAIL_TUBE_INSTANCE
-                        : MaterialContext.ARA_TRAIL_INSTANCE;
-                for (MaterialSetting materialSetting : materials) {
-                    materialSetting.pre();
-                    renderInstanceWithMaterial(materialSetting.getMaterial(), context);
-                    materialSetting.post();
-                }
-                drew = true;
-            }
-
-            // invalidate cache
-            glBindVertexArray(0);
-            BufferUploader.invalidate();
-            return drew;
-        }
-
-        private void renderInstanceWithMaterial(IMaterial material, MaterialContext context) {
-            var shader = material.begin(context);
-            RenderSystem.setShader(() -> shader);
-            trailRenderer.drawInstanced(shader);
-            material.end(context);
-        }
-
-        private AraTrailConfig owner() {
-            return AraTrailConfig.this;
-        }
-
-        /**
-         * The instanced base mesh bakes the section geometry (flat/tube, polygon, uvWidthFactor)
-         * per pass — configs that differ in it must NOT batch, or the pass owner's mesh would be
-         * applied to every batched trail. Mirrors how the tile pass keys on renderMode/model.
-         */
-        @Override
-        public boolean equals(@Nonnull Object o) {
-            if (!(o instanceof RenderPass other) || !super.equals(o)) return false;
-            var theirs = other.owner();
-            if (section.isEnable() != theirs.section.isEnable()) return false;
-            if (!section.isEnable()) return true;
-            if (uvWidthFactor != theirs.uvWidthFactor) return false;
-            var mine = section.vertices;
-            var others = theirs.section.vertices;
-            if (mine.size() != others.size()) return false;
-            for (int i = 0; i < mine.size(); i++) {
-                if (!mine.get(i).equals(others.get(i))) return false;
-            }
-            return true;
-        }
-
-        /**
-         * Must discriminate whatever {@link #equals} discriminates: the pipeline's pass comparator
-         * tie-breaks unequal passes by hashCode, and equal hashes would merge them in the TreeMap.
-         */
-        @Override
-        public int hashCode() {
-            int hash = super.hashCode();
-            hash = hash * 31 + Boolean.hashCode(section.isEnable());
-            if (section.isEnable()) {
-                hash = hash * 31 + Float.hashCode(uvWidthFactor);
-                for (var vertex : section.vertices) {
-                    hash = hash * 31 + Float.hashCode(vertex.x);
-                    hash = hash * 31 + Float.hashCode(vertex.y);
-                }
-            }
-            return hash;
         }
     }
 

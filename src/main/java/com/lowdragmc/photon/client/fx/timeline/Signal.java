@@ -1,15 +1,12 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
 import net.minecraft.nbt.CompoundTag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * A single point-event on a {@link SignalTrack}: a {@code name} + arbitrary {@code data} fired when the
  * master clock reaches {@link #time}. Multiple signals may share a name. The owning track's display name
  * is the "channel"; see {@link TimelinePlayer} for dispatch and {@link PhotonSignals} for listeners.
  */
-@OnlyIn(Dist.CLIENT)
 public class Signal {
     private double time;
     private String name = "signal";
@@ -64,8 +61,8 @@ public class Signal {
     }
 
     public static Signal readData(CompoundTag tag) {
-        var signal = new Signal(tag.getDouble("time"), tag.getString("name"));
-        signal.data(tag.getCompound("data").copy());
+        var signal = new Signal(tag.getDoubleOr("time", 0.0D), tag.getStringOr("name", ""));
+        signal.data(tag.getCompoundOrEmpty("data").copy());
         return signal;
     }
 }

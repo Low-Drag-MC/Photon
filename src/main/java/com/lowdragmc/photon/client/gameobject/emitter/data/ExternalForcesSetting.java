@@ -22,8 +22,6 @@ import lombok.Setter;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
@@ -37,7 +35,6 @@ import java.util.function.Supplier;
  * {@link ForceFieldObject}s in the same FX scene affect this emitter's particles, scaled by a
  * multiplier curve, optionally restricted to an explicit list of fields.
  */
-@OnlyIn(Dist.CLIENT)
 @Setter
 @Getter
 public class ExternalForcesSetting extends ToggleGroup {
@@ -147,7 +144,7 @@ public class ExternalForcesSetting extends ToggleGroup {
     private List<TransformRef> refsDeserialize(ListTag tag) {
         var refs = new ArrayList<TransformRef>();
         for (Tag element : tag) {
-            var value = element.getAsString();
+            var value = element.asString().orElse("");
             if (value.isEmpty()) {
                 refs.add(new TransformRef());
             } else {

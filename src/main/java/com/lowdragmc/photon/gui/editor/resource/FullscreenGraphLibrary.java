@@ -10,8 +10,6 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.IGraphReferenceResolver;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.SubgraphRegistry;
 import com.lowdragmc.photon.Photon;
 import net.minecraft.nbt.CompoundTag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -21,7 +19,6 @@ import org.jetbrains.annotations.Nullable;
  * owns the path (builtins are read-only) and broadcast via {@link SubgraphRegistry} so every open
  * editor refreshes.
  */
-@OnlyIn(Dist.CLIENT)
 public final class FullscreenGraphLibrary {
 
     private FullscreenGraphLibrary() {}
@@ -91,7 +88,7 @@ public final class FullscreenGraphLibrary {
             if (fnTag != null) {
                 var fn = PhotonShaderFunctionGraphResource.INSTANCE.createGraph();
                 fn.graphModel.setReferenceResolver(this);
-                fn.graphModel.deserializeNBT(Platform.getFrozenRegistry(), fnTag);
+                com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(fnTag, fn.graphModel, Platform.getFrozenRegistry());
                 fn.graphModel.setReferenceResolver(this);
                 return fn;
             }

@@ -18,12 +18,10 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.commands.arguments.IdentifierArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
+import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -31,7 +29,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 public class RemoveBlockEffectCommand implements CustomPacketPayload {
-    public static final ResourceLocation ID = Photon.id("remove_block_effect_command");
+    public static final Identifier ID = Photon.id("remove_block_effect_command");
     public static final Type<RemoveBlockEffectCommand> TYPE = new Type<>(ID);
     public static final StreamCodec<RegistryFriendlyByteBuf, RemoveBlockEffectCommand> CODEC = StreamCodec.ofMember(RemoveBlockEffectCommand::encode, RemoveBlockEffectCommand::decodePacket);
 
@@ -40,7 +38,7 @@ public class RemoveBlockEffectCommand implements CustomPacketPayload {
     protected boolean force;
     @Nullable
     @Setter
-    protected ResourceLocation location;
+    protected Identifier location;
 
     @Override
     @Nonnull
@@ -54,7 +52,7 @@ public class RemoveBlockEffectCommand implements CustomPacketPayload {
                         .executes(c -> execute(c, false, false))
                         .then(Commands.argument("force", BoolArgumentType.bool())
                                 .executes(c -> execute(c, true, false))
-                                .then(Commands.argument("location", ResourceLocationArgument.id())
+                                .then(Commands.argument("location", IdentifierArgument.id())
                                         .executes(c -> execute(c, true, true)))));
     }
 
@@ -65,9 +63,9 @@ public class RemoveBlockEffectCommand implements CustomPacketPayload {
             command.setForce(BoolArgumentType.getBool(context, "force"));
         }
         if (location) {
-            command.setLocation(ResourceLocationArgument.getId(context, "location"));
+            command.setLocation(IdentifierArgument.getId(context, "location"));
         }
-        PacketDistributor.sendToPlayersTrackingChunk(context.getSource().getLevel(), new ChunkPos(command.pos), command);
+        PacketDistributor.sendToPlayersTrackingChunk(context.getSource().getLevel(), ChunkPos.containing(command.pos), command);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -76,7 +74,7 @@ public class RemoveBlockEffectCommand implements CustomPacketPayload {
         buf.writeBoolean(force);
         buf.writeBoolean(location != null);
         if (location != null) {
-            buf.writeResourceLocation(location);
+            buf.writeIdentifier(location);
         }
     }
 
@@ -84,7 +82,7 @@ public class RemoveBlockEffectCommand implements CustomPacketPayload {
         pos = buf.readBlockPos();
         force = buf.readBoolean();
         if (buf.readBoolean()) {
-            location = buf.readResourceLocation();
+            location = buf.readIdentifier();
         }
     }
 
@@ -100,7 +98,6 @@ public class RemoveBlockEffectCommand implements CustomPacketPayload {
         }
     }
 
-    @OnlyIn(Dist.CLIENT)
     private static class Client {
         public static void execute(RemoveBlockEffectCommand packet, IPayloadContext context) {
             var effects = BlockEffectExecutor.CACHE.get(packet.pos);

@@ -12,13 +12,10 @@ import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import net.minecraft.network.chat.Component;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import java.util.List;
 
 /** Editor for {@code control} tracks: a name header + per-clip object-bound clips with seeds. */
-@OnlyIn(Dist.CLIENT)
 public class ControlTrackEditor extends ClipTrackEditor {
 
     public static class ControlTrackUIState extends ClipTrackUIState {

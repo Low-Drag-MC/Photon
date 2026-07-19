@@ -1,14 +1,12 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * A {@link Clip} on an {@link AudioTrack}: plays a registered {@code SoundEvent} for the clip's span.
- * The sound is stored by its {@link ResourceLocation} (registry id) so it serializes cleanly, plus
+ * The sound is stored by its {@link Identifier} (registry id) so it serializes cleanly, plus
  * volume / pitch / category / attenuation. It is intentionally a client-side subclass (unlike the
  * {@code net.minecraft}-free base {@link Clip}) so it can reference the sound registry types directly.
  * <p>
@@ -16,13 +14,12 @@ import net.neoforged.api.distmarker.OnlyIn;
  * shorter than the sound cuts it early, a longer one loops into the next round). {@link #duration()}
  * is a purely visual hint (ticks per loop) used to draw the repeat sub-divisions inside the clip.
  */
-@OnlyIn(Dist.CLIENT)
 public class AudioClip extends Clip {
     /** Default sound of a freshly created clip (a short, always-present vanilla sound). */
-    public static final ResourceLocation DEFAULT_SOUND = SoundEvents.UI_BUTTON_CLICK.value().getLocation();
+    public static final Identifier DEFAULT_SOUND = SoundEvents.UI_BUTTON_CLICK.value().location();
 
     /** The SoundEvent registry id to play; never null (defaults to {@link #DEFAULT_SOUND}). */
-    private ResourceLocation sound = DEFAULT_SOUND;
+    private Identifier sound = DEFAULT_SOUND;
     private float volume = 1f;
     private float pitch = 1f;
     private SoundSource category = SoundSource.MASTER;
@@ -37,11 +34,11 @@ public class AudioClip extends Clip {
         super(start, duration, speed);
     }
 
-    public ResourceLocation sound() {
+    public Identifier sound() {
         return sound;
     }
 
-    public AudioClip sound(ResourceLocation sound) {
+    public AudioClip sound(Identifier sound) {
         this.sound = sound;
         return this;
     }

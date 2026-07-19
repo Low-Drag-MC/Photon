@@ -8,10 +8,10 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
+import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
 import dev.vfyjxf.taffy.style.TaffyPosition;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import net.minecraft.util.Mth;
 import org.joml.Vector2f;
 
@@ -59,7 +59,7 @@ public class TrailSection extends ToggleGroup {
         var container = new UIElement().layout(layout -> {
             layout.widthPercent(100);
             layout.heightPercent(100);
-        }).style(style -> style.backgroundTexture(this::drawCanvas));
+        }).style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) this::drawCanvas));
         AtomicReference<List<Vector2f>> verticesRef = new AtomicReference<>(new ArrayList<>(vertices));
         reloadCanvas(container, verticesRef.get());
         container.addEventListener(UIEvents.TICK, e -> {
@@ -72,7 +72,7 @@ public class TrailSection extends ToggleGroup {
         father.addConfigurator(new Configurator().addInlineChild(canvas));
     }
 
-    private void drawCanvas(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
+    private void drawCanvas(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
         if (vertices.size() < 2) return;
         var centerX = x + width / 2;
         var centerY = y + height / 2;
@@ -80,7 +80,7 @@ public class TrailSection extends ToggleGroup {
         for (Vector2f vertex : vertices) {
             points.add(new Vector2f(vertex.x * width / 4  + centerX, vertex.y * height / 4 + centerY));
         }
-        DrawerHelper.drawLines(graphics, points, -1, -1, 0.5f);
+        DrawerHelperClient.drawLines(graphics, points, -1, -1, 0.5f);
     }
 
     private void reloadCanvas(UIElement container, List<Vector2f> vertices) {

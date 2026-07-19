@@ -6,7 +6,6 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-import net.neoforged.neoforge.common.util.INBTSerializable;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -22,7 +21,7 @@ import java.util.List;
  * to an empty timeline.
  */
 @ParametersAreNonnullByDefault
-public class Timeline implements INBTSerializable<CompoundTag> {
+public class Timeline {
     private final List<Track> tracks = new ArrayList<>();
     /** Named bookmarks on the master clock: snapping aids + visual markers (see {@link Marker}). */
     private final List<Marker> markers = new ArrayList<>();
@@ -145,19 +144,18 @@ public class Timeline implements INBTSerializable<CompoundTag> {
     /** Deserialize one {@code {type, data}} entry, or null if the type is unknown (warns). */
     @Nullable
     public static Track readTrack(HolderLookup.Provider provider, CompoundTag entry) {
-        var type = entry.getString("type");
+        var type = entry.getStringOr("type", "");
         var trackType = PhotonRegistries.TIMELINE_TRACKS.get(type);
         if (trackType == null) {
             Photon.LOGGER.warn("Unknown timeline track type '{}' skipped while loading", type);
             return null;
         }
         var track = trackType.create();
-        track.readData(provider, entry.getCompound("data"));
+        track.readData(provider, entry.getCompoundOrEmpty("data"));
         return track;
     }
 
-    @Override
-    public CompoundTag serializeNBT(HolderLookup.Provider provider) {
+        public CompoundTag serializeNBT(HolderLookup.Provider provider) {
         var tag = new CompoundTag();
         var list = new ListTag();
         for (var track : tracks) {
@@ -175,10 +173,9 @@ public class Timeline implements INBTSerializable<CompoundTag> {
         return tag;
     }
 
-    @Override
-    public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
+        public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
         tracks.clear();
-        for (var element : tag.getList("tracks", Tag.TAG_COMPOUND)) {
+        for (var element : tag.getListOrEmpty("tracks")) {
             if (element instanceof CompoundTag entry) {
                 var track = readTrack(provider, entry);
                 if (track != null) {
@@ -188,9 +185,9 @@ public class Timeline implements INBTSerializable<CompoundTag> {
         }
         markers.clear();
         // absent "markers" key (legacy .fx) deserializes to an empty list — backward compatible
-        for (var element : tag.getList("markers", Tag.TAG_COMPOUND)) {
+        for (var element : tag.getListOrEmpty("markers")) {
             if (element instanceof CompoundTag m) {
-                markers.add(new Marker(m.getDouble("tick"), m.getString("name")));
+                markers.add(new Marker(m.getDoubleOr("tick", 0.0D), m.getStringOr("name", "")));
             }
         }
     }

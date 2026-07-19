@@ -8,9 +8,6 @@ import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.ShaderInstance;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -28,7 +25,6 @@ import java.util.Collection;
  * billboard/stretched/model orientation math, so they stay visually identical by construction.
  * The particle itself only holds data and simulation.
  */
-@OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 public class TileParticleRenderer {
     private final ParticleConfig config;
@@ -60,7 +56,7 @@ public class TileParticleRenderer {
     }
 
     private void renderParticle(@Nonnull VertexConsumer buffer, TileParticle particle, Camera camera, float partialTicks) {
-        var vec3 = camera.getPosition();
+        var vec3 = camera.position();
 
         var localPos = particle.getLocalPos(partialTicks).mulPosition(particle.getSpaceTransform());
         var x = (float) (localPos.x - vec3.x);
@@ -207,7 +203,7 @@ public class TileParticleRenderer {
         var customBuffer = setting.hasCustomRecord() ? instanceBackend.beginCustomUpload(particles.size()) : null;
 
         var instanceCount = 0;
-        var vec3 = camera.getPosition();
+        var vec3 = camera.position();
         for (var p : particles) {
             if (!(p instanceof TileParticle particle) || particle.getDelay() > 0) continue;
             instanceCount++;
@@ -289,9 +285,8 @@ public class TileParticleRenderer {
         return instanceCount > 0;
     }
 
-    public void drawInstanced(ShaderInstance shader) {
-        instanceBackend.drawWithShader(shader);
-    }
+    // TODO(M2): drawInstanced — re-expressed as a RenderPass.drawIndexed(instanceCount) draw with
+    // the material pipeline when the instancing backend moves off raw GL.
 
     /**
      * Full GL teardown of the instanced resources. Call when the render mode / model / instance

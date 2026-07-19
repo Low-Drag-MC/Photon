@@ -4,7 +4,7 @@ import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.client.PhotonClientProxy;
 import net.irisshaders.iris.api.v0.IrisApi;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -26,7 +26,7 @@ public class Photon {
 
     public Photon(IEventBus eventBus, ModContainer modContainer) {
         Photon.init();
-        if (FMLEnvironment.dist == Dist.CLIENT) {
+        if (FMLEnvironment.getDist() == Dist.CLIENT) {
             modContainer.registerConfig(ModConfig.Type.CLIENT, PhotonConfig.CONFIG_SPEC);
             modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
             new PhotonClientProxy(eventBus);
@@ -42,8 +42,8 @@ public class Photon {
         }
     }
 
-    public static ResourceLocation id(String path) {
-        return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);
+    public static Identifier id(String path) {
+        return Identifier.fromNamespaceAndPath(MOD_ID, path);
     }
 
     public static boolean isShaderModInstalled() {

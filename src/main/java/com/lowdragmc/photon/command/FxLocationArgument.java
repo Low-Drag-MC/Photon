@@ -6,8 +6,8 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.commands.SharedSuggestionProvider;
-import net.minecraft.commands.arguments.ResourceLocationArgument;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.commands.arguments.IdentifierArgument;
+import net.minecraft.resources.Identifier;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -16,13 +16,13 @@ import java.util.concurrent.CompletableFuture;
  * @date 2023/6/12
  * @implNote FxLocationArgument
  */
-public class FxLocationArgument extends ResourceLocationArgument {
+public class FxLocationArgument extends IdentifierArgument {
     @Override
     public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
         if (LDLib2.isClient()) {
             return SharedSuggestionProvider.suggestResource(
                     Minecraft.getInstance().getResourceManager().listResources("fx", arg -> arg.getPath().endsWith(".fx")).keySet()
-                            .stream().map(rl -> ResourceLocation.fromNamespaceAndPath(rl.getNamespace(), rl.getPath().substring(3, rl.getPath().length() - 3))),
+                            .stream().map(rl -> Identifier.fromNamespaceAndPath(rl.getNamespace(), rl.getPath().substring(3, rl.getPath().length() - 3))),
                     builder);
         }
         return super.listSuggestions(context, builder);

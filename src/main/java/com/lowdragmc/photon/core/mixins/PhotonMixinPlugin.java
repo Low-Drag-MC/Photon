@@ -21,9 +21,7 @@ public class PhotonMixinPlugin implements IMixinConfigPlugin, MixinPluginShared 
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if (mixinClassName.contains("com.lowdragmc.photon.core.mixins.iris")) {
-            return IS_IRIS_LOAD;
-        }
+        // Iris mixins were removed in the 26.1 migration; gating returns with the M5 iris work.
         return true;
     }
 

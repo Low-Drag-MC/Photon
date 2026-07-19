@@ -55,9 +55,9 @@ class ModelLocationToModelSourceFixTest {
     }
 
     private static CompoundTag configOf(CompoundTag fixedProject) {
-        return fixedProject.getCompound("fx").getCompound("fxData")
-                .getList("fxObjects", CompoundTag.TAG_COMPOUND).getCompound(0)
-                .getCompound("data").getCompound("config");
+        return fixedProject.getCompoundOrEmpty("fx").getCompoundOrEmpty("fxData")
+                .getListOrEmpty("fxObjects").getCompoundOrEmpty(0)
+                .getCompoundOrEmpty("data").getCompoundOrEmpty("config");
     }
 
     private static CompoundTag meshShapeConfig(String location) {
@@ -88,30 +88,30 @@ class ModelLocationToModelSourceFixTest {
     }
 
     private static void assertJsonSourceWrapper(CompoundTag wrapper, String expectedLocation) {
-        assertEquals("json_model", wrapper.getString("type"));
-        assertEquals(expectedLocation, wrapper.getCompound("data").getString("modelLocation"));
+        assertEquals("json_model", wrapper.getStringOr("type", ""));
+        assertEquals(expectedLocation, wrapper.getCompoundOrEmpty("data").getStringOr("modelLocation", ""));
     }
 
     @Test
     void wrapsMeshShapeModelLocation() {
         var fixed = apply(project(meshShapeConfig("minecraft:block/stone")));
-        var meshData = configOf(fixed).getCompound("shape").getCompound("shape")
-                .getCompound("data").getCompound("meshData");
+        var meshData = configOf(fixed).getCompoundOrEmpty("shape").getCompoundOrEmpty("shape")
+                .getCompoundOrEmpty("data").getCompoundOrEmpty("meshData");
         assertFalse(meshData.contains("modelLocation"), "legacy key must be removed");
-        assertJsonSourceWrapper(meshData.getCompound("source"), "minecraft:block/stone");
+        assertJsonSourceWrapper(meshData.getCompoundOrEmpty("source"), "minecraft:block/stone");
         // sibling fields of the shape data survive
-        assertEquals("Triangle", configOf(fixed).getCompound("shape").getCompound("shape")
-                .getCompound("data").getString("type"));
+        assertEquals("Triangle", configOf(fixed).getCompoundOrEmpty("shape").getCompoundOrEmpty("shape")
+                .getCompoundOrEmpty("data").getStringOr("type", ""));
     }
 
     @Test
     void wrapsRendererModelIntoMeshData() {
         var fixed = apply(project(modelRendererConfig("photon:block/character")));
-        var renderer = configOf(fixed).getCompound("renderer");
-        var model = renderer.getCompound("model");
+        var renderer = configOf(fixed).getCompoundOrEmpty("renderer");
+        var model = renderer.getCompoundOrEmpty("model");
         assertFalse(model.contains("modelLocation"), "legacy key must be replaced");
-        assertJsonSourceWrapper(model.getCompound("source"), "photon:block/character");
-        assertEquals("Model", renderer.getString("renderMode"));
+        assertJsonSourceWrapper(model.getCompoundOrEmpty("source"), "photon:block/character");
+        assertEquals("Model", renderer.getStringOr("renderMode", ""));
     }
 
     @Test
@@ -121,8 +121,8 @@ class ModelLocationToModelSourceFixTest {
         trails.put("config", modelRendererConfig("photon:block/character"));
         config.put("trails", trails);
         var fixed = apply(project(config));
-        var trailRenderer = configOf(fixed).getCompound("trails").getCompound("config").getCompound("renderer");
-        assertJsonSourceWrapper(trailRenderer.getCompound("model").getCompound("source"), "photon:block/character");
+        var trailRenderer = configOf(fixed).getCompoundOrEmpty("trails").getCompoundOrEmpty("config").getCompoundOrEmpty("renderer");
+        assertJsonSourceWrapper(trailRenderer.getCompoundOrEmpty("model").getCompoundOrEmpty("source"), "photon:block/character");
     }
 
     @Test

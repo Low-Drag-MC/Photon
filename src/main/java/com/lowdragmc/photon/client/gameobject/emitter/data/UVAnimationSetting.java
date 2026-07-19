@@ -13,8 +13,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCu
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector2i;
 import org.joml.Vector4f;
 
@@ -23,7 +21,6 @@ import org.joml.Vector4f;
  * @date 2023/5/31
  * @implNote UVAnimation
  */
-@OnlyIn(Dist.CLIENT)
 public class UVAnimationSetting extends ToggleGroup {
     public enum Animation {
         WholeSheet,

@@ -3,22 +3,15 @@ package com.lowdragmc.photon.client;
 import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
-import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.PoseStack;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.ParticleRenderType;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.client.Camera;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
-import java.util.function.Predicate;
 
-@OnlyIn(Dist.CLIENT)
 public class PhotonParticleManager extends ParticleManager implements ParticleTickHost {
     public final SceneView sceneView;
     /** {@link ParticleTickHost} heartbeat. NOT {@link #time}: that is the timeline clock and resets
@@ -82,77 +75,11 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         return time + (isPlaying ? pPartialTicks : 0);
     }
 
-    @Override
-    public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks, Predicate<ParticleRenderType> renderTypeFilter) {
-        drawMode = sceneView.getDrawMode();
-        sceneBloomEnabled = sceneView.isBloomEnabled();
-        // route post-effect submission/consumption to the isolated editor-scene stack
-        com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.setEditorSceneRendering(true);
-        com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE
-                .setEffectsEnabled(sceneView.isEffectsEnabled());
-        if (sceneView.isMaskViewEnabled()) {
-            // top-bar debug toggle: show the CustomMask contents instead of the scene this frame
-            com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE.submit(
-                    com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider.TYPE.createFullPath("show_mask"),
-                    java.util.Map.of(), 1f);
-        }
-        RenderSystem.setShaderGameTime(getRealTime(), isPlaying ? pPartialTicks : 0);
-
-        var startTime = System.nanoTime();
-        GlStateManager._disableScissorTest();
-        super.render(pMatrixStack, pActiveRenderInfo, isPlaying ? pPartialTicks : 0, renderTypeFilter);
-        consumeEditorEffectsWithoutParticles(renderTypeFilter);
-        GlStateManager._enableScissorTest();
-        lastFrameTimes[frameIndex] = System.nanoTime() - startTime;
-        frameIndex = (frameIndex + 1) % lastFrameTimes.length;
-
-        // roll back to previous game time
-        if (Minecraft.getInstance().level != null) {
-            RenderSystem.setShaderGameTime(Minecraft.getInstance().level.getGameTime(), pPartialTicks);
-        }
-        drawMode = null;
-        sceneBloomEnabled = true;
-        com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.setEditorSceneRendering(false);
-    }
-
-    /**
-     * Editor-scene standalone fallback: when the scene has pending post effects but no Photon
-     * particle rendered this frame, the pipeline seam ({@code RenderPassPipeline.afterRendering})
-     * never ran — run the chain here over a copy of the main target so scene effects don't require
-     * particles on screen (mirrors {@code PhotonPostFX.onLevelStageAfterParticles} for the world,
-     * plus the sub-viewport scissor dance from {@code afterRendering}).
-     */
-    private void consumeEditorEffectsWithoutParticles(Predicate<ParticleRenderType> renderTypeFilter) {
-        // render() runs TWICE per scene frame (WorldSceneRenderer: opaque filter then translucent).
-        // Only the translucent (last) call may consume standalone — running on the first call
-        // preempted the pipeline: consumedFrame got marked with doBloom=false, so the real
-        // particle build passed through and silently dropped BLOOM and all effects.
-        if (!renderTypeFilter.test(ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT)) return;
-        var stack = com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE;
-        if (!stack.hasPending() || stack.isConsumedThisFrame()) return;
-        int viewportX = GlStateManager.Viewport.x();
-        int viewportY = GlStateManager.Viewport.y();
-        int viewportWidth = GlStateManager.Viewport.width();
-        int viewportHeight = GlStateManager.Viewport.height();
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
-        var chain = com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool
-                .acquire(mainTarget.width, mainTarget.height);
-        chain.copyColorFrom(mainTarget);
-        var output = stack.consumeAndExecute(chain, false, mainTarget.getDepthTextureId());
-        if (output != chain) {
-            // the scene lives in a sub-viewport — the write-back must not touch the UI around it
-            int[] scissorBox = new int[4];
-            org.lwjgl.opengl.GL11.glGetIntegerv(org.lwjgl.opengl.GL11.GL_SCISSOR_BOX, scissorBox);
-            RenderSystem.enableScissor(viewportX, viewportY, viewportWidth, viewportHeight);
-            com.lowdragmc.lowdraglib2.client.utils.ShaderUtils.fastBlit(output, mainTarget);
-            RenderSystem.disableScissor();
-            GlStateManager._scissorBox(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]);
-        }
-        com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool.release(chain);
-        // fastBlit/chain leave other framebuffers bound + bindWrite resets the viewport
-        mainTarget.bindWrite(true);
-        RenderSystem.viewport(viewportX, viewportY, viewportWidth, viewportHeight);
-    }
+    // TODO(M4): the 1.21 render() override (drawMode/bloom staging, editor-scene PostEffectStack
+    // routing, shader game-time swap, standalone effect consumption with the scissor dance) sat on
+    // the old immediate ParticleManager.render(PoseStack, Camera, ...) hook. The 26.1 LDLib2
+    // ParticleManager is extract/submit-based (render(SubmitNodeStorage, CameraRenderState, ...)),
+    // so the editor wiring returns with the M3 postfx executor + M4 editor milestone.
 
     @Override
     public void tick() {

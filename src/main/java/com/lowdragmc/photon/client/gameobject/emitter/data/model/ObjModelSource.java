@@ -13,9 +13,7 @@ import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.LoadingOverlay;
-import net.minecraft.resources.ResourceLocation;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
@@ -29,12 +27,11 @@ import java.util.Objects;
  * material system. Load failures are cached as an empty mesh (cleared by reload/invalidate) so a
  * missing file doesn't retry every frame.
  */
-@OnlyIn(Dist.CLIENT)
 @LDLRegisterClient(name = "obj_model", registry = "photon:model_source")
 public class ObjModelSource implements IModelSource {
     @Getter
     @Configurable(name = "ObjModelSource.modelLocation")
-    private ResourceLocation modelLocation = Photon.id("models/missing.obj");
+    private Identifier modelLocation = Photon.id("models/missing.obj");
     @Getter
     @Configurable(name = "ObjModelSource.flipV", tips = "photon.model_source.obj_model.flipV.tips")
     private boolean flipV = true;
@@ -42,12 +39,12 @@ public class ObjModelSource implements IModelSource {
     public ObjModelSource() {
     }
 
-    public ObjModelSource(ResourceLocation modelLocation) {
+    public ObjModelSource(Identifier modelLocation) {
         this.modelLocation = modelLocation;
     }
 
     @ConfigSetter(field = "modelLocation")
-    public void setModelLocation(ResourceLocation modelLocation) {
+    public void setModelLocation(Identifier modelLocation) {
         invalidate(); // drop the old key's entry before it changes
         this.modelLocation = modelLocation;
     }
@@ -103,11 +100,11 @@ public class ObjModelSource implements IModelSource {
     }
 
     /**
-     * Map a file under {@code .../assets/<namespace>/<path>} to a ResourceLocation keeping the
+     * Map a file under {@code .../assets/<namespace>/<path>} to a Identifier keeping the
      * extension, or null when the file is outside an assets tree.
      */
     @Nullable
-    public static ResourceLocation getAssetLocationFromFile(File file) {
+    public static Identifier getAssetLocationFromFile(File file) {
         String fullPath = file.getPath().replace('\\', '/');
         int assetsIndex = fullPath.indexOf("assets/");
         if (assetsIndex == -1) return null;
@@ -115,11 +112,10 @@ public class ObjModelSource implements IModelSource {
         int slashIndex = relativePath.indexOf('/');
         if (slashIndex == -1) return null;
         String location = relativePath.substring(0, slashIndex) + ":" + relativePath.substring(slashIndex + 1);
-        return LDLib2.isValidResourceLocation(location) ? ResourceLocation.parse(location) : null;
+        return LDLib2.isValidResourceLocation(location) ? Identifier.parse(location) : null;
     }
 
     @Override
-    @OnlyIn(Dist.CLIENT)
     public void buildConfigurator(ConfiguratorGroup father) {
         IModelSource.super.buildConfigurator(father);
         var buttonConfigurator = new Configurator();

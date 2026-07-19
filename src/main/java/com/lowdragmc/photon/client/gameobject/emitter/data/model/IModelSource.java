@@ -10,7 +10,7 @@ import com.mojang.serialization.MapCodec;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 import java.util.function.Supplier;
 
@@ -36,8 +36,8 @@ public interface IModelSource extends IConfigurable, IPersistedSerializable, ILD
         // legacy (pre-v5) renderer payload: a bare IModelRenderer compound {modelLocation: "..."}.
         // exported .fx files carry no version and bypass the project datafixer, so keep this inline.
         if (tag instanceof CompoundTag compound && !compound.contains("type")
-                && compound.contains("modelLocation", Tag.TAG_STRING)) {
-            return new JsonModelSource(ResourceLocation.parse(compound.getString("modelLocation")));
+                && compound.getString("modelLocation").isPresent()) {
+            return new JsonModelSource(Identifier.parse(compound.getStringOr("modelLocation", "")));
         }
         return CODEC.parse(NbtOps.INSTANCE, tag).result().orElseGet(JsonModelSource::new);
     }

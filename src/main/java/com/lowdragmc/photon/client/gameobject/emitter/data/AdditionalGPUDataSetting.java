@@ -25,8 +25,6 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -70,7 +68,6 @@ import static org.lwjgl.opengl.GL33.glVertexAttribDivisor;
  * accessor stays config-independent. The custom TBO is only uploaded when a shadergraph material on the
  * pass actually reads custom data ({@link #hasCustomRecord()}).
  */
-@OnlyIn(Dist.CLIENT)
 public abstract class AdditionalGPUDataSetting extends ToggleGroup {
 
     /** Max user custom-data streams per emitter — mirrored by {@code PHOTON_CUSTOM_TEXELS} in particle.glsl. */
@@ -378,9 +375,9 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
         if (!supportsCustomData() || !(tag instanceof CompoundTag compound)) return;
         var streams = customDataList();
         streams.clear();
-        var dataList = compound.getList("custom_data", Tag.TAG_COMPOUND);
+        var dataList = compound.getListOrEmpty("custom_data");
         for (int i = 0; i < dataList.size(); i++) {
-            streams.add(CustomData.fromNBT(dataList.getCompound(i)));
+            streams.add(CustomData.fromNBT(dataList.getCompoundOrEmpty(i)));
         }
     }
 

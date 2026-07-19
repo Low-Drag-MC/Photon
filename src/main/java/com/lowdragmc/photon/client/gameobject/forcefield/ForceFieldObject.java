@@ -16,15 +16,11 @@ import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
 
@@ -36,7 +32,6 @@ import java.util.List;
  * whose External Forces module is enabled. Supports a shaped influence volume with range falloff,
  * directional force, gravity toward a focus point, vortex rotation, and drag.
  */
-@OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 public class ForceFieldObject extends FXObject {
     public static final IGuiTexture ICON = Icons.icon(Photon.MOD_ID, "force_field");
@@ -244,28 +239,20 @@ public class ForceFieldObject extends FXObject {
         var rt = runtime();
         var endRange = rt.getEndRange();
         var startRange = Math.min(rt.getStartRange(), endRange);
-        drawRange(poseStack, ForceFieldGizmos.getGuideLines(config.getShape(), endRange), ColorPattern.YELLOW.color);
+        drawRange(bufferSource, poseStack, ForceFieldGizmos.getGuideLines(config.getShape(), endRange), ColorPattern.YELLOW.color);
         if (startRange > 0) {
-            drawRange(poseStack, ForceFieldGizmos.getGuideLines(config.getShape(), startRange), ColorPattern.GRAY.color);
+            drawRange(bufferSource, poseStack, ForceFieldGizmos.getGuideLines(config.getShape(), startRange), ColorPattern.GRAY.color);
         }
     }
 
-    private static void drawRange(PoseStack poseStack, List<oshi.util.tuples.Pair<Vector3f, Vector3f>> edges, int color) {
+    // 26.1: immediate Tesselator+BufferUploader draws are gone — route through the scene's
+    // buffer source with the vanilla lines render type (blend/depth/width owned by the pipeline).
+    private static void drawRange(MultiBufferSource bufferSource, PoseStack poseStack,
+                                  List<oshi.util.tuples.Pair<Vector3f, Vector3f>> edges, int color) {
         if (edges.isEmpty()) {
             return;
         }
-        RenderSystem.enableBlend();
-        RenderSystem.disableDepthTest();
-        RenderSystem.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        RenderSystem.disableCull();
-        RenderSystem.setShader(GameRenderer::getRendertypeLinesShader);
-        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
-        RenderSystem.lineWidth(5);
-
-        RenderBufferUtils.drawEdges(poseStack, buffer, edges, color);
-
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
-        RenderSystem.enableDepthTest();
-        RenderSystem.enableCull();
+        var buffer = bufferSource.getBuffer(net.minecraft.client.renderer.rendertype.RenderTypes.lines());
+        RenderBufferUtils.drawEdges(poseStack, buffer, edges, color, 5);
     }
 }

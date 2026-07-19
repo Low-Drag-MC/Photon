@@ -4,8 +4,6 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +14,6 @@ import java.util.List;
  * player flattens groups away ({@link Timeline#leafTracks(boolean)}) — a muted group's whole subtree is
  * ignored. Child (de)serialization reuses {@link Timeline#writeTrack}/{@link Timeline#readTrack}.
  */
-@OnlyIn(Dist.CLIENT)
 public class TrackGroup extends Track {
     private final List<Track> children = new ArrayList<>();
 
@@ -56,7 +53,7 @@ public class TrackGroup extends Track {
     @Override
     protected void readExtra(CompoundTag tag, HolderLookup.Provider provider) {
         children.clear();
-        for (var t : tag.getList("children", Tag.TAG_COMPOUND)) {
+        for (var t : tag.getListOrEmpty("children")) {
             if (t instanceof CompoundTag c) {
                 var child = Timeline.readTrack(provider, c);
                 if (child != null) {

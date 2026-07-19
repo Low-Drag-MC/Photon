@@ -183,14 +183,14 @@ public class AnimatedProperty {
         if (segments.isEmpty()) return 0;
         var first = segments.getFirst();
         var last = segments.getLast();
-        if (x <= first.p0.x) return first.p0.y;
-        if (x >= last.p1.x) return last.p1.y;
+        if (x <= first.p0.x()) return first.p0.y();
+        if (x >= last.p1.x()) return last.p1.y();
         for (var segment : segments) {
-            if (segment.p1.x > segment.p0.x && x >= segment.p0.x && x <= segment.p1.x) {
-                return segment.getPoint((x - segment.p0.x) / (segment.p1.x - segment.p0.x)).y;
+            if (segment.p1.x() > segment.p0.x() && x >= segment.p0.x() && x <= segment.p1.x()) {
+                return segment.getPoint((x - segment.p0.x()) / (segment.p1.x() - segment.p0.x())).y;
             }
         }
-        return last.p1.y;
+        return last.p1.y();
     }
 
     /** Sample all channels at {@code time} (ticks), via the property type (handles rotation modes). */
@@ -213,8 +213,8 @@ public class AnimatedProperty {
         var times = new TreeSet<Double>();
         for (int axis = 0; axis < channels.length; axis++) {
             for (var segment : channels[axis].getSegments()) {
-                times.add((double) segment.p0.x);
-                times.add((double) segment.p1.x);
+                times.add((double) segment.p0.x());
+                times.add((double) segment.p1.x());
             }
         }
         return new ArrayList<>(times);
@@ -231,10 +231,10 @@ public class AnimatedProperty {
     public void insertTime(double atTick, double delta) {
         for (var curve : channels) {
             for (var seg : curve.getSegments()) {
-                shiftPoint(seg.p0, atTick, delta);
-                shiftPoint(seg.c0, atTick, delta);
-                shiftPoint(seg.c1, atTick, delta);
-                shiftPoint(seg.p1, atTick, delta);
+                seg.p0 = shiftPoint(seg.p0, atTick, delta);
+                seg.c0 = shiftPoint(seg.c0, atTick, delta);
+                seg.c1 = shiftPoint(seg.c1, atTick, delta);
+                seg.p1 = shiftPoint(seg.p1, atTick, delta);
             }
         }
         for (var list : exprClips) {
@@ -242,8 +242,9 @@ public class AnimatedProperty {
         }
     }
 
-    private static void shiftPoint(Vector2f p, double atTick, double delta) {
-        if (p.x >= atTick) p.x += (float) delta;
+    // 26.1: curve points are read-only Vector2fc — shift by replacing the point instead of mutating
+    private static org.joml.Vector2fc shiftPoint(org.joml.Vector2fc p, double atTick, double delta) {
+        return p.x() >= atTick ? new Vector2f(p.x() + (float) delta, p.y()) : p;
     }
 
     /** Shift a sub-clip's start later by {@code delta} when it begins at or after {@code atTick}. */
@@ -298,31 +299,31 @@ public class AnimatedProperty {
         var result = new Vector2f(tick, value);
         if (isSingleKey(channels[axis])) {
             var s = segs.getFirst();
-            s.p0.set(result); s.c0.set(result); s.c1.set(result); s.p1.set(result);
+            s.p0 = new Vector2f(result); s.c0 = new Vector2f(result); s.c1 = new Vector2f(result); s.p1 = new Vector2f(result);
             return;
         }
         if (k < segs.size()) {
             var off = new Vector2f(result).sub(segs.get(k).p0);
-            segs.get(k).p0.set(result);
-            segs.get(k).c0.add(off);
+            segs.get(k).p0 = new Vector2f(result);
+            segs.get(k).c0 = new Vector2f(segs.get(k).c0).add(off);
         }
         if (k > 0) {
             var off = new Vector2f(result).sub(segs.get(k - 1).p1);
-            segs.get(k - 1).p1.set(result);
-            segs.get(k - 1).c1.add(off);
+            segs.get(k - 1).p1 = new Vector2f(result);
+            segs.get(k - 1).c1 = new Vector2f(segs.get(k - 1).c1).add(off);
         }
     }
 
     public void setInHandle(int axis, int k, float tick, float value) {
         if (k > 0 && !isSingleKey(channels[axis])) {
-            channels[axis].getSegments().get(k - 1).c1.set(tick, value);
+            channels[axis].getSegments().get(k - 1).c1 = new Vector2f(tick, value);
         }
     }
 
     public void setOutHandle(int axis, int k, float tick, float value) {
         var segs = channels[axis].getSegments();
         if (!isSingleKey(channels[axis]) && k < segs.size()) {
-            segs.get(k).c0.set(tick, value);
+            segs.get(k).c0 = new Vector2f(tick, value);
         }
     }
 
@@ -338,25 +339,25 @@ public class AnimatedProperty {
             segs.add(makeSegment(p, existing));
             return 0;
         }
-        if (tick <= segs.getFirst().p0.x) {
-            if (tick == segs.getFirst().p0.x) return -1;
+        if (tick <= segs.getFirst().p0.x()) {
+            if (tick == segs.getFirst().p0.x()) return -1;
             segs.addFirst(makeSegment(p, new Vector2f(segs.getFirst().p0)));
             return 0;
         }
-        if (tick >= segs.getLast().p1.x) {
-            if (tick == segs.getLast().p1.x) return -1;
+        if (tick >= segs.getLast().p1.x()) {
+            if (tick == segs.getLast().p1.x()) return -1;
             segs.add(makeSegment(new Vector2f(segs.getLast().p1), p));
             return segs.size();
         }
         for (int i = 0; i < segs.size(); i++) {
             var seg = segs.get(i);
-            if (tick > seg.p0.x && tick < seg.p1.x) {
+            if (tick > seg.p0.x() && tick < seg.p1.x()) {
                 var oldEnd = new Vector2f(seg.p1);
                 var oldC1 = new Vector2f(seg.c1);
-                seg.p1.set(p);
-                seg.c1.set(new Vector2f(seg.p0).lerp(p, 2 / 3f));
+                seg.p1 = new Vector2f(p);
+                seg.c1 = new Vector2f(new Vector2f(seg.p0).lerp(p, 2 / 3f));
                 var next = makeSegment(p, oldEnd);
-                next.c1.set(oldC1);
+                next.c1 = new Vector2f(oldC1);
                 segs.add(i + 1, next);
                 return i + 1;
             }
@@ -390,8 +391,8 @@ public class AnimatedProperty {
         if (k == 0) {
             segs.removeFirst();
         } else if (k < segs.size()) {
-            segs.get(k - 1).p1.set(segs.get(k).p1);
-            segs.get(k - 1).c1.set(segs.get(k).c0);
+            segs.get(k - 1).p1 = new Vector2f(segs.get(k).p1);
+            segs.get(k - 1).c1 = new Vector2f(segs.get(k).c0);
             segs.remove(k);
         } else {
             segs.removeLast();
@@ -482,7 +483,7 @@ public class AnimatedProperty {
      *  Returns {@code null} if the type is no longer registered. */
     @Nullable
     public static AnimatedProperty deserialize(HolderLookup.Provider provider, CompoundTag tag) {
-        var typeName = tag.getString("type");
+        var typeName = tag.getStringOr("type", "");
         var type = PhotonRegistries.ANIMATED_PROPERTIES.get(typeName);
         if (type == null) {
             Photon.LOGGER.warn("Unknown animated property type '{}' skipped while loading", typeName);
@@ -504,7 +505,7 @@ public class AnimatedProperty {
     public static float[] readFloatsFromTag(ListTag list) {
         var values = new float[list.size()];
         for (int i = 0; i < values.length; i++) {
-            values[i] = list.getFloat(i);
+            values[i] = list.getFloatOr(i, 0.0F);
         }
         return values;
     }
@@ -512,11 +513,11 @@ public class AnimatedProperty {
     /** Read {@code count} channels from the {@code "channels"} list of {@code tag}. */
     public static ECBCurves[] readChannels(HolderLookup.Provider provider, CompoundTag tag, int count) {
         var channels = new ECBCurves[count];
-        var chs = tag.getList("channels", Tag.TAG_LIST);
+        var chs = tag.getListOrEmpty("channels");
         for (int i = 0; i < count; i++) {
             channels[i] = new ECBCurves();
             if (i < chs.size()) {
-                channels[i].deserializeNBT(provider, chs.getList(i));
+                channels[i].deserializeNBT(provider, chs.getListOrEmpty(i));
             }
         }
         return channels;
@@ -545,24 +546,24 @@ public class AnimatedProperty {
      *  1) into one full-span clip starting at tick 0 — with clip-local {@code t} and start 0 this
      *  reproduces the old absolute-{@code t} behavior. */
     public static void readExprClips(CompoundTag tag, AnimatedProperty property) {
-        if (tag.contains("exprClips", Tag.TAG_LIST)) {
-            var channels = tag.getList("exprClips", Tag.TAG_LIST);
+        if (tag.getList("exprClips").isPresent()) {
+            var channels = tag.getListOrEmpty("exprClips");
             for (int axis = 0; axis < property.channelCount() && axis < channels.size(); axis++) {
-                var clips = channels.getList(axis);
+                var clips = channels.getListOrEmpty(axis);
                 for (int i = 0; i < clips.size(); i++) {
-                    var clipTag = clips.getCompound(i);
+                    var clipTag = clips.getCompoundOrEmpty(i);
                     property.addExprClip(axis, new ExprClip(
-                            clipTag.getDouble("start"), clipTag.getDouble("duration"), clipTag.getString("expr")));
+                            clipTag.getDoubleOr("start", 0.0D), clipTag.getDoubleOr("duration", 0.0D), clipTag.getStringOr("expr", "")));
                 }
             }
             return;
         }
         // legacy migration: EXPRESSION-mode channels become a single full-span clip
-        var modes = tag.getList("modes", Tag.TAG_INT);
-        var exprs = tag.getList("exprs", Tag.TAG_STRING);
+        var modes = tag.getListOrEmpty("modes");
+        var exprs = tag.getListOrEmpty("exprs");
         for (int axis = 0; axis < property.channelCount(); axis++) {
-            if (axis < modes.size() && modes.getInt(axis) == 1) {
-                var expr = axis < exprs.size() ? exprs.getString(axis) : "";
+            if (axis < modes.size() && modes.getIntOr(axis, 0) == 1) {
+                var expr = axis < exprs.size() ? exprs.getStringOr(axis, "") : "";
                 property.addExprClip(axis, new ExprClip(0, 1e9, expr));
             }
         }

@@ -2,11 +2,10 @@ package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.photon.client.fx.timeline.Timeline;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
-import net.minecraft.MethodsReturnNonnullByDefault;
+import com.mojang.logging.annotations.MethodsReturnNonnullByDefault;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.neoforged.neoforge.common.util.INBTSerializable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.ArrayList;
@@ -15,7 +14,7 @@ import java.util.stream.Collectors;
 
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
-public final class FXData implements INBTSerializable<CompoundTag> {
+public final class FXData {
     private final List<IFXObject> objects;
     private final Timeline timeline;
 
@@ -64,10 +63,9 @@ public final class FXData implements INBTSerializable<CompoundTag> {
         return tag;
     }
 
-    @Override
-    public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
+        public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
         objects.clear();
-        var list = tag.getList("fxObjects", ListTag.TAG_COMPOUND);
+        var list = tag.getListOrEmpty("fxObjects");
         for (var nbt : list) {
             if (nbt instanceof CompoundTag data) {
                 var fxObject = IFXObject.deserializeWrapper(data);
@@ -77,6 +75,6 @@ public final class FXData implements INBTSerializable<CompoundTag> {
             }
         }
         // tolerate a missing "timeline" tag: legacy FX deserialize to an empty timeline
-        timeline.deserializeNBT(provider, tag.getCompound("timeline"));
+        timeline.deserializeNBT(provider, tag.getCompoundOrEmpty("timeline"));
     }
 }

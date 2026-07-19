@@ -12,17 +12,11 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.PhotonRegistries;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import dev.vfyjxf.taffy.style.AlignItems;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.ShaderInstance;
-import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.nbt.CompoundTag;
 
 import javax.annotation.Nullable;
@@ -34,18 +28,11 @@ import java.util.function.Supplier;
  * @date 2023/5/29
  * @implNote Material
  */
-@OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRegisterClient<IMaterial, Supplier<IMaterial>> {
     // region builtin material
-    @LDLRegisterClient(name = "missing", registry = "photon:material", manual = true)
+    @LDLRegisterClient(name = "missing", registry = "photon:material")
     final class MissingMaterial implements IMaterial {
-        @Override
-        public ShaderInstance begin(MaterialContext context) {
-            RenderSystem.setShaderTexture(0, MissingTextureAtlasSprite.getTexture().getId());
-            return GameRenderer.getRendertypeSolidShader();
-        }
-
         @Override
         public IGuiTexture preview() {
             return IGuiTexture.MISSING_TEXTURE;
@@ -67,13 +54,11 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
         return CODEC.parse(NbtOps.INSTANCE, tag).result().orElse(MISSING);
     }
 
-    ShaderInstance begin(MaterialContext context);
+    // 26.1 note: the 1.21 render seam `ShaderInstance begin(MaterialContext)` / `end(MaterialContext)`
+    // is gone with ShaderInstance itself. TODO(M2): materials contribute a RenderPipeline (+ samplers
+    // and std140 uniforms) to the pipeline-variant cache instead of imperative begin/end.
 
     IGuiTexture preview();
-
-    default void end(MaterialContext context) {
-
-    }
 
     default IMaterial copy() {
         return CODEC.encodeStart(NbtOps.INSTANCE, this).result()

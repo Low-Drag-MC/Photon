@@ -7,8 +7,6 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool;
 import net.minecraft.client.Minecraft;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
@@ -20,7 +18,6 @@ import java.util.Map;
  *
  * <p>Also owns the frame boundary hook and the {@code /photonfx} debug loop.</p>
  */
-@OnlyIn(Dist.CLIENT)
 public final class PhotonPostFX {
 
     private record TestEffect(IResourcePath path, float weight) {}
@@ -91,24 +88,8 @@ public final class PhotonPostFX {
             // no effects ran yet this frame — the main target IS the clean scene
             com.lowdragmc.photon.client.postfx.runtime.PostFXPreview.captureIfRequested(previewTarget);
         }
-        if (!stack.hasPending() || stack.isConsumedThisFrame()) return;
-        // Iris keeps its own framebuffers; discovering the right one outside the particle draw is
-        // unverified there (plan risk R3) — opt-in via config under shader packs.
-        if (Photon.isUsingShaderPack()
-                && !com.lowdragmc.photon.PhotonConfig.INSTANCE.enableCustomEffectsWithIrisShader.get()) {
-            return;
-        }
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
-        var chain = PostFXTargetPool.acquire(mainTarget.width, mainTarget.height);
-        chain.copyColorFrom(mainTarget);
-        var output = stack.consumeAndExecute(chain, false, mainTarget.getDepthTextureId());
-        if (output != chain) {
-            ShaderUtils.fastBlit(output, mainTarget);
-        }
-        PostFXTargetPool.release(chain);
-        // copyColorFrom / the chain leave other framebuffers bound — everything after this stage
-        // (weather, first-person hand, HUD) must land in the main target again
-        mainTarget.bindWrite(true);
+        // TODO(M3): the standalone chain execution (pooled HDR copy of main → consumeAndExecute →
+        // fastBlit back) was cut with the 1.21 HDR pipeline; returns as a Photon frame pass.
     }
 
     /**
@@ -121,7 +102,7 @@ public final class PhotonPostFX {
         PostEffectStack.EDITOR_SCENE.onFrameEnd();
         PostFXTargetPool.endFrame();
         // mask textures are per-frame — a no-particle frame must not reuse last frame's mask
-        com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline.clearFrameMask();
+        com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline.markDrawTargetDirty(); // TODO(M3): was clearFrameMask() — per-frame mask drop returns with the mask pass
         if (testEffect != null) {
             PostEffectStack.GLOBAL.submit(testEffect.path(), Map.of(), testEffect.weight());
         }

@@ -1,17 +1,23 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.platform.DestFactor;
+import com.mojang.blaze3d.platform.SourceFactor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
-import static com.mojang.blaze3d.platform.GlStateManager.DestFactor;
-import static com.mojang.blaze3d.platform.GlStateManager.SourceFactor;
+import javax.annotation.Nullable;
 
-@OnlyIn(Dist.CLIENT)
+/**
+ * 26.1 note: blend state is no longer applied imperatively (RenderSystem.blendFuncSeparate is gone);
+ * it is a {@link BlendFunction} baked into a {@code RenderPipeline}. This class stays the serialized
+ * blend configuration; {@link #toBlendFunction()} feeds the M2 pipeline-variant cache.
+ * <p>
+ * TODO(M2): vanilla 26.1 has no blend-equation concept (our SUB/REVERSE_SUB/MIN/MAX modes) —
+ * needs a decision: NeoForge pipeline extension, custom pass state, or dropping those modes.
+ */
 @Getter @Setter
 @EqualsAndHashCode
 public class BlendMode {
@@ -62,22 +68,12 @@ public class BlendMode {
         this(true, srcColorFactor, dstColorFactor, srcAlphaFactor, dstAlphaFactor, blendFunc);
     }
 
-    public void apply() {
-        if (!this.enableBlend) {
-            RenderSystem.disableBlend();
-            return;
+    /** Pipeline-side blend state; null = blending disabled (opaque pipeline variant). */
+    @Nullable
+    public BlendFunction toBlendFunction() {
+        if (!enableBlend) {
+            return null;
         }
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.blendEquation(this.blendFunc.op);
-        RenderSystem.blendFuncSeparate(this.srcColorFactor, this.dstColorFactor, this.srcAlphaFactor, this.dstAlphaFactor);
+        return new BlendFunction(srcColorFactor, dstColorFactor, srcAlphaFactor, dstAlphaFactor);
     }
-
-    public void reset() {
-        RenderSystem.enableBlend();
-        RenderSystem.blendEquation(BlendFuc.ADD.op);
-        RenderSystem.defaultBlendFunc();
-    }
-
 }
-

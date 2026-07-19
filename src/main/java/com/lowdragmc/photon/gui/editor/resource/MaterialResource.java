@@ -12,7 +12,7 @@ import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.*;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 public class MaterialResource extends Resource<IMaterial> {
@@ -32,15 +32,15 @@ public class MaterialResource extends Resource<IMaterial> {
     }
 
     private void addVanillaTextureMaterial(BuiltinResourceProvider<IMaterial> builtin, String name) {
-        builtin.addResource(name, new TextureMaterial(ResourceLocation.parse("textures/particle/%s.png".formatted(name))));
+        builtin.addResource(name, new TextureMaterial(Identifier.parse("textures/particle/%s.png".formatted(name))));
     }
 
     private void addBuiltinTextureMaterial(BuiltinResourceProvider<IMaterial> builtin, String name) {
-        builtin.addResource(name, new TextureMaterial(ResourceLocation.parse("photon:textures/particle/%s.png".formatted(name))));
+        builtin.addResource(name, new TextureMaterial(Identifier.parse("photon:textures/particle/%s.png".formatted(name))));
     }
 
     private void addBuiltinShaderMaterial(BuiltinResourceProvider<IMaterial> builtin, String name) {
-        builtin.addResource(name, new CustomShaderMaterial(ResourceLocation.parse("photon:%s".formatted(name))));
+        builtin.addResource(name, new CustomShaderMaterial(Identifier.parse("photon:%s".formatted(name))));
     }
 
     @Override

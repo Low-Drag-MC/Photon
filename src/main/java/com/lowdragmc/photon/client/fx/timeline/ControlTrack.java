@@ -1,7 +1,5 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import javax.annotation.Nullable;
 import java.util.UUID;
@@ -12,7 +10,6 @@ import java.util.UUID;
  * bound object's lifecycle: it restarts the object (age 0, fresh, applying the clip seed) at the
  * clip start and keeps it running for the clip's span. Outside its clips the object is not running.
  */
-@OnlyIn(Dist.CLIENT)
 public class ControlTrack extends Track {
 
     public ControlTrack() {

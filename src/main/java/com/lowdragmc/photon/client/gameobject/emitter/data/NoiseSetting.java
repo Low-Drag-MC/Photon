@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
-import com.lowdragmc.lowdraglib2.client.shader.LDLibRenderTypes;
+import net.minecraft.client.renderer.RenderPipelines;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
@@ -13,15 +13,13 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.util.Mth;
 
 
@@ -30,7 +28,6 @@ import net.minecraft.util.Mth;
  * @date 2023/5/31
  * @implNote NoiseSetting
  */
-@OnlyIn(Dist.CLIENT)
 @Setter
 @Getter
 public class NoiseSetting extends ToggleGroup {
@@ -182,27 +179,19 @@ public class NoiseSetting extends ToggleGroup {
             this.seed = seed;
         }
 
-        @Override
-        @OnlyIn(Dist.CLIENT)
-        public void draw(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
+        // TODO(M4): register a GuiTextureRenderer for the registry path
+        public void draw(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
             noise.get().setSeed(seed);
 
-            // render color bar
-            Matrix4f mat = graphics.pose().last().pose();
-
-            var buffer = graphics.bufferSource().getBuffer(LDLibRenderTypes.guiOverlay());
-            RenderSystem.disableDepthTest();
-
+            // render color bar (26.1: per-cell context.fill, no immediate buffer)
             for (int i = 0; i < width; i++) {
                 if (quality == Quality.Noise1D) {
                     var value = ((float) noise.get().noise(i * frequency) + 1) / 2;
                     if (remap.isEnable()) {
                         value = (remap.remapCurve.get(value, () -> 0f).floatValue() + 1) / 2;
                     }
-                    buffer.addVertex(mat,x + i + 1, y, 0).setColor(value, value, value, 1);
-                    buffer.addVertex(mat, x + i, y, 0).setColor(value, value, value, 1);
-                    buffer.addVertex(mat, x + i, y + height, 0).setColor(value, value, value, 1);
-                    buffer.addVertex(mat, x + i + 1, y + height, 0).setColor(value, value, value, 1);
+                    graphics.fill(RenderPipelines.GUI, x + i, y, x + i + 1, y + height,
+                            grayscale(value), grayscale(value), grayscale(value), grayscale(value));
                 } else {
                     for (int j = 0; j < height; j++) {
                         float value;
@@ -216,15 +205,17 @@ public class NoiseSetting extends ToggleGroup {
                             value = (remap.remapCurve.get(value, () -> 0f).floatValue() + 1) / 2;
                         }
 
-                        buffer.addVertex(mat,x + i + 1, y + j, 0).setColor(value, value, value, 1);
-                        buffer.addVertex(mat, x + i, y + j, 0).setColor(value, value, value, 1);
-                        buffer.addVertex(mat, x + i, y + j + 1, 0).setColor(value, value, value, 1);
-                        buffer.addVertex(mat, x + i + 1, y + j + 1, 0).setColor(value, value, value, 1);
-
+                        int c = grayscale(value);
+                        graphics.fill(RenderPipelines.GUI, x + i, y + j, x + i + 1, y + j + 1, c, c, c, c);
                     }
                 }
 
             }
+        }
+
+        private static int grayscale(float value) {
+            int v = Math.min(255, Math.max(0, (int) (value * 255)));
+            return 0xFF000000 | (v << 16) | (v << 8) | v;
         }
     }
 }

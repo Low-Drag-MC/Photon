@@ -9,13 +9,10 @@ import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import lombok.EqualsAndHashCode;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector3f;
 
 import java.lang.reflect.Field;
 
-@OnlyIn(Dist.CLIENT)
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class FacingDirectionSetting implements IConfigurable, IPersistedSerializable {
 

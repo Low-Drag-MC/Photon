@@ -13,13 +13,10 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import javax.annotation.Nonnull;
 import java.util.Optional;
 
-@OnlyIn(Dist.CLIENT)
 @Getter
 @Setter
 @Accessors(chain = true)
@@ -45,21 +42,8 @@ public class MaterialSetting implements IConfigurable, IPersistedSerializable {
         this.material = material;
     }
 
-    public void pre() {
-        blendMode.apply();
-        if (cull) RenderSystem.enableCull(); else RenderSystem.disableCull();
-        if (depthTest) RenderSystem.enableDepthTest(); else RenderSystem.disableDepthTest();
-        RenderSystem.depthMask(depthMask);
-    }
-
-    public void post() {
-        if (blendMode.getBlendFunc() != BlendMode.BlendFuc.ADD) {
-            RenderSystem.blendEquation(BlendMode.BlendFuc.ADD.op);
-        }
-        blendMode.reset();
-        if (!cull) RenderSystem.enableCull();
-        if (!depthTest) RenderSystem.enableDepthTest();
-        if (!depthMask) RenderSystem.depthMask(true);
-    }
+    // TODO(M2): pre()/post() applied blend/cull/depth via imperative RenderSystem calls — in 26.1
+    // these are RenderPipeline properties. This setting becomes part of the pipeline-variant cache
+    // key: (material pipeline, blendMode.toBlendFunction(), cull, depthTest, depthMask).
 
 }

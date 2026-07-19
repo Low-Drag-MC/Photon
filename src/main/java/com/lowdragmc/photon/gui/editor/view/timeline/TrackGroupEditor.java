@@ -11,7 +11,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
+import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
@@ -20,10 +20,8 @@ import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.fx.timeline.TrackGroup;
 import dev.vfyjxf.taffy.style.AlignItems;
 import dev.vfyjxf.taffy.style.FlexDirection;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import net.minecraft.network.chat.Component;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +32,6 @@ import java.util.List;
  * <b>non-interactive</b> preview of the children's clips / keyframes / signals. Height is auto (no resize
  * grip). Tracks are added by dragging a header into the group (host) or via the "add child track" menu.
  */
-@OnlyIn(Dist.CLIENT)
 public class TrackGroupEditor extends TrackEditor {
 
     public static class TrackGroupUIState extends TrackUIState {
@@ -114,18 +111,18 @@ public class TrackGroupEditor extends TrackEditor {
             layout.widthPercent(100);
             layout.height(state.rowHeight);
         }).setOverflowVisible(false).style(style -> style
-                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
-                    DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_DARK_GRAY.color);
+                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                    DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_DARK_GRAY.color);
                     if (ctx.isTrackSelected(track)) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
                     }
                     if (track.mute()) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color);
                     } else if (track.lock()) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
                     }
                 })
-                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     drawPreview(ctx, graphics, group, x, y, w, h);
                     ctx.drawPlayhead(graphics, x, y, w, h, pt);
                 }));
@@ -135,7 +132,7 @@ public class TrackGroupEditor extends TrackEditor {
     }
 
     /** Draw a compressed, non-interactive preview of every descendant leaf's clips/keyframes/signals. */
-    private void drawPreview(TimelineContext ctx, GuiGraphics graphics, TrackGroup group, float x, float y, float width, float height) {
+    private void drawPreview(TimelineContext ctx, GUIContext graphics, TrackGroup group, float x, float y, float width, float height) {
         var leaves = new ArrayList<Track>();
         collectLeaves(group, leaves);
         var cy = y + height / 2f;
@@ -145,7 +142,7 @@ public class TrackGroupEditor extends TrackEditor {
                 var cx = ctx.originX() + (float) ((clip.start() - ctx.scrollTicks()) * ctx.scale());
                 var cw = (float) Math.max(1, clip.duration() * ctx.scale());
                 if (cx + cw < x || cx > x + width) continue;
-                DrawerHelper.drawSolidRect(graphics, Math.max(x, cx), cy - 2, Math.min(cw, width), 4, color.color);
+                DrawerHelperClient.drawSolidRect(graphics, Math.max(x, cx), cy - 2, Math.min(cw, width), 4, color.color);
             }
             if (leaf instanceof AnimationTrack animation) {
                 for (var property : animation.properties()) {
@@ -161,10 +158,10 @@ public class TrackGroupEditor extends TrackEditor {
         }
     }
 
-    private void drawDot(GuiGraphics graphics, TimelineContext ctx, double time, float x, float width, float cy, ColorPattern color) {
+    private void drawDot(GUIContext graphics, TimelineContext ctx, double time, float x, float width, float cy, ColorPattern color) {
         var dx = ctx.originX() + (float) ((time - ctx.scrollTicks()) * ctx.scale());
         if (dx < x || dx > x + width) return;
-        DrawerHelper.drawSolidRect(graphics, dx - 1.5f, cy - 1.5f, 3, 3, color.color);
+        DrawerHelperClient.drawSolidRect(graphics, dx - 1.5f, cy - 1.5f, 3, 3, color.color);
     }
 
     private void collectLeaves(TrackGroup group, List<Track> out) {

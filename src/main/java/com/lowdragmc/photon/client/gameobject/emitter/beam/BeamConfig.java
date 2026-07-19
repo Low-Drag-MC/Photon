@@ -153,66 +153,9 @@ public class BeamConfig implements IConfigurable, IPersistedSerializable {
     }
 
     private class RenderPass extends PhotonFXRenderPass {
-        private final InstancedRendererSetting.Runtime renderRuntime;
-        private final BeamParticleRenderer beamParticleRenderer;
-
+        // TODO(M1/M2): 1.21 body = CPU renderQueue + GPU-instanced draw with materials (pre/post,
+        // begin/end, instancing backend). Rebuilt as Photon render-state batches per the plan.
         public RenderPass(InstancedRendererSetting.Runtime renderRuntime) {
-            super(renderRuntime, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
-            this.renderRuntime = renderRuntime;
-            this.beamParticleRenderer = new BeamParticleRenderer(BeamConfig.this);
         }
-
-        @Override
-        public void clearInstance() {
-            beamParticleRenderer.dispose();
-        }
-
-        @Override
-        protected void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
-            beamParticleRenderer.renderQueue(buffer, particles, camera, partialTicks);
-        }
-
-        @Override
-        protected boolean useInstancing() {
-            return renderRuntime.isUseGPUInstance();
-        }
-
-        @Override
-        protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
-            // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change
-            additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));
-            if (additionalGPUDataSetting.attribRelayoutNeeded()) {
-                clearInstance();
-            }
-
-            var drew = false;
-            // upload to vbo
-            if (beamParticleRenderer.uploadInstances(particles, camera, partialTicks)) {
-                for (MaterialSetting materialSetting : materials) {
-                    materialSetting.pre();
-                    renderInstanceWithMaterial(materialSetting.getMaterial(), MaterialContext.BEAM_INSTANCE);
-                    materialSetting.post();
-                }
-                drew = true;
-            }
-
-            // invalidate cache
-            glBindVertexArray(0);
-            BufferUploader.invalidate();
-            return drew;
-        }
-
-        private void renderInstanceWithMaterial(IMaterial material, MaterialContext context) {
-            var shader = material.begin(context);
-            RenderSystem.setShader(() -> shader);
-            beamParticleRenderer.drawInstanced(shader);
-            material.end(context);
-        }
-
-        @Override
-        public boolean equals(@Nonnull Object o) {
-            return o instanceof RenderPass && super.equals(o);
-        }
-
     }
 }

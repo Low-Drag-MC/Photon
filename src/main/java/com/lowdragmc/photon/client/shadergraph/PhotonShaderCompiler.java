@@ -124,16 +124,18 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
     }
 
     /** Absolute world = camera-relative world ({@code kg_pd.Position} via {@code meshPosition()}, honoring vsh
-     *  displacement) + the camera world position. */
+     *  displacement) + the camera world position (26.1: KG's precision-split transform fields). */
     @Override
     protected ShaderExpr worldSpacePosition() {
-        return new ShaderExpr("(" + meshPosition().code() + " + " + cameraWorldPos().code() + ")", GlslType.VEC3);
+        return new ShaderExpr("(" + meshPosition().code() + " + (vec3("
+                + transformField("CameraBlockPos", GlslType.VEC3).code() + ") - "
+                + transformField("CameraOffset", GlslType.VEC3).code() + "))", GlslType.VEC3);
     }
 
     /** Eye/view space: {@code ModelViewMat · <camera-relative world>} (ModelViewMat is world→view for particles). */
     @Override
     protected ShaderExpr viewSpacePosition() {
-        String mv = useBuiltinUniform("ModelViewMat", GlslType.MAT4);
+        String mv = transformField("ModelViewMat", GlslType.MAT4).code();
         return new ShaderExpr("(" + mv + " * vec4(" + meshPosition().code() + ", 1.0)).xyz", GlslType.VEC3);
     }
 
@@ -150,7 +152,7 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
     /** Eye/view-space normal: the world normal rotated world→view. */
     @Override
     protected ShaderExpr viewSpaceNormal() {
-        String mv = useBuiltinUniform("ModelViewMat", GlslType.MAT4);
+        String mv = transformField("ModelViewMat", GlslType.MAT4).code();
         return new ShaderExpr("normalize(mat3(" + mv + ") * " + worldSpaceNormal().code() + ")", GlslType.VEC3);
     }
 

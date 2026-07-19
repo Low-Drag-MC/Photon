@@ -3,7 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.number;
 import com.google.common.base.Suppliers;
 import com.mojang.serialization.Codec;
 import lombok.EqualsAndHashCode;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import org.joml.Vector3f;
 import net.minecraft.util.RandomSource;
 

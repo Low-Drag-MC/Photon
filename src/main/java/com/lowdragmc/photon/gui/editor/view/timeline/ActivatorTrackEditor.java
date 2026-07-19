@@ -5,11 +5,8 @@ import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /** Editor for {@code activator} tracks: a bound-target header + time-only clips. */
-@OnlyIn(Dist.CLIENT)
 public class ActivatorTrackEditor extends ClipTrackEditor {
 
     @Override

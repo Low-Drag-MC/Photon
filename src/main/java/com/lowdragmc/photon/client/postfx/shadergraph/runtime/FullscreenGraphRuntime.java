@@ -1,11 +1,7 @@
 package com.lowdragmc.photon.client.postfx.shadergraph.runtime;
 
 import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
-import com.lowdragmc.kilagraph.rendertype.format.KGVertexFormat;
-import com.lowdragmc.kilagraph.rendertype.runtime.KGMaterialValues;
-import com.lowdragmc.kilagraph.rendertype.runtime.KGShaderResourceProvider;
 import com.lowdragmc.lowdraglib2.Platform;
-import com.lowdragmc.lowdraglib2.client.shader.LDShaderInstance;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.Graph;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphResource;
@@ -17,8 +13,6 @@ import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
 import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
@@ -34,7 +28,6 @@ import java.util.Set;
  * <p>Staleness is detected by tag identity — the stored {@link CompoundTag} instance is replaced when
  * the resource is saved in the editor or reloaded from a pack. Render thread only.</p>
  */
-@OnlyIn(Dist.CLIENT)
 public final class FullscreenGraphRuntime {
 
     private static final Map<IResourcePath, Entry> CACHE = new HashMap<>();
@@ -53,13 +46,6 @@ public final class FullscreenGraphRuntime {
         private final CompiledShaderGraph compiled;
         @Getter
         private final String errorMessage;
-        @Nullable
-        private LDShaderInstance shader;
-        /** Remembered GL build failure so a broken graph doesn't retry every frame. */
-        private boolean shaderFailed;
-        /** The executor's reusable value store — defaults re-baked before every dispatch. */
-        @Nullable
-        private KGMaterialValues values;
 
         private Entry(CompoundTag sourceTag, @Nullable FullscreenShaderGraph graph,
                       @Nullable CompiledShaderGraph compiled, String errorMessage) {
@@ -73,33 +59,13 @@ public final class FullscreenGraphRuntime {
             return compiled != null;
         }
 
-        /** The single GL program, built lazily on the render thread (defines-qualified cache key —
-         *  see {@code ShaderGraphRuntime.BASE_VARIANT_DEFINE}). Null when the graph or GL build failed. */
-        @Nullable
-        public LDShaderInstance shader() {
-            if (compiled == null || shaderFailed) return null;
-            if (shader != null) return shader;
-            var format = KGVertexFormat.of(compiled.settings().vertexFormatElements());
-            shader = KGShaderResourceProvider.createShaderInstance(compiled, format,
-                    Set.of(PhotonFullscreenCompiler.DEFINE));
-            if (shader == null) shaderFailed = true;
-            return shader;
-        }
-
-        /** The shared value store for dispatch staging. Callers MUST {@code bakeDefaults(getCompiled())}
-         *  before staging their own values — dispatches reuse this instance. */
-        @Nullable
-        public KGMaterialValues values() {
-            if (compiled == null) return null;
-            if (values == null) values = new KGMaterialValues(compiled);
-            return values;
-        }
+        // TODO(M3): shader() (was a single LDShaderInstance via KGShaderResourceProvider with
+        // PhotonFullscreenCompiler.DEFINE) and values() (KGMaterialValues staging) — rebuilt on
+        // KilaGraph 26.1's DynamicShaderSourceRegistry pipelines + std140 material UBOs when the
+        // fullscreen executor returns.
 
         private void close() {
-            if (shader != null) {
-                shader.close();
-                shader = null;
-            }
+            // nothing GL-side to free until the M3 pipeline exists
         }
     }
 
@@ -158,7 +124,7 @@ public final class FullscreenGraphRuntime {
             if (fnTag != null) {
                 var fn = PhotonShaderFunctionGraphResource.INSTANCE.createGraph();
                 fn.graphModel.setReferenceResolver(this);
-                fn.graphModel.deserializeNBT(Platform.getFrozenRegistry(), fnTag);
+                com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(fnTag, fn.graphModel, Platform.getFrozenRegistry());
                 fn.graphModel.setReferenceResolver(this);
                 return fn;
             }

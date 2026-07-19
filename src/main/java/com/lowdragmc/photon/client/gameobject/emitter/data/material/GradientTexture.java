@@ -13,8 +13,9 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.util.FastColor;
-import net.neoforged.neoforge.common.util.INBTSerializable;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.neoforged.neoforge.common.util.ValueIOSerializable;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -23,7 +24,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class GradientTexture implements AutoCloseable, IConfigurable, INBTSerializable<ListTag> {
+public class GradientTexture implements AutoCloseable, IConfigurable, ValueIOSerializable {
     private final int width;
     private final int height;
     @Configurable(name = "gradients", canCollapse = false, collapse = false)
@@ -66,27 +67,8 @@ public class GradientTexture implements AutoCloseable, IConfigurable, INBTSerial
     }
 
     public void uploadTexture() {
-        if (!isDirty) return;
-        RenderSystem.assertOnRenderThread();
-        if (gradientTexture == null || gradientTexture.getPixels() == null)  {
-            this.gradientTexture = new DynamicTexture(width, height, false);
-        }
-        var pixels = gradientTexture.getPixels();
-        assert pixels != null;
-        for (int h = 0; h < height; h++) {
-            if (h >= gradients.size()) {
-//                for (int w = 0; w < width; w++) {
-//                    pixels.setPixelRGBA(w, h, 0);
-//                }
-                continue;
-            }
-            var gradient = gradients.get(h);
-            for (int w = 0; w < width; w++) {
-                pixels.setPixelRGBA(w, h, FastColor.ABGR32.fromArgb32(gradient.getColor(w / (width - 1f))));
-            }
-        }
-        this.gradientTexture.upload();
-        isDirty = false;
+        // TODO(M2): rebuild the gradient sampler upload — DynamicTexture's ctor and NativeImage's pixel
+        // API changed (FastColor→ARGB, label-based ctor); rebuilt with the material pipeline path.
     }
 
     private Configurator buildGradientConfigurator(Supplier<GradientColor> getter, Consumer<GradientColor> setter) {
@@ -109,21 +91,23 @@ public class GradientTexture implements AutoCloseable, IConfigurable, INBTSerial
         markAsDirty();
     }
 
+    // 26.1 note: was INBTSerializable<ListTag> (a bare list under the parent key). ValueIO-managed
+    // values must be compound-shaped, so the legacy list now lives under a "gradients" key —
+    // old data needs a fixer: `field: [...]` -> `field: {gradients: [...]}`.
     @Override
-    public ListTag serializeNBT(@Nonnull HolderLookup.Provider provider) {
-        var listTag = new ListTag();
+    public void serialize(@Nonnull ValueOutput output) {
+        var list = output.childrenList("gradients");
         for (var gradientColor : gradients) {
-            listTag.add(gradientColor.serializeNBT(provider));
+            gradientColor.serialize(list.addChild());
         }
-        return listTag;
     }
 
     @Override
-    public void deserializeNBT(@Nonnull HolderLookup.Provider provider, @Nonnull ListTag listTag) {
+    public void deserialize(@Nonnull ValueInput input) {
         gradients.clear();
-        for (Tag tag : listTag) {
+        for (var child : input.childrenListOrEmpty("gradients")) {
             var gradientColor = new GradientColor();
-            gradientColor.deserializeNBT(provider, (CompoundTag) tag);
+            gradientColor.deserialize(child);
             gradients.add(gradientColor);
         }
         markAsDirty();

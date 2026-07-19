@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.postfx.runtime;
 
-import com.lowdragmc.lowdraglib2.client.shader.HDRTarget;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonShaders;
@@ -8,8 +7,6 @@ import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRun
 import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -38,7 +35,6 @@ import java.util.Map;
  * Unconsumed requests are dropped at the frame boundary ({@link #onFrameEnd}) — a source that stops
  * submitting stops the effect next frame. Render thread only.</p>
  */
-@OnlyIn(Dist.CLIENT)
 public final class PostEffectStack {
 
     public static final PostEffectStack GLOBAL = new PostEffectStack();
@@ -97,9 +93,6 @@ public final class PostEffectStack {
 
     private final List<Request> requests = new ArrayList<>();
     private long consumedFrame = -1;
-    /** The pooled target the main blit is still reading this frame; recycled at the frame boundary. */
-    @Nullable
-    private HDRTarget retiredOutput;
 
     /** The stack the current render context feeds: the editor scene's while it renders, else the world's. */
     public static PostEffectStack currentSink() {
@@ -131,175 +124,22 @@ public final class PostEffectStack {
     }
 
     /** Whether this stack already ran its chain this frame (keyed on the pool's frame clock). */
+    // TODO(M3): consumeAndExecute(HDRTarget, ...) — the whole blended-chain execution (builtin bloom
+    // slot-in, union masks, pooled HDR targets, final blit) — was cut with the 1.21 HDR pipeline and
+    // returns as Photon frame passes via FrameGraphSetupEvent.
+
     public boolean isConsumedThisFrame() {
         return consumedFrame == PostFXTargetPool.currentFrame();
     }
 
-    public RenderTarget consumeAndExecute(HDRTarget chainInput, boolean doBuiltinBloom) {
-        return consumeAndExecute(chainInput, doBuiltinBloom, chainInput.getDepthTextureId());
-    }
-
-    /**
-     * Run this frame's blended effect chain over {@code chainInput} and return the final target (==
-     * {@code chainInput} when there is nothing to do, or on the second pipeline build of the frame).
-     * The builtin bloom keeps its exact previous conditions and slots in at priority 0.
-     *
-     * @param sceneDepthTexture the depth texture SCENE_DEPTH inputs read — passed explicitly because
-     *                          the standalone (no-particle) path's chain copy carries no depth
-     */
-    public RenderTarget consumeAndExecute(HDRTarget chainInput, boolean doBuiltinBloom, int sceneDepthTexture) {
-        long frame = PostFXTargetPool.currentFrame();
-        if (consumedFrame == frame) return chainInput;
-        consumedFrame = frame;
-        PostFXPreview.captureIfRequested(chainInput); // editors preview against the clean scene
-
-        if (!effectsEnabled || !com.lowdragmc.photon.PhotonConfig.INSTANCE.enableCustomEffects.get()) {
-            requests.clear();
-            return doBuiltinBloom ? PhotonPostProcessing.postTarget(chainInput) : chainInput;
-        }
-        var invocations = blendRequests();
-        requests.clear();
-        if (invocations.isEmpty()) {
-            return doBuiltinBloom ? PhotonPostProcessing.postTarget(chainInput) : chainInput;
-        }
-
-        RenderTarget chain = chainInput;
-        HDRTarget pooledChain = null;
-        boolean bloomDone = !doBuiltinBloom;
-        setPostRenderState();
-        try {
-            for (var invocation : invocations) {
-                if (invocation.effect().passes().isEmpty()) continue; // no-op (scene passthrough) effect
-                if (!bloomDone && invocation.effect().priority() >= 0) {
-                    chain = PhotonPostProcessing.postTarget(chain);
-                    if (pooledChain != null) {
-                        PostFXTargetPool.release(pooledChain);
-                        pooledChain = null;
-                    }
-                    bloomDone = true;
-                    setPostRenderState(); // renderBloom restores world state at its end
-                }
-
-                // CustomMask/CustomDepth ride the pipeline's frame statics (-1 on maskless frames,
-                // and on the standalone fallback path which never runs the mask sub-pass)
-                int maskTexture = com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline.getMaskColorTexture();
-                var maskGroups = invocation.maskGroups();
-                boolean masked = maskGroups != null;
-                // no mask this frame: a mask-culled request applies nowhere, and a mask-READING
-                // graph must not run either — binding -1 leaves stale unit contents in the sampler
-                // (vanilla apply() skips -1), which garbles the whole output
-                if (maskTexture == -1 && (masked || invocation.effect().usesCustomMask())) continue;
-
-                var params = invocation.params();
-                boolean effectOwnsMask = masked && invocation.effect().declaresMaskFilter();
-                if (effectOwnsMask) {
-                    // the graph declared a MaskFilter param = "I match the mask myself" (e.g. an
-                    // outline's edge pixels live OUTSIDE the mask — the universal mix would cut
-                    // them): inject the resolved group id and skip the mix culling below
-                    var owned = new HashMap<>(params);
-                    owned.put(CompiledEffect.MASK_FILTER_PARAM, maskGroups.size() == 1
-                            ? (float) MaskGroups.idOf(maskGroups.iterator().next()) : 0f);
-                    params = owned;
-                }
-
-                var output = RenderGraphExecutor.execute(invocation.effect(), invocation.weight(),
-                        params, chain, sceneDepthTexture, maskTexture,
-                        com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline.getMaskDepthTexture());
-                if (output == null) continue; // broken effect: chain passes through
-
-                boolean mixCulling = masked && !effectOwnsMask;
-                var result = output;
-                if (mixCulling || (invocation.effect().autoBlend() && invocation.weight() < FULL_WEIGHT)) {
-                    // universal fade + per-object culling: mix(chain, effect, weight * match(mask))
-                    // — no graph cooperation needed. autoBlend=false effects handle weight
-                    // themselves, so the masked mix then blends by mask match alone.
-                    HDRTarget unionMask = null;
-                    int mixMaskTexture = maskTexture;
-                    float mixFilter = 0f;
-                    if (mixCulling && maskGroups.size() == 1) {
-                        mixFilter = MaskGroups.idOf(maskGroups.iterator().next());
-                    } else if (mixCulling && maskGroups.size() > 1 && maskGroups.size() <= MAX_UNION_GROUPS
-                            && PhotonShaders.getMaskUnionShader() != null) {
-                        // several groups: bake their EXACT union as a binary mask (R=1 where any
-                        // of them wrote), then match "any" against it — no over-coverage
-                        unionMask = buildUnionMask(maskGroups, chain.width, chain.height, maskTexture);
-                        mixMaskTexture = unionMask.getColorTextureId();
-                    } // empty (any group) / >MAX groups / no union shader: filter 0 on the raw mask
-                    var mixShader = mixCulling ? PhotonShaders.getWeightMaskMixShader()
-                            : PhotonShaders.getWeightMixShader();
-                    if (mixShader == null) { // partial shader registration: degrade to the raw output
-                        if (unionMask != null) PostFXTargetPool.release(unionMask);
-                        if (pooledChain != null) PostFXTargetPool.release(pooledChain);
-                        pooledChain = result;
-                        chain = result;
-                        continue;
-                    }
-                    var mixed = PostFXTargetPool.acquire(chain.width, chain.height);
-                    mixShader.setSampler("SamplerA", chain.getColorTextureId());
-                    mixShader.setSampler("SamplerB", output.getColorTextureId());
-                    mixShader.safeGetUniform("Weight").set(
-                            invocation.effect().autoBlend() ? invocation.weight() : 1f);
-                    if (mixCulling) {
-                        mixShader.setSampler("MaskSampler", mixMaskTexture);
-                        mixShader.safeGetUniform("MaskFilter").set(mixFilter);
-                    }
-                    PhotonPostProcessing.blitShader(mixShader, mixed, false);
-                    if (unionMask != null) PostFXTargetPool.release(unionMask);
-                    PostFXTargetPool.release(output);
-                    result = mixed;
-                }
-
-                if (pooledChain != null) PostFXTargetPool.release(pooledChain);
-                pooledChain = result;
-                chain = result;
-            }
-            if (!bloomDone) {
-                chain = PhotonPostProcessing.postTarget(chain);
-                if (pooledChain != null) {
-                    PostFXTargetPool.release(pooledChain);
-                    pooledChain = null;
-                }
-            }
-        } finally {
-            restorePostRenderState();
-        }
-        // the caller blits this target to the main/Iris framebuffer right after we return, so a pooled
-        // final target stays out of the pool until the frame boundary
-        retiredOutput = pooledChain;
-        return chain;
-    }
 
     /** Frame boundary: recycle the displayed output and drop unconsumed (stale) requests. */
     public void onFrameEnd() {
-        if (retiredOutput != null) {
-            PostFXTargetPool.release(retiredOutput);
-            retiredOutput = null;
-        }
         requests.clear();
     }
 
     /** Number of distinct groups one baked union mask can express (two vec4 id uniforms). */
     private static final int MAX_UNION_GROUPS = 8;
-
-    /** Bake "mask id ∈ groups" into a pooled binary mask (R=1 where matched; R8 — one channel is
-     *  all a binary mask needs). */
-    private static HDRTarget buildUnionMask(java.util.Set<String> groups, int width, int height, int maskTexture) {
-        var target = PostFXTargetPool.acquire(width, height,
-                com.lowdragmc.photon.client.postfx.graph.TargetFormat.R8);
-        var shader = PhotonShaders.getMaskUnionShader();
-        var ids = new float[MAX_UNION_GROUPS];
-        int count = 0;
-        for (var groupName : groups) {
-            if (count >= MAX_UNION_GROUPS) break;
-            ids[count++] = MaskGroups.idOf(groupName);
-        }
-        shader.setSampler("MaskSampler", maskTexture);
-        shader.safeGetUniform("IdsA").set(ids[0], ids[1], ids[2], ids[3]);
-        shader.safeGetUniform("IdsB").set(ids[4], ids[5], ids[6], ids[7]);
-        shader.safeGetUniform("IdCount").set((float) count);
-        PhotonPostProcessing.blitShader(shader, target, false);
-        return target;
-    }
 
     // ---- blending --------------------------------------------------------------------------------
 
@@ -439,19 +279,11 @@ public final class PostEffectStack {
 
     // ---- render state ----------------------------------------------------------------------------
 
-    /** The chain-wide state every fullscreen pass runs under (mirrors renderBloom's setup).
-     *  Public: the editor preview runs the executor outside the stack and needs the same state. */
+    /** 26.1: chain-wide GL state is pipeline-owned (depth/blend/color masks live on the fullscreen
+     *  pass RenderPipelines) — nothing to set imperatively any more. Kept as no-ops for the M3 seam. */
     public static void setPostRenderState() {
-        RenderSystem.colorMask(true, true, true, true);
-        RenderSystem.disableDepthTest();
-        RenderSystem.depthMask(false);
-        RenderSystem.disableBlend();
-        RenderSystem.defaultBlendFunc();
     }
 
     public static void restorePostRenderState() {
-        RenderSystem.depthMask(true);
-        RenderSystem.enableDepthTest();
-        RenderSystem.enableBlend();
     }
 }

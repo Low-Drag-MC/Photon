@@ -154,7 +154,7 @@ public class ColorPropertyType implements AnimatedPropertyType {
                 t.putDouble("start", clip.start());
                 t.putDouble("duration", clip.duration());
                 if (clip.gradient() != null) {
-                    t.put("gradient", clip.gradient().serializeNBT(provider));
+                    t.put("gradient", com.lowdragmc.photon.utils.ValueIONbt.toTag(clip.gradient(), provider));
                 }
                 clips.add(t);
             }
@@ -166,20 +166,20 @@ public class ColorPropertyType implements AnimatedPropertyType {
     @Override
     public AnimatedProperty deserialize(HolderLookup.Provider provider, CompoundTag tag) {
         var property = new ColorAnimatedProperty(this);
-        var stops = tag.getList("stops", Tag.TAG_COMPOUND);
+        var stops = tag.getListOrEmpty("stops");
         for (int i = 0; i < stops.size(); i++) {
-            var t = stops.getCompound(i);
-            property.addStop(t.getFloat("tick"), t.getInt("argb"));
+            var t = stops.getCompoundOrEmpty(i);
+            property.addStop(t.getFloatOr("tick", 0.0F), t.getIntOr("argb", 0));
         }
-        var clips = tag.getList("gradientClips", Tag.TAG_COMPOUND);
+        var clips = tag.getListOrEmpty("gradientClips");
         for (int i = 0; i < clips.size(); i++) {
-            var t = clips.getCompound(i);
+            var t = clips.getCompoundOrEmpty(i);
             var gc = new com.lowdragmc.lowdraglib2.math.GradientColor();
             if (t.contains("gradient")) {
-                gc.deserializeNBT(provider, t.getCompound("gradient"));
+                com.lowdragmc.photon.utils.ValueIONbt.fromTag(gc, provider, t.getCompoundOrEmpty("gradient"));
             }
             property.gradientClips().add(new com.lowdragmc.photon.client.fx.timeline.GradientClip(
-                    t.getDouble("start"), t.getDouble("duration"), gc));
+                    t.getDoubleOr("start", 0.0D), t.getDoubleOr("duration", 0.0D), gc));
         }
         return property;
     }

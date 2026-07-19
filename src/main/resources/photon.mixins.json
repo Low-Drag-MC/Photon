@@ -7,8 +7,8 @@
   "client": [
     "MinecraftMixin",
     "ParticleEngineMixin",
-    "accessor.ParticleEngineAccessor",
-    "iris.ExtendedShaderAccessor"
+    "accessor.ParticleEngineAccessor"
+
   ],
   "mixins": [
   ],

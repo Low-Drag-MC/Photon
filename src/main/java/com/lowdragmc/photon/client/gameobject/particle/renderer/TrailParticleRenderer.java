@@ -5,9 +5,6 @@ import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.ShaderInstance;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
@@ -24,7 +21,6 @@ import java.util.Collection;
  * partial-tick lerp); the ribbon expansion itself is mirrored in the TRAIL_INSTANCE branch of
  * photon:particle.glsl. Render-thread only (scratch state).
  */
-@OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 public class TrailParticleRenderer {
 
@@ -54,7 +50,7 @@ public class TrailParticleRenderer {
     public void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
         for (var particle : particles) {
             if (particle instanceof TrailParticle trailParticle && trailParticle.getDelay() <= 0) {
-                renderTrail(buffer, trailParticle, camera.getPosition().toVector3f(), partialTicks);
+                renderTrail(buffer, trailParticle, camera.position().toVector3f(), partialTicks);
             }
         }
     }
@@ -221,7 +217,7 @@ public class TrailParticleRenderer {
         var customBuffer = setting.hasCustomRecord() ? instanceBackend.beginCustomUpload(instanceCapacity) : null;
         var instanceCount = 0;
         var pointCount = 0;
-        var cameraPos = camera.getPosition().toVector3f();
+        var cameraPos = camera.position().toVector3f();
         for (var p : particles) {
             if (!(p instanceof TrailParticle trail) || trail.getDelay() > 0) continue;
             var count = collectRenderPoints(trail, cameraPos, partialTicks);
@@ -420,9 +416,8 @@ public class TrailParticleRenderer {
         pointLife = new float[capacity];
     }
 
-    public void drawInstanced(ShaderInstance shader) {
-        instanceBackend.drawWithShader(shader);
-    }
+    // TODO(M2): drawInstanced — re-expressed as a RenderPass.drawIndexed(instanceCount) draw with
+    // the material pipeline when the instancing backend moves off raw GL.
 
     /**
      * Full GL teardown of the instanced resources. Call when the instance layout changes

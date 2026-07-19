@@ -1,27 +1,20 @@
 package com.lowdragmc.photon.client.postfx.runtime;
 
-import com.lowdragmc.lowdraglib2.client.shader.HDRTarget;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * The shared scene capture behind the render-graph editor preview: a color+depth copy of the
- * CLEAN world frame (taken right before the production effect chain runs, so open editors preview
- * against an un-effected scene). Capture is pull-based — a visible preview panel calls
- * {@link #requestCapture()} every frame it draws, and the next frame's render hooks fill
- * {@link #source()}; when no preview is open, nothing is copied. Render thread only.
+ * The shared scene capture behind the render-graph editor preview. Capture is pull-based — a
+ * visible preview panel calls {@link #requestCapture()} every frame it draws, and the next frame's
+ * render hooks fill the capture; when no preview is open, nothing is copied.
+ * <p>
+ * M0 stub (original in git history, 1.21 branch): the clean-scene copy lived in an LDLib2
+ * {@code HDRTarget}. TODO(M3): recapture via a Photon GpuTexture target filled from the frame
+ * graph (a pass reading main color+depth before the effect chain runs).
  */
-@OnlyIn(Dist.CLIENT)
 public final class PostFXPreview {
 
-    @Nullable
-    private static HDRTarget SOURCE;
     private static long requestFrame = Long.MIN_VALUE;
-    private static long capturedFrame = Long.MIN_VALUE;
-    private static boolean hasCapture;
 
     private PostFXPreview() {}
 
@@ -34,24 +27,13 @@ public final class PostFXPreview {
         return PostFXTargetPool.currentFrame() - requestFrame <= 1;
     }
 
-    /**
-     * Copy the clean scene (color + depth) if a preview wants it — called with the effect chain's
-     * input before any effect runs (both the particle-pipeline and the standalone path), at most
-     * once per frame.
-     */
+    /** TODO(M3): copy the clean scene (color + depth) if a preview wants it. */
     public static void captureIfRequested(RenderTarget cleanScene) {
-        if (!captureWanted()) return;
-        long frame = PostFXTargetPool.currentFrame();
-        if (capturedFrame == frame) return;
-        capturedFrame = frame;
-        SOURCE = RenderPassPipeline.resize(SOURCE, cleanScene.width, cleanScene.height, true);
-        SOURCE.copyDepthAndColorFrom(cleanScene);
-        hasCapture = true;
     }
 
-    /** The latest clean-scene copy, or null when no world frame has been captured yet. */
+    /** The latest clean-scene copy; always null until the M3 capture returns. */
     @Nullable
-    public static HDRTarget source() {
-        return hasCapture ? SOURCE : null;
+    public static RenderTarget source() {
+        return null;
     }
 }

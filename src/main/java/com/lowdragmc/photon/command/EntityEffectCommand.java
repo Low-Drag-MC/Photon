@@ -21,15 +21,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
-import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.commands.arguments.IdentifierArgument;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.world.entity.Entity;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -46,7 +44,7 @@ import java.util.concurrent.CompletableFuture;
  */
 @NoArgsConstructor
 public class EntityEffectCommand extends EffectCommand {
-    public static final ResourceLocation ID = Photon.id("entity_effect_command");
+    public static final Identifier ID = Photon.id("entity_effect_command");
     public static final Type<EntityEffectCommand> TYPE = new Type<>(ID);
     public static final StreamCodec<RegistryFriendlyByteBuf, EntityEffectCommand> CODEC = StreamCodec.ofMember(EntityEffectCommand::encode, EntityEffectCommand::decodePacket);
 
@@ -138,7 +136,7 @@ public class EntityEffectCommand extends EffectCommand {
                                boolean autoRotate
                                ) throws CommandSyntaxException {
         var command = new EntityEffectCommand();
-        command.setLocation(ResourceLocationArgument.getId(context, "location"));
+        command.setLocation(IdentifierArgument.getId(context, "location"));
         command.setEntities(EntityArgument.getEntities(context, "entities").stream().map(e -> (Entity) e).toList());
         if (offset) {
             command.setOffset(Vec3Argument.getVec3(context, "offset"));
@@ -197,7 +195,6 @@ public class EntityEffectCommand extends EffectCommand {
         }
     }
 
-    @OnlyIn(Dist.CLIENT)
     private static class Client {
         public static void execute(EntityEffectCommand packet, IPayloadContext context) {
             var level = Minecraft.getInstance().level;

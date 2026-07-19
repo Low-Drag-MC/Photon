@@ -46,31 +46,13 @@ public interface IShape extends IConfigurable, IPersistedSerializable, ILDLRegis
 
     void nextPosVel(TileParticle particle, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale);
 
+    // 26.1: immediate Tesselator+BufferUploader draws are gone — route through the scene's buffer
+    // source with the vanilla lines render type (blend/depth/width owned by the pipeline).
     default void drawGuideLines(PoseStack poseStack, MultiBufferSource bufferSource, float partialTicks, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         var edges = getGuideLines(emitter, position, rotation, scale);
         if (edges.isEmpty()) return;
-
-        RenderSystem.enableBlend();
-        RenderSystem.disableDepthTest();
-        RenderSystem.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-
-        RenderSystem.disableCull();
-        RenderSystem.setShader(GameRenderer::getRendertypeLinesShader);
-        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
-        RenderSystem.lineWidth(5);
-
-        RenderBufferUtils.drawEdges(poseStack, buffer, edges, ColorPattern.YELLOW.color);
-
-        // drawEdges culls degenerate (zero-length) edges, so a non-empty edge list can still
-        // yield an empty buffer (e.g. sphere/circle with radius 0). buildOrThrow() would throw
-        // "BufferBuilder was empty" in that case, so build() + null-check instead. build() still
-        // ends the builder session when empty, keeping the shared Tesselator consistent.
-        var meshData = buffer.build();
-        if (meshData != null) {
-            BufferUploader.drawWithShader(meshData);
-        }
-        RenderSystem.enableDepthTest();
-        RenderSystem.enableCull();
+        var buffer = bufferSource.getBuffer(net.minecraft.client.renderer.rendertype.RenderTypes.lines());
+        RenderBufferUtils.drawEdges(poseStack, buffer, edges, ColorPattern.YELLOW.color, 5);
     }
 
     default List<Pair<Vector3f, Vector3f>> getGuideLines(IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {

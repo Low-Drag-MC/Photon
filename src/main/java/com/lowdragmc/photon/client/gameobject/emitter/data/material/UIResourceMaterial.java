@@ -6,9 +6,7 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
-import net.minecraft.client.renderer.ShaderInstance;
 
-import javax.annotation.Nonnull;
 import java.util.Objects;
 
 /**
@@ -51,15 +49,8 @@ public final class UIResourceMaterial implements IMaterial {
         return material;
     }
 
-    @Override
-    public ShaderInstance begin(@Nonnull MaterialContext context) {
-        return getInternalMaterial().begin(context);
-    }
-
-    @Override
-    public void end(@Nonnull MaterialContext context) {
-        getInternalMaterial().end(context);
-    }
+    // TODO(M2): delegate the pipeline/uniform contribution to getInternalMaterial() once the
+    // pipeline-based material seam replaces the removed begin/end.
 
     @Override
     public IGuiTexture preview() {

@@ -29,8 +29,6 @@ import lombok.Setter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector4f;
 
@@ -41,7 +39,6 @@ import java.util.HashMap;
  * @date 2023/6/1
  * @implNote TrailsSetting
  */
-@OnlyIn(Dist.CLIENT)
 public class TrailsSetting extends ToggleGroup {
     public enum TrailType {
         TRAIL,
@@ -229,19 +226,26 @@ public class TrailsSetting extends ToggleGroup {
         }
     }
 
+    // 26.1: same top-level "config"/"araConfig" keys as the 1.21 serializeNBT override, expressed on
+    // the ValueIO seam (configs go through PersistedParser, matching their old parser-driven layout).
     @Override
-    public CompoundTag serializeNBT(HolderLookup.@NotNull Provider provider) {
-        var data = super.serializeNBT(provider);
-        data.put("config", config.serializeNBT(provider));
-        data.put("araConfig", araConfig.serializeNBT(provider));
-        return data;
+    public void serialize(net.minecraft.world.level.storage.@NotNull ValueOutput output) {
+        super.serialize(output);
+        output.store("config", net.minecraft.util.ExtraCodecs.NBT,
+                com.lowdragmc.lowdraglib2.utils.PersistedParser.serializeNBT(config, com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry()));
+        output.store("araConfig", net.minecraft.util.ExtraCodecs.NBT,
+                com.lowdragmc.lowdraglib2.utils.PersistedParser.serializeNBT(araConfig, com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry()));
     }
 
     @Override
-    public void deserializeNBT(HolderLookup.@NotNull Provider provider, @NotNull CompoundTag tag) {
-        super.deserializeNBT(provider, tag);
-        config.deserializeNBT(provider, tag.getCompound("config"));
-        araConfig.deserializeNBT(provider, tag.getCompound("araConfig"));
+    public void deserialize(net.minecraft.world.level.storage.@NotNull ValueInput input) {
+        super.deserialize(input);
+        if (input.read("config", net.minecraft.util.ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
+            com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(tag, config, com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry());
+        }
+        if (input.read("araConfig", net.minecraft.util.ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
+            com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(tag, araConfig, com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry());
+        }
     }
 
     private void createTrailTypeConfigurator(TrailType value, ConfiguratorGroup group) {

@@ -4,9 +4,9 @@ import com.lowdragmc.lowdraglib2.math.curve.ExplicitCubicBezierCurve2;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-import net.neoforged.neoforge.common.util.INBTSerializable;
 import org.joml.Vector2f;
 
 import javax.annotation.Nonnull;
@@ -19,7 +19,7 @@ import java.util.List;
  * @implNote ECBCurves
  */
 @EqualsAndHashCode
-public class ECBCurves implements INBTSerializable<ListTag> {
+public class ECBCurves {
     @Getter
     private final List<ExplicitCubicBezierCurve2> segments = new ArrayList<>();
 
@@ -34,40 +34,57 @@ public class ECBCurves implements INBTSerializable<ListTag> {
     }
 
     public float getCurveY(float x) {
-        var value = segments.getFirst().p0.y;
-        var found = x < segments.getFirst().p0.x;
+        var value = segments.getFirst().p0.y();
+        var found = x < segments.getFirst().p0.x();
         if (!found) {
             for (var curve : segments) {
-                if (x >= curve.p0.x && x <= curve.p1.x) {
-                    var dx = curve.p1.x - curve.p0.x;
+                if (x >= curve.p0.x() && x <= curve.p1.x()) {
+                    var dx = curve.p1.x() - curve.p0.x();
                     // zero-width segment (vertical jump): step to the later point instead of dividing by 0
-                    value = dx <= 0 ? curve.p1.y : curve.getPoint((x - curve.p0.x) / dx).y;
+                    value = dx <= 0 ? curve.p1.y() : curve.getPoint((x - curve.p0.x()) / dx).y;
                     found = true;
                     break;
                 }
             }
         }
         if (!found) {
-            value = segments.getLast().p1.y;
+            value = segments.getLast().p1.y();
         }
         return value;
     }
 
-    @Override
+    /*
+     * Serialization note (26.1): the LDLib2 curve moved to ValueIOSerializable with its own layout,
+     * so the legacy 8-float ListTag layout [p0.x, p0.y, c0.x, c0.y, c1.x, c1.y, p1.x, p1.y] is
+     * written/read here directly to keep .fx files byte-identical.
+     */
     public ListTag serializeNBT(@Nonnull HolderLookup.Provider provider) {
         var list = new ListTag();
         for (var curve : segments) {
-            list.add(curve.serializeNBT(provider));
+            var points = new ListTag();
+            addPoint(points, curve.p0.x(), curve.p0.y());
+            addPoint(points, curve.c0.x(), curve.c0.y());
+            addPoint(points, curve.c1.x(), curve.c1.y());
+            addPoint(points, curve.p1.x(), curve.p1.y());
+            list.add(points);
         }
         return list;
     }
 
-    @Override
+    private static void addPoint(ListTag points, float x, float y) {
+        points.add(FloatTag.valueOf(x));
+        points.add(FloatTag.valueOf(y));
+    }
+
     public void deserializeNBT(@Nonnull HolderLookup.Provider provider, ListTag list) {
         segments.clear();
         for (Tag tag : list) {
-            if (tag instanceof ListTag curve) {
-                segments.add(new ExplicitCubicBezierCurve2(curve));
+            if (tag instanceof ListTag curve && curve.size() >= 8) {
+                segments.add(new ExplicitCubicBezierCurve2(
+                        new Vector2f(curve.getFloatOr(0, 0.0F), curve.getFloatOr(1, 0.0F)),
+                        new Vector2f(curve.getFloatOr(2, 0.0F), curve.getFloatOr(3, 0.0F)),
+                        new Vector2f(curve.getFloatOr(4, 0.0F), curve.getFloatOr(5, 0.0F)),
+                        new Vector2f(curve.getFloatOr(6, 0.0F), curve.getFloatOr(7, 0.0F))));
             }
         }
     }

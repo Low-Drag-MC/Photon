@@ -58,14 +58,15 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
 
     private void onColorChanged(int color) {
         if (selectedPoint >= 0) {
+            // 26.1: gradient points are read-only Vector2fc/Vector4fc — replace the list element
             if (isSelectAlpha && selectedPoint < value.getAP().size()) {
-                value.getAP().get(selectedPoint).y = ColorUtils.alpha(color);
+                var alphaP = value.getAP().get(selectedPoint);
+                value.getAP().set(selectedPoint, new org.joml.Vector2f(alphaP.x(), ColorUtils.alpha(color)));
                 notifyListeners();
             } else if (!isSelectAlpha && selectedPoint < value.getRgbP().size()) {
                 var rgbP = value.getRgbP().get(selectedPoint);
-                rgbP.y = ColorUtils.red(color);
-                rgbP.z = ColorUtils.green(color);
-                rgbP.w = ColorUtils.blue(color);
+                value.getRgbP().set(selectedPoint, new org.joml.Vector4f(rgbP.x(),
+                        ColorUtils.red(color), ColorUtils.green(color), ColorUtils.blue(color)));
                 notifyListeners();
             }
         }
@@ -77,7 +78,7 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
         for (var alphaP : value.getAP()) {
             alphaIndicatorContainer.addChild(new UIElement().layout(layout -> {
                 layout.positionType(TaffyPosition.ABSOLUTE);
-                layout.leftPercent(alphaP.x * 100);
+                layout.leftPercent(alphaP.x() * 100);
                 layout.marginLeft(-2.5f);
                 layout.width(5);
                 layout.height(5);
@@ -89,7 +90,7 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
         for (var rgbP : value.getRgbP()) {
             rgbIndicatorContainer.addChild(new UIElement().layout(layout -> {
                 layout.positionType(TaffyPosition.ABSOLUTE);
-                layout.leftPercent(rgbP.x * 100);
+                layout.leftPercent(rgbP.x() * 100);
                 layout.marginLeft(-2.5f);
                 layout.width(5);
                 layout.height(5);
@@ -110,7 +111,7 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
                 notifyListeners();
             } else {
                 var rgb = value.getRGB(percent);
-                value.addRGB(percent, rgb.x, rgb.y, rgb.z);
+                value.addRGB(percent, rgb.x, rgb.y(), rgb.z());
                 notifyListeners();
             }
             refreshGradient();
@@ -124,14 +125,16 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
         event.currentElement.layout(layout -> layout.leftPercent(offset));
         if (isAlpha) {
             if (point >= 0 && point < value.getAP().size()) {
-                value.getAP().get(point).x = percent;
-                value.getAP().sort((a, b) -> Float.compare(a.x, b.x));
+                var alphaP = value.getAP().get(point);
+                value.getAP().set(point, new org.joml.Vector2f(percent, alphaP.y()));
+                value.getAP().sort((a, b) -> Float.compare(a.x(), b.x()));
                 notifyListeners();
             }
         } else {
             if (point >= 0 && point < value.getRgbP().size()) {
-                value.getRgbP().get(point).x = percent;
-                value.getRgbP().sort((a, b) -> Float.compare(a.x, b.x));
+                var rgbP = value.getRgbP().get(point);
+                value.getRgbP().set(point, new org.joml.Vector4f(percent, rgbP.y(), rgbP.z(), rgbP.w()));
+                value.getRgbP().sort((a, b) -> Float.compare(a.x(), b.x()));
                 notifyListeners();
             }
         }
@@ -159,14 +162,14 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
     private void refreshColorSelector() {
         if (selectedPoint >= 0) {
             if (isSelectAlpha && selectedPoint < value.getAP().size()) {
-                colorSelector.setColor(ColorUtils.color(value.getAP().get(selectedPoint).y, 1, 1, 1), false);
+                colorSelector.setColor(ColorUtils.color(value.getAP().get(selectedPoint).y(), 1, 1, 1), false);
                 colorSelector.colorPreview.setVisible(false);
                 colorSelector.colorSlider.setVisible(false);
                 colorSelector.hsbButton.setVisible(false);
                 colorSelector.alphaSlider.setVisible(true);
             } else if (!isSelectAlpha && selectedPoint < value.getRgbP().size()) {
                 var rgb = value.getRgbP().get(selectedPoint);
-                colorSelector.setColor(ColorUtils.color(1, rgb.y, rgb.z, rgb.w), false);
+                colorSelector.setColor(ColorUtils.color(1, rgb.y(), rgb.z(), rgb.w()), false);
                 colorSelector.colorPreview.setVisible(true);
                 colorSelector.colorSlider.setVisible(true);
                 colorSelector.hsbButton.setVisible(true);

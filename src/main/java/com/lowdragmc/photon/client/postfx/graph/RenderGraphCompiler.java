@@ -23,8 +23,6 @@ import com.lowdragmc.photon.client.postfx.runtime.CompiledEffect.ResourceRef;
 import com.lowdragmc.photon.client.postfx.runtime.CompiledEffect.ValueBinding;
 import com.lowdragmc.photon.client.postfx.runtime.CustomShaderPass;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -45,7 +43,6 @@ import java.util.Set;
  * <p>Also captures the {@code FullscreenGraphRuntime} entry of every referenced pass graph so
  * {@code RenderGraphRuntime} can detect nested staleness by identity.</p>
  */
-@OnlyIn(Dist.CLIENT)
 public final class RenderGraphCompiler {
 
     /** A user-fixable authoring problem (unwired port, missing graph, cycle...). */

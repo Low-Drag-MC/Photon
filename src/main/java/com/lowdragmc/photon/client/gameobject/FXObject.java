@@ -6,22 +6,11 @@ import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.ByteBufferBuilder;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
-import net.minecraft.world.phys.AABB;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.client.Camera;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleRenderType;
-import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 
@@ -31,7 +20,6 @@ import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-@OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 @Getter
 public abstract class FXObject extends Particle implements IFXObject {
@@ -104,6 +92,15 @@ public abstract class FXObject extends Particle implements IFXObject {
     protected ParticleTickHost tickHost;
     @Setter
     protected long lastHostTick;
+    // 26.1: Particle lost its color/roll fields (they moved into SingleQuadParticle's render state);
+    // Photon's simulation writes them (color-over-lifetime, rotation) and the render-state extraction
+    // reads them, so they live here now.
+    public float rCol = 1.0F;
+    public float gCol = 1.0F;
+    public float bCol = 1.0F;
+    public float alpha = 1.0F;
+    public float roll;
+    public float oRoll;
 
     protected FXObject() {
         super(null, 0, 0, 0);
@@ -198,13 +195,14 @@ public abstract class FXObject extends Particle implements IFXObject {
     }
 
     @Override
-    protected int getLightColor(float partialTick) {
+    protected int getLightCoords(float partialTick) {
         if (this.realLevel == null) {
             return 0;
         }
         var pos = transform.position();
         BlockPos blockPos = BlockPos.containing(pos.x, pos.y, pos.z);
-        return this.realLevel.isLoaded(blockPos) ? LevelRenderer.getLightColor(this.realLevel, blockPos) : 0;
+        return this.realLevel.hasChunkAt(blockPos)
+                ? net.minecraft.client.renderer.LevelRenderer.getLightCoords(this.realLevel, blockPos) : 0;
     }
 
     /**
@@ -267,24 +265,17 @@ public abstract class FXObject extends Particle implements IFXObject {
         }
     }
 
-    @Override
-    public void render(@Nonnull VertexConsumer buffer, Camera pRenderInfo, float pPartialTicks) {
-        var tickTime = lastTick + pPartialTicks;
+    /**
+     * Per-frame drive (deltaTime bookkeeping + timeline frame animation). In 1.21 this ran from the
+     * vanilla {@code Particle.render} call; 26.1 has no per-particle render call, so the render-state
+     * extraction (TODO(M1): PhotonParticleGroup.extractRenderState) must invoke it once per frame.
+     */
+    public void extractFrame(float partialTicks) {
+        var tickTime = lastTick + partialTicks;
         deltaTime = tickTime - lastTickTime;
         lastTickTime = tickTime;
         if (delay > 0) return;
-        updateFrame(pPartialTicks);
-        if (buffer instanceof RenderPassPipeline passBuffer) {
-            passBuffer.setupRenderingState(pRenderInfo, pPartialTicks);
-            prepareRenderPass(passBuffer);
-        } else {
-            Photon.LOGGER.error("Photon FX Object {} is not using a RenderPassBuffer. " +
-                            "Please use a RenderPassBuffer to render your FX Objects.", name);
-        }
-    }
-
-    public void prepareRenderPass(RenderPassPipeline buffer) {
-
+        updateFrame(partialTicks);
     }
 
     @Override
@@ -301,29 +292,21 @@ public abstract class FXObject extends Particle implements IFXObject {
         }
     }
 
+    /**
+     * TODO(M1): return Photon's registered ParticleGroup type instead. Until then all FX objects
+     * live in vanilla's {@code NoRenderParticleGroup}: ticked every engine tick, never extracted or
+     * rendered. Group lookup is identity-based, so this must stay a shared singleton instance.
+     */
     @Override
     @Nonnull
-    public ParticleRenderType getRenderType() {
-        return NO_RENDER_RENDER_TYPE;
+    public ParticleRenderType getGroup() {
+        return ParticleRenderType.NO_RENDER;
     }
 
-    @Override
+    /** 26.1: no Particle render-bounding-box hook — kept as Photon API; the M1 extraction and the
+     *  editor cull-box gizmo read it (emitters override with their live cull box). */
     @Nonnull
-    public AABB getRenderBoundingBox(float partialTicks) {
-        return AABB.INFINITE;
+    public net.minecraft.world.phys.AABB getRenderBoundingBox(float partialTicks) {
+        return net.minecraft.world.phys.AABB.INFINITE;
     }
-
-    public static ParticleRenderType NO_RENDER_RENDER_TYPE = new ParticleRenderType() {
-        public final RenderPassPipeline pipeline = new RenderPassPipeline(new ByteBufferBuilder(1));
-
-        @Override
-        public BufferBuilder begin(Tesselator tesselator, TextureManager textureManager) {
-            return pipeline;
-        }
-
-        @Override
-        public boolean isTranslucent() {
-            return false;
-        }
-    };
 }

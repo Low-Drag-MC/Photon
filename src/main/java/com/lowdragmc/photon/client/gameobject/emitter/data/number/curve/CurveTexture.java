@@ -2,11 +2,9 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.number.curve;
 
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.TransformTexture;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
+import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import org.joml.Vector2f;
 
 import java.util.ArrayList;
@@ -34,9 +32,8 @@ public class CurveTexture extends TransformTexture {
         return this;
     }
 
-    @Override
-    @OnlyIn(Dist.CLIENT)
-    protected void drawInternal(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
+    // TODO(M4): register a GuiTextureRenderer so this draws through the 26.1 texture registry
+    protected void drawInternal(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
         var points = new ArrayList<Vector2f>();
         for (int i = 0; i < width; i++) {
             float coordX = i * 1f / width;
@@ -44,7 +41,7 @@ public class CurveTexture extends TransformTexture {
         }
         if (points.size() < 2) return;
         points.add(new Vector2f(1, curves.getCurveY(1)));
-        DrawerHelper.drawLines(
+        DrawerHelperClient.drawLines(
                 graphics,
                 points.stream().map(coord -> new Vector2f(x + width * coord.x, y + height * (1 - coord.y))).toList(),
                 color,

@@ -336,20 +336,20 @@ public class ConfigPropertyType implements AnimatedPropertyType {
 
     @Override
     public AnimatedProperty deserialize(HolderLookup.Provider provider, CompoundTag tag) {
-        var base = AnimatedProperty.readFloatsFromTag(tag.getList("base", Tag.TAG_FLOAT));
+        var base = AnimatedProperty.readFloatsFromTag(tag.getListOrEmpty("base"));
         var channels = AnimatedProperty.readChannels(provider, tag, channelCount());
         var fixedBase = new float[channelCount()];
         System.arraycopy(base, 0, fixedBase, 0, Math.min(base.length, fixedBase.length));
-        var property = new ConfigAnimatedProperty(this, fixedBase, channels, tag.getFloat("rangeMin"), tag.getFloat("rangeMax"));
+        var property = new ConfigAnimatedProperty(this, fixedBase, channels, tag.getFloatOr("rangeMin", 0.0F), tag.getFloatOr("rangeMax", 0.0F));
         AnimatedProperty.readExprClips(tag, property);
-        if (tag.contains("curveClips", Tag.TAG_LIST)) {
-            var channelsTag = tag.getList("curveClips", Tag.TAG_LIST);
+        if (tag.getList("curveClips").isPresent()) {
+            var channelsTag = tag.getListOrEmpty("curveClips");
             for (int axis = 0; axis < channelCount() && axis < channelsTag.size(); axis++) {
-                var clips = channelsTag.getList(axis);
+                var clips = channelsTag.getListOrEmpty(axis);
                 for (int i = 0; i < clips.size(); i++) {
-                    var c = clips.getCompound(i);
-                    var curve = c.contains("curve") ? NumberFunction.deserializeWrapper(c.getCompound("curve")) : new Curve();
-                    property.curveClips(axis).add(new CurveClip(c.getDouble("start"), c.getDouble("duration"), curve));
+                    var c = clips.getCompoundOrEmpty(i);
+                    var curve = c.contains("curve") ? NumberFunction.deserializeWrapper(c.getCompoundOrEmpty("curve")) : new Curve();
+                    property.curveClips(axis).add(new CurveClip(c.getDoubleOr("start", 0.0D), c.getDoubleOr("duration", 0.0D), curve));
                 }
             }
         }

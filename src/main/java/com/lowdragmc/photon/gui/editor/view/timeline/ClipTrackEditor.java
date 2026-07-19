@@ -8,13 +8,13 @@ import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
+import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.TaffyPosition;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 
 import javax.annotation.Nullable;
 
@@ -75,7 +75,7 @@ public abstract class ClipTrackEditor extends TrackEditor {
 
     /** Draw extra decoration inside a clip (over the fill/border), e.g. audio loop sub-divisions.
      *  {@code x/y/w/h} are the clip's inner rect. Default no-op. */
-    protected void drawClipDecoration(GuiGraphics graphics, TimelineContext ctx, Track track, Clip clip,
+    protected void drawClipDecoration(GUIContext graphics, TimelineContext ctx, Track track, Clip clip,
                                       float x, float y, float w, float h, float pt) {
     }
 
@@ -106,18 +106,18 @@ public abstract class ClipTrackEditor extends TrackEditor {
             layout.widthPercent(100);
             layout.height(state.rowHeight);
         }).setOverflowVisible(false).style(style -> style
-                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
-                    DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
+                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                    DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
                     if (ctx.isTrackSelected(track)) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
                     }
                     if (track.mute()) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color);
                     } else if (track.lock()) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
                     }
                 })
-                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> ctx.drawPlayhead(graphics, x, y, w, h, pt)));
+                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> ctx.drawPlayhead(graphics, x, y, w, h, pt)));
         lane.addEventListener(UIEvents.MOUSE_WHEEL, ctx::zoom);
         lane.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) {
@@ -148,23 +148,23 @@ public abstract class ClipTrackEditor extends TrackEditor {
             layout.height(clipHeight);
             layout.paddingAll(2);
         }).style(style -> style
-                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     var invalid = clipDragInvalid(ctx, st, clip);
-                    DrawerHelper.drawSolidRect(graphics, x + 1, y, Math.max(1, w - 2), h,
+                    DrawerHelperClient.drawSolidRect(graphics, x + 1, y, Math.max(1, w - 2), h,
                             (invalid ? ColorPattern.T_RED : fillColor).color);
                 })
-                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     var bx = x + 1;
                     var bw = Math.max(1, w - 2);
                     var invalid = clipDragInvalid(ctx, st, clip);
-                    DrawerHelper.drawBorder(graphics, bx, y, bw, h, (invalid ? ColorPattern.RED : baseColor).color, 1);
+                    DrawerHelperClient.drawBorder(graphics, bx, y, bw, h, (invalid ? ColorPattern.RED : baseColor).color, 1);
                     if (ctx.isClipSelected(clip) && !invalid) {
-                        DrawerHelper.drawBorder(graphics, bx, y, bw, h, ColorPattern.WHITE.color, 1);
+                        DrawerHelperClient.drawBorder(graphics, bx, y, bw, h, ColorPattern.WHITE.color, 1);
                     }
                     drawClipDecoration(graphics, ctx, track, clip, bx, y, bw, h, pt);
                     if (!track.lock() && my >= y && my <= y + h && (mx <= bx + TimelineContext.EDGE_PX || mx >= bx + bw - TimelineContext.EDGE_PX)
                             && mx >= bx && mx <= bx + bw) {
-                        Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
+                        graphics.drawTexture(Icons.ARROW_LEFT_RIGHT, mx - 5, my - 5, 10, 10);
                     }
                 }));
         ctx.registerClipView(track, clip, element);

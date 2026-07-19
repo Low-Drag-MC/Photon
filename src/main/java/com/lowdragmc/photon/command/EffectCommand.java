@@ -3,7 +3,7 @@ package com.lowdragmc.photon.command;
 import lombok.Setter;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -13,7 +13,7 @@ import net.minecraft.world.phys.Vec3;
  */
 public abstract class EffectCommand implements CustomPacketPayload {
     @Setter
-    protected ResourceLocation location;
+    protected Identifier location;
     @Setter
     protected Vec3 offset = Vec3.ZERO;
     @Setter
@@ -28,7 +28,7 @@ public abstract class EffectCommand implements CustomPacketPayload {
     protected boolean allowMulti;
 
     public void encode(RegistryFriendlyByteBuf buf) {
-        buf.writeResourceLocation(location);
+        buf.writeIdentifier(location);
         buf.writeDouble(offset.x);
         buf.writeDouble(offset.y);
         buf.writeDouble(offset.z);
@@ -44,7 +44,7 @@ public abstract class EffectCommand implements CustomPacketPayload {
     }
 
     public void decode(RegistryFriendlyByteBuf buf) {
-        location = buf.readResourceLocation();
+        location = buf.readIdentifier();
         offset = new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble());
         rotation = new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble());
         scale = new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble());

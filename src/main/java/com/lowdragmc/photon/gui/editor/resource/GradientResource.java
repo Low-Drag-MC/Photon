@@ -18,7 +18,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-import net.neoforged.neoforge.common.util.INBTSerializable;
 import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.Nonnull;
@@ -85,7 +84,7 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
         return container;
     }
 
-    public static class Gradients implements IConfigurable, INBTSerializable<CompoundTag> {
+    public static class Gradients implements IConfigurable {
         @Nonnull
         public final GradientColor gradient0;
         @Nullable
@@ -110,21 +109,20 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
 
         public CompoundTag serializeNBT(@Nonnull HolderLookup.Provider provider) {
             var tag = new CompoundTag();
-            tag.put("a", gradient0.serializeNBT(provider));
+            tag.put("a", com.lowdragmc.photon.utils.ValueIONbt.toTag(gradient0, provider));
             if (gradient1 != null) {
-                tag.put("b", gradient1.serializeNBT(provider));
+                tag.put("b", com.lowdragmc.photon.utils.ValueIONbt.toTag(gradient1, provider));
             }
             return tag;
         }
 
-        @Override
         public void deserializeNBT(@Nonnull HolderLookup.Provider provider, CompoundTag nbt) {
             if (nbt.get("a") instanceof CompoundTag tag) {
-                gradient0.deserializeNBT(provider, tag);
+                com.lowdragmc.photon.utils.ValueIONbt.fromTag(gradient0, provider, tag);
             }
             if (gradient1 != null) {
                 if (nbt.get("b") instanceof CompoundTag tag) {
-                    gradient1.deserializeNBT(provider, tag);
+                    com.lowdragmc.photon.utils.ValueIONbt.fromTag(gradient1, provider, tag);
                 }
             }
         }
@@ -138,14 +136,14 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
             var container = new Configurator();
             container.addInlineChild(
                     new GradientColorSelector().setValue(gradient0.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
-                        gradient0.deserializeNBT(Platform.getFrozenRegistry(), gradientColor.serializeNBT(Platform.getFrozenRegistry()));
+                        com.lowdragmc.photon.utils.ValueIONbt.fromTag(gradient0, Platform.getFrozenRegistry(), com.lowdragmc.photon.utils.ValueIONbt.toTag(gradientColor, Platform.getFrozenRegistry()));
                         container.notifyChanges();
                     }).layout(layout -> layout.widthPercent(100))
             );
             if (gradient1 != null) {
                 container.addInlineChild(
                         new GradientColorSelector().setValue(gradient1.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
-                            gradient1.deserializeNBT(Platform.getFrozenRegistry(), gradientColor.serializeNBT(Platform.getFrozenRegistry()));
+                            com.lowdragmc.photon.utils.ValueIONbt.fromTag(gradient1, Platform.getFrozenRegistry(), com.lowdragmc.photon.utils.ValueIONbt.toTag(gradientColor, Platform.getFrozenRegistry()));
                             container.notifyChanges();
                         }).layout(layout -> layout.widthPercent(100))
                 );

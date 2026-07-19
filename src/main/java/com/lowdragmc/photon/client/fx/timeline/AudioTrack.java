@@ -2,10 +2,8 @@ package com.lowdragmc.photon.client.fx.timeline;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundSource;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import java.util.Locale;
 
@@ -15,7 +13,6 @@ import java.util.Locale;
  * The base {@link Track#targetId} is optional here — when bound it provides a world position for
  * 3D/attenuated playback; otherwise the sound plays non-positional (at the listener).
  */
-@OnlyIn(Dist.CLIENT)
 public class AudioTrack extends Track {
 
     public AudioTrack() {
@@ -41,13 +38,13 @@ public class AudioTrack extends Track {
     protected void readClipExtra(Clip clip, CompoundTag clipTag, HolderLookup.Provider provider) {
         if (clip instanceof AudioClip audio) {
             if (clipTag.contains("sound")) {
-                var loc = ResourceLocation.tryParse(clipTag.getString("sound"));
+                var loc = Identifier.tryParse(clipTag.getStringOr("sound", ""));
                 audio.sound(loc != null ? loc : AudioClip.DEFAULT_SOUND);
             }
-            if (clipTag.contains("volume")) audio.volume(clipTag.getFloat("volume"));
-            if (clipTag.contains("pitch")) audio.pitch(clipTag.getFloat("pitch"));
-            if (clipTag.contains("category")) audio.category(parseCategory(clipTag.getString("category")));
-            audio.attenuation(clipTag.getBoolean("attenuation"));
+            if (clipTag.contains("volume")) audio.volume(clipTag.getFloatOr("volume", 0.0F));
+            if (clipTag.contains("pitch")) audio.pitch(clipTag.getFloatOr("pitch", 0.0F));
+            if (clipTag.contains("category")) audio.category(parseCategory(clipTag.getStringOr("category", "")));
+            audio.attenuation(clipTag.getBooleanOr("attenuation", false));
         }
     }
 

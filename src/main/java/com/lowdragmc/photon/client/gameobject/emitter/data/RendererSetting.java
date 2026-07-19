@@ -15,8 +15,6 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.nbt.IntTag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.Nullable;
 
@@ -26,7 +24,6 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-@OnlyIn(Dist.CLIENT)
 @Getter
 @Setter
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
@@ -39,7 +36,7 @@ public class RendererSetting {
 
     public enum SortMode {
         NONE(() -> null),
-        DISTANCE(RenderSystem::getVertexSorting);
+        DISTANCE(() -> VertexSorting.byDistance(0, 0, 0)); // TODO(M1): feed the camera-relative origin from the extraction
         public final Supplier<VertexSorting> vertexSorting;
 
         SortMode(Supplier<VertexSorting> vertexSorting) {
@@ -163,7 +160,7 @@ public class RendererSetting {
 
     private List<MaterialSetting> materialDeserialize(IntTag size) {
         var materials = new ArrayList<MaterialSetting>();
-        for (int i = 0; i < size.getAsInt(); i++) {
+        for (int i = 0; i < size.intValue(); i++) {
             materials.add(addDefaultMaterial());
         }
         return materials;

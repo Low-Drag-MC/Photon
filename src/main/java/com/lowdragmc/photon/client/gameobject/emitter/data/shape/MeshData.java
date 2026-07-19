@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.shape;
 
 import com.lowdragmc.lowdraglib2.Platform;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
@@ -23,15 +24,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.Blocks;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.common.util.INBTSerializable;
+import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
+import net.minecraft.world.level.storage.ValueInput;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector3f;
 import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.lwjgl.opengl.GL11;
 
 import javax.annotation.Nullable;
@@ -39,7 +41,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public final class MeshData implements INBTSerializable<CompoundTag>, IConfigurable, IPersistedSerializable {
+public final class MeshData implements IConfigurable, IPersistedSerializable {
     @Getter
     @Persisted
     private IModelSource source = new JsonModelSource();
@@ -64,7 +66,7 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
         deserializeNBT(Platform.getFrozenRegistry(), nbt);
     }
 
-    public MeshData(ResourceLocation modelLocation) {
+    public MeshData(Identifier modelLocation) {
         this(new JsonModelSource(modelLocation));
     }
 
@@ -202,22 +204,46 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
     }
 
     @Override
-    public void deserializeNBT(HolderLookup.@NotNull Provider provider, @NotNull CompoundTag nbt) {
-        IPersistedSerializable.super.deserializeNBT(provider, nbt);
-        if (!nbt.contains("source")) {
+    public void deserialize(@NotNull ValueInput input) {
+        IPersistedSerializable.super.deserialize(input);
+        if (input.child("source").isEmpty()) {
             // legacy (pre-v5) payloads store a bare json model id; editor resource files and pasted
             // NBT bypass the project datafixer, so keep these in-place fallbacks
-            if (nbt.contains("modelLocation", Tag.TAG_STRING)) {
-                source = new JsonModelSource(ResourceLocation.parse(nbt.getString("modelLocation")));
-            } else if (nbt.contains("type", Tag.TAG_STRING)) {
+            var modelLocation = input.getString("modelLocation");
+            if (modelLocation.isPresent()) {
+                source = new JsonModelSource(Identifier.parse(modelLocation.get()));
+            } else if (input.getString("type").isPresent()) {
                 // a bare IModelSource wrapper {type, data} (renderer payloads before MeshData wrapping)
-                source = IModelSource.deserializeWrapper(nbt);
+                source = IModelSource.deserializeWrapper(toCompound(input));
             }
         }
         clearDerived();
     }
 
-    @OnlyIn(Dist.CLIENT)
+    private static CompoundTag toCompound(ValueInput input) {
+        var tag = new CompoundTag();
+        for (var key : input.keySet()) {
+            input.read(key, net.minecraft.util.ExtraCodecs.NBT).ifPresent(value -> tag.put(key, value));
+        }
+        return tag;
+    }
+
+    /** Tag-level bridge kept for editor resources and copy/paste payloads (see {@code MeshResource}). */
+    public CompoundTag serializeNBT(HolderLookup.@NotNull Provider provider) {
+        try (var reporter = new ProblemReporter.ScopedCollector(Photon.LOGGER)) {
+            var output = TagValueOutput.createWithContext(reporter, provider);
+            serialize(output);
+            return output.buildResult();
+        }
+    }
+
+    /** Tag-level bridge kept for editor resources and copy/paste payloads (see {@code MeshResource}). */
+    public void deserializeNBT(HolderLookup.@NotNull Provider provider, @NotNull CompoundTag nbt) {
+        try (var reporter = new ProblemReporter.ScopedCollector(Photon.LOGGER)) {
+            deserialize(TagValueInput.create(reporter, provider, nbt));
+        }
+    }
+
     public Scene createPreviewScene() {
         var level = new TrackedDummyWorld();
         level.addBlock(BlockPos.ZERO, BlockInfo.fromBlock(Blocks.AIR));
@@ -226,7 +252,6 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
         scene.setRenderSelect(false);
         scene.createScene(level);
         assert scene.getRenderer() != null;
-        scene.getRenderer().setOnLookingAt(null); // better performance
         scene.setRenderedCore(Collections.singleton(BlockPos.ZERO), null);
         scene.setAfterWorldRender(s -> drawLineFrames(new PoseStack()));
         scene.layout(layout -> {
@@ -241,22 +266,15 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
         return scene;
     }
 
-    @OnlyIn(Dist.CLIENT)
+    // 26.1: immediate Tesselator+BufferUploader draws are gone — batch through the shared buffer
+    // source with the vanilla lines render type (blend/depth/width owned by the pipeline).
     public void drawLineFrames(PoseStack poseStack) {
         var edges = getEdges();
         if (edges.isEmpty()) return;
-        var tessellator = Tesselator.getInstance();
         var pose = poseStack.last();
         var mat = pose.pose();
-
-        RenderSystem.enableBlend();
-        RenderSystem.disableDepthTest();
-        RenderSystem.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-
-        RenderSystem.disableCull();
-        RenderSystem.setShader(GameRenderer::getRendertypeLinesShader);
-        var buffer = tessellator.begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
-        RenderSystem.lineWidth(10);
+        var bufferSource = net.minecraft.client.Minecraft.getInstance().renderBuffers().bufferSource();
+        var buffer = bufferSource.getBuffer(net.minecraft.client.renderer.rendertype.RenderTypes.lines());
 
         for (var edge : edges) {
             var a = edge.a;
@@ -270,17 +288,14 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
             f2 /= f3;
 
             // +0.5: mesh space is centered, the preview block spans 0..1 (origin sits at block center)
-            buffer.addVertex(mat, a.x + 0.5f, a.y + 0.5f, a.z + 0.5f).setColor(-1).setNormal(poseStack.last(), f, f1, f2);
-            buffer.addVertex(mat, b.x + 0.5f, b.y + 0.5f, b.z + 0.5f).setColor(-1).setNormal(poseStack.last(), f, f1, f2);
+            buffer.addVertex(mat, a.x + 0.5f, a.y + 0.5f, a.z + 0.5f).setColor(-1).setNormal(poseStack.last(), f, f1, f2).setLineWidth(10);
+            buffer.addVertex(mat, b.x + 0.5f, b.y + 0.5f, b.z + 0.5f).setColor(-1).setNormal(poseStack.last(), f, f1, f2).setLineWidth(10);
         }
 
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
-        RenderSystem.enableDepthTest();
-        RenderSystem.enableCull();
+        bufferSource.endBatch();
     }
 
     @Override
-    @OnlyIn(Dist.CLIENT)
     public void buildConfigurator(ConfiguratorGroup father) {
         father.addConfigurators(new Configurator("ldlib.gui.editor.group.preview").addChild(createPreviewScene()));
         father.addConfigurator(new ConfiguratorSelectorConfigurator<>(

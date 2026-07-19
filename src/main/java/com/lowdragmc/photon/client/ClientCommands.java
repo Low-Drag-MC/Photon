@@ -21,8 +21,6 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.ClickEvent;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
@@ -35,7 +33,6 @@ import static com.lowdragmc.lowdraglib2.client.ClientCommands.createLiteral;
  * @date 2023/2/9
  * @implNote ClientCommands
  */
-@OnlyIn(Dist.CLIENT)
 public class ClientCommands {
 
     @SuppressWarnings("unchecked")
@@ -83,9 +80,10 @@ public class ClientCommands {
                         .then(createLiteral("clear_particles")
                                 .executes(context -> {
                                     if (Minecraft.getInstance().particleEngine instanceof ParticleEngineAccessor accessor) {
+                                        // TODO(M1): once Photon registers its own ParticleGroup, remove only that
+                                        // group; until then all FX live in the shared NO_RENDER group.
                                         accessor.getParticles().entrySet().removeIf(entry ->
-                                                entry.getKey() instanceof ParticleQueueRenderType ||
-                                                entry.getKey() == FXObject.NO_RENDER_RENDER_TYPE);
+                                                entry.getKey() == net.minecraft.client.particle.ParticleRenderType.NO_RENDER);
                                     }
                                     VanillaParticleHost.onWipe(); // cached FXRuntimes turn invalid immediately
                                     EntityEffectExecutor.CACHE.clear();
@@ -101,15 +99,14 @@ public class ClientCommands {
                                     }
                                     return 1;
                                 }))
-                        .then(Commands.literal("convert").requires(source -> source.hasPermission(2))
+                        .then(Commands.literal("convert").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                                 .executes(context -> {
                                     if (Minecraft.getInstance().player != null) {
                                         Minecraft.getInstance().player.sendSystemMessage(
                                                 Component.literal("trying to convert photon 1 fx under the ")
                                                         .append(Component.literal("[ldlib2/assets/photon/fx_old]")
                                                                 .withStyle(style -> style.withColor(0xff008000)
-                                                                        .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE,
-                                                                                LDLib2.getAssetsDir() + "/photon/fx_old")))
+                                                                        .withClickEvent(new ClickEvent.OpenFile(LDLib2.getAssetsDir() + "/photon/fx_old")))
                                                         )
                                                         .append(Component.literal(" folder"))
                                         );

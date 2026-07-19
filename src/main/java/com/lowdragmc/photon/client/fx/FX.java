@@ -2,11 +2,10 @@ package com.lowdragmc.photon.client.fx;
 
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.MethodsReturnNonnullByDefault;
+import com.mojang.logging.annotations.MethodsReturnNonnullByDefault;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
-import net.neoforged.neoforge.common.util.INBTSerializable;
+import net.minecraft.resources.Identifier;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -21,27 +20,31 @@ import javax.annotation.ParametersAreNonnullByDefault;
 @Getter
 @MethodsReturnNonnullByDefault
 @ParametersAreNonnullByDefault
-public class FX implements INBTSerializable<CompoundTag> {
+/*
+ * Serialization note (26.1): NeoForge removed INBTSerializable. The .fx file format is Photon-owned
+ * tag composition, so these classes keep their Tag-based serializeNBT/deserializeNBT methods as plain
+ * methods to stay byte-compatible with existing assets; ValueIOSerializable is only adopted where
+ * LDLib2's PersistedParser requires it (see CurveTexture/GradientTexture/MeshData).
+ */
+public class FX {
     public static final String SUFFIX = ".fx";
     @Nullable
     @Setter
-    private ResourceLocation fxLocation;
+    private Identifier fxLocation;
     private final FXData fxData;
 
     public FX() {
         fxData = new FXData();
     }
 
-    @Override
     public CompoundTag serializeNBT(HolderLookup.Provider provider) {
         var tag = new CompoundTag();
         tag.put("fxData", fxData.serializeNBT(provider));
         return tag;
     }
 
-    @Override
     public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
-        fxData.deserializeNBT(provider, tag.getCompound("fxData"));
+        fxData.deserializeNBT(provider, tag.getCompoundOrEmpty("fxData"));
     }
 
     /**

@@ -154,7 +154,7 @@ public abstract class Track {
     public CompoundTag writeData(HolderLookup.Provider provider) {
         var tag = new CompoundTag();
         if (targetId != null) {
-            tag.putUUID("target", targetId);
+            tag.store("target", net.minecraft.core.UUIDUtil.CODEC, targetId);
         }
         tag.putString("name", displayName);
         tag.putBoolean("mute", mute);
@@ -166,7 +166,7 @@ public abstract class Track {
             c.putDouble("duration", clip.duration());
             c.putFloat("speed", clip.speed());
             if (clip.targetId() != null) {
-                c.putUUID("clipTarget", clip.targetId());
+                c.store("clipTarget", net.minecraft.core.UUIDUtil.CODEC, clip.targetId());
             }
             c.putLong("seed", clip.seed());
             c.putBoolean("randomSeed", clip.randomSeed());
@@ -179,18 +179,18 @@ public abstract class Track {
     }
 
     public void readData(HolderLookup.Provider provider, CompoundTag tag) {
-        targetId = tag.hasUUID("target") ? tag.getUUID("target") : null;
-        displayName = tag.getString("name");
-        mute = tag.getBoolean("mute");
-        lock = tag.getBoolean("lock");
+        targetId = tag.read("target", net.minecraft.core.UUIDUtil.CODEC).isPresent() ? tag.read("target", net.minecraft.core.UUIDUtil.CODEC).orElseThrow() : null;
+        displayName = tag.getStringOr("name", "");
+        mute = tag.getBooleanOr("mute", false);
+        lock = tag.getBooleanOr("lock", false);
         clips.clear();
-        for (var t : tag.getList("clips", Tag.TAG_COMPOUND)) {
+        for (var t : tag.getListOrEmpty("clips")) {
             if (t instanceof CompoundTag c) {
-                var clip = createClip(c.getDouble("start"), c.getDouble("duration"), c.getFloat("speed"));
-                if (c.hasUUID("clipTarget")) {
-                    clip.targetId(c.getUUID("clipTarget"));
+                var clip = createClip(c.getDoubleOr("start", 0.0D), c.getDoubleOr("duration", 0.0D), c.getFloatOr("speed", 0.0F));
+                if (c.read("clipTarget", net.minecraft.core.UUIDUtil.CODEC).isPresent()) {
+                    clip.targetId(c.read("clipTarget", net.minecraft.core.UUIDUtil.CODEC).orElseThrow());
                 }
-                clip.seed(c.getLong("seed")).randomSeed(c.getBoolean("randomSeed"));
+                clip.seed(c.getLongOr("seed", 0L)).randomSeed(c.getBooleanOr("randomSeed", false));
                 readClipExtra(clip, c, provider);
                 clips.add(clip);
             }

@@ -19,8 +19,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
@@ -34,7 +32,6 @@ import java.util.function.Function;
  * @date 2022/06/15
  * @implNote BeamParticle
  */
-@OnlyIn(Dist.CLIENT)
 public class BeamParticle implements IParticle {
     /**
      * Basic data
@@ -170,7 +167,7 @@ public class BeamParticle implements IParticle {
     public Vector3f getRealEnd(@Nonnull Camera camera, Vector3f from) {
         var end = new Vector3f(from).add(emitter.transform().localToWorldMatrix().transformDirection(config.getEnd(), new Vector3f()));
         if (config.getRaycast() == BeamConfig.RaycastMode.BLOCKS || config.getRaycast() == BeamConfig.RaycastMode.BLOCKS_AND_ENTITIES) {
-            var level = camera.getEntity().level();
+            var level = camera.entity().level();
             var result = level.clip(
                     new ClipContext(new Vec3(from.x, from.y, from.z),
                             new Vec3(end.x, end.y, end.z),
@@ -182,7 +179,7 @@ public class BeamParticle implements IParticle {
             }
         }
         if (config.getRaycast() == BeamConfig.RaycastMode.ENTITIES || config.getRaycast() == BeamConfig.RaycastMode.BLOCKS_AND_ENTITIES) {
-            var level = camera.getEntity().level();
+            var level = camera.entity().level();
             var size = getRealWidth(0);
             var velocity = new Vector3f(end).sub(from);
             var vec3 = Entity.collideBoundingBox(null, new Vec3(velocity),

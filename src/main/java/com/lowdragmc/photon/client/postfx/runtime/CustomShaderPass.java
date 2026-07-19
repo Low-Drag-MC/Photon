@@ -4,11 +4,8 @@ import com.google.gson.JsonObject;
 import com.lowdragmc.photon.Photon;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.ShaderInstance;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.GsonHelper;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.InputStreamReader;
@@ -31,7 +28,6 @@ import java.util.Map;
  * reload (hooked from {@code PhotonShaders.registerShaders}). Failures memo-log once. Render
  * thread only.</p>
  */
-@OnlyIn(Dist.CLIENT)
 public final class CustomShaderPass {
 
     /** Uniforms the executor manages — never exposed as pass ports. */
@@ -71,20 +67,14 @@ public final class CustomShaderPass {
     /** The pass interface parsed from the shader json. */
     public record Info(List<String> samplers, List<UniformSpec> uniforms) {}
 
-    private record ShaderEntry(@Nullable ShaderInstance shader) {}
     private record InfoEntry(@Nullable Info info) {}
 
-    private static final Map<String, ShaderEntry> SHADERS = new HashMap<>();
     private static final Map<String, InfoEntry> INFOS = new HashMap<>();
 
     private CustomShaderPass() {}
 
-    /** Drop every cached shader/info — resource reload re-resolves everything lazily. */
+    /** Drop every cached info — resource reload re-resolves everything lazily. */
     public static void clearAll() {
-        SHADERS.values().forEach(entry -> {
-            if (entry.shader() != null) entry.shader().close();
-        });
-        SHADERS.clear();
         INFOS.clear();
     }
 
@@ -95,8 +85,8 @@ public final class CustomShaderPass {
         if (cached != null) return cached.info();
         Info info = null;
         try {
-            var rl = ResourceLocation.parse(location);
-            var jsonPath = ResourceLocation.fromNamespaceAndPath(rl.getNamespace(),
+            var rl = Identifier.parse(location);
+            var jsonPath = Identifier.fromNamespaceAndPath(rl.getNamespace(),
                     "shaders/core/" + rl.getPath() + ".json");
             var resource = Minecraft.getInstance().getResourceManager().getResourceOrThrow(jsonPath);
             try (Reader reader = new InputStreamReader(resource.open(), StandardCharsets.UTF_8)) {
@@ -133,19 +123,6 @@ public final class CustomShaderPass {
         return new Info(List.copyOf(samplers), List.copyOf(uniforms));
     }
 
-    /** The loaded shader of {@code location}, or null when it failed to compile (logged once). */
-    @Nullable
-    public static ShaderInstance getShader(String location) {
-        var cached = SHADERS.get(location);
-        if (cached != null) return cached.shader();
-        ShaderInstance shader = null;
-        try {
-            shader = new ShaderInstance(Minecraft.getInstance().getResourceManager(),
-                    ResourceLocation.parse(location), DefaultVertexFormat.POSITION);
-        } catch (Exception e) {
-            Photon.LOGGER.error("custom pass shader '{}' failed to load: {}", location, e.toString());
-        }
-        SHADERS.put(location, new ShaderEntry(shader));
-        return shader;
-    }
+    // TODO(M3): getShader(location) — the pass shaders become RenderPipelines (bare .vsh/.fsh assets,
+    // registered/compiled through ShaderManager) when the postfx executor is rebuilt.
 }

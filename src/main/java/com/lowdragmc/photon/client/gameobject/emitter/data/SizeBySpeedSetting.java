@@ -12,15 +12,12 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveCon
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * @author KilaBash
  * @date 2023/5/30
  * @implNote SizeOverLifetimeSetting
  */
-@OnlyIn(Dist.CLIENT)
 @Setter
 @Getter
 public class SizeBySpeedSetting extends ToggleGroup {

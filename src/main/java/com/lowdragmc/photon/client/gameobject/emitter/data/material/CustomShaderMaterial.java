@@ -2,7 +2,6 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
-import com.lowdragmc.lowdraglib2.client.shader.LDShaderHolder;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
@@ -16,36 +15,29 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.AutoCloseCleaner;
-import com.lowdragmc.photon.client.PhotonShaders;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
-import com.mojang.blaze3d.platform.GlStateManager;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.EndTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.world.inventory.InventoryMenu;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.NotNull;
-import org.joml.Matrix4f;
-import org.joml.Vector4f;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
-import java.lang.ref.Cleaner;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
 
-@OnlyIn(Dist.CLIENT)
+/**
+ * M0 partial stub (original in git history, 1.21 branch). The user-shader machinery was built on
+ * LDLib2's {@code LDShaderHolder} (per-shader JSON + ShaderInstance + dynamic samplers/uniforms) —
+ * all dead in 26.1.
+ * <p>
+ * TODO(M2): rebuild on the KilaGraph 26.1 model: {@code DynamicShaderSourceRegistry} for the
+ * generated/user sources, a RenderPipeline per shader, SamplerCurve/SamplerGradient as bound
+ * textures, scene color/depth via the M3 scene sampler, and the U_* dynamic uniforms as a std140
+ * material UBO. Until then the material keeps (and round-trips) its data but renders nothing.
+ */
 @ParametersAreNonnullByDefault
 @LDLRegisterClient(name = "custom_shader", registry = "photon:material")
 public class CustomShaderMaterial extends ShaderInstanceMaterial {
@@ -54,32 +46,27 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     @Getter
     @Persisted
-    private ResourceLocation shaderLocation = Photon.id("circle");
+    private Identifier shaderLocation = Photon.id("circle");
     @Configurable(name = "SamplerCurve", subConfigurable = true)
     public final CurveTexture curveTexture = new CurveTexture(MAX_SAMPLING, MAX_SAMPLER);
     @Configurable(name = "SamplerGradient", subConfigurable = true)
     public final GradientTexture gradientTexture = new GradientTexture(MAX_SAMPLING, MAX_SAMPLER);
-    @Nullable
-    private LDShaderHolder shaderHolder;
-    private Cleaner.Cleanable shaderCleanable;
+    /** 1.21 saved the LDShaderHolder's uniform values under "shaderData"; carried as an opaque blob
+     *  so M0/M1 round-trips don't lose user data before M2 reattaches it. */
+    private CompoundTag pendingShaderData = new CompoundTag();
     @Getter
     private String compiledErrorMessage = "";
 
     public CustomShaderMaterial() {
     }
 
-    public CustomShaderMaterial(ResourceLocation shaderLocation) {
+    public CustomShaderMaterial(Identifier shaderLocation) {
         this.shaderLocation = shaderLocation;
     }
 
-    public void setShader(ResourceLocation shaderLocation) {
+    public void setShader(Identifier shaderLocation) {
         this.shaderLocation = shaderLocation;
         recompile();
-    }
-
-    @Override
-    public void setupUniform(MaterialContext context) {
-        super.setupUniform(context);
     }
 
     @Override
@@ -92,22 +79,18 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     @Override
     public Tag serializeAdditionalNBT(HolderLookup.@NotNull Provider provider) {
-        var shaderData = new CompoundTag();
-        if (shaderHolder != null) {
-            shaderData.put("shaderData", shaderHolder.serializeNBT(provider));
+        if (pendingShaderData.isEmpty()) {
+            return EndTag.INSTANCE;
         }
+        var shaderData = new CompoundTag();
+        shaderData.put("shaderData", pendingShaderData.copy());
         return shaderData;
     }
 
     @Override
     public void deserializeAdditionalNBT(Tag tag, HolderLookup.@NotNull Provider provider) {
         if (!(tag instanceof CompoundTag shaderData)) return;
-        recompile();
-        if (shaderHolder != null) {
-            shaderHolder.deserializeNBT(provider, shaderData.getCompound("shaderData"));
-            attachDynamicSamplers(shaderHolder);
-            attachDynamicUniforms(shaderHolder);
-        }
+        pendingShaderData = shaderData.getCompoundOrEmpty("shaderData").copy();
     }
 
     public boolean isCompiledError() {
@@ -115,115 +98,15 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     }
 
     public void recompile() {
+        // TODO(M2): compile the user shader into a RenderPipeline; until then just clear the error state
         compiledErrorMessage = "";
-
-        if (shaderCleanable != null) {
-            shaderCleanable.clean();
-            shaderCleanable = null;
-        }
-        if (shaderHolder != null) {
-            this.shaderHolder = null;
-        }
-
-        try {
-            this.shaderHolder = loadShaderHolder(shaderLocation);
-            this.shaderCleanable = AutoCloseCleaner.registerRenderThread(this, this.shaderHolder);
-        } catch (Throwable e) {
-            Photon.LOGGER.error("Failed to recompile shader", e);
-            this.compiledErrorMessage = e.getMessage();
-            this.shaderCleanable = null;
-        }
-    }
-
-    private LDShaderHolder loadShaderHolder(ResourceLocation shaderLocation) throws Throwable {
-        var shaderHolder = LDShaderHolder.create(shaderLocation, DefaultVertexFormat.BLOCK);
-        if (shaderHolder == null) throw new IllegalStateException("Failed to find shader " + shaderLocation);
-        var shader = shaderHolder.baseInstance;
-        var samplerNames = shader.getShaderInstanceAccessor().getSamplerNames();
-        if (samplerNames.contains("SamplerBlockAtlas")) {
-            var texture = Minecraft.getInstance().getTextureManager().getTexture(InventoryMenu.BLOCK_ATLAS);
-            shader.setSampler("SamplerBlockAtlas", texture);
-        }
-        attachDynamicSamplers(shaderHolder);
-        attachDynamicUniforms(shaderHolder);
-        return shaderHolder;
-    }
-
-    private void attachDynamicSamplers(LDShaderHolder shaderHolder) {
-        var shader = shaderHolder.baseInstance;
-        var samplerNames = shader.getShaderInstanceAccessor().getSamplerNames();
-        if (samplerNames.contains("SamplerCurve")) {
-            shaderHolder.addDynamicSampler("SamplerCurve", curveTexture::getCurveTexture);
-        }
-        if (samplerNames.contains("SamplerGradient")) {
-            shaderHolder.addDynamicSampler("SamplerGradient", gradientTexture::getGradientTexture);
-        }
-        if (samplerNames.contains("SamplerSceneColor")) {
-            shaderHolder.addDynamicSampler("SamplerSceneColor", () -> Optional.ofNullable(RenderPassPipeline.getCurrent())
-                    .map(pipeline -> pipeline.getSceneSampler().getColorTextureId()).orElse(-1));
-        }
-        if (samplerNames.contains("SamplerSceneDepth")) {
-            shaderHolder.addDynamicSampler("SamplerSceneDepth", () -> Optional.ofNullable(RenderPassPipeline.getCurrent())
-                    .map(pipeline -> pipeline.getSceneSampler().getDepthTextureId()).orElse(-1));
-        }
-    }
-
-    private void attachDynamicUniforms(LDShaderHolder shaderHolder) {
-        var shader = shaderHolder.baseInstance;
-        var uniformNames = shader.getShaderInstanceAccessor().getUniformMap().keySet();
-        if (uniformNames.contains("U_CameraPosition")) {
-            shaderHolder.addDynamicUniform("U_CameraPosition", uniform -> {
-                if (RenderPassPipeline.getCurrent() != null) {
-                    var camera = RenderPassPipeline.getCurrent().getCamera();
-                    if (camera != null) {
-                        var pos = camera.getPosition();
-                        uniform.set((float) pos.x, (float) pos.y, (float) pos.z);
-                    }
-                }
-            });
-        }
-        if (uniformNames.contains("U_InverseProjectionMatrix")) {
-            shaderHolder.addDynamicUniform("U_InverseProjectionMatrix", uniform -> {
-                uniform.set(RenderSystem.getProjectionMatrix().invert(new Matrix4f()));
-            });
-        }
-        if (uniformNames.contains("U_InverseViewMatrix")) {
-            shaderHolder.addDynamicUniform("U_InverseViewMatrix", uniform -> {
-                uniform.set(RenderSystem.getModelViewMatrix().invert(new Matrix4f()));
-            });
-        }
-        if (uniformNames.contains("U_ViewPort")) {
-            shaderHolder.addDynamicUniform("U_ViewPort", uniform -> {
-                uniform.set(new Vector4f(
-                        GlStateManager.Viewport.x(), GlStateManager.Viewport.y(),
-                        GlStateManager.Viewport.width(), GlStateManager.Viewport.height()
-                ));
-            });
-        }
-    }
-
-    @Override
-    public ShaderInstance getShader(MaterialContext context) {
-        if (shaderHolder == null) {
-            if (isCompiledError()) {
-                return PhotonShaders.getHDRParticleShader();
-            }
-            recompile();
-        }
-        if (shaderHolder == null) {
-            return PhotonShaders.getHDRParticleShader();
-        }
-        if (context.getShaderDefine().isEmpty()) {
-            return shaderHolder.getShaderInstance();
-        }
-        return shaderHolder.getShaderInstance(Set.of(context.getShaderDefine()));
     }
 
     @Override
     public IGuiTexture preview() {
         return DynamicTexture.of(() -> isCompiledError() ?
                 new TextTexture(compiledErrorMessage.isEmpty() ? "error" : compiledErrorMessage, 0xffff0000) :
-                preview);
+                IGuiTexture.MISSING_TEXTURE);
     }
 
     @Override
@@ -238,27 +121,15 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         var shaderLocationField = new StringConfigurator("photon.shader",
                 () -> shaderLocation.toString(),
                 s -> {
-                    setShader(ResourceLocation.parse(s));
-                    reloadShaderConfigurator(shaderConfigurator);
+                    setShader(Identifier.parse(s));
                     configurator.notifyChanges();
                 },
                 shaderLocation.toString(),
                 true).setResourceLocation(true);
 
         var reloadButton = new Configurator().addInlineChild(new Button()
-                .setOnClick(event -> {
-                    CompoundTag previousData = null;
-                    if (shaderHolder != null) {
-                        previousData = shaderHolder.serializeNBT(Platform.getFrozenRegistry());
-                    }
-                    recompile();
-                    if (previousData != null && shaderHolder != null) {
-                        shaderHolder.deserializeNBT(Platform.getFrozenRegistry(), previousData);
-                        attachDynamicSamplers(shaderHolder);
-                        attachDynamicUniforms(shaderHolder);
-                    }
-                    reloadShaderConfigurator(shaderConfigurator);
-                }).setText("photon.reload_shader").layout(layout -> layout.alignSelf(AlignItems.CENTER)));
+                .setOnClick(event -> recompile())
+                .setText("photon.reload_shader").layout(layout -> layout.alignSelf(AlignItems.CENTER)));
 
         configurator.inlineContainer.addChild( // button to select shader
                 new Button().setText("photon.select_shader").setOnClick(e -> {
@@ -269,13 +140,10 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                             var location = getShaderFromFile(r);
                             if (location == null) return;
                             setShader(location);
-                            reloadShaderConfigurator(shaderConfigurator);
                             configurator.notifyChanges();
                         }
                     }).show(mui.ui.rootElement);
                 }).layout(layout -> layout.alignSelf(AlignItems.CENTER)));
-
-        reloadShaderConfigurator(shaderConfigurator);
 
         father.addConfigurators(
                 configurator,
@@ -286,15 +154,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         ConfiguratorParser.createConfigurators(father, this);
     }
 
-    private void reloadShaderConfigurator(ConfiguratorGroup shaderConfigurator) {
-        shaderConfigurator.removeAllConfigurators();
-        if (shaderHolder != null) {
-            shaderHolder.buildConfigurator(shaderConfigurator);
-        }
-    }
-
     @Nullable
-    public static ResourceLocation getShaderFromFile(File filePath) {
+    public static Identifier getShaderFromFile(File filePath) {
         String fullPath = filePath.getPath().replace('\\', '/');
 
         // find the "assets/" directory in the path
@@ -328,7 +189,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         var location = modId + ":" + shaderPath.substring(0, shaderPath.length() - 5); // remove ".json" suffix
 
         if (LDLib2.isValidResourceLocation(location)) {
-            return ResourceLocation.parse(location);
+            return Identifier.parse(location);
         }
         return null;
     }

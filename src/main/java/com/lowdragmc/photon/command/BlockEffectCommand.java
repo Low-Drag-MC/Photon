@@ -15,16 +15,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.commands.arguments.IdentifierArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.core.BlockPos;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -36,7 +34,7 @@ import javax.annotation.Nonnull;
  * @implNote BlockEffectCommand
  */
 public class BlockEffectCommand extends EffectCommand {
-    public static final ResourceLocation ID = Photon.id("block_effect_command");
+    public static final Identifier ID = Photon.id("block_effect_command");
     public static final Type<BlockEffectCommand> TYPE = new Type<>(ID);
     public static final StreamCodec<RegistryFriendlyByteBuf, BlockEffectCommand> CODEC = StreamCodec.ofMember(BlockEffectCommand::encode, BlockEffectCommand::decodePacket);
 
@@ -93,7 +91,7 @@ public class BlockEffectCommand extends EffectCommand {
                                boolean allowMulti,
                                boolean checkState) throws CommandSyntaxException {
         var command = new BlockEffectCommand();
-        command.setLocation(ResourceLocationArgument.getId(context, "location"));
+        command.setLocation(IdentifierArgument.getId(context, "location"));
         command.setPos(BlockPosArgument.getLoadedBlockPos(context, "pos"));
         if (offset) {
             command.setOffset(Vec3Argument.getVec3(context, "offset"));
@@ -116,7 +114,7 @@ public class BlockEffectCommand extends EffectCommand {
         if (checkState) {
             command.setCheckState(BoolArgumentType.getBool(context, "check state"));
         }
-        PacketDistributor.sendToPlayersTrackingChunk(context.getSource().getLevel(), new ChunkPos(command.pos), command);
+        PacketDistributor.sendToPlayersTrackingChunk(context.getSource().getLevel(), ChunkPos.containing(command.pos), command);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -146,7 +144,6 @@ public class BlockEffectCommand extends EffectCommand {
         }
     }
 
-    @OnlyIn(Dist.CLIENT)
     private static class Client {
         public static void execute(BlockEffectCommand packet, IPayloadContext context) {
             var level = Minecraft.getInstance().level;

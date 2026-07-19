@@ -35,18 +35,18 @@ public final class FacingOrientationHelper {
     }
 
     private static Quaternionf computeRotateY(Camera camera) {
-        return FacingOrientationMath.computeRotateY(camera.getYRot());
+        return FacingOrientationMath.computeRotateY(camera.yRot());
     }
 
     private static Quaternionf computeLookAtXYZ(TileParticle particle, Camera camera, float partialTick) {
         Vector3f particlePos = particle.getWorldPos(partialTick);
-        Vector3f cameraPos = camera.getPosition().toVector3f();
+        Vector3f cameraPos = camera.position().toVector3f();
         return FacingOrientationMath.computeLookAtXYZ(particlePos, cameraPos);
     }
 
     private static Quaternionf computeLookAtY(TileParticle particle, Camera camera, float partialTick) {
         Vector3f particlePos = particle.getWorldPos(partialTick);
-        Vector3f cameraPos = camera.getPosition().toVector3f();
+        Vector3f cameraPos = camera.position().toVector3f();
         return FacingOrientationMath.computeLookAtY(particlePos, cameraPos);
     }
 
@@ -57,7 +57,7 @@ public final class FacingOrientationHelper {
             float partialTick
     ) {
         Vector3f particlePos = particle.getWorldPos(partialTick);
-        Vector3f cameraPos = camera.getPosition().toVector3f();
+        Vector3f cameraPos = camera.position().toVector3f();
         Vector3f toCamera = new Vector3f(cameraPos).sub(particlePos);
         if (toCamera.lengthSquared() < MIN_THRESHOLD) {
             return new Quaternionf();

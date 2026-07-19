@@ -13,7 +13,7 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 
 import java.util.List;
 
-@EventBusSubscriber(modid = Photon.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
+@EventBusSubscriber(modid = Photon.MOD_ID, value = Dist.CLIENT)
 public class PhotonClientListeners {
     @SubscribeEvent
     public static void onRegisterCommands(RegisterClientCommandsEvent event) {
@@ -32,9 +32,7 @@ public class PhotonClientListeners {
     /** Standalone post-effect consumption for frames without Photon particles (the particle
      *  pipeline seam never runs then). */
     @SubscribeEvent
-    public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
-            PhotonPostFX.onLevelStageAfterParticles();
-        }
+    public static void onRenderLevelStage(RenderLevelStageEvent.AfterTranslucentParticles event) {
+        PhotonPostFX.onLevelStageAfterParticles();
     }
 }

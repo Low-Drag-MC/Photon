@@ -16,11 +16,9 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
-import net.minecraft.commands.arguments.ResourceLocationArgument;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.commands.arguments.IdentifierArgument;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -29,7 +27,7 @@ import javax.annotation.Nullable;
 import java.util.List;
 
 public class RemoveEntityEffectCommand implements CustomPacketPayload {
-    public static final ResourceLocation ID = Photon.id("remove_entity_effect_command");
+    public static final Identifier ID = Photon.id("remove_entity_effect_command");
     public static final CustomPacketPayload.Type<RemoveEntityEffectCommand> TYPE = new CustomPacketPayload.Type<>(ID);
     public static final StreamCodec<RegistryFriendlyByteBuf, RemoveEntityEffectCommand> CODEC = StreamCodec.ofMember(RemoveEntityEffectCommand::encode, RemoveEntityEffectCommand::decodePacket);
 
@@ -41,7 +39,7 @@ public class RemoveEntityEffectCommand implements CustomPacketPayload {
     protected boolean force;
     @Nullable
     @Setter
-    protected ResourceLocation location;
+    protected Identifier location;
 
     @Override
     @Nonnull
@@ -55,7 +53,7 @@ public class RemoveEntityEffectCommand implements CustomPacketPayload {
                         .executes(c -> execute(c, false, false))
                         .then(Commands.argument("force", BoolArgumentType.bool())
                                 .executes(c -> execute(c, true, false))
-                                .then(Commands.argument("location", ResourceLocationArgument.id())
+                                .then(Commands.argument("location", IdentifierArgument.id())
                                         .executes(c -> execute(c, true, true)))));
     }
 
@@ -66,7 +64,7 @@ public class RemoveEntityEffectCommand implements CustomPacketPayload {
             command.setForce(BoolArgumentType.getBool(context, "force"));
         }
         if (location) {
-            command.setLocation(ResourceLocationArgument.getId(context, "location"));
+            command.setLocation(IdentifierArgument.getId(context, "location"));
         }
         PacketDistributor.sendToAllPlayers(command);
         return Command.SINGLE_SUCCESS;
@@ -80,7 +78,7 @@ public class RemoveEntityEffectCommand implements CustomPacketPayload {
         buf.writeBoolean(force);
         buf.writeBoolean(location != null);
         if (location != null) {
-            buf.writeResourceLocation(location);
+            buf.writeIdentifier(location);
         }
     }
 
@@ -91,7 +89,7 @@ public class RemoveEntityEffectCommand implements CustomPacketPayload {
         }
         force = buf.readBoolean();
         if (buf.readBoolean()) {
-            location = buf.readResourceLocation();
+            location = buf.readIdentifier();
         }
     }
 
@@ -107,7 +105,6 @@ public class RemoveEntityEffectCommand implements CustomPacketPayload {
         }
     }
 
-    @OnlyIn(Dist.CLIENT)
     private static class Client {
         public static void execute(RemoveEntityEffectCommand packet, IPayloadContext context) {
             for (var id : packet.ids) {

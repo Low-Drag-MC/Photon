@@ -1,10 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
-import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
 import com.lowdragmc.kilagraph.rendertype.compiler.GlslType;
-import com.lowdragmc.kilagraph.rendertype.runtime.KGBuiltinUniforms;
-import com.lowdragmc.kilagraph.rendertype.runtime.KGMaterialValues;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
@@ -19,16 +16,9 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.api.IFieldValueConfigurable;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
-import com.lowdragmc.photon.client.PhotonShaders;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
-import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.lowdragmc.photon.client.shadergraph.runtime.ShaderGraphRuntime;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.platform.GlStateManager;
-import com.mojang.blaze3d.systems.RenderSystem;
 import dev.vfyjxf.taffy.style.AlignItems;
-import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.ByteTag;
 import net.minecraft.nbt.CompoundTag;
@@ -37,9 +27,7 @@ import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
@@ -65,7 +53,6 @@ import java.util.Optional;
  * Scene color/depth read the render pipeline's scene sampler (Iris-compatible), never KilaGraph's own
  * capture.</p>
  */
-@OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 @LDLRegisterClient(name = "shader_graph", registry = "photon:material")
 public class ShaderGraphMaterial extends ShaderInstanceMaterial {
@@ -79,8 +66,6 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
     // runtime
     @Nullable
     private ShaderGraphRuntime.Entry entry;
-    @Nullable
-    private KGMaterialValues values;
 
     public ShaderGraphMaterial() {
     }
@@ -102,7 +87,6 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
     public void setGraphPath(@Nullable IResourcePath graphPath) {
         this.graphPath = graphPath == null ? new BuiltinPath("") : graphPath;
         this.entry = null;
-        this.values = null;
     }
 
     public boolean isCompiledError() {
@@ -113,19 +97,14 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         return entry == null ? "" : entry.getErrorMessage();
     }
 
-    /** Resolve the shared compiled entry, rebuilding this material's value store when it changed. */
+    /** Resolve the shared compiled entry, pruning stale overrides when it changed. */
     @Nullable
     private ShaderGraphRuntime.Entry refreshEntry() {
         var current = ShaderGraphRuntime.get(getGraphPath());
         if (current != entry) {
             entry = current;
-            var compiled = current == null ? null : current.getCompiled();
-            values = compiled == null ? null : new KGMaterialValues(compiled);
             if (current != null) {
                 reconcileOverrides(current);
-            }
-            if (values != null) {
-                overrides.forEach(this::applyOverride);
             }
         }
         return current;
@@ -168,101 +147,17 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         return entry != null && entry.isValid() && entry.isUsesCustomData();
     }
 
-    @Override
-    public ShaderInstance getShader(MaterialContext context) {
-        var entry = refreshEntry();
-        if (entry == null || !entry.isValid()) {
-            return PhotonShaders.getHDRParticleShader();
-        }
-        var shader = entry.variant(context.getShaderDefine());
-        var compiled = entry.getCompiled();
-        if (shader == null || compiled == null) {
-            return PhotonShaders.getHDRParticleShader();
-        }
-        // Stage this material's uniforms/samplers on the shared shader — uploaded by the draw's apply().
-        KGBuiltinUniforms.bind(shader, compiled.builtinUniforms());
-        bindDynamicUniforms(shader, compiled);
-        if (values != null) {
-            values.apply(shader);
-        }
-        return shader;
-    }
-
-    /** The engine-driven uniforms/samplers (Photon pipeline state), mirroring CustomShaderMaterial. */
-    private void bindDynamicUniforms(ShaderInstance shader, CompiledShaderGraph compiled) {
-        var viewport = shader.getUniform(PhotonShaderCompiler.VIEWPORT);
-        if (viewport != null) {
-            viewport.set((float) GlStateManager.Viewport.x(), (float) GlStateManager.Viewport.y(),
-                    (float) GlStateManager.Viewport.width(), (float) GlStateManager.Viewport.height());
-        }
-        // KilaGraph's world-space nodes (Camera / Position "world" / WorldToScreenUV "absolute") read the
-        // absolute camera position as KG's precision-split kg_CameraBlockPos - kg_CameraOffset, which
-        // KGBuiltinUniforms binds from the GAME's main camera — wrong in the editor SceneView (orbit camera).
-        // Override both halves with the pipeline's actual render camera (the one particles are rendered
-        // camera-relative to), so those nodes are correct in the editor scene and in-world alike (mirrors
-        // CustomShaderMaterial's U_CameraPosition). Runs after KGBuiltinUniforms.bind in getShader(), so it wins.
-        var cameraBlockPos = shader.getUniform("kg_CameraBlockPos");
-        var cameraOffset = shader.getUniform("kg_CameraOffset");
-        if (cameraBlockPos != null || cameraOffset != null) {
-            var camera = Optional.ofNullable(RenderPassPipeline.getCurrent())
-                    .map(RenderPassPipeline::getCamera).orElse(null);
-            if (camera != null) {
-                var p = camera.getPosition();
-                double bx = Math.floor(p.x), by = Math.floor(p.y), bz = Math.floor(p.z);
-                if (cameraBlockPos != null) cameraBlockPos.set((float) bx, (float) by, (float) bz);
-                if (cameraOffset != null) cameraOffset.set((float) (bx - p.x), (float) (by - p.y), (float) (bz - p.z));
-            }
-        }
-        // Same story: KGBuiltinUniforms binds kg_Time (the Time node) from the WORLD clock
-        // (mc.level.getGameTime()), which ignores the emitter timeline (play/pause/scrub) and disagrees
-        // with the GameTime node — vanilla GameTime IS driven by Photon from the particle time. Override
-        // kg_Time to that same particle time: RenderSystem's normalized shader game time (what Photon sets
-        // each render) scaled to KG's seconds (24000 ticks = 1200 s), so Time and GameTime nodes agree and
-        // freeze/scrub with the emitter.
-        var engineTime = shader.getUniform("kg_Time");
-        if (engineTime != null) {
-            engineTime.set(RenderSystem.getShaderGameTime() * 1200f);
-        }
-        if (compiled.usesSceneColor() || compiled.usesSceneDepth()) {
-            var sampler = Optional.ofNullable(RenderPassPipeline.getCurrent())
-                    .map(RenderPassPipeline::getSceneSampler);
-            shader.setSampler(PhotonShaderCompiler.SCENE_COLOR,
-                    sampler.map(RenderTarget::getColorTextureId).orElse(-1));
-            shader.setSampler(PhotonShaderCompiler.SCENE_DEPTH,
-                    sampler.map(RenderTarget::getDepthTextureId).orElse(-1));
-        }
-    }
+    // TODO(M2): 1.21 getShader() staged the shared compiled ShaderInstance variant with
+    // KGBuiltinUniforms + per-material KGMaterialValues + Photon pipeline dynamic uniforms
+    // (viewport, camera-relative kg_CameraBlockPos/Offset, timeline-driven kg_Time, scene
+    // color/depth samplers). KilaGraph 26.1 replaced that runtime with RenderTypeFactory /
+    // MaterialUniformBuffer / engine UBO blocks — rebuild on that model.
 
     // ---- overrides -----------------------------------------------------------------------------
 
-    /** Write one override into the live value store, typed by the compiled uniform field. */
+    /** TODO(M2): re-apply the override into the compiled material's live value store (was
+     *  KGMaterialValues). Until then overrides are only recorded + persisted. */
     private void applyOverride(String name, Object value) {
-        if (values == null || entry == null || entry.getCompiled() == null) return;
-        var compiled = entry.getCompiled();
-        switch (value) {
-            case RenderTypeGraphTypes.Sampler2DValue sampler -> {
-                if (com.lowdragmc.lowdraglib2.LDLib2.isValidResourceLocation(sampler.location())) {
-                    values.setTexture(name, ResourceLocation.parse(sampler.location()));
-                }
-            }
-            case RenderTypeGraphTypes.GradientValue gradient -> values.setGradient(name, gradient);
-            case RenderTypeGraphTypes.CurveValue curve -> values.setCurve(name, curve);
-            case Vector2f v -> values.setUniform(name, v);
-            case Vector3f v -> values.setUniform(name, v);
-            case Vector4f v -> values.setUniform(name, v);
-            case Float f -> values.setByVariable(name, f);
-            case Boolean b -> values.setByVariable(name, b ? 1f : 0f);
-            case Integer i -> {
-                // An Integer is either an INT variable or a COLOR (ARGB) one — disambiguate by field type.
-                var field = compiled.uniformFields().get(name);
-                if (field != null && field.type() == GlslType.VEC4) {
-                    values.setColorUniform(name, i);
-                } else {
-                    values.setByVariable(name, i);
-                }
-            }
-            default -> { }
-        }
     }
 
     // ---- serialization ---------------------------------------------------------------------------
@@ -284,10 +179,9 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         overrides.clear();
         invalidateOverridesCache();
         entry = null; // force value-store rebuild (defaults + overrides) on next use
-        values = null;
         if (!(tag instanceof CompoundTag compound)) return;
-        var overridesTag = compound.getCompound("overrides");
-        for (var name : overridesTag.getAllKeys()) {
+        var overridesTag = compound.getCompoundOrEmpty("overrides");
+        for (var name : overridesTag.keySet()) {
             var value = decodeValue(overridesTag.get(name));
             if (value != null) overrides.put(name, value);
         }
@@ -319,16 +213,16 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
     @Nullable
     private static Object decodeValue(@Nullable Tag tag) {
         return switch (tag) {
-            case FloatTag f -> f.getAsFloat();
-            case IntTag i -> i.getAsInt();
-            case ByteTag b -> b.getAsByte() != 0;
+            case FloatTag f -> f.floatValue();
+            case IntTag i -> i.intValue();
+            case ByteTag b -> b.byteValue() != 0;
             case ListTag list -> switch (list.size()) {
-                case 2 -> new Vector2f(list.getFloat(0), list.getFloat(1));
-                case 3 -> new Vector3f(list.getFloat(0), list.getFloat(1), list.getFloat(2));
-                case 4 -> new Vector4f(list.getFloat(0), list.getFloat(1), list.getFloat(2), list.getFloat(3));
+                case 2 -> new Vector2f(list.getFloatOr(0, 0.0F), list.getFloatOr(1, 0.0F));
+                case 3 -> new Vector3f(list.getFloatOr(0, 0.0F), list.getFloatOr(1, 0.0F), list.getFloatOr(2, 0.0F));
+                case 4 -> new Vector4f(list.getFloatOr(0, 0.0F), list.getFloatOr(1, 0.0F), list.getFloatOr(2, 0.0F), list.getFloatOr(3, 0.0F));
                 default -> null;
             };
-            case CompoundTag compound -> switch (compound.getString("type")) {
+            case CompoundTag compound -> switch (compound.getStringOr("type", "")) {
                 case "sampler" -> RenderTypeGraphTypes.SAMPLER2D_CODEC.parse(NbtOps.INSTANCE, compound.get("data"))
                         .result().orElse(null);
                 case "gradient" -> RenderTypeGraphTypes.GRADIENT_CODEC.parse(NbtOps.INSTANCE, compound.get("data"))
@@ -416,7 +310,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
     public IGuiTexture preview() {
         return DynamicTexture.of(() -> isCompiledError() ?
                 new TextTexture(getCompiledErrorMessage().isEmpty() ? "error" : getCompiledErrorMessage(), 0xffff0000) :
-                preview);
+                IGuiTexture.MISSING_TEXTURE); // TODO(M2): live shader preview returns with the pipeline path
     }
 
     @Override
@@ -447,7 +341,6 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
                 .setOnClick(event -> {
                     ShaderGraphRuntime.invalidate(getGraphPath());
                     entry = null;
-                    values = null;
                     reloadVariableConfigurators(variablesGroup);
                 }).setText("photon.reload_shader").layout(layout -> layout.alignSelf(AlignItems.CENTER)));
 
@@ -520,7 +413,6 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             if (overrides.remove(name) == null) return;
             invalidateOverridesCache();
             entry = null; // force a value-store rebuild (defaults + remaining overrides) on next use
-            values = null;
             reloadVariableConfigurators(variablesGroup);
         });
         reset.layout(layout -> {

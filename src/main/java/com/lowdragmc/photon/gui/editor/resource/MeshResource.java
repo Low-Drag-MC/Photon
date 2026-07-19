@@ -19,8 +19,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.ResourceMeshSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.resources.Identifier;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import org.jetbrains.annotations.Nullable;
@@ -128,11 +128,14 @@ public class MeshResource extends Resource<MeshData> {
                 var zoom = (float) (3.5 * Math.sqrt(Math.max(Math.max(Math.max(max.x - min.x + 1, max.y - min.y + 1), max.z - min.z + 1), 1)));
                 fboRenderer.setCameraLookAt(center, zoom, Math.toRadians(-135), Math.toRadians(25));
             });
-            fboRenderer.setAfterWorldRender(renderer -> meshData.drawLineFrames(new PoseStack()));
+            // 26.1: the after-world hook is dispatch-phase based; the FBO draws via drawScene (no
+            // drawAsTexture) — wrap it as a functional GuiTexture
+            fboRenderer.setAfterAllDispatch(ctx -> meshData.drawLineFrames(new PoseStack()));
             return new UIElement().layout(layout -> {
                         layout.widthPercent(100);
                         layout.heightPercent(100);
-                    }).style(style -> style.backgroundTexture(fboRenderer.drawAsTexture()))
+                    }).style(style -> style.backgroundTexture(com.lowdragmc.lowdraglib2.gui.texture.GuiTexture.of(
+                            (ctx, x, y, w, h) -> fboRenderer.drawScene(x, y, w, h, ctx.mouseX, ctx.mouseY))))
                     // release resources here
                     .addEventListener(UIEvents.REMOVED, e -> fboRenderer.releaseResource());
         });
@@ -147,13 +150,10 @@ public class MeshResource extends Resource<MeshData> {
         return container;
     }
 
-    public void onAdditionalModel(Consumer<ModelResourceLocation> registry) {
-        for (var meshData : getLoadedResourceMeshes()) {
-            // only json models go through the bakery; obj sources are parsed at runtime
-            if (meshData.getSource() instanceof JsonModelSource json) {
-                registry.accept(ModelResourceLocation.standalone(json.getModelLocation()));
-            }
-        }
+    public void onAdditionalModel(Consumer<Identifier> registry) {
+        // TODO(M2): re-register json mesh models once the standalone-model path is restored
+        // (StandaloneModelKey/UnbakedStandaloneModel replaces ModelResourceLocation.standalone;
+        // blocked on LDLib2 26.1's `// TODO RENDERER` model pipeline). See PhotonClientProxy.registerModels.
     }
 
     private List<MeshData> getLoadedResourceMeshes() {

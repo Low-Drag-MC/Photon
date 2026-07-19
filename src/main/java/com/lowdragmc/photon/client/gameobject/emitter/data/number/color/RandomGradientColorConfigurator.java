@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.color;
 
-import com.lowdragmc.lowdraglib2.client.shader.LDLibRenderTypes;
 import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
@@ -8,12 +7,11 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
+import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.lowdragmc.photon.gui.editor.resource.ResourceDialogs;
-import com.mojang.blaze3d.systems.RenderSystem;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import org.apache.commons.lang3.tuple.Pair;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.TaffyPosition;
@@ -46,7 +44,7 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
                 .addClass("configurator_preview_bg")
                 .addChildren(new UIElement()
                         .layout(layout -> layout.heightPercent(100))
-                        .style(style -> style.backgroundTexture(this::drawColorPreview))
+                        .style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) this::drawColorPreview))
                         .addEventListener(UIEvents.MOUSE_DOWN, this::onClick)));
 
         this.gradientSelector0 = createGradientSelector(gradient -> updateValueActively(Pair.of(gradient, value.getRight() ) ), value.getLeft());
@@ -179,22 +177,19 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
         }
     }
 
-    protected void drawColorPreview(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
+    protected void drawColorPreview(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
         var gradientColor = value == null ? defaultValue : value;
-        // render color bar
-        var mat = graphics.pose().last().pose();
-        var buffer = graphics.bufferSource().getBuffer(LDLibRenderTypes.guiOverlay());
-        RenderSystem.disableDepthTest();
+        // render color bar (26.1: per-corner-colored context.fill segments, no immediate buffer)
 
-        GradientColorTexture.drawGradient(mat, buffer, x, y, width, height / 2, gradientColor.getLeft());
-        GradientColorTexture.drawGradient(mat, buffer, x, y - 1, width, 1, gradientColor.getLeft());
-        GradientColorTexture.drawGradient(mat, buffer, x, y + height / 2, width, height / 2, gradientColor.getRight());
-        GradientColorTexture.drawGradient(mat, buffer, x, y + height, width, 1, gradientColor.getRight());
+        GradientColorTexture.drawGradient(graphics, x, y, width, height / 2, gradientColor.getLeft());
+        GradientColorTexture.drawGradient(graphics, x, y - 1, width, 1, gradientColor.getLeft());
+        GradientColorTexture.drawGradient(graphics, x, y + height / 2, width, height / 2, gradientColor.getRight());
+        GradientColorTexture.drawGradient(graphics, x, y + height, width, 1, gradientColor.getRight());
 
-        DrawerHelper.drawSolidRect(graphics, x - 1, y, 1, height / 2, gradientColor.getLeft().getColor(0));
-        DrawerHelper.drawSolidRect(graphics, x + width, y, 1, height / 2, gradientColor.getLeft().getColor(1));
-        DrawerHelper.drawSolidRect(graphics, x - 1, y + height / 2, 1, height / 2, gradientColor.getRight().getColor(0));
-        DrawerHelper.drawSolidRect(graphics, x + width, y + height / 2, 1, height / 2, gradientColor.getRight().getColor(1));
+        DrawerHelperClient.drawSolidRect(graphics, x - 1, y, 1, height / 2, gradientColor.getLeft().getColor(0));
+        DrawerHelperClient.drawSolidRect(graphics, x + width, y, 1, height / 2, gradientColor.getLeft().getColor(1));
+        DrawerHelperClient.drawSolidRect(graphics, x - 1, y + height / 2, 1, height / 2, gradientColor.getRight().getColor(0));
+        DrawerHelperClient.drawSolidRect(graphics, x + width, y + height / 2, 1, height / 2, gradientColor.getRight().getColor(1));
     }
 
 }

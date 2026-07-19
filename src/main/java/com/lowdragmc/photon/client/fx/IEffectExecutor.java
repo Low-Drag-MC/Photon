@@ -3,8 +3,6 @@ package com.lowdragmc.photon.client.fx;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.RandomSource;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.world.level.Level;
 
 /**
@@ -15,7 +13,6 @@ import net.minecraft.world.level.Level;
  * {@link EntityEffectExecutor} follows an entity, {@link BlockEffectExecutor} a block, and the
  * editor's {@code FXProjectEffectExecutor} just provides a level + seeded RNG for previews.
  */
-@OnlyIn(Dist.CLIENT)
 public interface IEffectExecutor {
 
     Level getLevel();
@@ -41,7 +38,7 @@ public interface IEffectExecutor {
     }
 
     default RandomSource getRandomSource() {
-        return getLevel().random;
+        return getLevel().getRandom();
     }
 
     /**

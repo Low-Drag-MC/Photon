@@ -8,14 +8,14 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.BindableUIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Menu;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
+import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib2.math.curve.ExplicitCubicBezierCurve2;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.TaffyPosition;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
@@ -89,8 +89,8 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
             layout.heightPercent(100);
             layout.flex(1);
         }).style(style -> style
-                        .backgroundTexture(this::drawGraph)
-                        .overlayTexture(this::drawGraphOverlay))
+                        .backgroundTexture(com.lowdragmc.lowdraglib2.gui.texture.GuiTexture.of((ctx, gx, gy, gw, gh) -> drawGraph(ctx, ctx.mouseX, ctx.mouseY, gx, gy, gw, gh, ctx.partialTick)))
+                        .overlayTexture(com.lowdragmc.lowdraglib2.gui.texture.GuiTexture.of((ctx, gx, gy, gw, gh) -> drawGraphOverlay(ctx, ctx.mouseX, ctx.mouseY, gx, gy, gw, gh, ctx.partialTick))))
                 .addEventListener(UIEvents.MOUSE_DOWN, this::onGraphMouseDown)
                 .addEventListener(UIEvents.DOUBLE_CLICK, this::onGraphDoubleClick)
                 .addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
@@ -134,7 +134,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
     protected abstract List<ECBCurves> allCurves();
 
     /** Extra background drawn between the grid and the curve lines (the random graph fills the A-B area). */
-    protected void drawArea(GuiGraphics graphics, float x, float y, float width, float height) {
+    protected void drawArea(GUIContext graphics, float x, float y, float width, float height) {
     }
 
     // ------------------------------------------------------------------ elements
@@ -180,8 +180,8 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
             for (int i = 0; i < els.size(); i++) {
                 var p = pointCoord(curves, i);
                 els.get(i).layout(layout -> {
-                    layout.leftPercent(p.x * 100);
-                    layout.topPercent((1 - p.y) * 100);
+                    layout.leftPercent(p.x() * 100);
+                    layout.topPercent((1 - p.y()) * 100);
                 });
             }
         }
@@ -189,7 +189,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
     }
 
     /** The point at {@code index} of a series: point 0 is the first segment's p0, point i is segment i-1's p1. */
-    protected Vector2f pointCoord(ECBCurves curves, int index) {
+    protected org.joml.Vector2fc pointCoord(ECBCurves curves, int index) {
         var segments = curves.getSegments();
         return index == 0 ? segments.getFirst().p0 : segments.get(index - 1).p1;
     }
@@ -202,14 +202,15 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
             layout.height(POINT_HIT_SIZE);
             layout.marginLeft(-POINT_HIT_SIZE / 2);
             layout.marginTop(-POINT_HIT_SIZE / 2);
-        }).style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+        }).style(style -> style.overlayTexture(com.lowdragmc.lowdraglib2.gui.texture.GuiTexture.of((graphics, x, y, w, h) -> {
+            float mx = graphics.mouseX, my = graphics.mouseY, pt = graphics.partialTick;
             var selected = selectedPoints.contains(encodePoint(series, index));
             // only the element that would actually receive the click (or the current drag anchor) reacts
             var active = dragKind < 0 ? el.isHover()
                     : dragKind == 0 && dragSeries == series && dragPoint == index;
             drawMarker(graphics, x + w / 2, y + h / 2, 4,
                     (selected ? ColorPattern.ORANGE : ColorPattern.LIGHT_GRAY).color, active, mx, my, pt);
-        }));
+        })));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> onPointMouseDown(e, series, index));
         // swallow double-clicks so the graph's add-point handler can't duplicate an existing point
         el.addEventListener(UIEvents.DOUBLE_CLICK, UIEvent::stopPropagation);
@@ -260,10 +261,11 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
             layout.height(POINT_HIT_SIZE);
             layout.marginLeft(-POINT_HIT_SIZE / 2);
             layout.marginTop(-POINT_HIT_SIZE / 2);
-        }).setDisplay(false).style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+        }).setDisplay(false).style(style -> style.overlayTexture(com.lowdragmc.lowdraglib2.gui.texture.GuiTexture.of((graphics, x, y, w, h) -> {
+            float mx = graphics.mouseX, my = graphics.mouseY, pt = graphics.partialTick;
             var active = dragKind < 0 ? el.isHover() : dragKind == kind;
             drawMarker(graphics, x + w / 2, y + h / 2, 3, ColorPattern.GREEN.color, active, mx, my, pt);
-        }));
+        })));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button != 0 || selectedSeries < 0) return;
             graphView.focus(); // route the Delete key here
@@ -279,12 +281,12 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
 
     /** A point/handle square centred at (cx, cy); when active (hovered / dragged) the body grows to fill
      *  the fixed-size highlight ring — the ring itself never scales. */
-    private static void drawMarker(GuiGraphics graphics, float cx, float cy, float size, int color,
+    private static void drawMarker(GUIContext graphics, float cx, float cy, float size, int color,
                                    boolean active, float mx, float my, float pt) {
         var drawSize = active ? RING_SIZE : size;
-        DrawerHelper.drawSolidRect(graphics, cx - drawSize / 2, cy - drawSize / 2, drawSize, drawSize, color);
+        DrawerHelperClient.drawSolidRect(graphics, cx - drawSize / 2, cy - drawSize / 2, drawSize, drawSize, color);
         if (active) {
-            HOVER_RING.draw(graphics, mx, my, cx - RING_SIZE / 2, cy - RING_SIZE / 2, RING_SIZE, RING_SIZE, pt);
+            graphics.drawTexture(HOVER_RING, cx - RING_SIZE / 2, cy - RING_SIZE / 2, RING_SIZE, RING_SIZE);
         }
     }
 
@@ -324,7 +326,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
     /** The selected point's tangent handle coordinate ({@code kind}: 1 = in, 2 = out), or null if hidden
      *  (no / multiple selection: handles only apply to a single selected point). */
     @Nullable
-    protected Vector2f handleCoord(int kind) {
+    protected org.joml.Vector2fc handleCoord(int kind) {
         var curvesList = allCurves();
         if (selectedPoints.size() > 1) return null;
         if (selectedSeries < 0 || selectedSeries >= curvesList.size()) return null;
@@ -334,15 +336,15 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
         return selectedPoint < segments.size() ? segments.get(selectedPoint).c0 : null;
     }
 
-    private void positionHandle(UIElement el, @Nullable Vector2f pos) {
+    private void positionHandle(UIElement el, @Nullable org.joml.Vector2fc pos) {
         if (pos == null) {
             el.setDisplay(false);
             return;
         }
         el.setDisplay(true);
         el.layout(layout -> {
-            layout.leftPercent(pos.x * 100);
-            layout.topPercent((1 - pos.y) * 100);
+            layout.leftPercent(pos.x() * 100);
+            layout.topPercent((1 - pos.y()) * 100);
         });
     }
 
@@ -399,8 +401,8 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
     private void dragMovePoint(List<ExplicitCubicBezierCurve2> segments, float px, float py) {
         var index = dragPoint;
         if (index < 0 || index > segments.size()) return;
-        var lo = index > 0 ? segments.get(index - 1).p0.x + MIN_POINT_GAP : 0f;
-        var hi = index < segments.size() ? segments.get(index).p1.x - MIN_POINT_GAP : 1f;
+        var lo = index > 0 ? segments.get(index - 1).p0.x() + MIN_POINT_GAP : 0f;
+        var hi = index < segments.size() ? segments.get(index).p1.x() - MIN_POINT_GAP : 1f;
         // max-of-min, not clamp: when the neighbours are closer than 2 gaps (lo > hi) the lower bound wins
         movePointTo(segments, index, Math.max(lo, Math.min(hi, px)), py);
     }
@@ -426,10 +428,10 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
             lo = Math.max(lo, -orig.x);
             hi = Math.min(hi, 1 - orig.x);
             if (i > 0 && !dragOrigins.containsKey(encodePoint(s, i - 1))) {
-                lo = Math.max(lo, segments.get(i - 1).p0.x + MIN_POINT_GAP - orig.x);
+                lo = Math.max(lo, segments.get(i - 1).p0.x() + MIN_POINT_GAP - orig.x);
             }
             if (i < segments.size() && !dragOrigins.containsKey(encodePoint(s, i + 1))) {
-                hi = Math.min(hi, segments.get(i).p1.x - MIN_POINT_GAP - orig.x);
+                hi = Math.min(hi, segments.get(i).p1.x() - MIN_POINT_GAP - orig.x);
             }
         }
         dx = lo <= hi ? Mth.clamp(dx, lo, hi) : lo;
@@ -449,14 +451,14 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
         if (index < segments.size()) {
             var seg = segments.get(index);
             var offset = new Vector2f(target).sub(seg.p0);
-            seg.p0.set(target);
-            seg.c0.add(offset);
+            seg.p0 = new Vector2f(target);
+            seg.c0 = new Vector2f(seg.c0).add(offset);
         }
         if (index > 0) {
             var seg = segments.get(index - 1);
             var offset = new Vector2f(target).sub(seg.p1);
-            seg.p1.set(target);
-            seg.c1.add(offset);
+            seg.p1 = new Vector2f(target);
+            seg.c1 = new Vector2f(seg.c1).add(offset);
         }
     }
 
@@ -466,27 +468,27 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
         if (dragKind == 1) { // in-handle: the previous segment's c1
             if (index <= 0) return;
             var seg = segments.get(index - 1);
-            seg.c1.set(clampHandleX(seg, px), py);
+            seg.c1 = new Vector2f(clampHandleX(seg, px), py);
             if (lockControlPoint && index < segments.size()) {
                 var next = segments.get(index);
                 var mirrored = new Vector2f(next.p0).mul(2).sub(seg.c1);
-                next.c0.set(clampHandleX(next, mirrored.x), mirrored.y);
+                next.c0 = new Vector2f(clampHandleX(next, mirrored.x), mirrored.y);
             }
         } else { // out-handle: the next segment's c0
             if (index >= segments.size()) return;
             var seg = segments.get(index);
-            seg.c0.set(clampHandleX(seg, px), py);
+            seg.c0 = new Vector2f(clampHandleX(seg, px), py);
             if (lockControlPoint && index > 0) {
                 var prev = segments.get(index - 1);
                 var mirrored = new Vector2f(prev.p1).mul(2).sub(seg.c0);
-                prev.c1.set(clampHandleX(prev, mirrored.x), mirrored.y);
+                prev.c1 = new Vector2f(clampHandleX(prev, mirrored.x), mirrored.y);
             }
         }
     }
 
     /** Clamp a control x into its segment's x span so the segment stays an explicit y = f(x) curve. */
     private static float clampHandleX(ExplicitCubicBezierCurve2 seg, float x) {
-        return Mth.clamp(x, seg.p0.x, seg.p1.x);
+        return Mth.clamp(x, seg.p0.x(), seg.p1.x());
     }
 
     // ------------------------------------------------------------------ add / remove
@@ -515,8 +517,8 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
         if (index == 0) {
             segments.removeFirst();
         } else if (index < segments.size()) {
-            segments.get(index - 1).p1.set(segments.get(index).p1);
-            segments.get(index - 1).c1.set(segments.get(index).c0);
+            segments.get(index - 1).p1 = new Vector2f(segments.get(index).p1);
+            segments.get(index - 1).c1 = new Vector2f(segments.get(index).c0);
             segments.remove(index);
         } else {
             segments.removeLast();
@@ -611,8 +613,8 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
             if (segments.isEmpty()) continue;
             for (int i = 0; i <= segments.size(); i++) {
                 var p = pointCoord(curvesList.get(s), i);
-                var sx = gx + gw * p.x;
-                var sy = gy + gh * (1 - p.y);
+                var sx = gx + gw * p.x();
+                var sy = gy + gh * (1 - p.y());
                 if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1) selectedPoints.add(encodePoint(s, i));
             }
         }
@@ -644,15 +646,15 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
         var segments = value.getSegments();
         if (width <= 0 || height <= 0 || segments.isEmpty()) return -1;
         var x = (event.x - graphView.getContentX()) / width;
-        var y = segments.getFirst().p0.y;
-        var found = x < segments.getFirst().p0.x;
+        var y = segments.getFirst().p0.y();
+        var found = x < segments.getFirst().p0.x();
         var index = 0;
         if (!found) {
             for (var curve : segments) {
                 index++;
-                if (x >= curve.p0.x && x <= curve.p1.x) {
-                    var dx = curve.p1.x - curve.p0.x;
-                    y = dx <= 0 ? curve.p1.y : curve.getPoint((x - curve.p0.x) / dx).y;
+                if (x >= curve.p0.x() && x <= curve.p1.x()) {
+                    var dx = curve.p1.x() - curve.p0.x();
+                    y = dx <= 0 ? curve.p1.y() : curve.getPoint((x - curve.p0.x()) / dx).y;
                     found = true;
                     break;
                 }
@@ -660,7 +662,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
         }
         if (!found) {
             index++;
-            y = segments.getLast().p1.y;
+            y = segments.getLast().p1.y();
         }
         var curveY = graphView.getContentY() + height * (1 - y);
         if (Math.abs(event.y - curveY) > CURVE_ADD_PX) return -1;
@@ -670,14 +672,14 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
             segments.addFirst(new ExplicitCubicBezierCurve2(
                     new Vector2f(x, y),
                     new Vector2f(x + 0.1f, y),
-                    new Vector2f(right.x + (right.x - rightCP.x), right.y + (right.y - rightCP.y)),
+                    new Vector2f(right.x() + (right.x() - rightCP.x()), right.y() + (right.y() - rightCP.y())),
                     right));
         } else if (index > segments.size()) {
             var left = segments.getLast().p1;
             var leftCP = segments.getLast().c1;
             segments.add(new ExplicitCubicBezierCurve2(
                     left,
-                    new Vector2f(left.x + (left.x - leftCP.x), left.y + (left.y - leftCP.y)),
+                    new Vector2f(left.x() + (left.x() - leftCP.x()), left.y() + (left.y() - leftCP.y())),
                     new Vector2f(x - 0.1f, y),
                     new Vector2f(x, y)));
         } else {
@@ -687,23 +689,23 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
                     new Vector2f(x + 0.1f, y),
                     new Vector2f(curve.c1),
                     new Vector2f(curve.p1)));
-            curve.c1.set(x - 0.1f, y);
-            curve.p1.set(x, y);
+            curve.c1 = new Vector2f(x - 0.1f, y);
+            curve.p1 = new Vector2f(x, y);
         }
         return index;
     }
 
     // ------------------------------------------------------------------ drawing
 
-    protected Vector2f toScreen(Vector2f coord, float x, float y, float width, float height) {
-        return new Vector2f(x + width * coord.x, y + height * (1 - coord.y));
+    protected Vector2f toScreen(org.joml.Vector2fc coord, float x, float y, float width, float height) {
+        return new Vector2f(x + width * coord.x(), y + height * (1 - coord.y()));
     }
 
-    protected void drawGraph(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTick) {
-        DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
+    protected void drawGraph(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTick) {
+        DrawerHelperClient.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
         for (int i = 0; i < 6; i++) {
-            DrawerHelper.drawSolidRect(graphics, x + i * width / 6, y, 1, height, ColorPattern.T_GRAY.color);
-            DrawerHelper.drawSolidRect(graphics, x, y + i * height / 6, width, 1, ColorPattern.T_GRAY.color);
+            DrawerHelperClient.drawSolidRect(graphics, x + i * width / 6, y, 1, height, ColorPattern.T_GRAY.color);
+            DrawerHelperClient.drawSolidRect(graphics, x, y + i * height / 6, width, 1, ColorPattern.T_GRAY.color);
         }
         drawArea(graphics, x, y, width, height);
         var curvesList = allCurves();
@@ -716,26 +718,26 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
 
     /** Draw one series' curve, out-of-range extension lines, and (when {@code armPoint >= 0}) the green
      *  control-line arms of that point — behind the floating handle elements. */
-    protected void drawSeriesCurve(GuiGraphics graphics, ECBCurves value, int armPoint, float x, float y, float width, float height) {
+    protected void drawSeriesCurve(GUIContext graphics, ECBCurves value, int armPoint, float x, float y, float width, float height) {
         var curves = value.getSegments();
         if (curves.isEmpty()) return;
         // render lines (drawn twice, reversed, so the strip is visible from both winding directions)
         var points = curves.stream()
                 .flatMap(curve -> curve.getPoints(100).stream().map(coord -> toScreen(coord, x, y, width, height)))
                 .collect(Collectors.toList());
-        DrawerHelper.drawLines(graphics, points, -1, -1, 0.5f);
+        DrawerHelperClient.drawLines(graphics, points, -1, -1, 0.5f);
         Collections.reverse(points);
-        DrawerHelper.drawLines(graphics, points, -1, -1, 0.5f);
+        DrawerHelperClient.drawLines(graphics, points, -1, -1, 0.5f);
         // render outer lines
-        if (curves.getFirst().p0.x > 0) {
-            DrawerHelper.drawLines(graphics, List.of(
-                            toScreen(new Vector2f(0, curves.getFirst().p0.y), x, y, width, height),
+        if (curves.getFirst().p0.x() > 0) {
+            DrawerHelperClient.drawLines(graphics, List.of(
+                            toScreen(new Vector2f(0, curves.getFirst().p0.y()), x, y, width, height),
                             toScreen(curves.getFirst().p0, x, y, width, height)),
                     ColorPattern.T_RED.color, ColorPattern.T_RED.color, 0.3f);
         }
-        if (curves.getLast().p1.x < 1) {
-            DrawerHelper.drawLines(graphics, List.of(
-                            toScreen(new Vector2f(1, curves.getLast().p1.y), x, y, width, height),
+        if (curves.getLast().p1.x() < 1) {
+            DrawerHelperClient.drawLines(graphics, List.of(
+                            toScreen(new Vector2f(1, curves.getLast().p1.y()), x, y, width, height),
                             toScreen(curves.getLast().p1, x, y, width, height)),
                     ColorPattern.T_RED.color, ColorPattern.T_RED.color, 0.3f);
         }
@@ -743,39 +745,39 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
         if (armPoint >= 0) {
             if (armPoint > 0 && armPoint - 1 < curves.size()) {
                 var curve = curves.get(armPoint - 1);
-                DrawerHelper.drawLines(graphics, List.of(toScreen(curve.c1, x, y, width, height), toScreen(curve.p1, x, y, width, height)),
+                DrawerHelperClient.drawLines(graphics, List.of(toScreen(curve.c1, x, y, width, height), toScreen(curve.p1, x, y, width, height)),
                         ColorPattern.T_GREEN.color, ColorPattern.T_GREEN.color, 0.3f);
             }
             if (armPoint < curves.size()) {
                 var curve = curves.get(armPoint);
-                DrawerHelper.drawLines(graphics, List.of(toScreen(curve.c0, x, y, width, height), toScreen(curve.p0, x, y, width, height)),
+                DrawerHelperClient.drawLines(graphics, List.of(toScreen(curve.c0, x, y, width, height), toScreen(curve.p0, x, y, width, height)),
                         ColorPattern.T_GREEN.color, ColorPattern.T_GREEN.color, 0.3f);
             }
         }
     }
 
     /** Overlay above the point/handle elements: the marquee rect and the "(x, y)" coordinate readout. */
-    private void drawGraphOverlay(GuiGraphics graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTick) {
+    private void drawGraphOverlay(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTick) {
         if (marquee) {
             var mx0 = Math.min(mqX0, mqX1);
             var my0 = Math.min(mqY0, mqY1);
             var mw = Math.abs(mqX1 - mqX0);
             var mh = Math.abs(mqY1 - mqY0);
-            DrawerHelper.drawSolidRect(graphics, mx0, my0, mw, mh, ColorPattern.T_WHITE.color);
-            DrawerHelper.drawBorder(graphics, mx0, my0, mw, mh, ColorPattern.WHITE.color, 1);
+            DrawerHelperClient.drawSolidRect(graphics, mx0, my0, mw, mh, ColorPattern.T_WHITE.color);
+            DrawerHelperClient.drawBorder(graphics, mx0, my0, mw, mh, ColorPattern.WHITE.color, 1);
         }
         var coord = readoutCoord();
         if (coord == null) return;
-        var text = coordFormatter.apply(coord.x, coord.y);
+        var text = coordFormatter.apply(coord.x(), coord.y());
         var tw = Minecraft.getInstance().font.width(text);
         var tx = mouseX + 6 + tw > x + width ? mouseX - 6 - tw : mouseX + 6;
         var ty = Mth.clamp(mouseY - 10, y, y + height - 10);
-        DrawerHelper.drawSolidRect(graphics, tx - 1, ty - 1, tw + 2, 10, ColorPattern.BLACK.color);
-        DrawerHelper.drawText(graphics, text, tx, ty, 1f, ColorPattern.WHITE.color);
+        DrawerHelperClient.drawSolidRect(graphics, tx - 1, ty - 1, tw + 2, 10, ColorPattern.BLACK.color);
+        DrawerHelperClient.drawText(graphics, text, tx, ty, 1f, ColorPattern.WHITE.color);
     }
 
     @Nullable
-    private Vector2f readoutCoord() {
+    private org.joml.Vector2fc readoutCoord() {
         var curvesList = allCurves();
         // an active drag always shows its target's live coordinate
         if (dragKind >= 0 && dragSeries >= 0 && dragSeries < curvesList.size()) {

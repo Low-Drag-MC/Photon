@@ -12,8 +12,6 @@ import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import org.joml.Vector3f;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * @author KilaBash
@@ -22,7 +20,6 @@ import net.neoforged.api.distmarker.OnlyIn;
  */
 @Getter
 @Setter
-@OnlyIn(Dist.CLIENT)
 public class VelocityOverLifetimeSetting extends ToggleGroup {
 
     public enum OrbitalMode {

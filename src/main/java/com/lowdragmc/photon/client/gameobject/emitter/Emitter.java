@@ -7,8 +7,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQue
 import lombok.Getter;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.world.phys.AABB;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
@@ -22,7 +20,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
-@OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 public abstract class Emitter extends FXObject implements IParticleEmitter {
     // runtime
@@ -108,11 +105,12 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         this.oRoll = this.roll;
     }
 
-    protected int getLightColor(float partialTick) {
+    @Override
+    protected int getLightCoords(float partialTick) {
         BlockPos blockPos = new BlockPos((int) this.x, (int) this.y, (int) this.z);
         var level = getLevel();
-        if (level != null && (level.isLoaded(blockPos) || level instanceof DummyWorld)) {
-            return LevelRenderer.getLightColor(level, blockPos);
+        if (level != null && (level.hasChunkAt(blockPos) || level instanceof DummyWorld)) {
+            return LevelRenderer.getLightCoords(level, blockPos);
         }
         return 0;
     }
@@ -148,10 +146,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         return true;
     }
 
-    @Nonnull
-    public final ParticleRenderType getRenderType() {
-        return useTranslucentPipeline() ? ParticleQueueRenderType.TRANSLUCENT_QUEUE : ParticleQueueRenderType.OPAQUE_QUEUE;
-    }
+    // TODO(M1): translucent/opaque split moves into the Photon render-state batching (was
+    // ParticleQueueRenderType.TRANSLUCENT_QUEUE/OPAQUE_QUEUE); getGroup() from FXObject hosts us.
 
     /** This emitter's own contribution: active AND (still emitting or still showing particles). */
     private boolean isEmitting() {
@@ -194,8 +190,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     /** Game-thread only: the actual level/light-engine query. */
     private int computeLightColor(BlockPos pos) {
         var level = getLevel();
-        if (level != null && (level.isLoaded(pos) || level instanceof DummyWorld)) {
-            return LevelRenderer.getLightColor(level, pos);
+        if (level != null && (level.hasChunkAt(pos) || level instanceof DummyWorld)) {
+            return LevelRenderer.getLightCoords(level, pos);
         }
         return 0;
     }
@@ -226,7 +222,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         lightQueryQueue.clear();
     }
 
-    @Override
+    /** 26.1: no Particle render-bounding-box hook — the M1 extraction culls against this instead. */
     @Nonnull
     public AABB getRenderBoundingBox(float partialTicks) {
         var cullBox = getCullBox(partialTicks);

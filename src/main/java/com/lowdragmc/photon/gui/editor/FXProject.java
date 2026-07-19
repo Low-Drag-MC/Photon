@@ -33,7 +33,7 @@ import lombok.Getter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -76,31 +76,37 @@ public class FXProject implements IProject {
         return TYPE;
     }
 
+    // 26.1: IProject moved to the ValueIO seam ({meta, data} shape unchanged); the .fx payload stays
+    // the same "fx" compound produced by FX's Tag methods.
     @Override
-    public CompoundTag serializeProject(@NotNull HolderLookup.Provider provider) {
-        var data = new CompoundTag();
-        data.put("fx", fx.serializeNBT(provider));
-        return data;
+    public void serializeProject(@NotNull net.minecraft.world.level.storage.ValueOutput output) {
+        output.store("fx", net.minecraft.util.ExtraCodecs.NBT, fx.serializeNBT(Platform.getFrozenRegistry()));
     }
 
     @Override
-    public void deserializeProject(@NotNull HolderLookup.Provider provider, @NotNull CompoundTag nbt) {
-        fx.deserializeNBT(provider, nbt.getCompound("fx"));
+    public void deserializeProject(@NotNull net.minecraft.world.level.storage.ValueInput input) {
+        if (input.read("fx", net.minecraft.util.ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
+            fx.deserializeNBT(Platform.getFrozenRegistry(), tag);
+        }
     }
 
     @Override
-    public CompoundTag getMetadata() {
-        var meta = IProject.super.getMetadata();
-        meta.putInt("version_num", VERSION);
-        return meta;
+    public void serializeMetadata(net.minecraft.world.level.storage.ValueOutput output) {
+        IProject.super.serializeMetadata(output);
+        output.putInt("version_num", VERSION);
     }
 
     @Override
-    public void deserializeNBT(@NotNull HolderLookup.Provider provider, @NotNull CompoundTag nbt) {
+    public void deserialize(@NotNull net.minecraft.world.level.storage.ValueInput input) {
         // apply data fix for cross-version
-        var version = Math.max(1, nbt.getCompound("meta").getInt("version_num"));
-        var fixedData = PhotonFXProjectDataFixer.INSTANCE.applyFixes(version, VERSION, nbt.getCompound("data"));
-        deserializeProject(provider, fixedData);
+        var version = Math.max(1, input.child("meta").map(meta -> meta.getIntOr("version_num", 0)).orElse(0));
+        var data = input.read("data", net.minecraft.util.ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag
+                ? tag : new CompoundTag();
+        var fixedData = PhotonFXProjectDataFixer.INSTANCE.applyFixes(version, VERSION, data);
+        try (var reporter = new net.minecraft.util.ProblemReporter.ScopedCollector(com.lowdragmc.photon.Photon.LOGGER)) {
+            deserializeProject(net.minecraft.world.level.storage.TagValueInput.create(
+                    reporter, Platform.getFrozenRegistry(), fixedData));
+        }
     }
 
     @Override
@@ -173,7 +179,7 @@ public class FXProject implements IProject {
 
     /** List a pack's effects with a remove button each; removal garbage-collects orphaned resources. */
     private void showFxPackContents(Editor editor, File fxpackFile) {
-        List<ResourceLocation> fxIds;
+        List<Identifier> fxIds;
         try {
             fxIds = FXPacks.listFx(fxpackFile);
         } catch (Exception e) {

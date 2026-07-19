@@ -145,14 +145,16 @@ public class SceneView extends View {
         }
     }
 
+    // 26.1: drawContents moved into the UIElementRenderer registry; drawBackgroundAdditional runs
+    // right before the children draw — same per-frame slot.
     @Override
-    public void drawContents(@NotNull GUIContext context) {
+    protected void drawBackgroundAdditional(@NotNull com.lowdragmc.lowdraglib2.gui.ui.rendering.IGUIContext context) {
         // flush before the children draw so the seek result is visible this frame
         flushPendingSimulate();
         // keep the floating panels pinned to their anchor corner when the scene is resized
         fxObjectInfoView.reflowIfSceneResized();
         fxObjectAnimationView.reflowIfSceneResized();
-        super.drawContents(context);
+        super.drawBackgroundAdditional(context);
     }
 
     @Override
@@ -248,37 +250,29 @@ public class SceneView extends View {
             return SceneView.this;
         }
 
+        // 26.1: renderAfterWorld takes the SceneRenderContext; immediate line draws route through
+        // its buffer source (blend/depth owned by the lines pipeline, width per-vertex).
         @Override
-        protected void renderAfterWorld(@NotNull MultiBufferSource bufferSource, float partialTicks) {
+        protected void renderAfterWorld(com.lowdragmc.lowdraglib2.client.scene.SceneRenderContext ctx) {
+            var partialTicks = ctx.partialTicks();
+            var bufferSource = ctx.bufferSource();
             if (fxObjectInfoView.getInspected() != null) {
                 fxObjectInfoView.getInspected().drawEditorAfterWorld(this, bufferSource, partialTicks);
                 if (isCullBoxVisible && fxObjectInfoView.getInspected() instanceof FXObject fxObject) {
                     var cullBox = fxObject.getRenderBoundingBox(partialTicks);
                     if (cullBox != AABB.INFINITE) {
-                        RenderSystem.enableBlend();
-                        RenderSystem.disableDepthTest();
-                        RenderSystem.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-
-                        RenderSystem.disableCull();
-                        RenderSystem.setShader(GameRenderer::getRendertypeLinesShader);
-                        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
-                        RenderSystem.lineWidth(3);
-
+                        var buffer = bufferSource.getBuffer(net.minecraft.client.renderer.rendertype.RenderTypes.lines());
                         RenderBufferUtils.drawCubeFrame(new PoseStack(), buffer,
                                 (float) cullBox.minX, (float) cullBox.minY, (float) cullBox.minZ,
                                 (float) cullBox.maxX, (float) cullBox.maxY, (float) cullBox.maxZ,
-                                1, 0.5f, 0.5f, 1);
-
-                        BufferUploader.drawWithShader(buffer.buildOrThrow());
-                        RenderSystem.enableDepthTest();
-                        RenderSystem.enableCull();
+                                1, 0.5f, 0.5f, 1, 3);
                     }
                 }
             }
             if (fxObjectAnimationView.isDisplayed() && fxEditor.runtime != null) {
                 fxObjectAnimationView.runFrameAnimation(fxEditor.runtime.root.transform(), particleManager.getTime(partialTicks));
             }
-            super.renderAfterWorld(bufferSource, partialTicks);
+            super.renderAfterWorld(ctx);
         }
 
         @Override

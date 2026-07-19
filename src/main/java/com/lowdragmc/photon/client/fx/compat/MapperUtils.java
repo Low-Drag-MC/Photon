@@ -11,11 +11,11 @@ public class MapperUtils {
     public static ListTag mapCoords(Tag coordTag){
         CompoundTag compoundTag = (CompoundTag)coordTag;
         ListTag newCoordTag = new ListTag();
-        newCoordTag.add(FloatTag.valueOf(compoundTag.getFloat("x")));
-        newCoordTag.add(FloatTag.valueOf(compoundTag.getFloat("y")));
-        newCoordTag.add(FloatTag.valueOf(compoundTag.getFloat("z")));
+        newCoordTag.add(FloatTag.valueOf(compoundTag.getFloatOr("x", 0.0F)));
+        newCoordTag.add(FloatTag.valueOf(compoundTag.getFloatOr("y", 0.0F)));
+        newCoordTag.add(FloatTag.valueOf(compoundTag.getFloatOr("z", 0.0F)));
         if (compoundTag.contains("w")) {
-            newCoordTag.add(FloatTag.valueOf(compoundTag.getFloat("w")));
+            newCoordTag.add(FloatTag.valueOf(compoundTag.getFloatOr("w", 0.0F)));
 
         }
         return newCoordTag;
@@ -24,11 +24,11 @@ public class MapperUtils {
     public static ListTag mapCoordsDouble(Tag coordTag){
         CompoundTag compoundTag = (CompoundTag)coordTag;
         ListTag newCoordTag = new ListTag();
-        newCoordTag.add(DoubleTag.valueOf(compoundTag.getFloat("x")));
-        newCoordTag.add(DoubleTag.valueOf(compoundTag.getFloat("y")));
-        newCoordTag.add(DoubleTag.valueOf(compoundTag.getFloat("z")));
+        newCoordTag.add(DoubleTag.valueOf(compoundTag.getFloatOr("x", 0.0F)));
+        newCoordTag.add(DoubleTag.valueOf(compoundTag.getFloatOr("y", 0.0F)));
+        newCoordTag.add(DoubleTag.valueOf(compoundTag.getFloatOr("z", 0.0F)));
         if (compoundTag.contains("w")) {
-            newCoordTag.add(DoubleTag.valueOf(compoundTag.getFloat("w")));
+            newCoordTag.add(DoubleTag.valueOf(compoundTag.getFloatOr("w", 0.0F)));
 
         }
         return newCoordTag;
@@ -48,7 +48,7 @@ public class MapperUtils {
         }
         ListTag listTag = new ListTag();
         for(int i = 0; i < key.length; i++){
-            listTag.add(mapTypedValue(typed3VecTag.getCompound(key[i]), floatToDouble));
+            listTag.add(mapTypedValue(typed3VecTag.getCompoundOrEmpty(key[i]), floatToDouble));
         }
         return listTag;
     }
@@ -57,9 +57,9 @@ public class MapperUtils {
 
     public static CompoundTag mapTypedValue(CompoundTag typedValueTag,  boolean floatToDouble){
         CompoundTag newTypedValueTag = new CompoundTag();
-        newTypedValueTag.putString("type", typedValueTag.getString("_type").toLowerCase());
+        newTypedValueTag.putString("type", typedValueTag.getStringOr("_type", "").toLowerCase());
         CompoundTag dataTag = new CompoundTag();
-        switch(typedValueTag.getString("_type")){
+        switch(typedValueTag.getStringOr("_type", "")){
             case "Curve":
                dataTag = typedValueTag.copy();
                dataTag.remove("_type");
@@ -69,25 +69,25 @@ public class MapperUtils {
             case "Constant", "Color":
                 dataTag = typedValueTag.copy();
                 dataTag.remove("_type");
-                if(floatToDouble && dataTag.contains("number", Tag.TAG_FLOAT)){
+                if(floatToDouble && dataTag.getFloat("number").isPresent()){
                     //convert to double
-                    dataTag.putDouble("number", dataTag.getFloat("number"));
+                    dataTag.putDouble("number", dataTag.getFloatOr("number", 0.0F));
                 }
                 break;
             case "RandomConstant":
-                dataTag.putFloat("a", typedValueTag.getFloat("a"));
-                dataTag.putFloat("b", typedValueTag.getFloat("b"));
+                dataTag.putFloat("a", typedValueTag.getFloatOr("a", 0.0F));
+                dataTag.putFloat("b", typedValueTag.getFloatOr("b", 0.0F));
                 newTypedValueTag.putString("type", "random_constant");
                 break;
             case "Gradient":
-                CompoundTag gradientTag = gradient(typedValueTag.getList("a", Tag.TAG_FLOAT), typedValueTag.getList("r", Tag.TAG_FLOAT), typedValueTag.getList("g", Tag.TAG_FLOAT), typedValueTag.getList("b", Tag.TAG_FLOAT));
+                CompoundTag gradientTag = gradient(typedValueTag.getListOrEmpty("a"), typedValueTag.getListOrEmpty("r"), typedValueTag.getListOrEmpty("g"), typedValueTag.getListOrEmpty("b"));
                 dataTag.put("gradientColor",  gradientTag);
                 break;
             case "TextureMaterial":
                 newTypedValueTag.putString("type", "texture");
                 dataTag = buildBlankTexture();
-                dataTag.putString("texture",  typedValueTag.getString("texture"));
-                dataTag.putFloat("discardThreshold", typedValueTag.getFloat("discardThreshold"));
+                dataTag.putString("texture",  typedValueTag.getStringOr("texture", ""));
+                dataTag.putFloat("discardThreshold", typedValueTag.getFloatOr("discardThreshold", 0.0F));
                 break;
             case "CustomShaderMaterial":
                 newTypedValueTag.putString("type", "ui_resource_material");
@@ -96,17 +96,17 @@ public class MapperUtils {
 
             case "RandomColor":
                 newTypedValueTag.putString("type", "random_color");
-                if(typedValueTag.contains("a", Tag.TAG_INT)){
-                    dataTag.putInt("a", typedValueTag.getInt("a"));
+                if(typedValueTag.getInt("a").isPresent()){
+                    dataTag.putInt("a", typedValueTag.getIntOr("a", 0));
                 }
                 else{
-                    dataTag.putFloat("a", typedValueTag.getFloat("a"));
+                    dataTag.putFloat("a", typedValueTag.getFloatOr("a", 0.0F));
                 }
-                if(typedValueTag.contains("b", Tag.TAG_INT)){
-                    dataTag.putInt("b", typedValueTag.getInt("b"));
+                if(typedValueTag.getInt("b").isPresent()){
+                    dataTag.putInt("b", typedValueTag.getIntOr("b", 0));
                 }
                 else{
-                    dataTag.putFloat("b", typedValueTag.getFloat("b"));
+                    dataTag.putFloat("b", typedValueTag.getFloatOr("b", 0.0F));
                 }
                 break;
 
@@ -128,7 +128,7 @@ public class MapperUtils {
         hdr.add(FloatTag.valueOf(1));
         dataTag.put("hdr", hdr);
         dataTag.put("pixelArt", new CompoundTag());
-        dataTag.getCompound("pixelArt").putByte("_enable", (byte)0);
+        dataTag.getCompoundOrEmpty("pixelArt").putByte("_enable", (byte)0);
         return dataTag;
     }
 
@@ -139,13 +139,13 @@ public class MapperUtils {
         List<Vec2> bP = new ArrayList<>();
 
         for (int i = 0; i < oldR.size(); i += 2) {
-            rP.add(new Vec2(oldR.getFloat(i), oldR.getFloat(i + 1)));
+            rP.add(new Vec2(oldR.getFloatOr(i, 0.0F), oldR.getFloatOr(i + 1, 0.0F)));
         }
         for (int i = 0; i < oldG.size(); i += 2) {
-            gP.add(new Vec2(oldG.getFloat(i), oldG.getFloat(i + 1)));
+            gP.add(new Vec2(oldG.getFloatOr(i, 0.0F), oldG.getFloatOr(i + 1, 0.0F)));
         }
         for (int i = 0; i < oldB.size(); i += 2) {
-            bP.add(new Vec2(oldB.getFloat(i), oldB.getFloat(i + 1)));
+            bP.add(new Vec2(oldB.getFloatOr(i, 0.0F), oldB.getFloatOr(i + 1, 0.0F)));
         }
 
         // Helper method to interpolate value at t
@@ -202,7 +202,7 @@ public class MapperUtils {
 
     public static CompoundTag mapShape(CompoundTag shapeTag){
         CompoundTag newShapeTag = new CompoundTag();
-        newShapeTag.putString("type", shapeTag.getString("_type"));
+        newShapeTag.putString("type", shapeTag.getStringOr("_type", ""));
         CompoundTag dataTag = shapeTag.copy();
         dataTag.remove("_type");
         newShapeTag.put("data", dataTag);
@@ -299,11 +299,11 @@ public class MapperUtils {
 
     public static CompoundTag mapMaterial(CompoundTag materialTag){
         CompoundTag newMaterialTag = new CompoundTag();
-        newMaterialTag.putByte("cull", materialTag.getByte("cull"));
-        newMaterialTag.putByte("depthMask", materialTag.getByte("depthMask"));
-        newMaterialTag.putByte("depthTest", materialTag.getByte("depthTest"));
-        newMaterialTag.put("blendMode", materialTag.getCompound("blendMode"));
-        newMaterialTag.put("material",  mapTypedValue(materialTag.getCompound("material"), false));
+        newMaterialTag.putByte("cull", materialTag.getByteOr("cull", (byte) 0));
+        newMaterialTag.putByte("depthMask", materialTag.getByteOr("depthMask", (byte) 0));
+        newMaterialTag.putByte("depthTest", materialTag.getByteOr("depthTest", (byte) 0));
+        newMaterialTag.put("blendMode", materialTag.getCompoundOrEmpty("blendMode"));
+        newMaterialTag.put("material",  mapTypedValue(materialTag.getCompoundOrEmpty("material"), false));
 
         return newMaterialTag;
     }
@@ -311,10 +311,10 @@ public class MapperUtils {
 
     public static CompoundTag mapLightTag(CompoundTag lightTag){
         CompoundTag newLightTag = new CompoundTag();
-        newLightTag.putByte("_enable", lightTag.getByte("enable"));
-        if(newLightTag.getByte("_enable") == 1){
-            newLightTag.put("blockLight", MapperUtils.mapTypedValue(lightTag.getCompound("blockLight"), false));
-            newLightTag.put("skyLight", MapperUtils.mapTypedValue(lightTag.getCompound("skyLight"), false));
+        newLightTag.putByte("_enable", lightTag.getByteOr("enable", (byte) 0));
+        if(newLightTag.getByteOr("_enable", (byte) 0) == 1){
+            newLightTag.put("blockLight", MapperUtils.mapTypedValue(lightTag.getCompoundOrEmpty("blockLight"), false));
+            newLightTag.put("skyLight", MapperUtils.mapTypedValue(lightTag.getCompoundOrEmpty("skyLight"), false));
         }
         return newLightTag;
     }
@@ -322,11 +322,11 @@ public class MapperUtils {
 
     public static CompoundTag mapRendererTag(CompoundTag renderTag, CompoundTag configTag){
         CompoundTag newRendererTag = new CompoundTag();
-        newRendererTag.putString("renderMode", renderTag.getString("renderMode"));
-        newRendererTag.putByte("useBlockUV",  renderTag.getByte("useBlockUV"));
-        newRendererTag.putByte("shade",  renderTag.getByte("shade"));
-        newRendererTag.putString("layer",  renderTag.getString("layer"));
-        newRendererTag.put("cull", mapCullTag(renderTag.getCompound("cull")));
+        newRendererTag.putString("renderMode", renderTag.getStringOr("renderMode", ""));
+        newRendererTag.putByte("useBlockUV",  renderTag.getByteOr("useBlockUV", (byte) 0));
+        newRendererTag.putByte("shade",  renderTag.getByteOr("shade", (byte) 0));
+        newRendererTag.putString("layer",  renderTag.getStringOr("layer", ""));
+        newRendererTag.put("cull", mapCullTag(renderTag.getCompoundOrEmpty("cull")));
 
         CompoundTag materialsTag = new CompoundTag();
 
@@ -334,7 +334,7 @@ public class MapperUtils {
 
         ListTag payloadTag = new ListTag();
 
-        payloadTag.add(MapperUtils.mapMaterial(configTag.getCompound("material")));
+        payloadTag.add(MapperUtils.mapMaterial(configTag.getCompoundOrEmpty("material")));
 
         materialsTag.put("payload", payloadTag);
 
@@ -354,8 +354,8 @@ public class MapperUtils {
 
     public static CompoundTag mapCullTag(CompoundTag cullTag){
         CompoundTag newCullTag = new CompoundTag();
-        newCullTag.putByte("_enable", cullTag.getByte("enable"));
-        if(newCullTag.getByte("_enable") == 1){
+        newCullTag.putByte("_enable", cullTag.getByteOr("enable", (byte) 0));
+        if(newCullTag.getByteOr("_enable", (byte) 0) == 1){
             newCullTag.put("min", MapperUtils.mapCoordsDouble(cullTag.get("from")));
             newCullTag.put("max", MapperUtils.mapCoordsDouble(cullTag.get("to")));
         }
@@ -364,13 +364,13 @@ public class MapperUtils {
 
     public static CompoundTag mapUVTag(CompoundTag uvTag){
         CompoundTag newUVTag = new CompoundTag();
-        newUVTag.putByte("_enable", uvTag.getByte("enable"));
-        if(newUVTag.getByte("_enable") == 1){
-            newUVTag.putIntArray("tiles", new int[]{uvTag.getCompound("tiles").getInt("a"), uvTag.getCompound("tiles").getInt("b")});
-            newUVTag.put("startFrame", MapperUtils.mapTypedValue(uvTag.getCompound("startFrame"), false));
-            newUVTag.putFloat("cycle",  uvTag.getFloat("cycle"));
-            newUVTag.putString("animation",  uvTag.getString("animation"));
-            newUVTag.put("frameOverTime", MapperUtils.mapTypedValue(uvTag.getCompound("frameOverTime"), false));
+        newUVTag.putByte("_enable", uvTag.getByteOr("enable", (byte) 0));
+        if(newUVTag.getByteOr("_enable", (byte) 0) == 1){
+            newUVTag.putIntArray("tiles", new int[]{uvTag.getCompoundOrEmpty("tiles").getIntOr("a", 0), uvTag.getCompoundOrEmpty("tiles").getIntOr("b", 0)});
+            newUVTag.put("startFrame", MapperUtils.mapTypedValue(uvTag.getCompoundOrEmpty("startFrame"), false));
+            newUVTag.putFloat("cycle",  uvTag.getFloatOr("cycle", 0.0F));
+            newUVTag.putString("animation",  uvTag.getStringOr("animation", ""));
+            newUVTag.put("frameOverTime", MapperUtils.mapTypedValue(uvTag.getCompoundOrEmpty("frameOverTime"), false));
         }
 
         return newUVTag;
@@ -379,8 +379,8 @@ public class MapperUtils {
     public static CompoundTag mapTransformTag(CompoundTag transformTag){
         CompoundTag newTransformTag = new CompoundTag();
         newTransformTag.put("_childrenId", new ListTag());
-        newTransformTag.putString("_parentId", NbtUtils.loadUUID(transformTag.get("_parentId")).toString());
-        newTransformTag.putString("id", NbtUtils.loadUUID(transformTag.get("id")).toString());
+        newTransformTag.putString("_parentId", net.minecraft.core.UUIDUtil.CODEC.parse(net.minecraft.nbt.NbtOps.INSTANCE, transformTag.get("_parentId")).result().map(java.util.UUID::toString).orElse(""));
+        newTransformTag.putString("id", net.minecraft.core.UUIDUtil.CODEC.parse(net.minecraft.nbt.NbtOps.INSTANCE, transformTag.get("id")).result().map(java.util.UUID::toString).orElse(""));
         newTransformTag.put("localRotation", MapperUtils.mapCoords(transformTag.get("localRotation")));
         newTransformTag.put("localScale", MapperUtils.mapCoords(transformTag.get("localScale")));
         newTransformTag.put("localPosition",  MapperUtils.mapCoords(transformTag.get("localPosition")));

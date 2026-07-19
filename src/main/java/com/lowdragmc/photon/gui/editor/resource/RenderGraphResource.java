@@ -119,14 +119,14 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
 
     public CompoundTag serializeGraph(RenderGraph graph) {
         var root = new CompoundTag();
-        root.put(GRAPH_TAG, graph.graphModel.serializeNBT(Platform.getFrozenRegistry()));
+        root.put(GRAPH_TAG, com.lowdragmc.lowdraglib2.utils.PersistedParser.serializeNBT(graph.graphModel, Platform.getFrozenRegistry()));
         return root;
     }
 
     public RenderGraph deserializeGraph(CompoundTag tag) {
         var graph = new RenderGraph(false);
         var graphTag = tag.get(GRAPH_TAG) instanceof CompoundTag compound ? compound : tag;
-        graph.graphModel.deserializeNBT(Platform.getFrozenRegistry(), graphTag);
+        com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(graphTag, graph.graphModel, Platform.getFrozenRegistry());
         graph.restoreAfterDeserialize();
         return graph;
     }
@@ -144,7 +144,7 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
         var graph = new RenderGraph(false);
         graph.graphModel.setReferenceResolver(resolver);
         var graphTag = tag.get(GRAPH_TAG) instanceof CompoundTag compound ? compound : tag;
-        graph.graphModel.deserializeNBT(Platform.getFrozenRegistry(), graphTag);
+        com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(graphTag, graph.graphModel, Platform.getFrozenRegistry());
         graph.graphModel.setReferenceResolver(resolver);
         graph.restoreAfterDeserialize();
         return graph;

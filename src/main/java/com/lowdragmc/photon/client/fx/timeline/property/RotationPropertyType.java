@@ -10,14 +10,12 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurve
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Quaternionf;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 
 import java.util.List;
 
-@OnlyIn(Dist.CLIENT)
 public class RotationPropertyType extends TransformPropertyType {
     @LDLRegisterClient(name = "rotation", registry = "photon:animated_property")
     public static final RotationPropertyType INSTANCE = new RotationPropertyType();
@@ -66,13 +64,13 @@ public class RotationPropertyType extends TransformPropertyType {
 
     @Override
     public AnimatedProperty deserialize(HolderLookup.Provider provider, CompoundTag tag) {
-        var base = AnimatedProperty.readFloatsFromTag(tag.getList("base", net.minecraft.nbt.Tag.TAG_FLOAT));
+        var base = AnimatedProperty.readFloatsFromTag(tag.getListOrEmpty("base"));
         var channels = AnimatedProperty.readChannels(provider, tag, channelCount());
         var fixedBase = new float[channelCount()];
         System.arraycopy(base, 0, fixedBase, 0, Math.min(base.length, fixedBase.length));
         var rotation = new RotationAnimatedProperty(this, fixedBase, channels,
-                tag.getFloat("rangeMin"), tag.getFloat("rangeMax"));
-        rotation.interpMode(InterpMode.byOrdinal(tag.getInt("interp")));
+                tag.getFloatOr("rangeMin", 0.0F), tag.getFloatOr("rangeMax", 0.0F));
+        rotation.interpMode(InterpMode.byOrdinal(tag.getIntOr("interp", 0)));
         AnimatedProperty.readExprClips(tag, rotation);
         return rotation;
     }
@@ -118,15 +116,15 @@ public class RotationPropertyType extends TransformPropertyType {
         float offset = 0;
         for (var seg : segs) {
             // seg.p0 carries the running offset from the previous keyframe; shift it (and its out-handle)
-            seg.p0.y += offset;
-            seg.c0.y += offset;
+            seg.p0 = new Vector2f(seg.p0.x(), seg.p0.y() + offset);
+            seg.c0 = new Vector2f(seg.c0.x(), seg.c0.y() + offset);
             // choose this segment's end offset so its delta is the shortest wrap of the original delta
-            var rawDelta = seg.p1.y - (seg.p0.y - offset);
+            var rawDelta = seg.p1.y() - (seg.p0.y() - offset);
             var wrapped = rawDelta - 360f * Math.round(rawDelta / 360f);
-            var endValue = (seg.p0.y) + wrapped; // p0.y already offset
-            var endOffset = endValue - seg.p1.y;
-            seg.p1.y += endOffset;
-            seg.c1.y += endOffset;
+            var endValue = (seg.p0.y()) + wrapped; // p0.y already offset
+            var endOffset = endValue - seg.p1.y();
+            seg.p1 = new Vector2f(seg.p1.x(), seg.p1.y() + endOffset);
+            seg.c1 = new Vector2f(seg.c1.x(), seg.c1.y() + endOffset);
             offset = endOffset;
         }
         return copy;

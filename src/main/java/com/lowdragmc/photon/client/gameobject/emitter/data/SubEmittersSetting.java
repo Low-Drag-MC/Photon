@@ -27,9 +27,7 @@ import lombok.Setter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.util.Mth;
-import net.minecraft.resources.ResourceLocation;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
+import net.minecraft.resources.Identifier;
 import org.joml.Quaternionf;
 
 import javax.annotation.Nullable;
@@ -43,7 +41,6 @@ import java.util.function.Supplier;
  * @date 2023/7/17
  * @implNote SubEmittersSetting
  */
-@OnlyIn(Dist.CLIENT)
 @Setter
 @Getter
 public class SubEmittersSetting extends ToggleGroup {
@@ -123,7 +120,7 @@ public class SubEmittersSetting extends ToggleGroup {
 
     private List<Emitter> emittersDeserialize(IntTag tag) {
         var groups = new ArrayList<Emitter>();
-        for (int i = 0; i < tag.getAsInt(); i++) {
+        for (int i = 0; i < tag.intValue(); i++) {
             groups.add(addDefaultEmitter());
         }
         return groups;
@@ -140,7 +137,7 @@ public class SubEmittersSetting extends ToggleGroup {
     public static class Emitter implements IConfigurable, IPersistedSerializable {
         @Nullable
         @Persisted
-        protected ResourceLocation fxLocation = null;
+        protected Identifier fxLocation = null;
         @Configurable(name = "Emitter.event", tips = "photon.emitter.config.sub_emitters.emitter.event")
         protected Event event = Event.Birth;
         @Configurable(name = "Emitter.emitProbability", tips = "photon.emitter.config.sub_emitters.emitter.emit_probability")
@@ -217,7 +214,7 @@ public class SubEmittersSetting extends ToggleGroup {
                     .keySet().forEach(fx -> candidates.add(fx.toString().replace(":fx/", ":").replace(".fx", "")));
             father.addConfigurators(new SelectorConfigurator<>("fx",
                     () -> fxLocation == null ? "" : fxLocation.toString(),
-                    v -> fxLocation = v.isEmpty() ? null : ResourceLocation.parse(v),
+                    v -> fxLocation = v.isEmpty() ? null : Identifier.parse(v),
                     "", true, candidates, s -> s)
                     .setTips("photon.emitter.config.sub_emitters.emitter.name"));
             IConfigurable.super.buildConfigurator(father);

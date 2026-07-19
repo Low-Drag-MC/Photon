@@ -65,13 +65,18 @@ public class WorldToScreenUVNode extends ShaderNode {
         // absolute world camera position (KG's precision-split kg_CameraBlockPos - kg_CameraOffset), bound each
         // frame by KGBuiltinUniforms and overridden to the pipeline's render camera by ShaderGraphMaterial.
         if (ctx.option("space", String.class, "absolute").equals("absolute")) {
-            String camPos = ctx.cameraWorldPos().code();
+            // 26.1: KG's precision-split camera world position (kg_CameraBlockPos - kg_CameraOffset)
+            String camPos = "(vec3(" + ctx.transformField("CameraBlockPos", GlslType.VEC3).code() + ") - "
+                    + ctx.transformField("CameraOffset", GlslType.VEC3).code() + ")";
             pos = "(" + pos + " - " + camPos + ")";
         }
-        String proj = ctx.useBuiltinUniform("ProjMat", GlslType.MAT4);
-        String modelView = ctx.useBuiltinUniform("ModelViewMat", GlslType.MAT4);
-        String viewport = ctx.useBuiltinUniform(PhotonShaderCompiler.VIEWPORT, GlslType.VEC4);
-        String screenSize = ctx.useBuiltinUniform("ScreenSize", GlslType.VEC2);
+        ctx.useMinecraftUniform("Projection", "minecraft:projection.glsl");
+        String proj = "ProjMat";
+        String modelView = ctx.transformField("ModelViewMat", GlslType.MAT4).code();
+        // TODO(M2): U_ViewPort was a Photon dynamic uniform staged by the dead ShaderInstance path —
+        // re-plumb it (std140) with the material pipeline; until then it reads as zeros.
+        String viewport = ctx.uniform(PhotonShaderCompiler.VIEWPORT, GlslType.VEC4).code();
+        String screenSize = ctx.screenSize().code();
         // position -> clip -> ndc -> [0,1] over the viewport, then remap through the viewport rect into the
         // window-sized scene capture so it matches screenUv()'s window-relative convention.
         String clip = ctx.temp(GlslType.VEC4, proj + " * " + modelView + " * vec4(" + pos + ", 1.0)").code();

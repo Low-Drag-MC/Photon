@@ -12,10 +12,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.util.Mth;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector2f;
@@ -35,7 +32,6 @@ import static com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailP
  * per config's render pass; rendering is confined to the render thread, so shared scratch is safe.
  * The particle itself only simulates points; all mesh generation lives here.
  */
-@OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 public class AraTrailParticleRenderer {
 
@@ -125,7 +121,7 @@ public class AraTrailParticleRenderer {
         // We need at least two points to create a trail mesh.
         if (points.size() > 1) {
             var worldToTrail = particle.getWorldToTrail();
-            Vector3f localCamPosition = worldToTrail.transformPosition(camera.getPosition().toVector3f());
+            Vector3f localCamPosition = worldToTrail.transformPosition(camera.position().toVector3f());
 
             renderAgedSpans(particle, worldToTrail, partialTicks,
                     (start, end) -> updateSegmentMesh(particle, start, end, localCamPosition));
@@ -356,7 +352,7 @@ public class AraTrailParticleRenderer {
             return;
         }
 
-        var renderMatrix = particle.getWorldToTrail().invert(new Matrix4f()).translateLocal(cam.getPosition().toVector3f().negate());
+        var renderMatrix = particle.getWorldToTrail().invert(new Matrix4f()).translateLocal(cam.position().toVector3f().negate());
 
         for (int i = 0; i < tris.size(); i += 3) {
             int i0 = tris.getInt(i);
@@ -390,7 +386,7 @@ public class AraTrailParticleRenderer {
         buffer.addVertex(pos.x, pos.y, pos.z)
                 .setUv(uv.x, uv.y)
                 .setColor(color.x, color.y, color.z, color.w)
-                .setLight(LightTexture.FULL_BRIGHT)
+                .setLight(net.minecraft.util.LightCoordsUtil.FULL_BRIGHT)
                 .setNormal(normal.x, normal.y, normal.z);
     }
 
@@ -765,7 +761,7 @@ public class AraTrailParticleRenderer {
         collectCustomBuffer = customBuffer;
         collectPointCount = 0;
         collectInstanceCount = 0;
-        var cameraPos = camera.getPosition().toVector3f();
+        var cameraPos = camera.position().toVector3f();
 
         for (var p : particles) {
             if (!(p instanceof AraTrailParticle trail) || trail.getPoints().size() <= 1) continue;
@@ -877,9 +873,8 @@ public class AraTrailParticleRenderer {
         }
     }
 
-    public void drawInstanced(net.minecraft.client.renderer.ShaderInstance shader) {
-        instanceBackend.drawWithShader(shader);
-    }
+    // TODO(M2): drawInstanced — re-expressed as a RenderPass.drawIndexed(instanceCount) draw with
+    // the material pipeline when the instancing backend moves off raw GL.
 
     /** Whether the baked instanced geometry no longer matches the config (mode / section / uvWidthFactor). */
     public boolean geometryStale() {

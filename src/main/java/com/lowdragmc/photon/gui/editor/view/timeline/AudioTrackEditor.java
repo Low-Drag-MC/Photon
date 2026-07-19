@@ -10,14 +10,14 @@ import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.utils.UIElementProvider;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
+import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.client.fx.timeline.AudioClip;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.SoundLengthCache;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -25,8 +25,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -37,7 +35,6 @@ import java.util.List;
  * the inspector exposes sound / volume / pitch / category / attenuation / loop-length, and the clip
  * draws loop sub-divisions so the user sees how many times the sound repeats.
  */
-@OnlyIn(Dist.CLIENT)
 public class AudioTrackEditor extends ClipTrackEditor {
 
     @Override
@@ -77,7 +74,7 @@ public class AudioTrackEditor extends ClipTrackEditor {
     }
 
     @Override
-    protected void drawClipDecoration(GuiGraphics graphics, TimelineContext ctx, Track track, Clip clip,
+    protected void drawClipDecoration(GUIContext graphics, TimelineContext ctx, Track track, Clip clip,
                                       float x, float y, float w, float h, float pt) {
         if (!(clip instanceof AudioClip audio)) {
             return;
@@ -88,7 +85,7 @@ public class AudioTrackEditor extends ClipTrackEditor {
         var step = (float) (loop * ctx.scale());
         if (step < 2) return; // avoid drawing a solid block when the loop is tiny at this zoom
         for (float lx = x + step; lx < x + w - 0.5f; lx += step) {
-            DrawerHelper.drawSolidRect(graphics, lx - 0.5f, y + 1, 1, h - 2, ColorPattern.T_WHITE.color);
+            DrawerHelperClient.drawSolidRect(graphics, lx - 0.5f, y + 1, 1, h - 2, ColorPattern.T_WHITE.color);
         }
     }
 
@@ -135,8 +132,8 @@ public class AudioTrackEditor extends ClipTrackEditor {
     }
 
     /** Resolve a stored sound id to its SoundEvent, falling back to a always-present vanilla sound. */
-    private static SoundEvent resolveSound(net.minecraft.resources.ResourceLocation id) {
-        var sound = BuiltInRegistries.SOUND_EVENT.get(id);
+    private static SoundEvent resolveSound(net.minecraft.resources.Identifier id) {
+        var sound = BuiltInRegistries.SOUND_EVENT.get(id).map(net.minecraft.core.Holder::value).orElse(null);
         return sound != null ? sound : SoundEvents.UI_BUTTON_CLICK.value();
     }
 }

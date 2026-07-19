@@ -12,8 +12,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRuntime;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
@@ -32,7 +30,6 @@ import java.util.function.Function;
 /**
  * Tile particle is the common particle that can be rendered in the game.
  */
-@OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
 public class TileParticle implements IParticle {
     public static final Direction[] MODEL_SIDES = new Direction[]{Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST, Direction.UP, Direction.DOWN, null};

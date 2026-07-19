@@ -40,8 +40,8 @@ public class TexelSizeNode extends ShaderNode {
         // missing sampler), so the companion uniform is derived by suffix — the executor sets it
         // by the same convention when it binds the sampler.
         ShaderExpr sampler = ctx.isConnected("sampler") ? ctx.input("sampler") : ctx.missingSampler();
-        String uniform = ctx.useBuiltinUniform(
-                sampler.code() + PhotonFullscreenCompiler.TEXEL_SIZE_SUFFIX, GlslType.VEC4);
+        String uniform = ctx.uniform(
+                sampler.code() + PhotonFullscreenCompiler.TEXEL_SIZE_SUFFIX, GlslType.VEC4).code(); // TODO(M3): executor stages _TexelSize
         ctx.output("size", new ShaderExpr(uniform + ".xy", GlslType.VEC2));
         ctx.output("texelSize", new ShaderExpr(uniform + ".zw", GlslType.VEC2));
     }

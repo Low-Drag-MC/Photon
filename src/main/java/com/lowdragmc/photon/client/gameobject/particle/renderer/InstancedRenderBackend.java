@@ -1,12 +1,10 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
 import com.lowdragmc.photon.client.AutoCloseCleaner;
-import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.ShaderInstance;
 import org.lwjgl.BufferUtils;
 
 import javax.annotation.Nullable;
@@ -274,13 +272,6 @@ abstract class InstancedRenderBackend {
         maxDataSize = 0;
         maxCustomSize = 0;
         instanceCount = 0;
-        lastPointSamplerShader = null;
-        lastPointSamplerLocation = -1;
-        lastDataSamplerShader = null;
-        lastDataSamplerLocation = -1;
-        lastCustomSamplerShader = null;
-        lastCustomSamplerLocation = -1;
-
         initialized = false;
     }
 
@@ -488,76 +479,7 @@ abstract class InstancedRenderBackend {
         glBufferSubData(GL_ARRAY_BUFFER, 0, buffer);
     }
 
-    public void drawWithShader(ShaderInstance shader) {
-        // bind shader
-        shader.setDefaultUniforms(
-                VertexFormat.Mode.QUADS,
-                RenderSystem.getModelViewMatrix(),
-                RenderSystem.getProjectionMatrix(),
-                Minecraft.getInstance().getWindow()
-        );
-        shader.apply();
-
-        if (resource != null) {
-            bindBufferSampler(shader, POINT_SAMPLER, POINT_SAMPLER_UNIT, resource.pointTex, POINT_MEMO);
-            bindBufferSampler(shader, DATA_SAMPLER, DATA_SAMPLER_UNIT, resource.dataTex, DATA_MEMO);
-            bindBufferSampler(shader, CUSTOM_SAMPLER, CUSTOM_SAMPLER_UNIT, resource.customTex, CUSTOM_MEMO);
-        }
-
-        // draw instance
-        glDrawElementsInstanced(GL_TRIANGLES, modelEboSize, GL_UNSIGNED_INT, 0, instanceCount);
-    }
-
-    // per-shader memo of each buffer sampler's uniform location (the per-draw glGetUniformLocation
-    // string lookup is measurable at small batch sizes); keyed by shader identity — a recompiled
-    // shader is a new object
-    private static final int POINT_MEMO = 0;
-    private static final int DATA_MEMO = 1;
-    private static final int CUSTOM_MEMO = 2;
-    @Nullable
-    private ShaderInstance lastPointSamplerShader;
-    private int lastPointSamplerLocation = -1;
-    @Nullable
-    private ShaderInstance lastDataSamplerShader;
-    private int lastDataSamplerLocation = -1;
-    @Nullable
-    private ShaderInstance lastCustomSamplerShader;
-    private int lastCustomSamplerLocation = -1;
-
-    /**
-     * Binds a buffer texture to {@code samplerName} via raw GL (after apply(), the program is bound).
-     * Raw lookup works uniformly for core-shader JSONs and KilaGraph-compiled programs — no sampler
-     * metadata needed. The TEXTURE_BUFFER target is separate from the 2D bindings GlStateManager
-     * tracks, and the active unit is saved/restored through its client-side cache (no synchronous
-     * glGet). A missing uniform (location < 0) just skips — shaders that don't pull are unaffected.
-     */
-    private void bindBufferSampler(ShaderInstance shader, String samplerName, int unit, int tex, int memo) {
-        if (tex == -1) return;
-        int location;
-        if (memo == POINT_MEMO) {
-            if (shader != lastPointSamplerShader) {
-                lastPointSamplerShader = shader;
-                lastPointSamplerLocation = glGetUniformLocation(shader.getId(), samplerName);
-            }
-            location = lastPointSamplerLocation;
-        } else if (memo == DATA_MEMO) {
-            if (shader != lastDataSamplerShader) {
-                lastDataSamplerShader = shader;
-                lastDataSamplerLocation = glGetUniformLocation(shader.getId(), samplerName);
-            }
-            location = lastDataSamplerLocation;
-        } else {
-            if (shader != lastCustomSamplerShader) {
-                lastCustomSamplerShader = shader;
-                lastCustomSamplerLocation = glGetUniformLocation(shader.getId(), samplerName);
-            }
-            location = lastCustomSamplerLocation;
-        }
-        if (location < 0) return;
-        glUniform1i(location, unit);
-        int previousUnit = GlStateManager._getActiveTexture();
-        GlStateManager._activeTexture(GL_TEXTURE0 + unit);
-        glBindTexture(GL_TEXTURE_BUFFER, tex);
-        GlStateManager._activeTexture(previousUnit);
-    }
+    // TODO(M2): drawWithShader/bindBufferSampler — the ShaderInstance-driven instanced draw
+    // (setDefaultUniforms + apply + raw buffer-texture binds + glDrawElementsInstanced) moves to
+    // RenderPass.setPipeline + TEXEL_BUFFER uniforms + drawIndexed(instanceCount).
 }

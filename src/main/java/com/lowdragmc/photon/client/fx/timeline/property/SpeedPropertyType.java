@@ -3,15 +3,12 @@ package com.lowdragmc.photon.client.fx.timeline.property;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.gameobject.FXObject;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * A single-channel scalar animatable: the object's playback speed ({@code selfTimeScale}). Used only by
  * the {@code speed} track (it is intentionally not part of any object's {@code animatableProperties()},
  * so it never appears in the animation track's add-property menu). Default value 1, range [0, 2].
  */
-@OnlyIn(Dist.CLIENT)
 public class SpeedPropertyType implements AnimatedPropertyType {
     @LDLRegisterClient(name = "speed", registry = "photon:animated_property")
     public static final SpeedPropertyType INSTANCE = new SpeedPropertyType();

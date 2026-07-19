@@ -18,7 +18,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
-import net.neoforged.neoforge.common.util.INBTSerializable;
 import oshi.util.tuples.Pair;
 
 import javax.annotation.Nonnull;
@@ -140,7 +139,7 @@ public class CurveResource extends Resource<CurveResource.Curves> {
         return container;
     }
 
-    public static class Curves implements INBTSerializable<CompoundTag> {
+    public static class Curves {
         @Nonnull
         public final ECBCurves curves0;
         @Nullable
@@ -172,8 +171,7 @@ public class CurveResource extends Resource<CurveResource.Curves> {
             return tag;
         }
 
-        @Override
-        public void deserializeNBT(@Nonnull HolderLookup.Provider provider, CompoundTag nbt) {
+                public void deserializeNBT(@Nonnull HolderLookup.Provider provider, CompoundTag nbt) {
             if (nbt.get("a") instanceof ListTag list) {
                 curves0.deserializeNBT(provider, list);
             }

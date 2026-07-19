@@ -268,7 +268,7 @@ public class TimelinePlayer {
                 }
                 audioClips.put(audioTrack, clip);
                 if (clip != null && clip.sound() != null) {
-                    var soundEvent = BuiltInRegistries.SOUND_EVENT.get(clip.sound());
+                    var soundEvent = BuiltInRegistries.SOUND_EVENT.get(clip.sound()).map(net.minecraft.core.Holder::value).orElse(null);
                     if (soundEvent != null) {
                         var supplier = attenuatedSupplier(audioTrack, clip);
                         var newInstance = new TimelineSoundInstance(soundEvent, clip.category(), clip.volume(),

@@ -8,8 +8,6 @@ import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRun
 import com.lowdragmc.photon.gui.editor.resource.RenderGraphResource;
 import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
@@ -25,7 +23,6 @@ import java.util.Map;
  * <p>{@link #get} returns null when the path does not exist in the render-graph library at all —
  * that lets {@code PostEffectStack} fall back to the bare-fullscreen-graph adapter.</p>
  */
-@OnlyIn(Dist.CLIENT)
 public final class RenderGraphRuntime {
 
     private static final Map<IResourcePath, Entry> CACHE = new HashMap<>();

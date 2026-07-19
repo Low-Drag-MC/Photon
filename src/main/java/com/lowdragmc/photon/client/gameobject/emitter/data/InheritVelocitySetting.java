@@ -14,15 +14,12 @@ import org.joml.Vector3f;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import lombok.Getter;
 import lombok.Setter;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * @author KilaBash
  * @date 2023/5/30
  * @implNote InheritVelocitySetting
  */
-@OnlyIn(Dist.CLIENT)
 @Setter
 @Getter
 public class InheritVelocitySetting extends ToggleGroup {

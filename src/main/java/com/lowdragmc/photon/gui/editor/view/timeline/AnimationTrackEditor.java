@@ -18,7 +18,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.OreSprites;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
+import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigPropertyType;
@@ -45,10 +45,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveCon
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import dev.vfyjxf.taffy.style.FlexDirection;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import net.minecraft.network.chat.Component;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector2f;
 import org.joml.Vector4f;
 
@@ -62,7 +60,6 @@ import java.util.Set;
 
 /** Editor for {@code animation} tracks: a bound-target header (root excluded), a keyframe-dot lane,
  *  and an expandable property list + interactive bezier curve editor. */
-@OnlyIn(Dist.CLIENT)
 public class AnimationTrackEditor extends TrackEditor {
     private static final ColorPattern[] CHANNEL_COLORS = {ColorPattern.RED, ColorPattern.GREEN, ColorPattern.BLUE};
 
@@ -485,18 +482,18 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.widthPercent(100);
             layout.height(state.rowHeight);
         }).setOverflowVisible(false).style(style -> style
-                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
-                    DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
+                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                    DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
                     if (ctx.isTrackSelected(track)) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
                     }
                     if (track.mute()) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color);
                     } else if (track.lock()) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
                     }
                 })
-                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     drawLaneContent(ctx, graphics, animation, x, y, w, h);
                     ctx.drawPlayhead(graphics, x, y, w, h, pt);
                 }));
@@ -579,14 +576,14 @@ public class AnimationTrackEditor extends TrackEditor {
 
     /** Lane content drawn under the playhead (default: expr clip bars + keyframe dots). The speed track
      *  overrides to draw a curve preview. */
-    protected void drawLaneContent(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
+    protected void drawLaneContent(TimelineContext ctx, GUIContext graphics, AnimationTrack track, float x, float y, float width, float height) {
         drawColorLaneBars(ctx, graphics, track, x, y, width, height);
         drawExprClipBars(ctx, graphics, track, x, y, width, height);
         drawKeyframeDots(ctx, graphics, track, x, y, width, height);
     }
 
     /** Draw each color property's gradient as a thin bar across the collapsed lane (+ stop ticks). */
-    private void drawColorLaneBars(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
+    private void drawColorLaneBars(TimelineContext ctx, GUIContext graphics, AnimationTrack track, float x, float y, float width, float height) {
         var barH = 6f;
         var by = y + height / 2f - barH / 2f;
         for (var property : track.properties()) {
@@ -599,20 +596,20 @@ public class AnimationTrackEditor extends TrackEditor {
                     var cx0 = Math.max(x, x0);
                     var cx1 = Math.min(x + width, x1);
                     drawGradientColorRegion(graphics, clip.gradient(), cx0, by, cx1 - cx0, barH);
-                    DrawerHelper.drawSolidRect(graphics, cx0, by, cx1 - cx0, 1, withAlpha(ColorPattern.WHITE.color, 0x88));
-                    DrawerHelper.drawSolidRect(graphics, cx0, by + barH - 1, cx1 - cx0, 1, withAlpha(ColorPattern.WHITE.color, 0x88));
+                    DrawerHelperClient.drawSolidRect(graphics, cx0, by, cx1 - cx0, 1, withAlpha(ColorPattern.WHITE.color, 0x88));
+                    DrawerHelperClient.drawSolidRect(graphics, cx0, by + barH - 1, cx1 - cx0, 1, withAlpha(ColorPattern.WHITE.color, 0x88));
                 }
                 for (var stop : color.stops()) {
                     var sx = tickToCurveX(ctx, stop.tick, x);
                     if (sx < x || sx > x + width) continue;
-                    DrawerHelper.drawSolidRect(graphics, sx - 0.5f, by, 1, barH, ColorPattern.WHITE.color);
+                    DrawerHelperClient.drawSolidRect(graphics, sx - 0.5f, by, 1, barH, ColorPattern.WHITE.color);
                 }
             }
         }
     }
 
     /** Draw each property's expression clips as thin channel-colored bars across the collapsed lane. */
-    private void drawExprClipBars(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
+    private void drawExprClipBars(TimelineContext ctx, GUIContext graphics, AnimationTrack track, float x, float y, float width, float height) {
         var barH = 4f;
         var by = y + height / 2f - barH / 2f;
         for (var property : track.properties()) {
@@ -624,7 +621,7 @@ public class AnimationTrackEditor extends TrackEditor {
                     var cx0 = Math.max(x, x0);
                     var cx1 = Math.min(x + width, x1);
                     var color = clip.error() != null ? ColorPattern.RED.color : channelColor(axis).color;
-                    DrawerHelper.drawSolidRect(graphics, cx0, by, Math.max(1, cx1 - cx0), barH, withAlpha(color, 0xAA));
+                    DrawerHelperClient.drawSolidRect(graphics, cx0, by, Math.max(1, cx1 - cx0), barH, withAlpha(color, 0xAA));
                 }
             }
             // curve clips: a thin channel-colored bar at the top edge of the lane
@@ -636,7 +633,7 @@ public class AnimationTrackEditor extends TrackEditor {
                         if (x1 < x || x0 > x + width) continue;
                         var cx0 = Math.max(x, x0);
                         var cx1 = Math.min(x + width, x1);
-                        DrawerHelper.drawSolidRect(graphics, cx0, y + 1, Math.max(1, cx1 - cx0), 2, withAlpha(channelColor(axis).color, 0xAA));
+                        DrawerHelperClient.drawSolidRect(graphics, cx0, y + 1, Math.max(1, cx1 - cx0), 2, withAlpha(channelColor(axis).color, 0xAA));
                     }
                 }
             }
@@ -647,13 +644,13 @@ public class AnimationTrackEditor extends TrackEditor {
         return (argb & 0x00FFFFFF) | (alpha << 24);
     }
 
-    private void drawKeyframeDots(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, float x, float y, float width, float height) {
+    private void drawKeyframeDots(TimelineContext ctx, GUIContext graphics, AnimationTrack track, float x, float y, float width, float height) {
         for (var property : track.properties()) {
             if (property instanceof ColorAnimatedProperty) continue; // shown as a gradient bar instead
             for (var time : property.keyframeTimes()) {
                 var dx = ctx.originX() + (float) ((time - ctx.scrollTicks()) * ctx.scale());
                 if (dx < x || dx > x + width) continue;
-                DrawerHelper.drawSolidRect(graphics, dx - 1.5f, y + height / 2f - 1.5f, 3, 3, ColorPattern.ORANGE.color);
+                DrawerHelperClient.drawSolidRect(graphics, dx - 1.5f, y + height / 2f - 1.5f, 3, 3, ColorPattern.ORANGE.color);
             }
         }
     }
@@ -743,14 +740,14 @@ public class AnimationTrackEditor extends TrackEditor {
                 layout.widthPercent(100)).setOverflowVisible(false); // height from the host wrapper's flex(1)
         var box = new UIElement().setId("timeline.curveBox").layout(layout -> layout.widthPercent(100).heightPercent(100))
                 .style(style -> style
-                        .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                        .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                             if (st.selectedProperty instanceof ColorAnimatedProperty color) {
                                 drawColorEditor(ctx, graphics, color, st, x, y, w, h);
                             } else {
                                 drawCurveEditor(ctx, graphics, animation, st, x, y, w, h);
                             }
                         })
-                        .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                        .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                             ctx.drawPlayhead(graphics, x, y, w, h, pt);
                             drawKeyTooltip(ctx, graphics, animation, st, mx, my, x, y, w, h);
                             if (st.keyMarquee) drawKeyMarquee(graphics, st);
@@ -845,8 +842,8 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.height(12);
             layout.flexDirection(FlexDirection.ROW);
             layout.gapAll(2);
-        }).style(style -> style.backgroundTexture((graphics, mx, my, x, y, w, h, pt) ->
-                DrawerHelper.drawSolidRect(graphics, x, y, w, h,
+        }).style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) ->
+                DrawerHelperClient.drawSolidRect(graphics, x, y, w, h,
                         (st.selectedProperty == property && st.selectedAxis < 0 ? ColorPattern.GRAY : ColorPattern.T_GRAY).color)));
         row.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) {
@@ -886,8 +883,8 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.flexDirection(FlexDirection.ROW);
             layout.gapAll(2);
             layout.paddingLeft(12);
-        }).style(style -> style.backgroundTexture((graphics, mx, my, x, y, w, h, pt) ->
-                DrawerHelper.drawSolidRect(graphics, x, y, w, h,
+        }).style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) ->
+                DrawerHelperClient.drawSolidRect(graphics, x, y, w, h,
                         (st.selectedProperty == property && st.selectedAxis == axis ? ColorPattern.GRAY : ColorPattern.T_DARK_GRAY).color)));
         row.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) {
@@ -1140,11 +1137,11 @@ public class AnimationTrackEditor extends TrackEditor {
 
     /** Draw the horizontal-resize cursor at the mouse when it hovers a clip element's edge zone (and the
      *  track isn't locked). Shared by every clip element's overlay. */
-    private static void drawResizeCursor(GuiGraphics graphics, Track track, float mx, float my,
+    private static void drawResizeCursor(GUIContext graphics, Track track, float mx, float my,
                                          float x, float y, float w, float h, float pt) {
         if (!track.lock() && mx >= x && mx <= x + w && my >= y && my <= y + h
                 && (mx <= x + CLIP_EDGE_PX || mx >= x + w - CLIP_EDGE_PX)) {
-            Icons.ARROW_LEFT_RIGHT.draw(graphics, mx, my, mx - 5, my - 5, 10, 10, pt);
+            graphics.drawTexture(Icons.ARROW_LEFT_RIGHT, mx - 5, my - 5, 10, 10);
         }
     }
 
@@ -1213,16 +1210,16 @@ public class AnimationTrackEditor extends TrackEditor {
         return points;
     }
 
-    private void drawCurveEditor(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, AnimationTrackUIState st, float x, float y, float width, float height) {
-        DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
+    private void drawCurveEditor(TimelineContext ctx, GUIContext graphics, AnimationTrack track, AnimationTrackUIState st, float x, float y, float width, float height) {
+        DrawerHelperClient.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
         drawCurveGrid(ctx, graphics, x, y, width, height);
         var property = st.selectedProperty;
         if (property == null || !track.properties().contains(property)) return;
         var range = effectiveRange(property);
         var min = range[0];
         var max = range[1];
-        DrawerHelper.drawText(graphics, "%.1f".formatted(max), x + 2, y + 1, 1f, ColorPattern.WHITE.color);
-        DrawerHelper.drawText(graphics, "%.1f".formatted(min), x + 2, y + height - 9, 1f, ColorPattern.WHITE.color);
+        DrawerHelperClient.drawText(graphics, "%.1f".formatted(max), x + 2, y + 1, 1f, ColorPattern.WHITE.color);
+        DrawerHelperClient.drawText(graphics, "%.1f".formatted(min), x + 2, y + height - 9, 1f, ColorPattern.WHITE.color);
         var scroll = ctx.scrollTicks();
         var endTick = scroll + width / ctx.scale();
         var axes = activeAxes(st);
@@ -1241,7 +1238,7 @@ public class AnimationTrackEditor extends TrackEditor {
                     points.add(new Vector2f(x + (t - scroll) * ctx.scale(), valueToCurveY(property.sampleChannelValue(axis, t), y, height, min, max)));
                 }
             }
-            DrawerHelper.drawLines(graphics, points, channelColor(axis).color, channelColor(axis).color, 0.5f);
+            DrawerHelperClient.drawLines(graphics, points, channelColor(axis).color, channelColor(axis).color, 0.5f);
         }
         // keyframes + tangent-handle squares are real child elements now; only the connecting lines to the
         // selected key's handles are drawn here (behind the handle elements).
@@ -1255,7 +1252,7 @@ public class AnimationTrackEditor extends TrackEditor {
     }
 
     /** Vertical gridlines aligned to the ruler's major ticks (+ a faint horizontal mid-line). */
-    private void drawCurveGrid(TimelineContext ctx, GuiGraphics graphics, float x, float y, float width, float height) {
+    private void drawCurveGrid(TimelineContext ctx, GUIContext graphics, float x, float y, float width, float height) {
         var major = ctx.majorTickInterval();
         if (major > 0) {
             var endTick = ctx.scrollTicks() + width / ctx.scale();
@@ -1263,14 +1260,14 @@ public class AnimationTrackEditor extends TrackEditor {
                 if (t < 0) continue;
                 var gx = tickToCurveX(ctx, (float) t, x);
                 if (gx < x || gx > x + width) continue;
-                DrawerHelper.drawSolidRect(graphics, gx, y, 1, height, ColorPattern.T_GRAY.color);
+                DrawerHelperClient.drawSolidRect(graphics, gx, y, 1, height, ColorPattern.T_GRAY.color);
             }
         }
-        DrawerHelper.drawSolidRect(graphics, x, y + height / 2f, width, 1, ColorPattern.T_DARK_GRAY.color);
+        DrawerHelperClient.drawSolidRect(graphics, x, y + height / 2f, width, 1, ColorPattern.T_DARK_GRAY.color);
     }
 
     /** When hovering a keyframe, draw a small "(time, value)" tooltip near the cursor. */
-    private void drawKeyTooltip(TimelineContext ctx, GuiGraphics graphics, AnimationTrack track, AnimationTrackUIState st,
+    private void drawKeyTooltip(TimelineContext ctx, GUIContext graphics, AnimationTrack track, AnimationTrackUIState st,
                                float mx, float my, float x, float y, float width, float height) {
         var property = st.selectedProperty;
         if (property == null || !track.properties().contains(property)) return;
@@ -1281,17 +1278,17 @@ public class AnimationTrackEditor extends TrackEditor {
         var tw = net.minecraft.client.Minecraft.getInstance().font.width(text);
         var tx = mx + 6 + tw > x + width ? mx - 6 - tw : mx + 6;
         var ty = Math.max(y, my - 10);
-        DrawerHelper.drawSolidRect(graphics, tx - 1, ty - 1, tw + 2, 10, ColorPattern.BLACK.color);
-        DrawerHelper.drawText(graphics, text, tx, ty, 1f, ColorPattern.WHITE.color);
+        DrawerHelperClient.drawSolidRect(graphics, tx - 1, ty - 1, tw + 2, 10, ColorPattern.BLACK.color);
+        DrawerHelperClient.drawText(graphics, text, tx, ty, 1f, ColorPattern.WHITE.color);
     }
 
     /** Draw the line from the selected key to one of its tangent handles (the handle square is a child element). */
-    private void drawHandleLine(TimelineContext ctx, GuiGraphics graphics, @Nullable Vector2f handle, float kx, float ky,
+    private void drawHandleLine(TimelineContext ctx, GUIContext graphics, @Nullable Vector2f handle, float kx, float ky,
                                 float x, float y, float height, float min, float max) {
         if (handle == null) return;
         var hx = tickToCurveX(ctx, handle.x, x);
         var hy = valueToCurveY(handle.y, y, height, min, max);
-        DrawerHelper.drawLines(graphics, List.of(new Vector2f(kx, ky), new Vector2f(hx, hy)),
+        DrawerHelperClient.drawLines(graphics, List.of(new Vector2f(kx, ky), new Vector2f(hx, hy)),
                 ColorPattern.T_GREEN.color, ColorPattern.T_GREEN.color, 0.3f);
     }
 
@@ -1454,24 +1451,24 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.top(0);
             layout.heightPercent(100);
         }).style(style -> style
-                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     var selected = st.selectedExprClips.contains(clip);
                     var base = clip.error() != null ? ColorPattern.RED.color : channelColor(axis).color;
                     var invalid = st.subClipDragInvalid && st.clipDragOrigins.containsKey(clip);
-                    DrawerHelper.drawSolidRect(graphics, x, y, w, h,
+                    DrawerHelperClient.drawSolidRect(graphics, x, y, w, h,
                             invalid ? ColorPattern.T_RED.color : withAlpha(base, selected ? 0x66 : 0x33));
                 })
-                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     var error = clip.error() != null;
                     var selected = st.selectedExprClips.contains(clip);
                     var invalid = st.subClipDragInvalid && st.clipDragOrigins.containsKey(clip);
                     var base = error ? ColorPattern.RED.color : channelColor(axis).color;
-                    DrawerHelper.drawBorder(graphics, x, y, w, h,
+                    DrawerHelperClient.drawBorder(graphics, x, y, w, h,
                             invalid ? ColorPattern.RED.color : selected ? ColorPattern.WHITE.color : base, 1);
                     if (w > 20) {
                         var text = error ? Component.translatable("photon.gui.editor.timeline.expression_error").getString() : clip.expression();
                         if (text != null && !text.isBlank()) {
-                            DrawerHelper.drawText(graphics, text, x + 2, y + 1, 1f, (error ? ColorPattern.RED : ColorPattern.WHITE).color);
+                            DrawerHelperClient.drawText(graphics, text, x + 2, y + 1, 1f, (error ? ColorPattern.RED : ColorPattern.WHITE).color);
                         }
                     }
                     drawResizeCursor(graphics, track, mx, my, x, y, w, h, pt);
@@ -1688,9 +1685,9 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.positionType(TaffyPosition.ABSOLUTE);
             layout.width(KEY_ELEM_SIZE);
             layout.height(KEY_ELEM_SIZE);
-        }).setDisplay(false).style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+        }).setDisplay(false).style(style -> style.overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
             var selected = st.selectedKeys.contains(encodeKey(axis, index));
-            DrawerHelper.drawSolidRect(graphics, x + w / 2f - 2, y + h / 2f - 2, 4, 4, (selected ? ColorPattern.WHITE : ColorPattern.ORANGE).color);
+            DrawerHelperClient.drawSolidRect(graphics, x + w / 2f - 2, y + h / 2f - 2, 4, 4, (selected ? ColorPattern.WHITE : ColorPattern.ORANGE).color);
         }));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> onKeyframeMouseDown(ctx, e, track, property, st, axis, index, el));
         el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onCurveDrag(ctx, e, st));
@@ -1750,8 +1747,8 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.positionType(TaffyPosition.ABSOLUTE);
             layout.width(KEY_ELEM_SIZE);
             layout.height(KEY_ELEM_SIZE);
-        }).setDisplay(false).style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) ->
-                DrawerHelper.drawSolidRect(graphics, x + w / 2f - 1.5f, y + h / 2f - 1.5f, 3, 3, ColorPattern.GREEN.color)));
+        }).setDisplay(false).style(style -> style.overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) ->
+                DrawerHelperClient.drawSolidRect(graphics, x + w / 2f - 1.5f, y + h / 2f - 1.5f, 3, 3, ColorPattern.GREEN.color)));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button != 0 || track.lock() || !handleActive(st, property)) return;
             ctx.setActiveTrack(track);
@@ -1874,13 +1871,13 @@ public class AnimationTrackEditor extends TrackEditor {
     // ------------------------------------------------------------------ color / gradient editor
 
     /** Draw a horizontal gradient by stepping 2px columns and sampling the color at each column's tick. */
-    private void drawGradientStrip(TimelineContext ctx, GuiGraphics graphics, ColorAnimatedProperty color,
+    private void drawGradientStrip(TimelineContext ctx, GUIContext graphics, ColorAnimatedProperty color,
                                    float x, float y, float width, float height) {
         var step = 2f;
         for (float cx = x; cx < x + width; cx += step) {
             var w = Math.min(step, x + width - cx);
             var tick = curveXToTick(ctx, cx + w / 2f, x);
-            DrawerHelper.drawSolidRect(graphics, cx, y, w, height, color.sampleColor(tick));
+            DrawerHelperClient.drawSolidRect(graphics, cx, y, w, height, color.sampleColor(tick));
         }
     }
 
@@ -1893,20 +1890,20 @@ public class AnimationTrackEditor extends TrackEditor {
     }
 
     /** Draw a gradient across [x, x+width] by stepping columns and sampling {@code gc} over its [0,1]. */
-    private void drawGradientColorRegion(GuiGraphics graphics, GradientColor gc, float x, float y, float width, float height) {
+    private void drawGradientColorRegion(GUIContext graphics, GradientColor gc, float x, float y, float width, float height) {
         var step = 2f;
         for (float cx = x; cx < x + width; cx += step) {
             var w = Math.min(step, x + width - cx);
             var frac = Math.max(0f, Math.min(1f, (cx + w / 2f - x) / width));
-            DrawerHelper.drawSolidRect(graphics, cx, y, w, height, gc.getColor(frac));
+            DrawerHelperClient.drawSolidRect(graphics, cx, y, w, height, gc.getColor(frac));
         }
     }
 
     /** Full gradient-lane editor: a wide gradient band across the time axis + draggable color stops, with
      *  gradient clips (f(t)->gradient) overlaid as full-band regions. */
-    private void drawColorEditor(TimelineContext ctx, GuiGraphics graphics, ColorAnimatedProperty color,
+    private void drawColorEditor(TimelineContext ctx, GUIContext graphics, ColorAnimatedProperty color,
                                  AnimationTrackUIState st, float x, float y, float width, float height) {
-        DrawerHelper.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
+        DrawerHelperClient.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
         drawCurveGrid(ctx, graphics, x, y, width, height);
         var bandTop = colorBandTop(y);
         var bandH = colorBandH(height);
@@ -1934,16 +1931,16 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.top(6);      // band top (see colorBandTop)
             layout.bottom(14);  // band bottom (colorBandTop + colorBandH = y + h - 14)
         }).style(style -> style
-                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     if (clip.gradient() != null) drawGradientColorRegion(graphics, clip.gradient(), x, y, w, h);
                     if (st.subClipDragInvalid && st.gradientClipDragOrigins.containsKey(clip)) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color); // overlapping drop is invalid
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color); // overlapping drop is invalid
                     }
                 })
-                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     var invalid = st.subClipDragInvalid && st.gradientClipDragOrigins.containsKey(clip);
                     var sel = st.selectedGradientClips.contains(clip);
-                    DrawerHelper.drawBorder(graphics, x, y, w, h,
+                    DrawerHelperClient.drawBorder(graphics, x, y, w, h,
                             invalid ? ColorPattern.RED.color : sel ? ColorPattern.WHITE.color : withAlpha(ColorPattern.WHITE.color, 0x88), 1);
                     drawResizeCursor(graphics, track, mx, my, x, y, w, h, pt);
                 }));
@@ -2198,15 +2195,15 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.top(0);
             layout.heightPercent(100);
         }).style(style -> style
-                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     var cx = x + w / 2f;
                     var bandTop = colorBandTop(y);
                     var bandH = colorBandH(h);
                     var markerY = bandTop + bandH;
                     var selected = st.selectedStop == stop;
-                    DrawerHelper.drawSolidRect(graphics, cx - 0.5f, bandTop, 1, bandH, withAlpha(ColorPattern.WHITE.color, selected ? 0xFF : 0x66));
-                    DrawerHelper.drawSolidRect(graphics, cx - 4, markerY + 1, 8, 6, (selected ? ColorPattern.WHITE : ColorPattern.GRAY).color);
-                    DrawerHelper.drawSolidRect(graphics, cx - 3, markerY + 2, 6, 4, 0xFF000000 | (stop.argb & 0xFFFFFF));
+                    DrawerHelperClient.drawSolidRect(graphics, cx - 0.5f, bandTop, 1, bandH, withAlpha(ColorPattern.WHITE.color, selected ? 0xFF : 0x66));
+                    DrawerHelperClient.drawSolidRect(graphics, cx - 4, markerY + 1, 8, 6, (selected ? ColorPattern.WHITE : ColorPattern.GRAY).color);
+                    DrawerHelperClient.drawSolidRect(graphics, cx - 3, markerY + 2, 6, 4, 0xFF000000 | (stop.argb & 0xFFFFFF));
                 }));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> onColorStopMouseDown(ctx, e, track, color, st, stop, el));
         el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onColorDrag(ctx, e, st));
@@ -2271,7 +2268,7 @@ public class AnimationTrackEditor extends TrackEditor {
     // ------------------------------------------------------------------ curve clips (config NF / NF3)
 
     /** Draw the clip's curve as a polyline over its span, auto-fit to the curve's sampled value range. */
-    private void drawClipCurvePreview(GuiGraphics graphics, CurveClip clip, float x0, float x1,
+    private void drawClipCurvePreview(GUIContext graphics, CurveClip clip, float x0, float x1,
                                       float boxX, float y, float width, float height, int color) {
         var curve = clip.curve();
         if (curve == null || x1 <= x0) return;
@@ -2297,7 +2294,7 @@ public class AnimationTrackEditor extends TrackEditor {
             var py = y + height * (1 - (vals[i] - lo) / (hi - lo));
             pts.add(new Vector2f(px, py));
         }
-        if (pts.size() > 1) DrawerHelper.drawLines(graphics, pts, color, color, 0.5f);
+        if (pts.size() > 1) DrawerHelperClient.drawLines(graphics, pts, color, color, 0.5f);
     }
 
     private static void clearCurveClipSelection(AnimationTrackUIState st) {
@@ -2329,19 +2326,19 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.top(0);
             layout.heightPercent(100);
         }).style(style -> style
-                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     var selected = st.selectedCurveClips.contains(clip);
                     var base = channelColor(axis).color;
                     var invalid = st.subClipDragInvalid && st.curveClipDragOrigins.containsKey(clip);
-                    DrawerHelper.drawSolidRect(graphics, x, y, w, h,
+                    DrawerHelperClient.drawSolidRect(graphics, x, y, w, h,
                             invalid ? ColorPattern.T_RED.color : withAlpha(base, selected ? 0x44 : 0x22));
                     drawClipCurvePreview(graphics, clip, x, x + w, x, y, w, h, base);
                 })
-                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     var invalid = st.subClipDragInvalid && st.curveClipDragOrigins.containsKey(clip);
                     var selected = st.selectedCurveClips.contains(clip);
                     var base = channelColor(axis).color;
-                    DrawerHelper.drawBorder(graphics, x, y, w, h,
+                    DrawerHelperClient.drawBorder(graphics, x, y, w, h,
                             invalid ? ColorPattern.RED.color : selected ? ColorPattern.WHITE.color : base, 1);
                     drawResizeCursor(graphics, track, mx, my, x, y, w, h, pt);
                 }));
@@ -2741,13 +2738,13 @@ public class AnimationTrackEditor extends TrackEditor {
         e.stopPropagation();
     }
 
-    private void drawKeyMarquee(GuiGraphics graphics, AnimationTrackUIState st) {
+    private void drawKeyMarquee(GUIContext graphics, AnimationTrackUIState st) {
         var x = Math.min(st.kmX0, st.kmX1);
         var y = Math.min(st.kmY0, st.kmY1);
         var w = Math.abs(st.kmX1 - st.kmX0);
         var h = Math.abs(st.kmY1 - st.kmY0);
-        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
-        DrawerHelper.drawBorder(graphics, x, y, w, h, ColorPattern.WHITE.color, 1);
+        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
+        DrawerHelperClient.drawBorder(graphics, x, y, w, h, ColorPattern.WHITE.color, 1);
     }
 
     private void finishKeyMarquee(TimelineContext ctx, AnimationTrack track, AnimationTrackUIState st, UIElement box) {

@@ -25,7 +25,7 @@ import lombok.Setter;
 import net.minecraft.client.Camera;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.apache.commons.lang3.function.TriFunction;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -51,7 +51,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         Vertical(0, 0),
         VerticalBillboard((p, c, t) -> {
             var quaternion = new Quaternionf();
-            quaternion.rotateY((float) Math.toRadians(180 - c.getYRot()));
+            quaternion.rotateY((float) Math.toRadians(180 - c.yRot()));
             return quaternion;
         }),
         StretchedBillboard((p, c, t) -> new Quaternionf()),
@@ -281,7 +281,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
 
     public MeshData getModel() {
         if (model == null) {
-            model = new MeshData(new JsonModelSource(ResourceLocation.parse("block/dirt")));
+            model = new MeshData(new JsonModelSource(Identifier.parse("block/dirt")));
         }
         return model;
     }
@@ -336,24 +336,26 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         clearRenderPassInstance();
     }
 
+    // 26.1: same top-level "model" key as the 1.21 serializeNBT override, on the ValueIO seam.
     @Override
-    public void deserializeNBT(HolderLookup.@NotNull Provider provider, @NotNull CompoundTag tag) {
-        IPersistedSerializable.super.deserializeNBT(provider, tag);
+    public void deserialize(net.minecraft.world.level.storage.@NotNull ValueInput input) {
+        IPersistedSerializable.super.deserialize(input);
         if (facingMode == null) {
             facingMode = FacingMode.DEFAULT;
         }
-        if (renderMode == Mode.Model && tag.contains("model")) {
+        if (renderMode == Mode.Model
+                && input.read("model", net.minecraft.util.ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
             // MeshData's deserializer tolerates legacy payloads (bare modelLocation / source wrapper)
-            model = new MeshData(tag.getCompound("model"));
+            model = new MeshData(tag);
         }
     }
 
     @Override
-    public CompoundTag serializeNBT(HolderLookup.@NotNull Provider provider) {
-        var tag = IPersistedSerializable.super.serializeNBT(provider);
+    public void serialize(net.minecraft.world.level.storage.@NotNull ValueOutput output) {
+        IPersistedSerializable.super.serialize(output);
         if (renderMode == Mode.Model && model != null) {
-            tag.put("model", model.serializeNBT(provider));
+            output.store("model", net.minecraft.util.ExtraCodecs.NBT,
+                    model.serializeNBT(com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry()));
         }
-        return tag;
     }
 }

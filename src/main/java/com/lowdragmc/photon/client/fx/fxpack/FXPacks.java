@@ -13,8 +13,6 @@ import net.minecraft.server.packs.repository.PackSource;
 import net.minecraft.server.packs.repository.RepositorySource;
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.neoforged.fml.ModList;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import com.google.gson.JsonParser;
 import com.lowdragmc.lowdraglib2.editor.resource.FilePath;
@@ -26,7 +24,7 @@ import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.DataInputStream;
@@ -65,7 +63,6 @@ import java.util.function.Consumer;
  * {@code fxpacks/<name>/} at the jar root (mounted natively), or drop the {@code .fxpack} file
  * itself under {@code fxpacks/} (extracted once into a content-addressed cache, then mounted).
  */
-@OnlyIn(Dist.CLIENT)
 public final class FXPacks {
     public static final String SUFFIX = ".fxpack";
 
@@ -120,8 +117,12 @@ public final class FXPacks {
             var modId = modFileInfo.getMods().isEmpty() ? modFileInfo.getFile().getFileName()
                     : modFileInfo.getMods().getFirst().getModId();
             try {
-                var packsDir = modFileInfo.getFile().findResource(MOD_FXPACKS_DIR);
-                if (!Files.isDirectory(packsDir)) continue;
+                // 26.1 FML: IModFile.findResource is gone — resolve the dir under the jar's content roots
+                var packsDir = modFileInfo.getFile().getContents().getContentRoots().stream()
+                        .map(root -> root.resolve(MOD_FXPACKS_DIR))
+                        .filter(Files::isDirectory)
+                        .findFirst().orElse(null);
+                if (packsDir == null) continue;
                 try (var entries = Files.list(packsDir)) {
                     for (var entry : entries.toList()) {
                         var name = stripSlash(entry.getFileName().toString());
@@ -203,8 +204,8 @@ public final class FXPacks {
     }
 
     /** The fx ids contained in a pack file ({@code assets/<ns>/fx/**.fx} → {@code <ns>:<name>}). */
-    public static List<ResourceLocation> listFx(File fxpackFile) throws IOException {
-        var result = new ArrayList<ResourceLocation>();
+    public static List<Identifier> listFx(File fxpackFile) throws IOException {
+        var result = new ArrayList<Identifier>();
         try (var zip = FileSystems.newFileSystem(fxpackFile.toPath())) {
             for (var entry : listFxEntries(zip)) {
                 result.add(entry.id());
@@ -214,14 +215,14 @@ public final class FXPacks {
     }
 
     /** Remove one fx from a pack file, then garbage-collect resources nothing references anymore. */
-    public static void removeFx(File fxpackFile, ResourceLocation fxId) throws IOException {
+    public static void removeFx(File fxpackFile, Identifier fxId) throws IOException {
         try (var zip = FileSystems.newFileSystem(fxpackFile.toPath())) {
             Files.deleteIfExists(zip.getPath("assets", fxId.getNamespace(), "fx", fxId.getPath() + FX.SUFFIX));
             gc(zip);
         }
     }
 
-    private record FxEntry(ResourceLocation id, Path path) {
+    private record FxEntry(Identifier id, Path path) {
     }
 
     private static List<FxEntry> listFxEntries(FileSystem zip) throws IOException {
@@ -236,7 +237,7 @@ public final class FXPacks {
                 try (var walk = Files.walk(fxDir)) {
                     for (var path : walk.filter(p -> p.toString().endsWith(FX.SUFFIX)).toList()) {
                         var name = stripSlash(fxDir.relativize(path).toString());
-                        result.add(new FxEntry(ResourceLocation.fromNamespaceAndPath(namespace,
+                        result.add(new FxEntry(Identifier.fromNamespaceAndPath(namespace,
                                 name.substring(0, name.length() - FX.SUFFIX.length())), path));
                     }
                 }
@@ -290,28 +291,28 @@ public final class FXPacks {
         return "assets/" + namespace + "/" + path;
     }
 
-    private static String entryKey(ResourceLocation location) {
+    private static String entryKey(Identifier location) {
         return entryKey(location.getNamespace(), location.getPath());
     }
 
     /** Collect every in-pack location a packed NBT references (recursing into packed library files). */
     private static void mark(CompoundTag tag, FileSystem zip, Set<String> referenced, Set<String> visited) {
         // custom shaders: the json names the vsh/fsh program files
-        if ("custom_shader".equals(tag.getString("type")) && tag.contains("data", Tag.TAG_COMPOUND)) {
-            var shaderId = ResourceLocation.tryParse(tag.getCompound("data").getString("shaderLocation"));
+        if ("custom_shader".equals(tag.getStringOr("type", "")) && tag.getCompound("data").isPresent()) {
+            var shaderId = Identifier.tryParse(tag.getCompoundOrEmpty("data").getStringOr("shaderLocation", ""));
             if (shaderId != null) {
                 markCoreShader(shaderId, zip, referenced);
             }
         }
         // render-graph pass sources carrying a hand-written shader (PassSource.CODEC shape) —
         // the exporter packs its json+vsh+fsh under their original locations
-        if ("CUSTOM_SHADER".equals(tag.getString("type")) && tag.contains("shader", Tag.TAG_STRING)) {
-            var shaderId = ResourceLocation.tryParse(tag.getString("shader"));
+        if ("CUSTOM_SHADER".equals(tag.getStringOr("type", "")) && tag.getString("shader").isPresent()) {
+            var shaderId = Identifier.tryParse(tag.getStringOr("shader", ""));
             if (shaderId != null) {
                 markCoreShader(shaderId, zip, referenced);
             }
         }
-        for (var key : tag.getAllKeys()) {
+        for (var key : tag.keySet()) {
             markChild(tag.get(key), zip, referenced, visited);
         }
     }
@@ -321,14 +322,14 @@ public final class FXPacks {
         switch (child) {
             case CompoundTag compound -> mark(compound, zip, referenced, visited);
             case ListTag list -> list.forEach(tag -> markChild(tag, zip, referenced, visited));
-            case StringTag string -> markString(string.getAsString(), zip, referenced, visited);
+            case StringTag string -> markString(string.asString().orElse(""), zip, referenced, visited);
             case null, default -> { }
         }
     }
 
     private static void markString(String value, FileSystem zip, Set<String> referenced, Set<String> visited) {
         if (value.endsWith(".png") || value.endsWith(".obj")) {
-            var location = ResourceLocation.tryParse(value);
+            var location = Identifier.tryParse(value);
             if (location != null) {
                 referenced.add(entryKey(location));
             }
@@ -352,7 +353,7 @@ public final class FXPacks {
         }
     }
 
-    private static void markCoreShader(ResourceLocation shaderId, FileSystem zip, Set<String> referenced) {
+    private static void markCoreShader(Identifier shaderId, FileSystem zip, Set<String> referenced) {
         var jsonKey = entryKey(shaderId.getNamespace(), "shaders/core/" + shaderId.getPath() + ".json");
         referenced.add(jsonKey);
         var jsonPath = zip.getPath(jsonKey);
@@ -361,7 +362,7 @@ public final class FXPacks {
             var json = JsonParser.parseString(Files.readString(jsonPath, StandardCharsets.UTF_8)).getAsJsonObject();
             for (var stage : new String[][]{{"vertex", ".vsh"}, {"fragment", ".fsh"}}) {
                 if (!json.has(stage[0])) continue;
-                var programId = ResourceLocation.tryParse(json.get(stage[0]).getAsString());
+                var programId = Identifier.tryParse(json.get(stage[0]).getAsString());
                 if (programId != null) {
                     referenced.add(entryKey(programId.getNamespace(), "shaders/core/" + programId.getPath() + stage[1]));
                 }

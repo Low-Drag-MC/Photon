@@ -10,18 +10,16 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
+import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.client.fx.timeline.Signal;
 import com.lowdragmc.photon.client.fx.timeline.SignalTrack;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -38,7 +36,6 @@ import java.util.Set;
  * curve keyframes — the machinery mirrors {@link AnimationTrackEditor}'s keyframe selection, but in 1-D
  * (time only) on the main lane.
  */
-@OnlyIn(Dist.CLIENT)
 public class SignalTrackEditor extends TrackEditor {
 
     public static class SignalTrackUIState extends TrackUIState {
@@ -154,18 +151,18 @@ public class SignalTrackEditor extends TrackEditor {
             layout.widthPercent(100);
             layout.height(state.rowHeight);
         }).setOverflowVisible(false).style(style -> style
-                .backgroundTexture((graphics, mx, my, x, y, w, h, pt) -> {
-                    DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
+                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                    DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
                     if (ctx.isTrackSelected(track)) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
                     }
                     if (track.mute()) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color);
                     } else if (track.lock()) {
-                        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
+                        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
                     }
                 })
-                .overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
                     drawSignals(ctx, graphics, signalTrack, st, x, y, w, h);
                     ctx.drawPlayhead(graphics, x, y, w, h, pt);
                     drawSignalTooltip(ctx, graphics, signalTrack, mx, my, x, y, w, h);
@@ -189,9 +186,9 @@ public class SignalTrackEditor extends TrackEditor {
         return ctx.originX() + (float) ((time - ctx.scrollTicks()) * ctx.scale());
     }
 
-    private void drawSignals(TimelineContext ctx, GuiGraphics graphics, SignalTrack track, SignalTrackUIState st,
+    private void drawSignals(TimelineContext ctx, GUIContext graphics, SignalTrack track, SignalTrackUIState st,
                              float x, float y, float width, float height) {
-        var ctrl = Screen.hasControlDown();
+        var ctrl = com.lowdragmc.lowdraglib2.gui.ui.UIElement.isControlDown();
         var cy = y + height / 2f;
         var signals = track.signals();
         for (int i = 0; i < signals.size(); i++) {
@@ -201,15 +198,15 @@ public class SignalTrackEditor extends TrackEditor {
             var selected = st.selectedSignals.contains(i);
             var color = (selected ? ColorPattern.WHITE : markerColor()).color;
             // a small diamond: a thin vertical tick + a square marker at the center
-            DrawerHelper.drawSolidRect(graphics, sx - 0.5f, y + 2, 1, height - 4, (selected ? ColorPattern.WHITE : ColorPattern.T_WHITE).color);
-            DrawerHelper.drawSolidRect(graphics, sx - 2.5f, cy - 2.5f, 5, 5, color);
+            DrawerHelperClient.drawSolidRect(graphics, sx - 0.5f, y + 2, 1, height - 4, (selected ? ColorPattern.WHITE : ColorPattern.T_WHITE).color);
+            DrawerHelperClient.drawSolidRect(graphics, sx - 2.5f, cy - 2.5f, 5, 5, color);
             if (ctrl) {
-                DrawerHelper.drawText(graphics, signal.name(), sx + 4, cy - 4, 1f, ColorPattern.WHITE.color);
+                DrawerHelperClient.drawText(graphics, signal.name(), sx + 4, cy - 4, 1f, ColorPattern.WHITE.color);
             }
         }
     }
 
-    private void drawSignalTooltip(TimelineContext ctx, GuiGraphics graphics, SignalTrack track,
+    private void drawSignalTooltip(TimelineContext ctx, GUIContext graphics, SignalTrack track,
                                    float mx, float my, float x, float y, float width, float height) {
         var hit = hitSignal(ctx, track, mx);
         if (hit < 0) return;
@@ -217,17 +214,17 @@ public class SignalTrackEditor extends TrackEditor {
         var tw = Minecraft.getInstance().font.width(name);
         var tx = mx + 6 + tw > x + width ? mx - 6 - tw : mx + 6;
         var ty = Math.max(y, my - 10);
-        DrawerHelper.drawSolidRect(graphics, tx - 1, ty - 1, tw + 2, 10, ColorPattern.BLACK.color);
-        DrawerHelper.drawText(graphics, name, tx, ty, 1f, ColorPattern.WHITE.color);
+        DrawerHelperClient.drawSolidRect(graphics, tx - 1, ty - 1, tw + 2, 10, ColorPattern.BLACK.color);
+        DrawerHelperClient.drawText(graphics, name, tx, ty, 1f, ColorPattern.WHITE.color);
     }
 
-    private void drawMarquee(GuiGraphics graphics, SignalTrackUIState st) {
+    private void drawMarquee(GUIContext graphics, SignalTrackUIState st) {
         var x = Math.min(st.mX0, st.mX1);
         var y = Math.min(st.mY0, st.mY1);
         var w = Math.abs(st.mX1 - st.mX0);
         var h = Math.abs(st.mY1 - st.mY0);
-        DrawerHelper.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
-        DrawerHelper.drawBorder(graphics, x, y, w, h, ColorPattern.WHITE.color, 1);
+        DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
+        DrawerHelperClient.drawBorder(graphics, x, y, w, h, ColorPattern.WHITE.color, 1);
     }
 
     /** Index of the signal whose marker is within {@link TimelineContext#KEY_HIT_PX} of {@code mouseX}. */

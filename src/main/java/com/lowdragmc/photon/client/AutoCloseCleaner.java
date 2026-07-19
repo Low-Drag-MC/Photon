@@ -23,7 +23,7 @@ public final class AutoCloseCleaner {
         Objects.requireNonNull(resource, "resource cannot be null");
         return cleaner.register(owner, () -> {
             if (requireRenderThread && !RenderSystem.isOnRenderThread()) {
-                RenderSystem.recordRenderCall(() -> closeResource(resource));
+                net.minecraft.client.Minecraft.getInstance().execute(() -> closeResource(resource));
             } else {
                 closeResource(resource);
             }

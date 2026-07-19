@@ -1,10 +1,9 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.model;
 
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
-import net.minecraft.client.renderer.block.model.BakedQuad;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.client.model.IQuadTransformer;
+import net.minecraft.client.model.geom.builders.UVPair;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.neoforged.neoforge.client.model.quad.BakedNormals;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.List;
@@ -17,7 +16,6 @@ import java.util.List;
  * and the 6-indices-per-quad EBO layout stay untouched. Consumers compare instances by identity
  * to detect cache invalidation ({@link PhotonMeshCache} hands out a new instance after reload).
  */
-@OnlyIn(Dist.CLIENT)
 public final class PhotonMesh {
     public static final int FLOATS_PER_VERTEX = 8; // pos3 + uv2 + normal3
     public static final PhotonMesh EMPTY = new PhotonMesh(new float[0], new float[0], new float[0]);
@@ -78,27 +76,30 @@ public final class PhotonMesh {
         var builder = new Builder();
         var corners = new float[4][FLOATS_PER_VERTEX];
         for (var pair : quads) {
+            // 26.1: BakedQuad is a record with typed accessors (no more int[] + IQuadTransformer strides)
             var quad = pair.getLeft();
-            int[] data = quad.getVertices();
-            int points = Math.min(data.length / IQuadTransformer.STRIDE, 4);
-            if (points < 3) continue;
-            for (int k = 0; k < points; k++) {
-                int off = k * IQuadTransformer.STRIDE;
+            var faceNormal = quad.direction().getUnitVec3f();
+            for (int k = 0; k < BakedQuad.VERTEX_COUNT; k++) {
                 var corner = corners[k];
-                corner[0] = Float.intBitsToFloat(data[off + IQuadTransformer.POSITION]) - 0.5f;
-                corner[1] = Float.intBitsToFloat(data[off + IQuadTransformer.POSITION + 1]) - 0.5f;
-                corner[2] = Float.intBitsToFloat(data[off + IQuadTransformer.POSITION + 2]) - 0.5f;
-                corner[3] = Float.intBitsToFloat(data[off + IQuadTransformer.UV0]);
-                corner[4] = Float.intBitsToFloat(data[off + IQuadTransformer.UV0 + 1]);
-                int packedNormal = data[off + IQuadTransformer.NORMAL];
-                corner[5] = ((byte) packedNormal) / 127.0f;
-                corner[6] = ((byte) (packedNormal >> 8)) / 127.0f;
-                corner[7] = ((byte) (packedNormal >> 16)) / 127.0f;
+                var position = quad.position(k);
+                corner[0] = position.x() - 0.5f;
+                corner[1] = position.y() - 0.5f;
+                corner[2] = position.z() - 0.5f;
+                long packedUv = quad.packedUV(k);
+                corner[3] = UVPair.unpackU(packedUv);
+                corner[4] = UVPair.unpackV(packedUv);
+                int packedNormal = quad.bakedNormals().normal(k);
+                if (BakedNormals.isUnspecified(packedNormal)) {
+                    corner[5] = faceNormal.x();
+                    corner[6] = faceNormal.y();
+                    corner[7] = faceNormal.z();
+                } else {
+                    corner[5] = ((byte) packedNormal) / 127.0f;
+                    corner[6] = ((byte) (packedNormal >> 8)) / 127.0f;
+                    corner[7] = ((byte) (packedNormal >> 16)) / 127.0f;
+                }
             }
-            if (points == 3) {
-                System.arraycopy(corners[2], 0, corners[3], 0, FLOATS_PER_VERTEX);
-            }
-            var sprite = quad.getSprite();
+            var sprite = quad.materialInfo().sprite();
             builder.quad(corners[0], corners[1], corners[2], corners[3],
                     sprite.getU0(), sprite.getV0(), sprite.getU1(), sprite.getV1(), pair.getRight());
         }

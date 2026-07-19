@@ -9,7 +9,7 @@ import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.gui.editor.FXEditor;
-import net.minecraft.client.gui.GuiGraphics;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 
 import javax.annotation.Nullable;
 import java.util.UUID;
@@ -51,7 +51,7 @@ public interface TimelineContext {
     /** The ruler's current major-tick interval (ticks), so panels can align gridlines to the ruler. */
     double majorTickInterval();
 
-    void drawPlayhead(GuiGraphics graphics, float x, float y, float width, float height, float partialTick);
+    void drawPlayhead(GUIContext graphics, float x, float y, float width, float height, float partialTick);
 
     /** Mouse-wheel zoom anchored at the cursor (shared by ruler/lanes/curve panels). */
     void zoom(UIEvent event);

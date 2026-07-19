@@ -8,8 +8,8 @@ import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import com.lowdragmc.photon.gui.editor.view.FXTimelineView;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
-import net.minecraft.MethodsReturnNonnullByDefault;
-import net.minecraft.resources.ResourceLocation;
+import com.mojang.logging.annotations.MethodsReturnNonnullByDefault;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 
@@ -19,7 +19,7 @@ import java.io.File;
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 public class FXEditor extends Editor {
-    public final static ResourceLocation WINDOW_ID = LDLib2.id("fx_editor");
+    public final static Identifier WINDOW_ID = LDLib2.id("fx_editor");
 
     public final static SpriteTexture ICON = SpriteTexture.of("photon:textures/icon.png");
     public final FXHierarchyView hierarchyView = new FXHierarchyView(this);

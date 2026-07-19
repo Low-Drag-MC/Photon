@@ -53,10 +53,10 @@ public class FXCompat {
         CompoundTag new_fx = new CompoundTag();
         ListTag fxObj = new ListTag(); // new fx objects
         //drill down to fxData
-        ListTag fxObjects = fx.getCompound("fx").getCompound("mainFX").getList("fxObjects", 10);
+        ListTag fxObjects = fx.getCompoundOrEmpty("fx").getCompoundOrEmpty("mainFX").getListOrEmpty("fxObjects");
         for (Tag object : fxObjects) {
             CompoundTag fxObject = (CompoundTag) object;
-            switch (fxObject.getString("_type")) {
+            switch (fxObject.getStringOr("_type", "")) {
                 case "beam":
                     fxObj.add(BeamEmitterMapper.mapBeamEmitter(fxObject));
                     break;
@@ -70,7 +70,7 @@ public class FXCompat {
                     fxObj.add(EmptyMapper.mapEmpty(fxObject));
                     break;
                 default:
-                    Photon.LOGGER.warn("Detected unknown type {}", fxObject.getString("_type"));
+                    Photon.LOGGER.warn("Detected unknown type {}", fxObject.getStringOr("_type", ""));
 
             }
         }

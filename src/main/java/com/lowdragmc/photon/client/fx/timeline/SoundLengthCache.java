@@ -1,13 +1,11 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.Sound;
 import net.minecraft.client.sounds.JOrbisAudioStream;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 import javax.annotation.Nullable;
 import java.util.Map;
@@ -21,13 +19,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * async decode (via Minecraft's own {@link JOrbisAudioStream}) and returns 0 until it resolves; a
  * sound that can't be measured (missing / event-reference / decode error) caches 0 and is not retried.
  */
-@OnlyIn(Dist.CLIENT)
 public class SoundLengthCache {
-    private static final Map<ResourceLocation, Double> LENGTHS = new ConcurrentHashMap<>();
-    private static final Set<ResourceLocation> PENDING = ConcurrentHashMap.newKeySet();
+    private static final Map<Identifier, Double> LENGTHS = new ConcurrentHashMap<>();
+    private static final Set<Identifier> PENDING = ConcurrentHashMap.newKeySet();
 
     /** Length of {@code soundId} in ticks, or 0 when unknown / not yet decoded (triggers a load). */
-    public static double getTicks(@Nullable ResourceLocation soundId) {
+    public static double getTicks(@Nullable Identifier soundId) {
         if (soundId == null) return 0;
         var cached = LENGTHS.get(soundId);
         if (cached != null) return cached;
@@ -35,7 +32,7 @@ public class SoundLengthCache {
         return 0;
     }
 
-    private static void requestLoad(ResourceLocation soundId) {
+    private static void requestLoad(Identifier soundId) {
         if (!PENDING.add(soundId)) return; // already loading
         CompletableFuture
                 .supplyAsync(() -> computeTicks(soundId), Util.nonCriticalIoPool())
@@ -45,7 +42,7 @@ public class SoundLengthCache {
                 });
     }
 
-    private static double computeTicks(ResourceLocation soundId) {
+    private static double computeTicks(Identifier soundId) {
         try {
             var mc = Minecraft.getInstance();
             var weighed = mc.getSoundManager().getSoundEvent(soundId);

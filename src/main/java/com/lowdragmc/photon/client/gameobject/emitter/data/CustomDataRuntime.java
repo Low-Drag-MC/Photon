@@ -2,8 +2,6 @@ package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * Per-{@code emitter}-instance runtime override for an emitter's custom-data <b>values</b>. It lives on
@@ -17,7 +15,6 @@ import net.neoforged.api.distmarker.OnlyIn;
  * indexed field access on the render thread (no map / reflection); the reusable resolver avoids per-frame
  * allocation.
  */
-@OnlyIn(Dist.CLIENT)
 public class CustomDataRuntime implements CustomData.ChannelResolver {
     private final AdditionalGPUDataSetting setting;
     /** Lazily-created override slots [stream][channel]; the fixed bounds keep this tiny + index-stable. */
