@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor.view.timeline;
 
+import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.lowdraglib2.configurator.IToggleConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
@@ -7,8 +8,10 @@ import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.data.Tooltips;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.api.IFieldValueConfigurable;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.PostProcessClip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
@@ -191,6 +194,10 @@ public class PostProcessTrackEditor extends ClipTrackEditor {
             var name = spec.name();
             // reserved: the framework fills this from the clip's 遮罩过滤 selection (group id)
             if (CompiledEffect.MASK_FILTER_PARAM.equals(name)) continue;
+            if (kind == PostProcessClip.ParamKind.SAMPLER) {
+                buildSamplerRow(paramsGroup, post, ctx, name, spec);
+                continue;
+            }
             var seeded = new PostProcessClip.ParamOverride(kind, defaultChannels(kind, spec.defaultValue()));
             int count = kind.channelCount();
             for (int c = 0; c < count; c++) {
@@ -269,8 +276,90 @@ public class PostProcessTrackEditor extends ClipTrackEditor {
             case Vector2f ignored -> PostProcessClip.ParamKind.VEC2;
             case Vector3f ignored -> PostProcessClip.ParamKind.VEC3;
             case Vector4f ignored -> PostProcessClip.ParamKind.VEC4;
+            case RenderTypeGraphTypes.Sampler2DValue ignored -> PostProcessClip.ParamKind.SAMPLER;
             case null, default -> null;
         };
+    }
+
+    /**
+     * A sampler-parameter row: the SAMPLER2D picker (the same editor the shader-graph blackboard uses),
+     * seeded from the schema default. Picking a texture promotes it to an override; the REPLAY square on
+     * the group header clears it back to the default. Samplers can't interpolate, so there is one static
+     * value — no sampling function.
+     */
+    private void buildSamplerRow(ConfiguratorGroup paramsGroup, PostProcessClip post, TimelineContext ctx,
+                                 String name, CompiledEffect.ParamSpec spec) {
+        var defaultValue = spec.defaultValue() instanceof RenderTypeGraphTypes.Sampler2DValue s
+                ? s : RenderTypeGraphTypes.Sampler2DValue.defaultValue();
+        var adapter = new IFieldValueConfigurable() {
+            @Override
+            public void setValue(Object value) {
+                if (!(value instanceof RenderTypeGraphTypes.Sampler2DValue s)) return;
+                post.params().put(name, PostProcessClip.ParamOverride.sampler(s));
+                ctx.refreshPreview();
+            }
+
+            @SuppressWarnings("unchecked")
+            @Override
+            public <T> T getValue() {
+                var current = post.params().get(name);
+                return (T) (current != null && current.sampler() != null ? current.sampler() : defaultValue);
+            }
+
+            @SuppressWarnings("unchecked")
+            @Override
+            public <T> T getDefaultValue() {
+                return (T) defaultValue;
+            }
+
+            @Override
+            public Tooltips getTooltips() {
+                return Tooltips.of(new String[0]);
+            }
+        };
+        var sub = new ConfiguratorGroup(name);
+        sub.setCollapse(false);
+        var resolved = RenderTypeGraphTypes.SAMPLER2D.resolveConfigurable();
+        if (resolved != null) {
+            var configurable = resolved.createConfigurable(adapter, RenderTypeGraphTypes.SAMPLER2D);
+            if (configurable != null) configurable.buildConfigurator(sub);
+        }
+        attachSamplerReset(sub, paramsGroup, post, ctx, name);
+        paramsGroup.addConfigurators(sub);
+    }
+
+    /** REPLAY reset on the sampler group header (mirrors the shader-graph variable reset): shows while
+     *  overridden (orange title); clicking drops the override and rebuilds the rows. */
+    private void attachSamplerReset(ConfiguratorGroup sub, ConfiguratorGroup paramsGroup, PostProcessClip post,
+                                    TimelineContext ctx, String name) {
+        var reset = new Button().noText().setOnClick(event -> {
+            if (post.params().remove(name) == null) return;
+            rebuildParamRows(paramsGroup, post, ctx);
+            ctx.refreshPreview();
+        });
+        reset.layout(layout -> {
+            layout.height(14);
+            layout.width(14);
+        }).addChild(new UIElement()
+                .layout(layout -> {
+                    layout.height(10);
+                    layout.width(10);
+                })
+                .style(style -> style.backgroundTexture(Icons.REPLAY)
+                        .tooltips("photon.gui.editor.timeline.post_process.param_reset")));
+        sub.lineContainer.addChildAt(reset, sub.tip.getSiblingIndex());
+        var mark = new AtomicBoolean(false);
+        Runnable sync = () -> {
+            boolean overridden = post.params().containsKey(name);
+            if (overridden == mark.get()) return;
+            mark.set(overridden);
+            reset.setDisplay(overridden);
+            sub.label.setText(sub.label.getText().copy().withStyle(style ->
+                    style.withColor(overridden ? ColorPattern.ORANGE.color : -1)));
+        };
+        mark.set(!post.params().containsKey(name)); // force the initial apply
+        sync.run();
+        sub.addEventListener(UIEvents.TICK, event -> sync.run());
     }
 
     /** Fresh override functions seeded from the schema default (one per channel for vectors).

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
+import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import org.jetbrains.annotations.Nullable;
@@ -21,28 +22,44 @@ import java.util.Map;
  */
 public class PostProcessClip extends Clip {
 
-    /** How the sampled channel Numbers convert to the schema parameter's Java type at submit. */
+    /** How the sampled channel Numbers convert to the schema parameter's Java type at submit.
+     *  {@code SAMPLER} is the odd one out: it carries no functions (a texture can't interpolate),
+     *  just a static {@link RenderTypeGraphTypes.Sampler2DValue}. */
     public enum ParamKind {
-        FLOAT, INT, BOOL, COLOR, VEC2, VEC3, VEC4;
+        FLOAT, INT, BOOL, COLOR, VEC2, VEC3, VEC4, SAMPLER;
 
-        /** CustomData-style: vectors are one scalar function per component, the rest are single. */
+        /** CustomData-style: vectors are one scalar function per component, the rest are single;
+         *  a sampler has no sampling channels. */
         public int channelCount() {
             return switch (this) {
                 case VEC2 -> 2;
                 case VEC3 -> 3;
                 case VEC4 -> 4;
+                case SAMPLER -> 0;
                 default -> 1;
             };
         }
     }
 
     /** One parameter override: {@code channelCount} sampling functions plus the conversion kind
-     *  (fixed by the effect schema when the editor creates the row). */
-    public record ParamOverride(ParamKind kind, List<NumberFunction> channels) {
+     *  (fixed by the effect schema when the editor creates the row). For {@code SAMPLER} the
+     *  functions are empty and {@link #sampler} holds the chosen texture. */
+    public record ParamOverride(ParamKind kind, List<NumberFunction> channels,
+                                @Nullable RenderTypeGraphTypes.Sampler2DValue sampler) {
+        /** The scalar/vector/color kinds (no sampler payload). */
+        public ParamOverride(ParamKind kind, List<NumberFunction> channels) {
+            this(kind, channels, null);
+        }
+
+        /** A SAMPLER override — static, no sampling functions. */
+        public static ParamOverride sampler(RenderTypeGraphTypes.Sampler2DValue value) {
+            return new ParamOverride(ParamKind.SAMPLER, List.of(), value);
+        }
+
         public ParamOverride copy() {
             var copied = new ArrayList<NumberFunction>(channels.size());
             for (var fn : channels) copied.add(fn.copy());
-            return new ParamOverride(kind, copied);
+            return new ParamOverride(kind, copied, sampler);
         }
     }
 
@@ -172,6 +189,8 @@ public class PostProcessClip extends Clip {
             case VEC4 -> new Vector4f(
                     channel(override, 0, t).floatValue(), channel(override, 1, t).floatValue(),
                     channel(override, 2, t).floatValue(), channel(override, 3, t).floatValue());
+            case SAMPLER -> override.sampler() != null ? override.sampler()
+                    : RenderTypeGraphTypes.Sampler2DValue.defaultValue();
         }));
         return result;
     }

@@ -15,6 +15,7 @@ import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.shaders.Uniform;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
@@ -189,6 +190,21 @@ public final class RenderGraphExecutor {
                             textureWidth = chainInput.width;
                             textureHeight = chainInput.height;
                         }
+                        case ASSET -> {
+                            // a fixed image baked into the effect; dimensions are unknown here, so
+                            // TexelSize stays at its default (LUT/noise passes rarely need it)
+                            textureId = resolveSamplerTexture(binding.getValue().asset());
+                            textureWidth = 0;
+                            textureHeight = 0;
+                        }
+                        case PARAM -> {
+                            // an effect sampler parameter supplied by the request (else its default)
+                            var value = params.get(binding.getValue().param());
+                            textureId = resolveSamplerTexture(
+                                    value instanceof RenderTypeGraphTypes.Sampler2DValue s ? s : null);
+                            textureWidth = 0;
+                            textureHeight = 0;
+                        }
                         default -> {
                             int resource = binding.getValue().resource();
                             textureId = targets[resource] == null ? -1 : targets[resource].getColorTextureId();
@@ -198,7 +214,7 @@ public final class RenderGraphExecutor {
                     }
                     shader.setSampler(binding.getKey(), textureId);
                     var texelSize = shader.getUniform(binding.getKey() + PhotonFullscreenCompiler.TEXEL_SIZE_SUFFIX);
-                    if (texelSize != null) {
+                    if (texelSize != null && textureWidth > 0 && textureHeight > 0) {
                         texelSize.set((float) textureWidth, (float) textureHeight,
                                 1f / textureWidth, 1f / textureHeight);
                     }
@@ -264,6 +280,18 @@ public final class RenderGraphExecutor {
             }
             default -> { }
         }
+    }
+
+    /** Resolve a {@link RenderTypeGraphTypes.Sampler2DValue} to a bound GL texture id. A bad or absent
+     *  location falls back to the missing-texture placeholder, so an ASSET/PARAM sampler never binds
+     *  -1 (which vanilla {@code apply()} skips, leaving stale unit contents). Filter/wrap follow the
+     *  pass graph's own SAMPLER2D input declaration — the node supplies only the texture. */
+    private static int resolveSamplerTexture(@Nullable RenderTypeGraphTypes.Sampler2DValue sampler) {
+        String location = sampler == null ? null : sampler.location();
+        if (!LDLib2.isValidResourceLocation(location)) {
+            location = RenderTypeGraphTypes.Sampler2DValue.defaultValue().location();
+        }
+        return Minecraft.getInstance().getTextureManager().getTexture(ResourceLocation.parse(location)).getId();
     }
 
     /** Reset a custom-shader uniform to its json defaults (1..4 floats). */

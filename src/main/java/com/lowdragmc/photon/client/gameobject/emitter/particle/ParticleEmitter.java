@@ -566,14 +566,17 @@ public class ParticleEmitter extends Emitter {
 
     public void prepareRenderPass(RenderPassPipeline buffer) {
         if (isVisible()) {
-            // all of this emitter's particles draw through its single effective pass (the override
-            // pass when overridden, else the shared config singleton); equal effective passes merge
-            var pass = effectiveRenderPass();
+            // the emitter's OWN (tile) particles draw through its single effective pass — the override
+            // pass when overridden, else the shared config singleton (equal effective passes merge).
+            // Sub-particles spawned into this emitter with a DIFFERENT render type (the Trails module's
+            // trail / aratrail particles) keep their OWN pass: piping them through the tile pass would
+            // silently drop them, since the tile renderer only emits TileParticles.
+            var effectivePass = effectiveRenderPass();
             for (var entry : this.particles.entrySet()) {
                 var queue = entry.getValue();
-                if (!queue.isEmpty()) {
-                    buffer.pipeQueue(pass, queue);
-                }
+                if (queue.isEmpty()) continue;
+                var pass = entry.getKey() == config.particleRenderType ? effectivePass : entry.getKey();
+                buffer.pipeQueue(pass, queue);
             }
         }
     }
