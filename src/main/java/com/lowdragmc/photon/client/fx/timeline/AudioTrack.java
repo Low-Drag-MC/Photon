@@ -1,7 +1,9 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundSource;
 import net.neoforged.api.distmarker.Dist;
@@ -30,8 +32,8 @@ public class AudioTrack extends Track {
     protected void writeClipExtra(Clip clip, CompoundTag clipTag, HolderLookup.Provider provider) {
         if (clip instanceof AudioClip audio) {
             clipTag.putString("sound", audio.sound().toString());
-            clipTag.putFloat("volume", audio.volume());
-            clipTag.putFloat("pitch", audio.pitch());
+            clipTag.put("volume", audio.volume().serializeWrapper());
+            clipTag.put("pitch", audio.pitch().serializeWrapper());
             clipTag.putString("category", audio.category().name());
             clipTag.putBoolean("attenuation", audio.attenuation());
         }
@@ -44,11 +46,23 @@ public class AudioTrack extends Track {
                 var loc = ResourceLocation.tryParse(clipTag.getString("sound"));
                 audio.sound(loc != null ? loc : AudioClip.DEFAULT_SOUND);
             }
-            if (clipTag.contains("volume")) audio.volume(clipTag.getFloat("volume"));
-            if (clipTag.contains("pitch")) audio.pitch(clipTag.getFloat("pitch"));
+            audio.volume(readEnvelope(clipTag, "volume"));
+            audio.pitch(readEnvelope(clipTag, "pitch"));
             if (clipTag.contains("category")) audio.category(parseCategory(clipTag.getString("category")));
             audio.attenuation(clipTag.getBoolean("attenuation"));
         }
+    }
+
+    /** Volume/pitch under the same key in two shapes: pre-curve clips stored a bare float, which
+     *  reads back as the constant envelope it always was. */
+    private static NumberFunction readEnvelope(CompoundTag clipTag, String key) {
+        if (clipTag.contains(key, Tag.TAG_COMPOUND)) {
+            return NumberFunction.deserializeWrapper(clipTag.getCompound(key));
+        }
+        if (clipTag.contains(key)) {
+            return NumberFunction.constant(clipTag.getFloat(key));
+        }
+        return NumberFunction.constant(1);
     }
 
     private static SoundSource parseCategory(String name) {

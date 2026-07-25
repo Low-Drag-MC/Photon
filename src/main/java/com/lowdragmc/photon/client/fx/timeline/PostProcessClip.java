@@ -83,10 +83,6 @@ public class PostProcessClip extends Clip {
     private transient IResourcePath parsedPath;
     @Nullable
     private transient String parsedFrom;
-    /** Stable per-clip lerp source for Random* functions (re-rolls with the clip seed). */
-    private transient float lerpValue = Float.NaN;
-    private transient long lerpSeed;
-
     public PostProcessClip() {
         super();
     }
@@ -198,19 +194,6 @@ public class PostProcessClip extends Clip {
     private Number channel(ParamOverride override, int index, float t) {
         if (index >= override.channels().size()) return 0f;
         return override.channels().get(index).get(t, this::lerpValue);
-    }
-
-    private float progress(double localTime) {
-        var total = duration();
-        return total > 0 ? (float) Math.clamp(localTime / total, 0, 1) : 0f;
-    }
-
-    private float lerpValue() {
-        if (Float.isNaN(lerpValue) || lerpSeed != seed()) {
-            lerpSeed = seed();
-            lerpValue = new java.util.Random(lerpSeed).nextFloat();
-        }
-        return lerpValue;
     }
 
     @Override

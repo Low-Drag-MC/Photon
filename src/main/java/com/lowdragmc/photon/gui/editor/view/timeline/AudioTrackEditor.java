@@ -3,7 +3,6 @@ package com.lowdragmc.photon.gui.editor.view.timeline;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.RegistrySearchComponent;
 import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
@@ -16,6 +15,13 @@ import com.lowdragmc.photon.client.fx.timeline.AudioClip;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.SoundLengthCache;
 import com.lowdragmc.photon.client.fx.timeline.Track;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.configurator.NumberFunctionConfigurator;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
@@ -113,12 +119,10 @@ public class AudioTrackEditor extends ClipTrackEditor {
                 new Button().setText("photon.gui.editor.timeline.audio.play", true)
                         .setOnClick(e -> previewSound(audio))
                         .layout(layout -> layout.flex(1).height(14))));
-        group.addConfigurator(new NumberConfigurator("photon.gui.editor.timeline.audio.volume",
-                () -> (double) audio.volume(), v -> { audio.volume(v.floatValue()); ctx.refreshPreview(); },
-                (double) audio.volume(), true).setRange(0, 1).setWheel(0.05));
-        group.addConfigurator(new NumberConfigurator("photon.gui.editor.timeline.audio.pitch",
-                () -> (double) audio.pitch(), v -> { audio.pitch(v.floatValue()); ctx.refreshPreview(); },
-                (double) audio.pitch(), true).setRange(0.5, 2).setWheel(0.05));
+        group.addConfigurator(new NumberFunctionConfigurator("photon.gui.editor.timeline.audio.volume",
+                audio::volume, fn -> { audio.volume(fn); ctx.refreshPreview(); }, true, VOLUME_CONFIG));
+        group.addConfigurator(new NumberFunctionConfigurator("photon.gui.editor.timeline.audio.pitch",
+                audio::pitch, fn -> { audio.pitch(fn); ctx.refreshPreview(); }, true, PITCH_CONFIG));
         group.addConfigurator(new SelectorConfigurator<>("photon.gui.editor.timeline.audio.category",
                 audio::category, v -> { audio.category(v); ctx.refreshPreview(); }, audio.category(), true,
                 List.of(SoundSource.values()), SoundSource::getName));
@@ -126,12 +130,36 @@ public class AudioTrackEditor extends ClipTrackEditor {
                 audio::attenuation, v -> { audio.attenuation(v); ctx.refreshPreview(); }, audio.attenuation(), true));
     }
 
-    /** Play the clip's sound once, non-positional, honoring its category/volume/pitch, for previewing. */
+    /** Play the clip's sound once, non-positional, honoring its category/volume/pitch, for previewing.
+     *  The envelopes are sampled at the clip's start — a one-shot preview cannot follow a curve. */
     private static void previewSound(AudioClip audio) {
         if (BuiltInRegistries.SOUND_EVENT.get(audio.sound()) == null) return;
         Minecraft.getInstance().getSoundManager().play(new SimpleSoundInstance(
-                audio.sound(), audio.category(), Math.max(0.0001f, audio.volume()), audio.pitch(),
+                audio.sound(), audio.category(), Math.max(0.0001f, audio.volumeAt(0)), audio.pitchAt(0),
                 SoundInstance.createUnseededRandom(), false, 0, SoundInstance.Attenuation.NONE, 0, 0, 0, true));
+    }
+
+    // real @NumberFunctionConfig instances for the editor rows (same reflection trick as
+    // PostProcessTrackEditor): volume is 0..1, pitch is the range the sound engine accepts
+    @SuppressWarnings("unused")
+    private static final class ConfigHolders {
+        @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class},
+                defaultValue = 1, curveConfig = @CurveConfig(bound = {0, 1}))
+        private float volume;
+        @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class},
+                defaultValue = 1, curveConfig = @CurveConfig(bound = {0.5f, 2}))
+        private float pitch;
+    }
+
+    private static final NumberFunctionConfig VOLUME_CONFIG = readConfig("volume");
+    private static final NumberFunctionConfig PITCH_CONFIG = readConfig("pitch");
+
+    private static NumberFunctionConfig readConfig(String field) {
+        try {
+            return ConfigHolders.class.getDeclaredField(field).getAnnotation(NumberFunctionConfig.class);
+        } catch (NoSuchFieldException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /** Resolve a stored sound id to its SoundEvent, falling back to a always-present vanilla sound. */
