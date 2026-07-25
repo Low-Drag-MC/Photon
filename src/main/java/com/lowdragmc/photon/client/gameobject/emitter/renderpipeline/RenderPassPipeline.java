@@ -199,8 +199,18 @@ public class RenderPassPipeline extends BufferBuilder {
         var mode = PhotonParticleManager.getDrawMode();
         drawMode = mode == null ? SceneView.DrawMode.DRAW : mode;
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
-        prepareTarget(mainTarget.width, mainTarget.height);
+        // Allocating a target binds it AND sets the viewport to its own size (HDRTarget's ctor ->
+        // createBuffers -> clear -> bindWrite(true)). The bloom pyramid's last allocation is its
+        // SMALLEST mip, so on the first frame / after a resize that tiny viewport used to leak into
+        // the particle draw and — via afterRendering's viewport restore — into the clouds drawn right
+        // after us. Snapshot the caller's viewport, allocate, then hand back DRAW_TARGET + viewport.
+        int viewportX = GlStateManager.Viewport.x();
+        int viewportY = GlStateManager.Viewport.y();
+        int viewportWidth = GlStateManager.Viewport.width();
+        int viewportHeight = GlStateManager.Viewport.height();
         PhotonPostProcessing.prepareTarget(mainTarget.width, mainTarget.height);
+        prepareTarget(mainTarget.width, mainTarget.height); // ends bound to DRAW_TARGET
+        RenderSystem.viewport(viewportX, viewportY, viewportWidth, viewportHeight);
     }
 
     public static HDRTarget resize(@Nullable HDRTarget target, int width, int height, boolean useDepth) {

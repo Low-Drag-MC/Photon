@@ -3,9 +3,11 @@ package com.lowdragmc.photon.client.postfx.runtime;
 import com.lowdragmc.lowdraglib2.client.shader.HDRTarget;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.platform.GlStateManager;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.opengl.GL30;
 
 /**
  * The shared scene capture behind the render-graph editor preview: a color+depth copy of the
@@ -17,10 +19,14 @@ import org.jetbrains.annotations.Nullable;
 @OnlyIn(Dist.CLIENT)
 public final class PostFXPreview {
 
+    /** "No preview has ever asked" — kept out of the frame arithmetic below, subtracting it
+     *  overflows and made every frame look requested. */
+    private static final long NEVER = Long.MIN_VALUE;
+
     @Nullable
     private static HDRTarget SOURCE;
-    private static long requestFrame = Long.MIN_VALUE;
-    private static long capturedFrame = Long.MIN_VALUE;
+    private static long requestFrame = NEVER;
+    private static long capturedFrame = NEVER;
     private static boolean hasCapture;
 
     private PostFXPreview() {}
@@ -31,7 +37,7 @@ public final class PostFXPreview {
     }
 
     private static boolean captureWanted() {
-        return PostFXTargetPool.currentFrame() - requestFrame <= 1;
+        return requestFrame != NEVER && PostFXTargetPool.currentFrame() - requestFrame <= 1;
     }
 
     /**
@@ -45,7 +51,12 @@ public final class PostFXPreview {
         if (capturedFrame == frame) return;
         capturedFrame = frame;
         SOURCE = RenderPassPipeline.resize(SOURCE, cleanScene.width, cleanScene.height, true);
+        // the blit copy ends on framebuffer 0 — restore the caller's binding (raw bind, not
+        // bindWrite: the viewport must stay untouched). A caller that returns right after us
+        // would otherwise leave the world drawing into the backbuffer.
+        int boundFramebuffer = GL30.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         SOURCE.copyDepthAndColorFrom(cleanScene);
+        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, boundFramebuffer);
         hasCapture = true;
     }
 

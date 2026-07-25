@@ -43,7 +43,7 @@ An Effect Graph chains fullscreen passes, each pass its own Fullscreen Shader Gr
 ### Models & Meshes
 - Particles can render as 3D meshes; a universal mesh input backs both the Shape module and a
   Model render mode.
-- OBJ and JSON model sources, plus built-in primitives.
+- OBJ and JSON model sources, plus built-in primitives. yeah, you don't need to use a JSON file to load objs anymore.
 
 ### Custom GPU Data
 - Per-emitter custom data streams (vector/color functions) readable per particle in shader graphs
