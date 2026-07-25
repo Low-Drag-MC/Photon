@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.client.shader.HDRTarget;
 import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.PhotonShaders;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
+import com.lowdragmc.photon.client.postfx.runtime.SceneBlit;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -197,13 +198,7 @@ public class PhotonPostProcessing {
             dist.bindWrite(true);
         }
         shaderInstance.apply();
-        Tesselator tesselator = RenderSystem.renderThreadTesselator();
-        var buffer = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
-        buffer.addVertex(-1, 1, 0);
-        buffer.addVertex(-1, -1, 0);
-        buffer.addVertex(1, -1, 0);
-        buffer.addVertex(1, 1, 0);
-        BufferUploader.draw(buffer.buildOrThrow());
+        SceneBlit.drawFullscreenQuad();
         shaderInstance.clear();
     }
 }

@@ -51,7 +51,7 @@ public class Cylinder implements IShape {
                 (float) (r * Math.sin(theta))).mul(scale);
         var radialDirection = new Vector3f((float) Math.cos(theta), 0, (float) Math.sin(theta));
 
-        particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPoseWithoutNoise()), true);
+        particle.setSimPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getSimPosWithoutNoise()), true);
         particle.setInternalVelocity(Vector3fHelper.rotateYXY(radialDirection.normalize().mul(0.05f), rotation));
     }
 

@@ -5,15 +5,9 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.*;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.util.Mth;
 import org.joml.Vector3f;
 import lombok.Getter;
 import lombok.Setter;
-import org.lwjgl.opengl.GL11;
 import oshi.util.tuples.Pair;
 
 import java.util.List;
@@ -62,7 +56,7 @@ public class Box implements IShape {
                 pos.y = random.nextFloat() > 0.5 ? scale.y : -scale.y;
             }
         }
-        particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPoseWithoutNoise()), true);
+        particle.setSimPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getSimPosWithoutNoise()), true);
         particle.setInternalVelocity(Vector3fHelper.rotateYXY(new Vector3f(0, 0.05f, 0), rotation));
     }
 

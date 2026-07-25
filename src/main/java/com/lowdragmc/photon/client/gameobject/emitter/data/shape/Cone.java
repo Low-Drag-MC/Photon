@@ -60,7 +60,7 @@ public class Cone implements IShape {
                 .rotateAxis((float) ((radius > 0 ? r / radius : 0) * Math.toRadians(angle)), 0, 0, -1)
                 .rotateAxis((float) theta, 0, -1, 0);
 
-        particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPoseWithoutNoise()), true);
+        particle.setSimPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getSimPosWithoutNoise()), true);
         particle.setInternalVelocity(Vector3fHelper.rotateYXY(speed.normalize().mul(0.05f), rotation));
     }
 

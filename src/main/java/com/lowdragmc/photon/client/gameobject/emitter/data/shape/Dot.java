@@ -10,7 +10,7 @@ public class Dot implements IShape {
 
     @Override
     public void nextPosVel(TileParticle particle, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
-        particle.setLocalPos(position.add(particle.getLocalPoseWithoutNoise()), true);
+        particle.setSimPos(position.add(particle.getSimPosWithoutNoise()), true);
         particle.setInternalVelocity(new Vector3f(0, 0, 0));
     }
 }

@@ -62,7 +62,7 @@ public class TileParticleRenderer {
     private void renderParticle(@Nonnull VertexConsumer buffer, TileParticle particle, Camera camera, float partialTicks) {
         var vec3 = camera.getPosition();
 
-        var localPos = particle.getLocalPos(partialTicks).mulPosition(particle.getSpaceTransform());
+        var localPos = particle.getSimPos(partialTicks).mulPosition(particle.getSpaceTransform());
         var x = (float) (localPos.x - vec3.x);
         var y = (float) (localPos.y - vec3.y);
         var z = (float) (localPos.z - vec3.z);
@@ -211,7 +211,7 @@ public class TileParticleRenderer {
         for (var p : particles) {
             if (!(p instanceof TileParticle particle) || particle.getDelay() > 0) continue;
             instanceCount++;
-            var localPos = particle.getLocalPos(partialTicks).mulPosition(particle.getSpaceTransform());
+            var localPos = particle.getSimPos(partialTicks).mulPosition(particle.getSpaceTransform());
             var x = (float) (localPos.x - vec3.x);
             var y = (float) (localPos.y - vec3.y);
             var z = (float) (localPos.z - vec3.z);

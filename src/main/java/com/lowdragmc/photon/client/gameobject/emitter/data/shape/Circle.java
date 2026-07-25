@@ -49,7 +49,7 @@ public class Circle implements IShape {
                 0f,
                 (float) (r * Math.sin(theta))).mul(scale);
 
-        particle.setLocalPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getLocalPoseWithoutNoise()), true);
+        particle.setSimPos(Vector3fHelper.rotateYXY(new Vector3f(pos), rotation).add(position).add(particle.getSimPosWithoutNoise()), true);
         // radius 0 spawns at the center — normalize would be NaN, use zero velocity instead
         particle.setInternalVelocity(pos.lengthSquared() > 1e-12f
                 ? Vector3fHelper.rotateYXY(new Vector3f(pos).normalize().mul(0.05f), rotation)

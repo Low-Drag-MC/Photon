@@ -23,6 +23,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.*;
 
+import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.lang.Math;
 import java.util.List;
@@ -42,6 +43,29 @@ public class TileParticle implements IParticle {
      */
     protected float localX, localY, localZ; // position in simulation space (see IParticleEmitter#getSimToWorld)
     protected float localXo, localYo, localZo;
+    /**
+     * The SPAWN FRAME: this particle's emitter, as a coordinate system, expressed in simulation space.
+     *
+     * <p>Some inputs are emitter-relative by definition — an orbital pivot, and any value the author
+     * gave "in the emitter's axes". Simulation space is not that frame: outside {@code Local} it is the
+     * world (or a custom transform), where {@link #getSimPos()} is an absolute coordinate. Reading it as
+     * if it were emitter-relative drops the orbit pivot on the world origin — hundreds of blocks away
+     * and far below the effect — which inflates the orbital radius by orders of magnitude.
+     *
+     * <p>Captured once at spawn rather than read live, so a moving emitter cannot drag the frame away
+     * from particles it already left behind. That is also what the pre-2.2.0 releases did: {@code World}
+     * simulation space was the emitter's spawn-time transform, never the identity — so a value authored
+     * as "the emitter's up" stayed the emitter's up.
+     *
+     * <p>{@code null} means identity: in {@code Local} simulation space the emitter's frame IS
+     * simulation space, so nothing is stored and every conversion below is a no-op. The emitter's
+     * origin is this matrix's translation column, not a separate field.
+     */
+    @Nullable
+    protected Matrix4f emitterToSim;
+    /** Inverse of {@link #emitterToSim}. */
+    @Nullable
+    protected Matrix4f simToEmitter;
     protected float rotationX = 180, rotationY = 180, rotationZ = 180; // rotation
     protected float rotationXo = 180, rotationYo = 180, rotationZo = 180;
     protected float sizeX = 1, sizeY = 1, sizeZ = 1; // size
@@ -124,9 +148,15 @@ public class TileParticle implements IParticle {
             var emitterToWorld = emitter.transform().localToWorldMatrix();
             var worldToSim = emitter.getWorldToSim();
             var pos = new Vector3f(localX, localY, localZ).mulPosition(emitterToWorld).mulPosition(worldToSim);
-            setLocalPos(pos, true);
+            setSimPos(pos, true);
             var vel = worldToSim.transformDirection(emitterToWorld.transformDirection(new Vector3f(velocityX, velocityY, velocityZ)));
             setInternalVelocity(vel);
+            // freeze the spawn frame — see emitterToSim. Copied, not referenced: Transform recomputes
+            // its cached matrices in place, so holding the reference would silently un-freeze this.
+            // The inverse is composed from the two already-cached matrices rather than inverted.
+            this.emitterToSim = new Matrix4f(worldToSim).mul(emitterToWorld);
+            this.simToEmitter = new Matrix4f(emitter.transform().worldToLocalMatrix())
+                    .mul(emitter.getSimToWorld());
         }
         if (runtime.inheritVelocity.isEnable() && runtime.inheritVelocity.getMode() == InheritVelocitySetting.Mode.INITIAL) {
             addInternalVelocity(getSpaceTransformInverse().transformDirection(runtime.inheritVelocity.getVelocity(emitter)));
@@ -177,7 +207,7 @@ public class TileParticle implements IParticle {
         return value;
     }
 
-    public void setLocalPos(float x, float y, float z, boolean setOrigin) {
+    public void setSimPos(float x, float y, float z, boolean setOrigin) {
         this.localX = x;
         this.localY = y;
         this.localZ = z;
@@ -188,8 +218,8 @@ public class TileParticle implements IParticle {
         }
     }
 
-    public void setLocalPos(Vector3f realPos, boolean origin) {
-        setLocalPos(realPos.x, realPos.y, realPos.z, origin);
+    public void setSimPos(Vector3f realPos, boolean origin) {
+        setSimPos(realPos.x, realPos.y, realPos.z, origin);
     }
 
     public void setInternalVelocity(Vector3f vec) {
@@ -259,12 +289,49 @@ public class TileParticle implements IParticle {
                 Mth.lerp(partialTicks, sizeZo, sizeZ));
     }
 
-    public Vector3f getLocalPos() {
-        return getLocalPos(0);
+    public Vector3f getSimPos() {
+        return getSimPos(0);
     }
 
-    public Vector3f getLocalPos(float partialTicks) {
-        var pos = getLocalPoseWithoutNoise(partialTicks);
+    /**
+     * This particle's offset from the emitter that spawned it, still in simulation-space axes — what
+     * "emitter-relative" means for every simulation space alike. Identical to {@link #getSimPos()} in
+     * Local space. @see #emitterToSim
+     */
+    public Vector3f getEmitterRelativePos() {
+        var pos = getSimPos();
+        return emitterToSim == null ? pos
+                : pos.sub(emitterToSim.m30(), emitterToSim.m31(), emitterToSim.m32());
+    }
+
+    /** Rotate a direction from the spawn frame's axes into simulation space (in place). */
+    public Vector3f emitterDirToSim(Vector3f direction) {
+        return emitterToSim == null ? direction : emitterToSim.transformDirection(direction);
+    }
+
+    /** Rotate a direction from simulation space into the spawn frame's axes (in place). */
+    public Vector3f simDirToEmitter(Vector3f direction) {
+        return simToEmitter == null ? direction : simToEmitter.transformDirection(direction);
+    }
+
+    /** Rotate a direction from world axes into simulation space (in place). Live, not frozen — world
+     *  axes are absolute, so only the CURRENT simulation space matters. Skipped entirely in World
+     *  simulation space, where the two are the same axes and the matrix is the identity. */
+    public Vector3f worldDirToSim(Vector3f direction) {
+        return isWorldSimulationSpace() ? direction : getSpaceTransformInverse().transformDirection(direction);
+    }
+
+    /** Rotate a direction from simulation space into world axes (in place). @see #worldDirToSim */
+    public Vector3f simDirToWorld(Vector3f direction) {
+        return isWorldSimulationSpace() ? direction : getSpaceTransform().transformDirection(direction);
+    }
+
+    private boolean isWorldSimulationSpace() {
+        return config.getSimulationSpace() == ParticleConfig.Space.World;
+    }
+
+    public Vector3f getSimPos(float partialTicks) {
+        var pos = getSimPosWithoutNoise(partialTicks);
 
         if (runtime.noise.isEnable()) {
             pos.add(runtime.noise.getPosition(this, partialTicks));
@@ -273,11 +340,11 @@ public class TileParticle implements IParticle {
         return pos;
     }
 
-    public Vector3f getLocalPoseWithoutNoise() {
-        return getLocalPoseWithoutNoise(0);
+    public Vector3f getSimPosWithoutNoise() {
+        return getSimPosWithoutNoise(0);
     }
 
-    public Vector3f getLocalPoseWithoutNoise(float partialTicks) {
+    public Vector3f getSimPosWithoutNoise(float partialTicks) {
         if (isRemoved) {
             return new Vector3f(localX, localY, localZ);
         }
@@ -313,7 +380,7 @@ public class TileParticle implements IParticle {
     }
 
     public Vector3f getWorldPos(float partialTicks) {
-        var localPosition = getLocalPos(partialTicks);
+        var localPosition = getSimPos(partialTicks);
         return new Vector3f(localPosition).mulPosition(getSpaceTransform());
     }
 
@@ -475,7 +542,7 @@ public class TileParticle implements IParticle {
         // update bounding box and position
         if (moveX != 0.0 || moveY != 0.0 || moveZ != 0.0) {
             var moveLocal = getSpaceTransformInverse().transformDirection(new Vector3f(moveX, moveY, moveZ));
-            setLocalPos(localX + moveLocal.x, localY + moveLocal.y, localZ + moveLocal.z, false);
+            setSimPos(localX + moveLocal.x, localY + moveLocal.y, localZ + moveLocal.z, false);
         }
 
         // external force fields: fold into the stored velocity once per tick (direction/gravity/vortex

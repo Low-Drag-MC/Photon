@@ -19,14 +19,10 @@ import org.lwjgl.opengl.GL30;
 @OnlyIn(Dist.CLIENT)
 public final class PostFXPreview {
 
-    /** "No preview has ever asked" — kept out of the frame arithmetic below, subtracting it
-     *  overflows and made every frame look requested. */
-    private static final long NEVER = Long.MIN_VALUE;
-
     @Nullable
     private static HDRTarget SOURCE;
-    private static long requestFrame = NEVER;
-    private static long capturedFrame = NEVER;
+    private static long requestFrame = Long.MIN_VALUE;
+    private static long capturedFrame = Long.MIN_VALUE;
     private static boolean hasCapture;
 
     private PostFXPreview() {}
@@ -36,8 +32,11 @@ public final class PostFXPreview {
         requestFrame = PostFXTargetPool.currentFrame();
     }
 
+    /** "Asked for within the last frame". Written as a comparison, NOT as
+     *  {@code currentFrame - requestFrame <= 1}: that subtraction overflows against the never-asked
+     *  sentinel and reports true forever, which had every world frame copying the screen. */
     private static boolean captureWanted() {
-        return requestFrame != NEVER && PostFXTargetPool.currentFrame() - requestFrame <= 1;
+        return requestFrame >= PostFXTargetPool.currentFrame() - 1;
     }
 
     /**
@@ -50,10 +49,11 @@ public final class PostFXPreview {
         long frame = PostFXTargetPool.currentFrame();
         if (capturedFrame == frame) return;
         capturedFrame = frame;
+        // resize() hands the binding and viewport back untouched, so this snapshot is the caller's
         SOURCE = RenderPassPipeline.resize(SOURCE, cleanScene.width, cleanScene.height, true);
-        // the blit copy ends on framebuffer 0 — restore the caller's binding (raw bind, not
-        // bindWrite: the viewport must stay untouched). A caller that returns right after us
-        // would otherwise leave the world drawing into the backbuffer.
+        // the blit copy ends on framebuffer 0 — restore what the caller had (raw bind, not bindWrite:
+        // the viewport must stay untouched). A caller that returns right after us would otherwise
+        // leave the world drawing into the backbuffer.
         int boundFramebuffer = GL30.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         SOURCE.copyDepthAndColorFrom(cleanScene);
         GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, boundFramebuffer);

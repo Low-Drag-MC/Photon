@@ -2,7 +2,6 @@ package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 
 import com.google.common.collect.Maps;
 import com.lowdragmc.lowdraglib2.client.shader.HDRTarget;
-import com.lowdragmc.lowdraglib2.client.shader.LDLibShaders;
 import com.lowdragmc.lowdraglib2.math.PositionedRect;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
@@ -199,31 +198,42 @@ public class RenderPassPipeline extends BufferBuilder {
         var mode = PhotonParticleManager.getDrawMode();
         drawMode = mode == null ? SceneView.DrawMode.DRAW : mode;
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
-        // Allocating a target binds it AND sets the viewport to its own size (HDRTarget's ctor ->
-        // createBuffers -> clear -> bindWrite(true)). The bloom pyramid's last allocation is its
-        // SMALLEST mip, so on the first frame / after a resize that tiny viewport used to leak into
-        // the particle draw and — via afterRendering's viewport restore — into the clouds drawn right
-        // after us. Snapshot the caller's viewport, allocate, then hand back DRAW_TARGET + viewport.
-        int viewportX = GlStateManager.Viewport.x();
-        int viewportY = GlStateManager.Viewport.y();
-        int viewportWidth = GlStateManager.Viewport.width();
-        int viewportHeight = GlStateManager.Viewport.height();
         PhotonPostProcessing.prepareTarget(mainTarget.width, mainTarget.height);
         prepareTarget(mainTarget.width, mainTarget.height); // ends bound to DRAW_TARGET
-        RenderSystem.viewport(viewportX, viewportY, viewportWidth, viewportHeight);
     }
 
     public static HDRTarget resize(@Nullable HDRTarget target, int width, int height, boolean useDepth) {
         return resize(target, width, height, useDepth, false);
     }
 
+    /**
+     * Allocate or re-shape a target, <b>leaving the bound framebuffer and the viewport exactly as they
+     * were</b>.
+     *
+     * <p>That guarantee is the whole point of routing allocation through here: creating or resizing an
+     * {@link HDRTarget} binds it and sets the viewport to its own size (ctor → {@code createBuffers} →
+     * {@code clear} → {@code bindWrite(true)}). Callers allocate in the middle of a draw — the bloom
+     * pyramid mid-frame, the scene sampler mid particle pass, the editor preview inside a sub-viewport —
+     * and a leaked binding or a leaked mip-sized viewport silently redirects everything drawn after it
+     * (that is how the clouds ended up in the backbuffer). Only allocation frames pay for the restore.
+     */
     public static HDRTarget resize(@Nullable HDRTarget target, int width, int height, boolean useDepth, boolean forceResize) {
+        if (target != null && !forceResize && target.width == width && target.height == height) {
+            return target; // no allocation, nothing to restore
+        }
+        int framebuffer = GL30.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        int viewportX = GlStateManager.Viewport.x();
+        int viewportY = GlStateManager.Viewport.y();
+        int viewportWidth = GlStateManager.Viewport.width();
+        int viewportHeight = GlStateManager.Viewport.height();
         if (target == null) {
             target = new HDRTarget(width, height, GL11.GL_LINEAR, useDepth);
             target.setClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-        } else if (forceResize || target.width != width || target.height != height) {
+        } else {
             target.resize(width, height, Minecraft.ON_OSX);
         }
+        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
+        RenderSystem.viewport(viewportX, viewportY, viewportWidth, viewportHeight);
         return target;
     }
 
@@ -318,31 +328,12 @@ public class RenderPassPipeline extends BufferBuilder {
             GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
                     extendedShader.getWritingToBeforeTranslucent() :
                     extendedShader.getWritingToAfterTranslucent();
-            RenderSystem.assertOnRenderThread();
-            GlStateManager._disableDepthTest();
-
             GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.getId());
-            LDLibShaders.getBlitShader().setSampler("DiffuseSampler", outputTarget.getColorTextureId());
-
-            LDLibShaders.getBlitShader().apply();
-
-            // unlock depth color from iris manager
-            DepthColorStorage.unlockDepthColor();
-            GlStateManager._depthMask(false);
-            // our output is a COMPLETE composite: replace Iris's color, never blend against it (see
-            // SceneBlit). Alpha stays masked out — the gbuffer's alpha channel is Iris's, not ours.
-            GlStateManager._disableBlend();
-            GlStateManager._colorMask(true, true, true, false);
-
-            SceneBlit.drawFullscreenQuad();
-            LDLibShaders.getBlitShader().clear();
-
-            // hand back the exact state this branch used to leave
-            GlStateManager._colorMask(true, true, true, true);
-            GlStateManager._enableBlend();
-            RenderSystem.defaultBlendFunc();
-            GlStateManager._depthMask(true);
-            GlStateManager._enableDepthTest();
+            // Unlock depth colour from the iris manager — and it MUST happen between the shader's
+            // apply() and the mask setup, which is exactly what the hook is. Iris takes that lock when
+            // a shader it does not manage is applied, and while it is held every colour-mask call is
+            // swallowed, so the blit writes nothing at all and FX simply vanish under a shader pack.
+            SceneBlit.writeBackToBound(outputTarget.getColorTextureId(), DepthColorStorage::unlockDepthColor);
             GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainTarget.frameBufferId);
         } else {
             SceneBlit.writeBack(outputTarget, mainTarget);

@@ -9,6 +9,7 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Writing a finished composite back into the frame.
@@ -40,24 +41,41 @@ public final class SceneBlit {
         writeBackToBound(from.getColorTextureId());
     }
 
+    public static void writeBackToBound(int colorTexture) {
+        writeBackToBound(colorTexture, null);
+    }
+
     /**
      * Same, into whatever framebuffer the caller already bound — Iris keeps its own framebuffers and
      * binds them itself, so the binding is left untouched here.
+     *
+     * <p><b>Applying the shader comes first, the render state second — never the other way round.</b>
+     * Applying a shader changes render state behind our back: vanilla re-applies the blend mode declared
+     * in the shader JSON, and under a shader pack Iris <i>locks</i> the depth and colour masks at that
+     * moment so that shaders it does not manage cannot write into its gbuffers — while that lock is held
+     * it silently swallows every {@code GlStateManager._colorMask} call. State set before apply() is
+     * therefore discarded, and the blit writes nothing at all.
+     *
+     * <p>{@code afterShaderApply} is the seam between the two: Iris uses it to release the lock that
+     * apply() just took.
      *
      * <p>Leaves the render state {@code ShaderUtils.fastBlit} used to leave (depth write + test on,
      * full color mask, blend enabled on the default func): every call site was written against that
      * contract.
      */
-    public static void writeBackToBound(int colorTexture) {
+    public static void writeBackToBound(int colorTexture, @Nullable Runnable afterShaderApply) {
         RenderSystem.assertOnRenderThread();
+        var shader = LDLibShaders.getBlitShader();
+        shader.setSampler("DiffuseSampler", colorTexture);
+        shader.apply();
+        if (afterShaderApply != null) {
+            afterShaderApply.run();
+        }
+
         GlStateManager._disableBlend();
         GlStateManager._colorMask(true, true, true, false);
         GlStateManager._disableDepthTest();
         GlStateManager._depthMask(false);
-
-        var shader = LDLibShaders.getBlitShader();
-        shader.setSampler("DiffuseSampler", colorTexture);
-        shader.apply();
         drawFullscreenQuad();
         shader.clear();
 
