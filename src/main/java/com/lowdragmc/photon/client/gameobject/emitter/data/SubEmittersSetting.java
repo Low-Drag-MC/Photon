@@ -6,7 +6,8 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.SearchComponentConfigurator;
+import com.lowdragmc.lowdraglib2.gui.ui.utils.UIElementProvider;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
@@ -26,6 +27,7 @@ import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.IntTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
@@ -35,6 +37,7 @@ import org.joml.Quaternionf;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -210,15 +213,30 @@ public class SubEmittersSetting extends ToggleGroup {
 
         @Override
         public void buildConfigurator(ConfiguratorGroup father) {
-            List<String> candidates = new ArrayList<>();
-            candidates.add("");
-            Minecraft.getInstance().getResourceManager()
-                    .listResources("fx", arg -> arg.getPath().endsWith(".fx"))
-                    .keySet().forEach(fx -> candidates.add(fx.toString().replace(":fx/", ":").replace(".fx", "")));
-            father.addConfigurators(new SelectorConfigurator<>("fx",
+            // Snapshot the candidates once instead of re-listing resources on every keystroke; the
+            // configurator is rebuilt whenever the panel is reopened, so this stays fresh enough.
+
+            father.addConfigurators(new SearchComponentConfigurator<>("fx",
                     () -> fxLocation == null ? "" : fxLocation.toString(),
-                    v -> fxLocation = v.isEmpty() ? null : ResourceLocation.parse(v),
-                    "", true, candidates, s -> s)
+                    v -> fxLocation = (v == null || v.isEmpty()) ? null : ResourceLocation.parse(v),
+                    "", true,
+                    (word, handler) -> {
+                        var search = word.toLowerCase(Locale.ROOT);
+                        List<String> candidates = new ArrayList<>();
+                        candidates.add("");
+                        Minecraft.getInstance().getResourceManager()
+                                .listResources("fx", arg -> arg.getPath().endsWith(".fx"))
+                                .keySet().forEach(fx -> candidates.add(fx.toString().replace(":fx/", ":").replace(".fx", "")));
+                        for (var candidate : candidates) {
+                            // the search runs off-thread and is cancelled when the query moves on
+                            if (Thread.currentThread().isInterrupted()) return;
+                            if (candidate.toLowerCase(Locale.ROOT).contains(search)) {
+                                handler.accept(candidate);
+                            }
+                        }
+                    },
+                    s -> s,
+                    UIElementProvider.text(s -> Component.literal(s == null || s.isEmpty() ? "---" : s)))
                     .setTips("photon.emitter.config.sub_emitters.emitter.name"));
             IConfigurable.super.buildConfigurator(father);
         }
