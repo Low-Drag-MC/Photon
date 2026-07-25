@@ -39,22 +39,13 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
      * and rotating the effect re-aims it. {@link #World}: absolute world axes, unaffected by how the
      * emitter is oriented.
      *
-     * <p>Under a non-Local simulation space the emitter's axes are taken from the particle's spawn
-     * frame (see {@code TileParticle#emitterToSim}) — frozen, because those particles were
-     * deliberately left behind in the world and should not be re-aimed by the emitter afterwards.
-     *
-     * <p><b>Beware:</b> {@link ForceOverLifetimeSetting.ForceSpace} spells the same two constants but
-     * resolves {@code Local} against the <i>live</i> emitter matrix, so on a moving or rotating emitter
-     * the two modules disagree about what "Local" means. The two should be reconciled onto one shared
-     * enum and one sampling rule; until then this divergence is deliberate rather than overlooked.
+     * <p>Under a non-Local simulation space the emitter's axes are taken from the particle's
+     * {@link com.lowdragmc.photon.client.gameobject.particle.SpawnFrame} — frozen, because those
+     * particles were deliberately left behind in the world and should not be re-aimed by the emitter
+     * afterwards. {@link ForceOverLifetimeSetting} resolves the same enum by the same rule.
      */
-    public enum Space {
-        Local,
-        World
-    }
-
     @Configurable(name = "VelocityOverLifetimeSetting.space", tips = "photon.emitter.config.velocityOverLifetime.space")
-    protected Space space = Space.Local;
+    protected ValueSpace space = ValueSpace.Local;
 
     @Configurable(name = "VelocityOverLifetimeSetting.linear", tips = "photon.emitter.config.velocityOverLifetime.linear")
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 1, curveConfig = @CurveConfig(bound = {-2, 2}, xAxis = "lifetime", yAxis = "additional velocity")))
@@ -89,7 +80,7 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
     public static class Runtime {
         private final VelocityOverLifetimeSetting config;
         public final RuntimeValue<Boolean> enable;
-        public final RuntimeValue<Space> space; // slot only (enum → no timeline binding)
+        public final RuntimeValue<ValueSpace> space; // slot only (enum → no timeline binding)
         public final RuntimeValue<NumberFunction3> linear;
         public final RuntimeValue<OrbitalMode> orbitalMode; // slot only (enum → no timeline binding)
         public final RuntimeValue<NumberFunction3> orbital;
@@ -211,16 +202,16 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
         /**
          * A simulation-space direction, re-expressed in {@code frame}'s axes (in place).
          */
-        private static Vector3f toFrame(TileParticle particle, Space frame, Vector3f simDirection) {
-            return frame == Space.World ? particle.simDirToWorld(simDirection)
+        private static Vector3f toFrame(TileParticle particle, ValueSpace frame, Vector3f simDirection) {
+            return frame == ValueSpace.World ? particle.simDirToWorld(simDirection)
                     : particle.simDirToEmitter(simDirection);
         }
 
         /**
          * A direction in {@code frame}'s axes, re-expressed in simulation space (in place).
          */
-        private static Vector3f fromFrame(TileParticle particle, Space frame, Vector3f frameDirection) {
-            return frame == Space.World ? particle.worldDirToSim(frameDirection)
+        private static Vector3f fromFrame(TileParticle particle, ValueSpace frame, Vector3f frameDirection) {
+            return frame == ValueSpace.World ? particle.worldDirToSim(frameDirection)
                     : particle.emitterDirToSim(frameDirection);
         }
 

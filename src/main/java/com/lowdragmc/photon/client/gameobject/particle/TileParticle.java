@@ -4,7 +4,7 @@ import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
-import com.lowdragmc.photon.client.gameobject.emitter.data.ForceOverLifetimeSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.ValueSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
@@ -43,29 +43,9 @@ public class TileParticle implements IParticle {
      */
     protected float localX, localY, localZ; // position in simulation space (see IParticleEmitter#getSimToWorld)
     protected float localXo, localYo, localZo;
-    /**
-     * The SPAWN FRAME: this particle's emitter, as a coordinate system, expressed in simulation space.
-     *
-     * <p>Some inputs are emitter-relative by definition — an orbital pivot, and any value the author
-     * gave "in the emitter's axes". Simulation space is not that frame: outside {@code Local} it is the
-     * world (or a custom transform), where {@link #getSimPos()} is an absolute coordinate. Reading it as
-     * if it were emitter-relative drops the orbit pivot on the world origin — hundreds of blocks away
-     * and far below the effect — which inflates the orbital radius by orders of magnitude.
-     *
-     * <p>Captured once at spawn rather than read live, so a moving emitter cannot drag the frame away
-     * from particles it already left behind. That is also what the pre-2.2.0 releases did: {@code World}
-     * simulation space was the emitter's spawn-time transform, never the identity — so a value authored
-     * as "the emitter's up" stayed the emitter's up.
-     *
-     * <p>{@code null} means identity: in {@code Local} simulation space the emitter's frame IS
-     * simulation space, so nothing is stored and every conversion below is a no-op. The emitter's
-     * origin is this matrix's translation column, not a separate field.
-     */
+    /** The frame this particle was born into; {@code null} == identity. @see SpawnFrame */
     @Nullable
-    protected Matrix4f emitterToSim;
-    /** Inverse of {@link #emitterToSim}. */
-    @Nullable
-    protected Matrix4f simToEmitter;
+    protected SpawnFrame spawnFrame;
     protected float rotationX = 180, rotationY = 180, rotationZ = 180; // rotation
     protected float rotationXo = 180, rotationYo = 180, rotationZo = 180;
     protected float sizeX = 1, sizeY = 1, sizeZ = 1; // size
@@ -151,12 +131,11 @@ public class TileParticle implements IParticle {
             setSimPos(pos, true);
             var vel = worldToSim.transformDirection(emitterToWorld.transformDirection(new Vector3f(velocityX, velocityY, velocityZ)));
             setInternalVelocity(vel);
-            // freeze the spawn frame — see emitterToSim. Copied, not referenced: Transform recomputes
-            // its cached matrices in place, so holding the reference would silently un-freeze this.
-            // The inverse is composed from the two already-cached matrices rather than inverted.
-            this.emitterToSim = new Matrix4f(worldToSim).mul(emitterToWorld);
-            this.simToEmitter = new Matrix4f(emitter.transform().worldToLocalMatrix())
-                    .mul(emitter.getSimToWorld());
+            // the frame we are born into, shared with every particle emitted at this emitter pose
+            this.spawnFrame = emitter instanceof ParticleEmitter particleEmitter
+                    ? particleEmitter.currentSpawnFrame()
+                    : new SpawnFrame(emitterToWorld, emitter.transform().worldToLocalMatrix(),
+                            worldToSim, emitter.getSimToWorld());
         }
         if (runtime.inheritVelocity.isEnable() && runtime.inheritVelocity.getMode() == InheritVelocitySetting.Mode.INITIAL) {
             addInternalVelocity(getSpaceTransformInverse().transformDirection(runtime.inheritVelocity.getVelocity(emitter)));
@@ -296,22 +275,27 @@ public class TileParticle implements IParticle {
     /**
      * This particle's offset from the emitter that spawned it, still in simulation-space axes — what
      * "emitter-relative" means for every simulation space alike. Identical to {@link #getSimPos()} in
-     * Local space. @see #emitterToSim
+     * Local space. @see SpawnFrame
      */
     public Vector3f getEmitterRelativePos() {
-        var pos = getSimPos();
-        return emitterToSim == null ? pos
-                : pos.sub(emitterToSim.m30(), emitterToSim.m31(), emitterToSim.m32());
+        return getEmitterRelativePos(0);
+    }
+
+    /** @see #getEmitterRelativePos() */
+    public Vector3f getEmitterRelativePos(float partialTicks) {
+        var pos = getSimPos(partialTicks);
+        return spawnFrame == null ? pos
+                : pos.sub(spawnFrame.originX(), spawnFrame.originY(), spawnFrame.originZ());
     }
 
     /** Rotate a direction from the spawn frame's axes into simulation space (in place). */
     public Vector3f emitterDirToSim(Vector3f direction) {
-        return emitterToSim == null ? direction : emitterToSim.transformDirection(direction);
+        return spawnFrame == null ? direction : spawnFrame.emitterDirToSim(direction);
     }
 
     /** Rotate a direction from simulation space into the spawn frame's axes (in place). */
     public Vector3f simDirToEmitter(Vector3f direction) {
-        return simToEmitter == null ? direction : simToEmitter.transformDirection(direction);
+        return spawnFrame == null ? direction : spawnFrame.simDirToEmitter(direction);
     }
 
     /** Rotate a direction from world axes into simulation space (in place). Live, not frozen — world
@@ -648,7 +632,7 @@ public class TileParticle implements IParticle {
      * The total world-space velocity. Composition order:
      * <ol>
      *     <li>{@code simToWorld * (stored velocity + velocityOverLifetime addition)}</li>
-     *     <li>{@code + forceOverLifetime} (Local: rotated by the live emitter matrix, World: as-is)</li>
+     *     <li>{@code + forceOverLifetime} (Local: the spawn frame's axes, World: as-is)</li>
      *     <li>{@code + inheritVelocity} (CURRENT mode)</li>
      *     <li>{@code * velocityOverLifetime speed modifier}</li>
      * </ol>
@@ -658,8 +642,11 @@ public class TileParticle implements IParticle {
         var velocity = getSpaceTransform().transformDirection(getInternalVelocity());
         if (runtime.forceOverLifetime.isEnable()) {
             var force = runtime.forceOverLifetime.getForce(this);
-            if (runtime.forceOverLifetime.getSimulationSpace() == ForceOverLifetimeSetting.ForceSpace.Local) {
-                emitter.transform().localToWorldMatrix().transformDirection(force);
+            if (runtime.forceOverLifetime.getSimulationSpace() == ValueSpace.Local) {
+                // the SPAWN frame's axes, not the emitter's live matrix — same rule as
+                // velocityOverLifetime, so the two "Local" dropdowns cannot mean different things.
+                // Reading it live would swing the force on particles the emitter already left behind.
+                simDirToWorld(emitterDirToSim(force));
             }
             velocity.add(force);
         }

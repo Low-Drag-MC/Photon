@@ -30,8 +30,11 @@ public class ParticleAdditionalGPUDataSetting extends AdditionalGPUDataSetting {
                     (particle, buffer, partialTick) -> buffer.put(particle.getAge())),
             Map.entry("addition_gpu_data.lifetime",
                     (particle, buffer, partialTick) -> buffer.put((float) particle.getLifetime())),
+            // "Position (local)" means relative to the emitter, which is NOT the simulation-space
+            // position: outside Local space getSimPos() is an absolute world coordinate (hundreds of
+            // blocks), which is not what a shader graph reading this channel can use.
             Map.entry("addition_gpu_data.position", (particle, buffer, partialTick) -> {
-                var pos = particle.getSimPos(partialTick);
+                var pos = particle.getEmitterRelativePos(partialTick);
                 buffer.put(pos.x).put(pos.y).put(pos.z);
             }),
             Map.entry("addition_gpu_data.velocity", (particle, buffer, partialTick) -> {
