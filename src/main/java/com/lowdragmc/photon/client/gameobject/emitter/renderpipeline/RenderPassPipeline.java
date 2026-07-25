@@ -3,7 +3,6 @@ package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 import com.google.common.collect.Maps;
 import com.lowdragmc.lowdraglib2.client.shader.HDRTarget;
 import com.lowdragmc.lowdraglib2.client.shader.LDLibShaders;
-import com.lowdragmc.lowdraglib2.client.utils.ShaderUtils;
 import com.lowdragmc.lowdraglib2.math.PositionedRect;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
@@ -12,6 +11,7 @@ import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.postfx.graph.TargetFormat;
 import com.lowdragmc.photon.client.postfx.runtime.FormatTarget;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
+import com.lowdragmc.photon.client.postfx.runtime.SceneBlit;
 import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
 import com.lowdragmc.photon.core.mixins.iris.ExtendedShaderAccessor;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
@@ -329,22 +329,23 @@ public class RenderPassPipeline extends BufferBuilder {
             // unlock depth color from iris manager
             DepthColorStorage.unlockDepthColor();
             GlStateManager._depthMask(false);
-            GlStateManager._colorMask(true, true, true, true);
+            // our output is a COMPLETE composite: replace Iris's color, never blend against it (see
+            // SceneBlit). Alpha stays masked out — the gbuffer's alpha channel is Iris's, not ours.
+            GlStateManager._disableBlend();
+            GlStateManager._colorMask(true, true, true, false);
 
-            Tesselator tesselator = RenderSystem.renderThreadTesselator();
-            BufferBuilder bufferbuilder = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION);
-            bufferbuilder.addVertex(-1, 1, 0);
-            bufferbuilder.addVertex(-1, -1, 0);
-            bufferbuilder.addVertex(1, -1, 0);
-            bufferbuilder.addVertex(1, 1, 0);
-            BufferUploader.draw(bufferbuilder.buildOrThrow());
+            SceneBlit.drawFullscreenQuad();
             LDLibShaders.getBlitShader().clear();
 
+            // hand back the exact state this branch used to leave
+            GlStateManager._colorMask(true, true, true, true);
+            GlStateManager._enableBlend();
+            RenderSystem.defaultBlendFunc();
             GlStateManager._depthMask(true);
             GlStateManager._enableDepthTest();
             GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainTarget.frameBufferId);
         } else {
-            ShaderUtils.fastBlit(outputTarget, mainTarget);
+            SceneBlit.writeBack(outputTarget, mainTarget);
         }
 
         // restore the UI clip state the scene render suspended (the box outlives the disabled test)

@@ -144,12 +144,12 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
             int[] scissorBox = new int[4];
             org.lwjgl.opengl.GL11.glGetIntegerv(org.lwjgl.opengl.GL11.GL_SCISSOR_BOX, scissorBox);
             RenderSystem.enableScissor(viewportX, viewportY, viewportWidth, viewportHeight);
-            com.lowdragmc.lowdraglib2.client.utils.ShaderUtils.fastBlit(output, mainTarget);
+            com.lowdragmc.photon.client.postfx.runtime.SceneBlit.writeBack(output, mainTarget);
             RenderSystem.disableScissor();
             GlStateManager._scissorBox(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]);
         }
         com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool.release(chain);
-        // fastBlit/chain leave other framebuffers bound + bindWrite resets the viewport
+        // the write-back/chain leave other framebuffers bound + bindWrite resets the viewport
         mainTarget.bindWrite(true);
         RenderSystem.viewport(viewportX, viewportY, viewportWidth, viewportHeight);
     }

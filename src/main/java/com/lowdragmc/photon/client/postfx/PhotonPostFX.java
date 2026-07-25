@@ -1,11 +1,12 @@
 package com.lowdragmc.photon.client.postfx;
 
-import com.lowdragmc.lowdraglib2.client.utils.ShaderUtils;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool;
+import com.lowdragmc.photon.client.postfx.runtime.SceneBlit;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -94,8 +95,7 @@ public final class PhotonPostFX {
         if (!stack.hasPending() || stack.isConsumedThisFrame()) return;
         // Iris keeps its own framebuffers; discovering the right one outside the particle draw is
         // unverified there (plan risk R3) — opt-in via config under shader packs.
-        if (Photon.isUsingShaderPack()
-                && !com.lowdragmc.photon.PhotonConfig.INSTANCE.enableCustomEffectsWithIrisShader.get()) {
+        if (Photon.isUsingShaderPack() && !PhotonConfig.INSTANCE.enableCustomEffectsWithIrisShader.get()) {
             return;
         }
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
@@ -103,7 +103,7 @@ public final class PhotonPostFX {
         chain.copyColorFrom(mainTarget);
         var output = stack.consumeAndExecute(chain, false, mainTarget.getDepthTextureId());
         if (output != chain) {
-            ShaderUtils.fastBlit(output, mainTarget);
+            SceneBlit.writeBack(output, mainTarget);
         }
         PostFXTargetPool.release(chain);
         // copyColorFrom / the chain leave other framebuffers bound — everything after this stage
