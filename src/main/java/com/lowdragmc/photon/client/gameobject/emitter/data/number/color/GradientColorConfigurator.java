@@ -127,7 +127,7 @@ public class GradientColorConfigurator extends ValueConfigurator<GradientColor> 
     protected void onDropObject(@NotNull Object object) {
         if (object instanceof GradientResource.Gradients gradients) {
             if (value == null) return;
-            onValueUpdatePassively(gradients.gradient0);
+            onValueUpdatePassively(gradients.gradient0.copy());
             updateValue();
         } else {
             super.onDropObject(object);
