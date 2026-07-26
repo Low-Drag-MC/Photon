@@ -306,9 +306,21 @@ public class RenderPassPipeline extends BufferBuilder {
         }
 
         var doBloom = PhotonParticleManager.isSceneBloomEnabled() && PhotonConfig.INSTANCE.enableBloom.get() && (!Photon.isUsingShaderPack() || PhotonConfig.INSTANCE.enableBloomWithIrisShader.get());
-        // the post-effect chain (builtin bloom at priority 0 + this frame's requested custom effects);
-        // once per frame — the second queue's build passes through (previously bloom ran twice)
-        RenderTarget outputTarget = PostEffectStack.currentSink().consumeAndExecute(DRAW_TARGET, doBloom);
+        // Bloom and the custom effect chain want DIFFERENT timing, and the opaque/translucent queues
+        // own separate pipelines that may both build in one frame:
+        //
+        //  - BLOOM must run on EVERY build. It is an HDR effect, and DRAW_TARGET (RGBA16F) is the only
+        //    place this build's overbright exists: writing back to the main target (RGBA8) clamps it to
+        //    1, and the bright pass keeps only luma > Threshold (1 by default). So a build that skips
+        //    bloom can never get it back — its highlights are already gone by the next build.
+        //  - THE EFFECT CHAIN must run once, on the LAST build. Effects are whole-frame image
+        //    operations; running them per build applies them twice.
+        //
+        // Treating both the same is what broke this: whichever queue built first consumed the frame,
+        // so a single opaque particle could take the bloom away from every translucent one.
+        RenderTarget outputTarget = isLastBuildThisFrame()
+                ? PostEffectStack.currentSink().consumeAndExecute(DRAW_TARGET, doBloom)
+                : (doBloom ? PhotonPostProcessing.postTarget(DRAW_TARGET) : DRAW_TARGET);
 
         // a sub-viewport means this scene is embedded inside a larger frame (the editor scene view):
         // the chain processed the whole frame, but the write-back must not touch pixels outside the
@@ -352,6 +364,17 @@ public class RenderPassPipeline extends BufferBuilder {
 
         RenderSystem.setShader(GameRenderer::getParticleShader);
         current = null;
+    }
+
+    /**
+     * Whether no further Photon build follows this one this frame. The opaque queue always renders
+     * before the translucent one (vanilla splits its particle pass in two, and the editor scene calls
+     * its manager once per filter), so the translucent build is always last — and an opaque build is
+     * only last when nothing is queued behind it.
+     */
+    private boolean isLastBuildThisFrame() {
+        return this == ParticleQueueRenderType.TRANSLUCENT_QUEUE.pipeline
+                || !ParticleQueueRenderType.TRANSLUCENT_QUEUE.hasQueuedParticles();
     }
 
     private void clearRenderingState() {

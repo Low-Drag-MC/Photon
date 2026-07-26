@@ -9,6 +9,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -16,6 +17,8 @@ import net.minecraft.client.Camera;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.Queue;
 import java.util.function.Predicate;
 
 @OnlyIn(Dist.CLIENT)
@@ -37,6 +40,19 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
      */
     @Getter
     private static boolean sceneBloomEnabled = true;
+    /**
+     * The editor-scene manager currently rendering, or {@code null} in the world. Lets the render
+     * pipeline ask "are there still particles queued for a later pass this frame?" against the right
+     * particle source — see {@code ParticleQueueRenderType#hasQueuedParticles}.
+     */
+    @Nullable
+    @Getter
+    private static PhotonParticleManager renderingManager = null;
+
+    /** The scene's particles by render type (LDLib2 keeps the map protected). */
+    public Map<ParticleRenderType, Queue<Particle>> particlesByRenderType() {
+        return particles;
+    }
     /**
      * True while a timeline seek replays ticks that will never be rendered: particles may skip
      * pure per-tick visual recomputes (color/rotation/light — see TileParticle.updateChanges).
@@ -86,6 +102,7 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks, Predicate<ParticleRenderType> renderTypeFilter) {
         drawMode = sceneView.getDrawMode();
         sceneBloomEnabled = sceneView.isBloomEnabled();
+        renderingManager = this;
         // route post-effect submission/consumption to the isolated editor-scene stack
         com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.setEditorSceneRendering(true);
         com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE
@@ -112,6 +129,7 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         }
         drawMode = null;
         sceneBloomEnabled = true;
+        renderingManager = null;
         com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.setEditorSceneRendering(false);
     }
 
