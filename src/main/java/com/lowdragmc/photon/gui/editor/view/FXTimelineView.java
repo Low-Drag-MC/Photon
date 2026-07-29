@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor.view;
 
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.configurator.EditAction;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
@@ -408,7 +409,7 @@ public class FXTimelineView extends View implements TimelineContext {
         ruler.setId("timeline.ruler").layout(layout -> {
             layout.widthPercent(100);
             layout.height(RULER_HEIGHT);
-        }).setOverflowVisible(false).style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) this::drawRuler))
+        }).setOverflowVisible(false).style(style -> style.backgroundTexture(GuiTexture.of(this::drawRuler)))
                 .addEventListener(UIEvents.MOUSE_DOWN, e -> {
                     if (e.button == 0) { e.currentElement.startDrag(null, null); scrubTo(e); }
                     else if (e.button == 1) { openRulerMenu(e.x, e.y); e.stopPropagation(); }
@@ -427,7 +428,7 @@ public class FXTimelineView extends View implements TimelineContext {
             layout.gapAll(1);
         });
         // cross-track snap guides at the dragged clip's edges + the marquee box, spanning all lanes
-        lanesContainer.style(style -> style.overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+        lanesContainer.style(style -> style.overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
             drawGroupDragGuide(graphics);
             if (dragGuideClip != null) {
                 drawGuideLine(graphics, dragGuideClip.start(), x, y, w, h);
@@ -438,7 +439,7 @@ public class FXTimelineView extends View implements TimelineContext {
                 drawGuideLine(graphics, subDragGuideEnd, x, y, w, h);
             }
             if (marqueeActive) drawMarquee(graphics);
-        }));
+        })));
         // marquee multi-select: a press-drag on empty lane area (clips stopPropagation so a box never
         // starts on a clip). bubbles here from the lanes.
         lanesContainer.addEventListener(UIEvents.MOUSE_DOWN, e -> {
@@ -474,14 +475,14 @@ public class FXTimelineView extends View implements TimelineContext {
                 }).layout(layout -> layout.widthPercent(100).height(HSCROLL_HEIGHT));
         // one continuous playhead over the whole lanes column (ruler → strip → lanes), drawn on top so it
         // reads as a single line instead of a segment per track / per band
-        column.style(style -> style.overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) ->
-                drawPlayhead(graphics, x, y, w, Math.max(0, h - HSCROLL_HEIGHT), pt)));
+        column.style(style -> style.overlayTexture(GuiTexture.of((graphics, x, y, w, h) ->
+                drawPlayhead(graphics, x, y, w, Math.max(0, h - HSCROLL_HEIGHT), graphics.partialTick))));
         return column.addChildren(ruler, markerStrip, rightScroller, hScroll);
     }
 
     private void setupMarkerStrip() {
         markerStrip.setId("timeline.markers").layout(layout -> layout.widthPercent(100).height(MARKER_HEIGHT))
-                .setOverflowVisible(false).style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) this::drawMarkerStrip));
+                .setOverflowVisible(false).style(style -> style.backgroundTexture(GuiTexture.of(this::drawMarkerStrip)));
         markerStrip.addEventListener(UIEvents.MOUSE_DOWN, this::onMarkerStripMouseDown);
         markerStrip.addEventListener(UIEvents.DOUBLE_CLICK, this::onMarkerStripDoubleClick);
         markerStrip.addEventListener(UIEvents.MOUSE_WHEEL, this::onZoom);
@@ -524,7 +525,7 @@ public class FXTimelineView extends View implements TimelineContext {
         return acc[0];
     }
 
-    private void drawMarkerStrip(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTick) {
+    private void drawMarkerStrip(GUIContext graphics, float x, float y, float width, float height) {
         // same bg as the ruler so ruler + strip read as one continuous header band
         DrawerHelperClient.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
         var runtime = fxEditor.runtime;
@@ -756,7 +757,7 @@ public class FXTimelineView extends View implements TimelineContext {
 
     // ------------------------------------------------------------------ ruler drawing
 
-    private void drawRuler(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTick) {
+    private void drawRuler(GUIContext graphics, float x, float y, float width, float height) {
         DrawerHelperClient.drawSolidRect(graphics, x, y, width, height, ColorPattern.BLACK.color);
         var origin = originX();
         var visibleTicks = width / scale;
@@ -779,7 +780,7 @@ public class FXTimelineView extends View implements TimelineContext {
             DrawerHelperClient.drawText(graphics, String.valueOf(Math.round(t)), mx + 2, y + 3, 1f, ColorPattern.WHITE.color);
         }
         drawContentExtent(graphics, x, y, width, height);
-        drawPlayhead(graphics, x, y, width, height, partialTick);
+        drawPlayhead(graphics, x, y, width, height, graphics.partialTick);
     }
 
     /** A 1px blue bar along the ruler's bottom edge, spanning tick 0 to the furthest content
@@ -1067,8 +1068,8 @@ public class FXTimelineView extends View implements TimelineContext {
 
     private UIElement createResizeHandle(TrackUIState state, UIElement leftWrapper, UIElement rightWrapper) {
         var handle = new UIElement().setId("timeline.expandResize").layout(layout -> layout.widthPercent(100).height(4))
-                .style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) ->
-                        DrawerHelperClient.drawSolidRect(graphics, x + w / 2 - 6, y + h / 2f, 12, 1, ColorPattern.GRAY.color)));
+                .style(style -> style.backgroundTexture(GuiTexture.of((graphics, x, y, w, h) ->
+                        DrawerHelperClient.drawSolidRect(graphics, x + w / 2 - 6, y + h / 2f, 12, 1, ColorPattern.GRAY.color))));
         handle.addEventListener(UIEvents.MOUSE_DOWN, e -> { handle.startDrag(null, null); e.stopPropagation(); });
         handle.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
             var newH = Math.max(MIN_EXPANDED, Math.round(e.y - rightWrapper.getPositionY()));
@@ -1088,7 +1089,7 @@ public class FXTimelineView extends View implements TimelineContext {
             layout.alignItems(AlignItems.CENTER); // center the fixed-height content bar in a taller row
             layout.gapAll(2);
             layout.paddingLeft(2 + depth * 10f); // indent nested (grouped) tracks
-        }).style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+        }).style(style -> style.backgroundTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     DrawerHelperClient.drawSolidRect(graphics, x, y, w, h,
                             isTrackSelected(track) ? ColorPattern.GRAY.color : ColorPattern.T_GRAY.color);
                     if (track.mute()) {
@@ -1096,8 +1097,8 @@ public class FXTimelineView extends View implements TimelineContext {
                     } else if (track.lock()) {
                         DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
                     }
-                })
-                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                }))
+                .overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     if (reorderTarget == track) {
                         if (reorderInto) {
                             DrawerHelperClient.drawBorder(graphics, x, y, w, h, ColorPattern.WHITE.color, 1);
@@ -1105,7 +1106,7 @@ public class FXTimelineView extends View implements TimelineContext {
                             DrawerHelperClient.drawSolidRect(graphics, x, reorderBelow ? y + h - 1 : y, w, 1, ColorPattern.WHITE.color);
                         }
                     }
-                }));
+                })));
         header.addEventListener(UIEvents.DRAG_PERFORM, e -> onReorderDrop(e, track));
         header.addEventListener(UIEvents.DRAG_ENTER, e -> updateReorderTarget(header, track, e));
         header.addEventListener(UIEvents.DRAG_UPDATE, e -> updateReorderTarget(header, track, e));

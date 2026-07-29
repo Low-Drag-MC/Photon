@@ -1,8 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
-import com.lowdragmc.kilagraph.rendertype.compiler.GlslType;
-import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeFactory;
+import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeGraphMaterial;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
@@ -16,8 +16,15 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.api.IFieldValueConfigurable;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.client.AutoCloseCleaner;
+import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
+import com.lowdragmc.photon.client.render.MaterialPreviewRenderer;
+import com.lowdragmc.photon.client.render.PhotonPipelines;
+import com.lowdragmc.photon.client.render.PhotonRenderTypes;
+import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.lowdragmc.photon.client.shadergraph.runtime.ShaderGraphRuntime;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import dev.vfyjxf.taffy.style.AlignItems;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.ByteTag;
@@ -26,6 +33,7 @@ import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtOps;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.NotNull;
@@ -38,7 +46,6 @@ import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * A material driven by a {@link com.lowdragmc.photon.client.shadergraph.ShaderGraph} resource. The
@@ -48,8 +55,10 @@ import java.util.Optional;
  * values right before its draw, so materials never share value state. Untouched variables keep tracking
  * the graph's defaults (edits to the graph propagate on recompile).
  *
- * <p>Works on every Photon render path: {@code begin} picks the shader variant matching the context's
- * define ({@code ""} CPU quads/trails/beams, {@code PARTICLE_INSTANCE}, {@code PARTICLE_MODEL_INSTANCE}).
+ * <p>Works on every Photon render path: one RenderType per {@code MaterialSetting} state (which carries the
+ * primitive mode, so CPU trails/ara-trails get their own pipeline), off a pipeline the emitter re-derives
+ * per instancing variant ({@code ""} CPU geometry, {@code PARTICLE_INSTANCE}, {@code PARTICLE_MODEL_INSTANCE},
+ * {@code TRAIL_INSTANCE}, ...) — in 26.1 the shader define is a pipeline property, not a bind-time choice.
  * Scene color/depth read the render pipeline's scene sampler (Iris-compatible), never KilaGraph's own
  * capture.</p>
  */
@@ -147,17 +156,114 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         return entry != null && entry.isValid() && entry.isUsesCustomData();
     }
 
-    // TODO(M2): 1.21 getShader() staged the shared compiled ShaderInstance variant with
-    // KGBuiltinUniforms + per-material KGMaterialValues + Photon pipeline dynamic uniforms
-    // (viewport, camera-relative kg_CameraBlockPos/Offset, timeline-driven kg_Time, scene
-    // color/depth samplers). KilaGraph 26.1 replaced that runtime with RenderTypeFactory /
-    // MaterialUniformBuffer / engine UBO blocks — rebuild on that model.
+    // ---- 26.1 runtime: KilaGraph RenderTypeFactory material ----------------------------------------
+
+    /**
+     * This material instance's OWN GPU lifecycle (the {@code CustomShaderMaterial.ShaderState} pattern):
+     * the live KilaGraph material — which owns the uniform buffer and the sampler textures — plus the
+     * Photon RenderTypes built over it, one per {@code MaterialSetting} state. Holds NO back-reference
+     * to the material, so the {@link AutoCloseCleaner} registered on the material fires when it is GC'd
+     * (dropped from the resource library / no FX references it) and frees them on the render thread.
+     * Without this the RenderTypes would stay in the drain's DrawInfo index forever, pinning the
+     * compiled graph and its UBO. The compiled pipelines themselves stay deduped in {@code PhotonPipelines}.
+     */
+    private static final class GraphState implements AutoCloseable {
+        final RenderTypeGraphMaterial material;
+        final Map<PhotonPipelines.ParticlePipelineKey, RenderType> renderTypes = new HashMap<>();
+        private boolean closed;
+
+        GraphState(RenderTypeGraphMaterial material) {
+            this.material = material;
+        }
+
+        @Override
+        public void close() {
+            if (closed) return;
+            closed = true;
+            renderTypes.values().forEach(PhotonRenderTypes::dropCustomShader);
+            renderTypes.clear();
+            material.close();
+        }
+    }
+
+    @Nullable
+    private transient GraphState state;
+    /** The entry {@link #state} was built from — identity marker; null-state + set entry = build failed. */
+    @Nullable
+    private transient ShaderGraphRuntime.Entry compiledMaterialEntry;
+    /** Overrides must be (re)staged into the state's value store before the next draw. */
+    private transient boolean overridesStale = true;
+
+    /**
+     * KilaGraph generates the GLSL; <b>Photon owns the draw</b> — the 1.21 split, where the graph was
+     * compiled to a shader ({@code KGShaderResourceProvider}) that Photon then rendered through its own pass.
+     * So the RenderType here is built from Photon's pipeline with THIS emitter's {@link MaterialSetting}
+     * state, which is what keeps blend/depth/cull, bloom participation and the GPU-instanced variants
+     * working for graph materials. The KilaGraph material is still what owns the uniform values and
+     * textures; the drain binds them.
+     */
+    @Override
+    @Nullable
+    public RenderType getRenderType(MaterialSetting setting, VertexFormat.Mode mode) {
+        var entry = refreshEntry();
+        if (entry == null || !entry.isValid() || entry.getCompiled() == null) {
+            return null; // missing/broken graph: the material preview surfaces the compile error
+        }
+        if (compiledMaterialEntry != entry) {
+            // this frame's queued jobs may still reference the old state — close it at frame end
+            if (state != null) {
+                PhotonWorldRenderState.closeAtFrameEnd(state);
+                state = null;
+            }
+            var material = RenderTypeFactory.createMaterial(entry.getCompiled());
+            if (material != null) {
+                state = new GraphState(material);
+                AutoCloseCleaner.registerRenderThread(this, state);
+            }
+            compiledMaterialEntry = entry;
+            overridesStale = true;
+        }
+        var current = state;
+        if (current == null) {
+            return null; // generated pipeline failed on the GPU (RenderTypeFactory logged it)
+        }
+        if (overridesStale) {
+            overrides.forEach(this::applyOverride);
+            overridesStale = false;
+        }
+        var key = setting.pipelineKey(mode);
+        var existing = current.renderTypes.get(key);
+        if (existing != null) {
+            return existing;
+        }
+        var created = PhotonRenderTypes.createGraphShader(entry.getCompiled(), current.material, key,
+                entry.getUsedChannelMask(), entry.isUsesCustomData()).orElse(null);
+        if (created != null) {
+            current.renderTypes.put(key, created);
+        }
+        return created;
+    }
 
     // ---- overrides -----------------------------------------------------------------------------
 
-    /** TODO(M2): re-apply the override into the compiled material's live value store (was
-     *  KGMaterialValues). Until then overrides are only recorded + persisted. */
+    /** Stage an override into the compiled material's live value store (was KGMaterialValues in 1.21). */
     private void applyOverride(String name, Object value) {
+        var current = state;
+        if (current == null) return;
+        var material = current.material;
+        switch (value) {
+            case Float f -> material.setUniform(name, f);
+            case Integer color -> material.setColorUniform(name, color);
+            case Boolean b -> material.setUniform(name, b ? 1f : 0f);
+            case Vector2f v -> material.setUniform(name, v);
+            case Vector3f v -> material.setUniform(name, v);
+            case Vector4f v -> material.setUniform(name, v);
+            case RenderTypeGraphTypes.GradientValue gradient -> material.setGradient(name, gradient);
+            case RenderTypeGraphTypes.CurveValue curve -> material.setCurve(name, curve);
+            case RenderTypeGraphTypes.Sampler2DValue sampler ->
+                    material.setTexture(name, Identifier.tryParse(sampler.location()));
+            default -> { }
+        }
     }
 
     // ---- serialization ---------------------------------------------------------------------------
@@ -277,6 +383,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
 
     private void invalidateOverridesCache() {
         cachedOverridesTag = null;
+        overridesStale = true; // re-stage values into the compiled material before the next draw
     }
 
     /**
@@ -310,7 +417,14 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
     public IGuiTexture preview() {
         return DynamicTexture.of(() -> isCompiledError() ?
                 new TextTexture(getCompiledErrorMessage().isEmpty() ? "error" : getCompiledErrorMessage(), 0xffff0000) :
-                IGuiTexture.MISSING_TEXTURE); // TODO(M2): live shader preview returns with the pipeline path
+                MaterialPreviewRenderer.previewOf(this));
+    }
+
+    @Override
+    public IGuiTexture previewLive() {
+        return DynamicTexture.of(() -> isCompiledError() ?
+                new TextTexture(getCompiledErrorMessage().isEmpty() ? "error" : getCompiledErrorMessage(), 0xffff0000) :
+                MaterialPreviewRenderer.livePreviewOf(this));
     }
 
     @Override

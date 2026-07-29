@@ -4,6 +4,9 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonCommonProxy;
 import com.lowdragmc.photon.client.fx.fxpack.FXPacks;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMeshCache;
+import com.lowdragmc.photon.client.render.PhotonParticleGroup;
+import com.lowdragmc.photon.client.render.PhotonParticleRenderTypes;
+import com.lowdragmc.photon.client.render.PhotonPipelines;
 import net.minecraft.server.packs.PackType;
 import net.neoforged.neoforge.event.AddPackFindersEvent;
 import net.neoforged.bus.api.IEventBus;
@@ -21,6 +24,19 @@ public class PhotonClientProxy extends PhotonCommonProxy {
         eventBus.addListener(this::registerModels);
         eventBus.addListener(this::registerReloadListeners);
         eventBus.addListener(this::addPackFinders);
+        eventBus.addListener(this::registerRenderPipelines);
+        eventBus.addListener(this::registerParticleGroups);
+    }
+
+    @SubscribeEvent
+    public void registerRenderPipelines(net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent event) {
+        PhotonPipelines.register(event);
+    }
+
+    /** Fired per ParticleEngine construction — world and editor scene engines all get the group. */
+    @SubscribeEvent
+    public void registerParticleGroups(net.neoforged.neoforge.client.event.RegisterParticleGroupsEvent event) {
+        event.register(PhotonParticleRenderTypes.FX, PhotonParticleGroup::new);
     }
 
     /** Mount every .fxpack as a hidden, always-on, lowest-priority resource pack; see {@link FXPacks}. */
@@ -34,11 +50,14 @@ public class PhotonClientProxy extends PhotonCommonProxy {
     @SubscribeEvent
     public void registerReloadListeners(AddClientReloadListenersEvent event) {
         event.addListener(Photon.id("mesh_cache"), PhotonMeshCache.INSTANCE);
+        // let custom-shader materials re-read their JSON layout + retry failed compiles after a reload
+        event.addListener(Photon.id("shader_reload"),
+                (net.minecraft.server.packs.resources.ResourceManagerReloadListener)
+                        resourceManager -> com.lowdragmc.photon.client.render.PhotonRenderTypes.onResourceReload());
     }
 
     @SubscribeEvent
     public void clientSetup(final FMLClientSetupEvent e) {
-        e.enqueueWork(PhotonShaders::init);
         // Touch the registry to trigger annotation scanning; classes annotated with @NodeAttribute
         // bound to ShaderGraph self-register (mirrors KilaGraph's own registry bootstrap).
         Photon.LOGGER.info("Photon shader graph nodes loaded: {}",

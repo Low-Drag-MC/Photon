@@ -1,24 +1,35 @@
 #version 330 core
 
 #moj_import <fog.glsl>
+#moj_import <minecraft:dynamictransforms.glsl>
+#moj_import <minecraft:projection.glsl>
+#moj_import <minecraft:sample_lightmap.glsl>
 #moj_import <photon:particle.glsl>
 
 uniform sampler2D Sampler2;
 
-uniform mat4 ModelViewMat;
-uniform mat4 ProjMat;
-uniform int FogShape;
-
-out float vertexDistance;
+out float sphericalVertexDistance;
+out float cylindricalVertexDistance;
 out vec2 texCoord0;
 out vec4 vertexColor;
 
 void main() {
     ParticleData data = getParticleData();
 
-    gl_Position = ProjMat * ModelViewMat * vec4(data.Position, 1.0);
+    vec3 pos = data.Position;
+#if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE) || defined(TRAIL_INSTANCE) \
+ || defined(ARA_TRAIL_INSTANCE) || defined(ARA_TRAIL_TUBE_INSTANCE) || defined(BEAM_INSTANCE)
+    // 26.1 editor scenes extract eye-relative (SceneCamera position() is zero by design);
+    // ModelOffset carries the facing-eye -> render-origin delta back (zero in-world)
+    pos += ModelOffset;
+#endif
 
-    vertexDistance = fog_distance(data.Position, FogShape);
+    gl_Position = ProjMat * ModelViewMat * vec4(pos, 1.0);
+
+    sphericalVertexDistance = fog_spherical_distance(pos);
+    cylindricalVertexDistance = fog_cylindrical_distance(pos);
     texCoord0 = data.UV;
-    vertexColor = data.Color * texelFetch(Sampler2, data.LightUV / 16, 0);
+    // 26.1: the lightmap is GPU-generated and texelFetch(LightUV/16) no longer lands on valid
+    // texels — vanilla particle.vsh switched to sample_lightmap(); same forced delta here
+    vertexColor = data.Color * sample_lightmap(Sampler2, data.LightUV);
 }

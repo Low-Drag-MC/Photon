@@ -16,14 +16,25 @@ import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
-import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.forcefield.ForceFieldObject;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
+import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
+import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
+import com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle;
+import com.lowdragmc.photon.client.gameobject.particle.renderer.AraTrailParticleRenderer;
+import com.lowdragmc.photon.client.gameobject.particle.renderer.TileParticleRenderer;
+import com.lowdragmc.photon.client.gameobject.particle.renderer.TrailParticleRenderer;
+import com.lowdragmc.photon.client.render.PhotonCameraUtils;
+import com.lowdragmc.photon.client.render.PhotonFXRenderState;
+import com.lowdragmc.photon.client.render.PhotonPipelines;
+import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import net.minecraft.client.Camera;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -553,27 +564,207 @@ public class ParticleEmitter extends Emitter {
         this.emissionRateAccum = 0;
     }
 
-    @Override
-    public boolean useTranslucentPipeline() {
-        // slot-or-config layer: honour a per-instance layer override for the pipeline choice too
-        return runtime().renderer.getLayer() == RendererSetting.Layer.Translucent;
-    }
-
     /** The render pass this emitter draws through (per-instance override pass, or the shared singleton). */
     public PhotonFXRenderPass effectiveRenderPass() {
         return runtime().effectiveRenderPass();
     }
 
-    public void prepareRenderPass(RenderPassPipeline buffer) {
-        if (isVisible()) {
-            // all of this emitter's particles draw through its single effective pass (the override
-            // pass when overridden, else the shared config singleton); equal effective passes merge
-            var pass = effectiveRenderPass();
-            for (var entry : this.particles.entrySet()) {
-                var queue = entry.getValue();
-                if (!queue.isEmpty()) {
-                    buffer.pipeQueue(pass, queue);
+    /** Lazily built CPU renderers (were owned by the 1.21 RenderPasses): quads for the tiles, ribbon/
+     *  triangle renderers for the embedded per-particle trails. Transient render-only state. */
+    @Nullable
+    private transient TileParticleRenderer extractRenderer;
+    @Nullable
+    private transient TrailParticleRenderer trailExtractRenderer;
+    @Nullable
+    private transient AraTrailParticleRenderer araTrailExtractRenderer;
+
+    @Override
+    public com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting.Runtime rendererRuntime() {
+        return runtime().renderer;
+    }
+
+    @Override
+    public void extractBatches(PhotonFXRenderState state, Camera camera, float partialTicks) {
+        // GPU-instanced tile quads when the config qualifies; CPU baking otherwise
+        if (!(canInstanceTiles() && extractInstancedTiles(state, camera, partialTicks))) {
+            super.extractBatches(state, camera, partialTicks); // the tile quads (CPU)
+        }
+        // The embedded per-particle trails (TrailsSetting) are separate geometry groups: their own
+        // sub-config renderer/materials and primitive mode, mirroring TrailEmitter/AraTrailEmitter.
+        // Queues are homogeneous (keyed by the spawning config's render pass), so the head's type
+        // identifies each queue's group.
+        var trails = config.trails;
+        if (hasParticlesOf(TrailParticle.class)) {
+            if (trailExtractRenderer == null) {
+                trailExtractRenderer = new TrailParticleRenderer();
+            }
+            var s = trails.config.additionalGPUDataSetting;
+            var instanced = trails.config.defaultRenderRuntime.isUseGPUInstance();
+            if (instanced) {
+                // capacity is PER TRAIL: each writes up to tails+1 segments and tails+3 points
+                // (pushed head + 2 pads) — the 1.21 pre-scan bounds
+                var tails = 0;
+                var trailCount = 0;
+                for (var queue : particles.values()) {
+                    if (queue.peek() instanceof TrailParticle) {
+                        for (var p : queue) {
+                            tails += ((TrailParticle) p).getTails().size();
+                            trailCount++;
+                        }
+                    }
                 }
+                var offset = new Vector3f(PhotonCameraUtils.facingEye(camera))
+                        .sub(PhotonCameraUtils.renderOrigin(camera));
+                instanced = extractInstancedGroup(camera, trails.config.defaultRenderRuntime, s,
+                        PhotonPipelines.InstancedVariant.TRAIL,
+                        BaseMesh.quads(PhotonWorldRenderState.segmentQuad(), 6),
+                        (tails + trailCount) * 4, (tails + 3 * trailCount) * 12, offset,
+                        (instances, points, data, custom) -> {
+                            var count = 0;
+                            for (var queue : particles.values()) {
+                                if (queue.peek() instanceof TrailParticle) {
+                                    count += trailExtractRenderer.fillInstances(queue, camera, partialTicks,
+                                            instances, points, s, data, custom);
+                                }
+                            }
+                            return count;
+                        });
+            }
+            if (!instanced) {
+                extractGroup(state, camera, partialTicks, trails.config.defaultRenderRuntime,
+                        VertexFormat.Mode.TRIANGLE_STRIP, (geometry, cam, pt) ->
+                                renderQueuesOf(TrailParticle.class,
+                                        queue -> trailExtractRenderer.renderQueue(geometry, queue, cam, pt)));
+            }
+        }
+        if (hasParticlesOf(AraTrailParticle.class)) {
+            if (araTrailExtractRenderer == null) {
+                araTrailExtractRenderer = new AraTrailParticleRenderer(trails.araConfig);
+            }
+            var s = trails.araConfig.additionalGPUDataSetting;
+            var araTube = trails.araConfig.section.isEnable();
+            var instanced = trails.araConfig.defaultRenderRuntime.isUseGPUInstance()
+                    && (araTube || !(trails.araConfig.highQualityCorners
+                            && trails.araConfig.alignment != AraTrailConfig.TrailAlignment.Local));
+            if (instanced) {
+                var pointCapacity = 2;
+                for (var queue : particles.values()) {
+                    if (queue.peek() instanceof AraTrailParticle) {
+                        for (var p : queue) {
+                            pointCapacity += ((AraTrailParticle) p).getPoints().size()
+                                    * Math.max(1, trails.araConfig.smoothness) + 2;
+                        }
+                    }
+                }
+                var araMesh = araTube ? araTrailExtractRenderer.tubeMesh()
+                        : BaseMesh.quads(PhotonWorldRenderState.araQuad(), 6);
+                instanced = araMesh != null
+                        && extractInstancedGroup(camera, trails.araConfig.defaultRenderRuntime, s,
+                        araTube ? PhotonPipelines.InstancedVariant.ARA_TUBE : PhotonPipelines.InstancedVariant.ARA,
+                        araMesh,
+                        pointCapacity * (araTube ? 1 : 3), pointCapacity * 16, new Vector3f(),
+                        (instances, points, data, custom) -> {
+                            var count = 0;
+                            for (var queue : particles.values()) {
+                                if (queue.peek() instanceof AraTrailParticle) {
+                                    count += araTrailExtractRenderer.fillInstances(queue, camera, partialTicks,
+                                            araTube, instances, points, data, custom);
+                                }
+                            }
+                            return count;
+                        });
+            }
+            if (!instanced) {
+                extractGroup(state, camera, partialTicks, trails.araConfig.defaultRenderRuntime,
+                        VertexFormat.Mode.TRIANGLES, (geometry, cam, pt) ->
+                                renderQueuesOf(AraTrailParticle.class,
+                                        queue -> araTrailExtractRenderer.renderQueue(geometry, queue, cam, pt)));
+            }
+        }
+    }
+
+    /**
+     * Instanced eligibility: billboard modes + Model, no additional-GPU-data streams (their
+     * layouts change the instance stride / need extra texel buffers — CPU fallback keeps them
+     * correct until a follow-up phase ports them).
+     */
+    private boolean canInstanceTiles() {
+        var renderer = runtime().renderer;
+        var setting = config.additionalGPUDataSetting;
+        return renderer.isUseGPUInstance()
+                && renderer.getRenderMode() != ParticleRendererSetting.Mode.None;
+    }
+
+    /** Extract the tiles as instanced draws (billboard quad or baked model mesh). */
+    private boolean extractInstancedTiles(PhotonFXRenderState state, Camera camera, float partialTicks) {
+        if (extractRenderer == null) {
+            extractRenderer = new TileParticleRenderer(runtime().renderer);
+        }
+        var tileCount = 0;
+        for (var queue : particles.values()) {
+            if (queue.peek() instanceof TileParticle) {
+                tileCount += queue.size();
+            }
+        }
+        var model = runtime().renderer.getRenderMode() == ParticleRendererSetting.Mode.Model;
+        com.mojang.blaze3d.buffers.GpuBuffer vertices;
+        int indexCount;
+        if (model) {
+            vertices = extractRenderer.modelMeshBuffer();
+            indexCount = extractRenderer.modelIndexCount();
+            if (vertices == null || indexCount == 0) {
+                return false; // no mesh — CPU path renders the fallback
+            }
+        } else {
+            vertices = PhotonWorldRenderState.tileQuad();
+            indexCount = 6;
+        }
+        var floats = model ? TileParticleRenderer.MODEL_INSTANCE_FLOATS : TileParticleRenderer.INSTANCE_FLOATS;
+        return extractInstancedGroup(camera, runtime().renderer, config.additionalGPUDataSetting,
+                model ? PhotonPipelines.InstancedVariant.MODEL : PhotonPipelines.InstancedVariant.TILE,
+                BaseMesh.quads(vertices, indexCount), tileCount * floats, 0, new org.joml.Vector3f(),
+                (instances, points, data, custom) -> {
+                    var count = 0;
+                    var setting = config.additionalGPUDataSetting;
+                    for (var queue : particles.values()) {
+                        if (queue.peek() instanceof TileParticle) {
+                            count += model
+                                    ? extractRenderer.fillInstancesModel(queue, camera, partialTicks, instances,
+                                            setting, data, custom)
+                                    : extractRenderer.fillInstances(queue, camera, partialTicks, instances,
+                                            setting, data, custom);
+                        }
+                    }
+                    return count;
+                });
+    }
+
+    private boolean hasParticlesOf(Class<?> type) {
+        for (var queue : particles.values()) {
+            if (type.isInstance(queue.peek())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void renderQueuesOf(Class<?> type, java.util.function.Consumer<Queue<IParticle>> render) {
+        for (var queue : particles.values()) {
+            if (type.isInstance(queue.peek())) {
+                render.accept(queue);
+            }
+        }
+    }
+
+    @Override
+    protected void bakeGeometry(VertexConsumer geometry, Camera camera, float partialTicks) {
+        if (extractRenderer == null) {
+            extractRenderer = new TileParticleRenderer(runtime().renderer);
+        }
+        for (var queue : this.particles.values()) {
+            // tiles only — trail queues extract as their own groups (see extractBatches)
+            if (queue.peek() instanceof TileParticle) {
+                extractRenderer.renderQueue(geometry, queue, camera, partialTicks);
             }
         }
     }

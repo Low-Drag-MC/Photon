@@ -43,8 +43,7 @@ public class ViewportNode extends ShaderNode {
     @Override
     public void compile(ShaderCompileContext ctx) {
         ctx.output("screenUv", ctx.screenUv());
-        String viewport = ctx.uniform(PhotonShaderCompiler.VIEWPORT, GlslType.VEC4).code(); // TODO(M2): re-plumb U_ViewPort staging
-        ctx.output("size", new ShaderExpr(viewport + ".zw", GlslType.VEC2));
+        ctx.output("size", new ShaderExpr(PhotonShaderCompiler.viewport(ctx).code() + ".zw", GlslType.VEC2));
     }
 
     @Override

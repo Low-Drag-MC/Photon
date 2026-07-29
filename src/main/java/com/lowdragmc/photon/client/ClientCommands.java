@@ -7,7 +7,6 @@ import com.lowdragmc.lowdraglib2.gui.holder.ModularUIScreen;
 import com.lowdragmc.lowdraglib2.gui.ui.*;
 import com.lowdragmc.photon.client.fx.compat.FXCompat;
 import com.lowdragmc.photon.client.gameobject.FXObject;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQueueRenderType;
 import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
 import com.lowdragmc.photon.client.fx.EntityEffectExecutor;
 import com.lowdragmc.photon.client.fx.FXHelper;
@@ -80,10 +79,8 @@ public class ClientCommands {
                         .then(createLiteral("clear_particles")
                                 .executes(context -> {
                                     if (Minecraft.getInstance().particleEngine instanceof ParticleEngineAccessor accessor) {
-                                        // TODO(M1): once Photon registers its own ParticleGroup, remove only that
-                                        // group; until then all FX live in the shared NO_RENDER group.
                                         accessor.getParticles().entrySet().removeIf(entry ->
-                                                entry.getKey() == net.minecraft.client.particle.ParticleRenderType.NO_RENDER);
+                                                entry.getKey() == com.lowdragmc.photon.client.render.PhotonParticleRenderTypes.FX);
                                     }
                                     VanillaParticleHost.onWipe(); // cached FXRuntimes turn invalid immediately
                                     EntityEffectExecutor.CACHE.clear();
@@ -96,6 +93,26 @@ public class ClientCommands {
                                         Minecraft.getInstance().player.sendSystemMessage(Component.literal("clear client cache fx: " + FXHelper.clearCache()));
                                     } else {
                                         FXHelper.clearCache();
+                                    }
+                                    return 1;
+                                }))
+                        .then(createLiteral("convert_shaders")
+                                .executes(context -> {
+                                    try {
+                                        var reports = com.lowdragmc.photon.client.fx.compat.ShaderFormatConverter
+                                                .convertDirectory(LDLib2.getAssetsDir().toPath());
+                                        long converted = reports.stream().filter(r -> r.converted()).count();
+                                        feedback("convert_shaders: %d converted, %d skipped (backups: *.bak_1_21)"
+                                                .formatted(converted, reports.size() - converted));
+                                        for (var report : reports) {
+                                            if (report.converted() || !report.warnings().isEmpty()) {
+                                                feedback("  " + (report.converted() ? "[converted] " : "[skipped] ")
+                                                        + LDLib2.getAssetsDir().toPath().relativize(report.file()));
+                                                report.warnings().forEach(warning -> feedback("    ! " + warning));
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        feedback("convert_shaders failed: " + e.getMessage());
                                     }
                                     return 1;
                                 }))

@@ -36,6 +36,23 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
     /** Engine-driven viewport uniform (x, y, width, height), bound by ShaderGraphMaterial. */
     public static final String VIEWPORT = "U_ViewPort";
 
+    /**
+     * The viewport rect {@code (x, y, width, height)} from Photon's own {@code PhotonEngine} std140 block
+     * ({@code photon:engine.glsl}), staged per world frame / per editor-scene render by
+     * {@code PhotonEngineUniforms}.
+     * <p>
+     * 1.21 pushed {@code U_ViewPort} as a dynamic uniform through the {@code ShaderInstance} path; in 26.1
+     * it has to be a declared block, so the graph registers it as a builtin UBO exactly like it does
+     * {@code Fog}/{@code Projection}. Declaring it as a MATERIAL uniform instead (the M2 stopgap) put the
+     * field in KilaGraph's own value store, which nothing ever wrote — it read as zeros.
+     */
+    public static com.lowdragmc.kilagraph.rendertype.compiler.ShaderExpr viewport(
+            com.lowdragmc.kilagraph.rendertype.compiler.ShaderCompileContext ctx) {
+        ctx.useMinecraftUniform("PhotonEngine", "photon:engine.glsl");
+        return new com.lowdragmc.kilagraph.rendertype.compiler.ShaderExpr(
+                VIEWPORT, com.lowdragmc.kilagraph.rendertype.compiler.GlslType.VEC4);
+    }
+
     /** The compiler currently running {@link #compile()} (render thread only) — lets nodes without
      *  compiler access (e.g. AdditionalDataNode) report metadata like used data channels. */
     @Nullable

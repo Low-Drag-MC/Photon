@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor.view.timeline;
 
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
@@ -106,7 +107,7 @@ public abstract class ClipTrackEditor extends TrackEditor {
             layout.widthPercent(100);
             layout.height(state.rowHeight);
         }).setOverflowVisible(false).style(style -> style
-                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
                     if (ctx.isTrackSelected(track)) {
                         DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
@@ -116,8 +117,8 @@ public abstract class ClipTrackEditor extends TrackEditor {
                     } else if (track.lock()) {
                         DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
                     }
-                })
-                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> ctx.drawPlayhead(graphics, x, y, w, h, pt)));
+                }))
+                .overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> ctx.drawPlayhead(graphics, x, y, w, h, graphics.partialTick))));
         lane.addEventListener(UIEvents.MOUSE_WHEEL, ctx::zoom);
         lane.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) {
@@ -148,12 +149,12 @@ public abstract class ClipTrackEditor extends TrackEditor {
             layout.height(clipHeight);
             layout.paddingAll(2);
         }).style(style -> style
-                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     var invalid = clipDragInvalid(ctx, st, clip);
                     DrawerHelperClient.drawSolidRect(graphics, x + 1, y, Math.max(1, w - 2), h,
                             (invalid ? ColorPattern.T_RED : fillColor).color);
-                })
-                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                }))
+                .overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     var bx = x + 1;
                     var bw = Math.max(1, w - 2);
                     var invalid = clipDragInvalid(ctx, st, clip);
@@ -161,12 +162,12 @@ public abstract class ClipTrackEditor extends TrackEditor {
                     if (ctx.isClipSelected(clip) && !invalid) {
                         DrawerHelperClient.drawBorder(graphics, bx, y, bw, h, ColorPattern.WHITE.color, 1);
                     }
-                    drawClipDecoration(graphics, ctx, track, clip, bx, y, bw, h, pt);
-                    if (!track.lock() && my >= y && my <= y + h && (mx <= bx + TimelineContext.EDGE_PX || mx >= bx + bw - TimelineContext.EDGE_PX)
-                            && mx >= bx && mx <= bx + bw) {
-                        graphics.drawTexture(Icons.ARROW_LEFT_RIGHT, mx - 5, my - 5, 10, 10);
+                    drawClipDecoration(graphics, ctx, track, clip, bx, y, bw, h, graphics.partialTick);
+                    if (!track.lock() && graphics.mouseY >= y && graphics.mouseY <= y + h && (graphics.mouseX <= bx + TimelineContext.EDGE_PX || graphics.mouseX >= bx + bw - TimelineContext.EDGE_PX)
+                            && graphics.mouseX >= bx && graphics.mouseX <= bx + bw) {
+                        graphics.drawTexture(Icons.ARROW_LEFT_RIGHT, graphics.mouseX - 5, graphics.mouseY - 5, 10, 10);
                     }
-                }));
+                })));
         ctx.registerClipView(track, clip, element);
 
         if (clipLabel(ctx, track, clip) != null) {

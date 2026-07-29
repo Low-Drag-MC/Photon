@@ -1,6 +1,9 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.color;
 
 import com.lowdragmc.lowdraglib2.gui.texture.TransformTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.rendering.RegisteredGuiTextureRenderer;
+import com.lowdragmc.lowdraglib2.gui.texture.rendering.TransformTextureRenderer;
+import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
 import net.minecraft.client.renderer.RenderPipelines;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
@@ -16,8 +19,7 @@ public class GradientColorTexture extends TransformTexture {
         this.gradientColor = gradientColor;
     }
 
-    // TODO(M4): register a GuiTextureRenderer so this draws through the 26.1 texture registry
-    protected void drawInternal(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
+    void drawInternal(GUIContext graphics, float x, float y, float width, float height) {
         drawGradient(graphics, x, y, width, height, gradientColor);
     }
 
@@ -43,6 +45,27 @@ public class GradientColorTexture extends TransformTexture {
             int c1 = gc.getColor(t1);
 
             graphics.fill(RenderPipelines.GUI, x0, y, x1, y2, c0, c0, c1, c1);
+        }
+    }
+
+    /**
+     * The gradient bar (the editor dialog's bar and resource previews; the inline configurator row calls {@link #drawGradient} statically, which is why only that one kept working).
+     * <p>
+     * LDLib2 26.1 draws {@link com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture}s through
+     * {@code GuiTextureRendererRegistry} (looked up by class, walking superclasses, falling back to a
+     * renderer that only handles {@code GuiTexture} lambdas) — the interface no longer has a draw method,
+     * so the 1.21-shaped {@code drawInternal} was dead code and this texture rendered nothing.
+     */
+    @LDLRegisterClient(name = "photon_gradient_color", registry = "ldlib2:gui_texture_renderer")
+    public static final class Renderer implements RegisteredGuiTextureRenderer<GradientColorTexture, Renderer> {
+        @Override
+        public Class<GradientColorTexture> type() {
+            return GradientColorTexture.class;
+        }
+
+        @Override
+        public void draw(GradientColorTexture texture, GUIContext context, float x, float y, float width, float height) {
+            TransformTextureRenderer.draw(texture, context, x, y, width, height, GradientColorTexture::drawInternal);
         }
     }
 }

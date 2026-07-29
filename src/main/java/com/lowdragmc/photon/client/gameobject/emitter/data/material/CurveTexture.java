@@ -64,15 +64,69 @@ public class CurveTexture implements AutoCloseable, IConfigurable, ValueIOSerial
 
     @Override
     public void close() {
+        if (registeredId != null) {
+            // release() drops the registration AND closes the texture
+            net.minecraft.client.Minecraft.getInstance().getTextureManager().release(registeredId);
+            registeredId = null;
+            curveTexture = null;
+            return;
+        }
         if (curveTexture != null) {
             curveTexture.close();
             curveTexture = null;
         }
     }
 
+    /** Registration id, so the drain (which resolves samplers by {@link net.minecraft.resources.Identifier} before opening its
+     *  pass) can bind this live texture. Allocated on first use; released with the texture. */
+    @Nullable
+    private net.minecraft.resources.Identifier registeredId;
+    private static final java.util.concurrent.atomic.AtomicInteger ID_SEQ =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /**
+     * Upload if dirty, then hand back the {@link net.minecraft.resources.Identifier} this sampler is registered under. 1.21 bound
+     * the {@code DynamicTexture} straight to the shader ({@code shaderHolder.addDynamicSampler}); 26.1's
+     * draw path takes texture IDENTIFIERS and resolves them through the {@code TextureManager} before the
+     * pass opens, so the texture has to live in the registry. Render thread only.
+     */
+    @Nullable
+    public net.minecraft.resources.Identifier textureId() {
+        var texture = getCurveTexture();
+        if (texture == null) {
+            return null;
+        }
+        if (registeredId == null) {
+            registeredId = com.lowdragmc.photon.Photon.id("dynamic/curve/" + ID_SEQ.getAndIncrement());
+            net.minecraft.client.Minecraft.getInstance().getTextureManager().register(registeredId, texture);
+        }
+        return registeredId;
+    }
+
+
+    /**
+     * One row per curve, {@code width} samples across, value in the RED channel — the 1.21 layout
+     * ({@code FastColor.ABGR32.color(255, 0, 0, r)}), expressed through 26.1's ARGB helper. Rows past the
+     * curve list are left untouched, also as in 1.21. Render thread only.
+     */
     public void uploadTexture() {
-        // TODO(M2): rebuild the curve sampler upload — DynamicTexture's ctor and NativeImage's pixel
-        // API changed (FastColor→ARGB, label-based ctor); rebuilt with the material pipeline path.
+        if (!isDirty) return;
+        RenderSystem.assertOnRenderThread();
+        if (curveTexture == null || curveTexture.getPixels() == null) {
+            this.curveTexture = new DynamicTexture(() -> "Photon curve sampler", width, height, false);
+        }
+        var pixels = curveTexture.getPixels();
+        if (pixels == null) return;
+        for (int h = 0; h < height && h < curves.size(); h++) {
+            var curve = curves.get(h);
+            for (int w = 0; w < width; w++) {
+                var y = curve.getCurves().getCurveY(w / (width - 1f));
+                var r = Mth.clamp((int) (y * 255), 0, 255);
+                pixels.setPixel(w, h, net.minecraft.util.ARGB.color(255, r, 0, 0));
+            }
+        }
+        this.curveTexture.upload();
+        isDirty = false;
     }
 
     private Configurator buildCurveConfigurator(Supplier<Curve> getter, Consumer<Curve> setter) {

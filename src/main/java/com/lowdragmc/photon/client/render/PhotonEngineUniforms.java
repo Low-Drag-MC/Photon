@@ -1,0 +1,96 @@
+package com.lowdragmc.photon.client.render;
+
+import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.buffers.Std140Builder;
+import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import org.joml.Vector3fc;
+import org.lwjgl.system.MemoryUtil;
+
+import javax.annotation.Nullable;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * The {@code PhotonEngine} std140 block (see {@code shaders/include/engine.glsl}) — the 1.21
+ * {@code U_*} dynamic uniforms. One shared GPU buffer, re-uploaded whenever a render context
+ * changes it: once per world frame (FrameGraphSetupEvent, camera state) and per editor-scene
+ * render (scene camera state). Uploads MUST happen outside an open render pass; both hooks
+ * run in extraction/setup phases, which qualify.
+ */
+public final class PhotonEngineUniforms {
+
+    /** std140: mat4 + mat4 + vec4 + vec4. */
+    private static final int STD140_SIZE = 160;
+
+    @Nullable
+    private static GpuBuffer buffer;
+    /** RenderTypes whose pipeline declares the PhotonEngine block (custom user shaders). */
+    private static final Set<RenderType> ENGINE_RENDER_TYPES = ConcurrentHashMap.newKeySet();
+
+    private static final Matrix4f INVERSE_PROJECTION = new Matrix4f();
+    private static final Matrix4f INVERSE_VIEW = new Matrix4f();
+
+    private PhotonEngineUniforms() {
+    }
+
+    /** Mark a custom-shader RenderType as needing the engine block bound at draw. */
+    public static void register(RenderType renderType) {
+        ENGINE_RENDER_TYPES.add(renderType);
+    }
+
+    /** Drop a dead RenderType's registration (shader invalidation — prevents registry leaks). */
+    public static void unregister(RenderType renderType) {
+        ENGINE_RENDER_TYPES.remove(renderType);
+    }
+
+    /** The current engine block slice (instanced draws bind without a RenderType), or null when
+     *  nothing was uploaded yet this session. */
+    @Nullable
+    public static GpuBufferSlice currentSlice() {
+        return buffer == null ? null : buffer.slice();
+    }
+
+    /** The slice to bind for this RenderType's draw, or null when it doesn't use the engine block
+     *  (or nothing was uploaded yet this session). */
+    @Nullable
+    public static GpuBufferSlice sliceFor(RenderType renderType) {
+        if (buffer == null || !ENGINE_RENDER_TYPES.contains(renderType)) {
+            return null;
+        }
+        return buffer.slice();
+    }
+
+    /**
+     * Upload the per-frame values. {@code projection}/{@code viewRotation} are the CPU-side camera
+     * matrices ({@code CameraRenderState.projectionMatrix}/{@code viewRotationMatrix}); the view
+     * matrix is camera-relative, matching what the 1.21 shaders reconstructed world positions with.
+     */
+    public static void update(Matrix4fc projection, Matrix4fc viewRotation, Vector3fc cameraPos,
+                              float viewportWidth, float viewportHeight) {
+        RenderSystem.assertOnRenderThread();
+        if (buffer == null) {
+            buffer = RenderSystem.getDevice().createBuffer(
+                    () -> "PhotonEngine UBO",
+                    GpuBuffer.USAGE_UNIFORM | GpuBuffer.USAGE_COPY_DST,
+                    STD140_SIZE);
+        }
+        projection.invert(INVERSE_PROJECTION);
+        viewRotation.invert(INVERSE_VIEW);
+        var bytes = MemoryUtil.memAlloc(STD140_SIZE);
+        try {
+            Std140Builder.intoBuffer(bytes)
+                    .putMat4f(INVERSE_PROJECTION)
+                    .putMat4f(INVERSE_VIEW)
+                    .putVec4(cameraPos.x(), cameraPos.y(), cameraPos.z(), 1)
+                    .putVec4(0, 0, viewportWidth, viewportHeight);
+            bytes.rewind();
+            RenderSystem.getDevice().createCommandEncoder().writeToBuffer(buffer.slice(), bytes);
+        } finally {
+            MemoryUtil.memFree(bytes);
+        }
+    }
+}

@@ -1,19 +1,21 @@
 #version 150
 
 #moj_import <fog.glsl>
+#moj_import <minecraft:dynamictransforms.glsl>
 
 uniform sampler2D Sampler0;
 
-uniform vec4 ColorModulator;
-uniform float FogStart;
-uniform float FogEnd;
-uniform vec4 FogColor;
-uniform float DiscardThreshold;
-uniform vec4 HDR;
-uniform int HDRMode;
-uniform vec4 U_SpriteUV; // uo vo u1 v1
+layout(std140) uniform PhotonMaterial {
+    vec4 HDR;
+    vec4 U_SpriteUV; // uo vo u1 v1
+    float DiscardThreshold;
+    int HDRMode;
+    float Bits;
+};
 
-in float vertexDistance;
+
+in float sphericalVertexDistance;
+in float cylindricalVertexDistance;
 in vec2 texCoord0;
 in vec4 vertexColor;
 
@@ -33,5 +35,5 @@ void main() {
     } else {
         color.rgb *= HDR.a * HDR.rgb;
     }
-    fragColor = linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
+    fragColor = apply_fog(color, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, FogColor);
 }

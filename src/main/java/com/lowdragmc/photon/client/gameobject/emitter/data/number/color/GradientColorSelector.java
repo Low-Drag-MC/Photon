@@ -9,6 +9,8 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
+import org.joml.Vector2f;
+import org.joml.Vector4f;
 import dev.vfyjxf.taffy.style.AlignItems;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.TaffyPosition;
@@ -27,6 +29,40 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
     // runtime
     private boolean isSelectAlpha = false;
     private int selectedPoint = -1;
+
+    /**
+     * Every indicator resolves its own slot with {@code getAP().indexOf(point)} against the instance its
+     * listeners captured in {@link #refreshGradient}, so an edit MUST keep that instance in the list —
+     * mutate the point, never replace it.
+     * <p>
+     * 26.1 types the point lists as {@code Vector2fc}/{@code Vector4fc}, and the M0 port took that as
+     * "immutable" and switched to {@code list.set(i, new Vector2f(...))}. That drops the captured instance
+     * out of the list, so from the first edit onward every indicator's {@code indexOf} returns -1: drags
+     * stop applying (the {@code point >= 0} guard rejects them), the colour/alpha editor writes to slot -1,
+     * every stale indicator draws highlighted because {@code selectedPoint == -1} matches them all, and a
+     * delete removes whatever happens to sit at the stale index. The lists are declared read-only but hold
+     * plain {@code Vector2f}/{@code Vector4f}, so in-place mutation — what 1.21 did — is available and is
+     * the only form that preserves identity.
+     */
+    private static Vector2f mutableAlpha(GradientColor value, int index) {
+        var point = value.getAP().get(index);
+        if (point instanceof Vector2f mutable) {
+            return mutable;
+        }
+        var mutable = new Vector2f(point);
+        value.getAP().set(index, mutable);
+        return mutable;
+    }
+
+    private static Vector4f mutableRgb(GradientColor value, int index) {
+        var point = value.getRgbP().get(index);
+        if (point instanceof Vector4f mutable) {
+            return mutable;
+        }
+        var mutable = new Vector4f(point);
+        value.getRgbP().set(index, mutable);
+        return mutable;
+    }
 
     public GradientColorSelector() {
         getLayout().gapAll(1);
@@ -58,15 +94,14 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
 
     private void onColorChanged(int color) {
         if (selectedPoint >= 0) {
-            // 26.1: gradient points are read-only Vector2fc/Vector4fc — replace the list element
             if (isSelectAlpha && selectedPoint < value.getAP().size()) {
-                var alphaP = value.getAP().get(selectedPoint);
-                value.getAP().set(selectedPoint, new org.joml.Vector2f(alphaP.x(), ColorUtils.alpha(color)));
+                mutableAlpha(value, selectedPoint).y = ColorUtils.alpha(color);
                 notifyListeners();
             } else if (!isSelectAlpha && selectedPoint < value.getRgbP().size()) {
-                var rgbP = value.getRgbP().get(selectedPoint);
-                value.getRgbP().set(selectedPoint, new org.joml.Vector4f(rgbP.x(),
-                        ColorUtils.red(color), ColorUtils.green(color), ColorUtils.blue(color)));
+                var rgbP = mutableRgb(value, selectedPoint);
+                rgbP.y = ColorUtils.red(color);
+                rgbP.z = ColorUtils.green(color);
+                rgbP.w = ColorUtils.blue(color);
                 notifyListeners();
             }
         }
@@ -125,15 +160,13 @@ public class GradientColorSelector extends BindableUIElement<GradientColor> {
         event.currentElement.layout(layout -> layout.leftPercent(offset));
         if (isAlpha) {
             if (point >= 0 && point < value.getAP().size()) {
-                var alphaP = value.getAP().get(point);
-                value.getAP().set(point, new org.joml.Vector2f(percent, alphaP.y()));
+                mutableAlpha(value, point).x = percent;
                 value.getAP().sort((a, b) -> Float.compare(a.x(), b.x()));
                 notifyListeners();
             }
         } else {
             if (point >= 0 && point < value.getRgbP().size()) {
-                var rgbP = value.getRgbP().get(point);
-                value.getRgbP().set(point, new org.joml.Vector4f(percent, rgbP.y(), rgbP.z(), rgbP.w()));
+                mutableRgb(value, point).x = percent;
                 value.getRgbP().sort((a, b) -> Float.compare(a.x(), b.x()));
                 notifyListeners();
             }

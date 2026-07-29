@@ -29,24 +29,23 @@ import java.util.function.Supplier;
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class RendererSetting {
 
-    public enum Layer {
-        Opaque,
-        Translucent
-    }
-
     public enum SortMode {
-        NONE(() -> null),
-        DISTANCE(() -> VertexSorting.byDistance(0, 0, 0)); // TODO(M1): feed the camera-relative origin from the extraction
-        public final Supplier<VertexSorting> vertexSorting;
+        NONE,
+        DISTANCE;
 
-        SortMode(Supplier<VertexSorting> vertexSorting) {
-            this.vertexSorting = vertexSorting;
+        /**
+         * The quad sorting to apply to this emitter's baked geometry, or null for none. 1.21 read
+         * {@code RenderSystem.getVertexSorting()} — the engine's current global, which 26.1 dropped when
+         * sorting moved onto {@code RenderSetup.sortOnUpload}; Photon bypasses that path (its drain opens
+         * its own passes), so the extraction hands in the eye position instead.
+         *
+         * @param eye the viewer, in the space the geometry was baked in (Photon bakes camera-relative, so
+         *            that is zero in-world and the scene eye in the editor, whose camera sits at origin)
+         */
+        @Nullable
+        public VertexSorting vertexSorting(org.joml.Vector3fc eye) {
+            return this == DISTANCE ? VertexSorting.byDistance(eye) : null;
         }
-
-        public VertexSorting getVertexSorting() {
-            return vertexSorting.get();
-        }
-
     }
 
     @Configurable(name = "RendererSetting.materials", collapse = false)
@@ -54,10 +53,6 @@ public class RendererSetting {
     @ReadOnlyManaged(serializeMethod = "materialSerialize", deserializeMethod = "materialDeserialize")
     @EqualsAndHashCode.Include
     protected List<MaterialSetting> materials = new ArrayList<>();
-
-    @Configurable(name = "RendererSetting.layer", tips = "photon.emitter.config.renderer.layer")
-    @EqualsAndHashCode.Include
-    protected Layer layer = Layer.Translucent;
 
     @Configurable(name = "RendererSetting.cull", subConfigurable = true, tips = "photon.emitter.config.renderer.cull")
     protected final Cull cull = new Cull();
@@ -190,7 +185,6 @@ public class RendererSetting {
     public static class Runtime {
         protected final RendererSetting config;
         public final RuntimeValue<List<MaterialSetting>> materials;
-        public final RuntimeValue<Layer> layer;
         public final RuntimeValue<Cull> cull;
         public final RuntimeValue<Integer> orderInLayer;
         public final RuntimeValue<SortMode> vertexSortingMode;
@@ -201,7 +195,6 @@ public class RendererSetting {
         protected Runtime(RendererSetting config) {
             this.config = config;
             this.materials = new RuntimeValue<>(config::getMaterials);
-            this.layer = new RuntimeValue<>(config::getLayer);
             this.cull = new RuntimeValue<>(config::getCull);
             this.orderInLayer = new RuntimeValue<>(config::getOrderInLayer);
             this.vertexSortingMode = new RuntimeValue<>(config::getVertexSortingMode);
@@ -211,7 +204,6 @@ public class RendererSetting {
         }
 
         public List<MaterialSetting> getMaterials() { return materials.get(); }
-        public Layer getLayer() { return layer.get(); }
         public Cull getCull() { return cull.get(); }
         public int getOrderInLayer() { return orderInLayer.get(); }
         public SortMode getVertexSortingMode() { return vertexSortingMode.get(); }
@@ -226,7 +218,7 @@ public class RendererSetting {
          * per-emitter culling read by {@code getCullBox}, not a pass concern, so overriding it needs no pass.
          */
         public boolean hasOverride() {
-            return materials.isOverridden() || layer.isOverridden()
+            return materials.isOverridden()
                     || orderInLayer.isOverridden() || vertexSortingMode.isOverridden()
                     || writeCustomMask.isOverridden() || maskGroup.isOverridden()
                     || maskAlphaCutoff.isOverridden();
@@ -235,7 +227,6 @@ public class RendererSetting {
         /** Clear every override slot (fall back to the authored config). */
         public void clear() {
             materials.clear();
-            layer.clear();
             cull.clear();
             orderInLayer.clear();
             vertexSortingMode.clear();
@@ -251,7 +242,6 @@ public class RendererSetting {
          */
         public boolean effectiveEquals(Runtime o) {
             return Objects.equals(getMaterials(), o.getMaterials())
-                    && getLayer() == o.getLayer()
                     && getOrderInLayer() == o.getOrderInLayer()
                     && getVertexSortingMode() == o.getVertexSortingMode()
                     && isWriteCustomMask() == o.isWriteCustomMask()
@@ -260,7 +250,7 @@ public class RendererSetting {
         }
 
         public int effectiveHashCode() {
-            return Objects.hash(getMaterials(), getLayer(), getOrderInLayer(), getVertexSortingMode(),
+            return Objects.hash(getMaterials(), getOrderInLayer(), getVertexSortingMode(),
                     isWriteCustomMask(), getMaskGroup(), getMaskAlphaCutoff());
         }
     }

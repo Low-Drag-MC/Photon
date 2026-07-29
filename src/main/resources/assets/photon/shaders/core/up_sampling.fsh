@@ -1,7 +1,10 @@
 #version 150
 
 uniform sampler2D inputSampler;
-uniform float filterRadius;
+
+layout(std140) uniform PhotonBloom {
+    float filterRadius;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

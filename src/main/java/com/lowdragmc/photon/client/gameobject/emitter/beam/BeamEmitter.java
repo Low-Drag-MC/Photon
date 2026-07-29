@@ -15,7 +15,6 @@ import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.BeamParticle;
 import lombok.Getter;
 import net.minecraft.world.phys.AABB;
@@ -231,10 +230,44 @@ public class BeamEmitter extends Emitter {
         return runtime().effectiveRenderPass();
     }
 
-    public void prepareRenderPass(RenderPassPipeline buffer) {
-        if (isVisible()) {
-            buffer.pipeQueue(effectiveRenderPass(), Collections.singleton(beamParticle));
+    /** Lazily built CPU beam renderer. Transient: render-only state, never persisted or copied. */
+    @Nullable
+    private transient com.lowdragmc.photon.client.gameobject.particle.renderer.BeamParticleRenderer extractRenderer;
+
+    @Override
+    public com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting.Runtime rendererRuntime() {
+        return runtime().renderer;
+    }
+
+    @Override
+    public void extractBatches(com.lowdragmc.photon.client.render.PhotonFXRenderState state,
+                               net.minecraft.client.Camera camera, float partialTicks) {
+        var setting = config.additionalGPUDataSetting;
+        if (runtime().renderer.isUseGPUInstance()) {
+            if (extractRenderer == null) {
+                extractRenderer = new com.lowdragmc.photon.client.gameobject.particle.renderer.BeamParticleRenderer();
+            }
+            if (extractInstancedGroup(camera, rendererRuntime(), setting,
+                    com.lowdragmc.photon.client.render.PhotonPipelines.InstancedVariant.BEAM,
+                    BaseMesh.quads(com.lowdragmc.photon.client.render.PhotonWorldRenderState.beamQuad(), 6),
+                    16, 0,
+                    new org.joml.Vector3f(com.lowdragmc.photon.client.render.PhotonCameraUtils.facingEye(camera)).sub(com.lowdragmc.photon.client.render.PhotonCameraUtils.renderOrigin(camera)),
+                    (instances, points, data, custom) -> extractRenderer.fillInstances(
+                            Collections.singleton(beamParticle), camera, partialTicks, instances,
+                            setting, data, custom))) {
+                return;
+            }
         }
+        super.extractBatches(state, camera, partialTicks);
+    }
+
+    @Override
+    protected void bakeGeometry(com.mojang.blaze3d.vertex.VertexConsumer geometry,
+                                net.minecraft.client.Camera camera, float partialTicks) {
+        if (extractRenderer == null) {
+            extractRenderer = new com.lowdragmc.photon.client.gameobject.particle.renderer.BeamParticleRenderer();
+        }
+        extractRenderer.renderQueue(geometry, Collections.singleton(beamParticle), camera, partialTicks);
     }
 
     //////////////////////////////////////

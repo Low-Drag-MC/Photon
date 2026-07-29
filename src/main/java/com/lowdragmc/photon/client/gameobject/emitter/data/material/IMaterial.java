@@ -12,9 +12,13 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.PhotonRegistries;
+import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import dev.vfyjxf.taffy.style.AlignItems;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.CompoundTag;
@@ -37,7 +41,14 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
         public IGuiTexture preview() {
             return IGuiTexture.MISSING_TEXTURE;
         }
-    };
+
+        // 1.21 bound the missing checkerboard in begin() — keep broken materials visibly broken
+        @Override
+        public RenderType getRenderType(MaterialSetting setting, VertexFormat.Mode mode) {
+            return MaterialRenderTypes.hdrParticle(MissingTextureAtlasSprite.getLocation(),
+                    setting.pipelineKey(mode));
+        }
+    }
     MissingMaterial MISSING = new MissingMaterial();
     // endregion
 
@@ -54,11 +65,28 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
         return CODEC.parse(NbtOps.INSTANCE, tag).result().orElse(MISSING);
     }
 
-    // 26.1 note: the 1.21 render seam `ShaderInstance begin(MaterialContext)` / `end(MaterialContext)`
-    // is gone with ShaderInstance itself. TODO(M2): materials contribute a RenderPipeline (+ samplers
-    // and std140 uniforms) to the pipeline-variant cache instead of imperative begin/end.
+    // 26.1: the 1.21 render seam `ShaderInstance begin(MaterialContext)` / `end(MaterialContext)` is
+    // gone with ShaderInstance itself — its job (blend/cull/depth state, #define variants, the material
+    // uniform block) is now carried by the RenderType/pipeline this returns.
 
+    /** The RenderType this material draws with under the given MaterialSetting state (blend/cull/depth
+     *  select the pipeline variant), or null when it can't render this geometry — an unresolved
+     *  resource, a failed shader compile, or a mode the material has no vertex stage for. */
+    @Nullable
+    default RenderType getRenderType(MaterialSetting setting, VertexFormat.Mode mode) {
+        return null;
+    }
+
+    /** Small, cached preview: resource-panel tiles and inline material slots (many on screen at once). */
     IGuiTexture preview();
+
+    /**
+     * The inspector's large preview — rendered live, at the size it is drawn. Defaults to the cached
+     * {@link #preview()}; materials with a real off-screen render override it.
+     */
+    default IGuiTexture previewLive() {
+        return preview();
+    }
 
     default IMaterial copy() {
         return CODEC.encodeStart(NbtOps.INSTANCE, this).result()
@@ -78,7 +106,7 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
                         .addChild(new UIElement().layout(layout -> {
                             layout.widthPercent(100);
                             layout.heightPercent(100);
-                        }).style(style -> style.backgroundTexture(DynamicTexture.of(this::preview))))));
+                        }).style(style -> style.backgroundTexture(DynamicTexture.of(this::previewLive))))));
     }
 
     @Override

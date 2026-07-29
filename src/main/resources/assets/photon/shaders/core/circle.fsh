@@ -1,16 +1,21 @@
-#version 150
+#version 330
 
-#moj_import <fog.glsl>
+// converted to the Photon 26.1 custom-shader contract: the 1.21 plain uniforms live in
+// the fixed PhotonCustomMaterial std140 block (dynamic values, no recompiles); the shader
+// JSON stays as the material configurator's uniform metadata
 
-uniform vec4 ColorModulator;
-uniform float FogStart;
-uniform float FogEnd;
-uniform vec4 FogColor;
-uniform vec4 HDR;
-uniform float DiscardThreshold;
-uniform float Radius;
+#moj_import <minecraft:fog.glsl>
+#moj_import <minecraft:dynamictransforms.glsl>
 
-in float vertexDistance;
+layout(std140) uniform PhotonCustomMaterial {
+    float DiscardThreshold;
+    vec4 HDR;
+    float Radius;
+};
+
+
+in float sphericalVertexDistance;
+in float cylindricalVertexDistance;
 in vec2 texCoord0;
 in vec4 vertexColor;
 
@@ -24,5 +29,5 @@ void main() {
         discard;
     }
     color.rgb += HDR.rgb * HDR.a;
-    fragColor = linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
+    fragColor = apply_fog(color, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, FogColor);
 }

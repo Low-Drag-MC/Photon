@@ -29,14 +29,36 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
     @Configurable(name = "TextureMaterial.hdrMode")
     protected TextureMaterial.HDRMode hdrMode = TextureMaterial.HDRMode.ADDITIVE;
 
-    // TODO(M2): 1.21 getShader/setupUniform bound sprite_hdr_particle (+ #define variants) and set
-    // U_SpriteUV/DiscardThreshold/HDR uniforms — rebuilt on the RenderPipeline + std140 path.
-
     /** 26.1: sprite sets live on {@code ParticleResources} (AT'd public in our accesstransformer.cfg). */
     @Nullable
     private SpriteSet getSpriteSet() {
         if (spriteLocation == null) return null;
         return Minecraft.getInstance().particleEngine.resourceManager.spriteSets.get(spriteLocation);
+    }
+
+
+    // 1.21 bound sprite_hdr_particle with U_SpriteUV from the FIRST frame (sprite.get(0, 1)) — the
+    // same static remap now travels in the PhotonMaterial UBO's SpriteUV field.
+    @Override
+    public net.minecraft.client.renderer.rendertype.RenderType getRenderType(
+            com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting setting,
+            com.mojang.blaze3d.vertex.VertexFormat.Mode mode) {
+        var fragment = com.lowdragmc.photon.Photon.id("core/sprite_hdr_particle");
+        var spriteSet = getSpriteSet();
+        if (spriteSet == null) {
+            // Values.of leaves U_SpriteUV at the identity window (0,0,1,1)
+            return MaterialRenderTypes.hdrParticle(
+                    net.minecraft.client.renderer.texture.MissingTextureAtlasSprite.getLocation(),
+                    fragment, setting.pipelineKey(mode),
+                    com.lowdragmc.photon.client.render.PhotonMaterialUniforms.Values.of(
+                            hdr, discardThreshold, hdrMode.mode, 0));
+        }
+        var sprite = spriteSet.get(0, 1);
+        return MaterialRenderTypes.hdrParticle(
+                sprite.atlasLocation(), fragment, setting.pipelineKey(mode),
+                com.lowdragmc.photon.client.render.PhotonMaterialUniforms.Values.ofSprite(
+                        hdr, discardThreshold, hdrMode.mode,
+                        sprite.getU0(), sprite.getV0(), sprite.getU1(), sprite.getV1()));
     }
 
     @Override

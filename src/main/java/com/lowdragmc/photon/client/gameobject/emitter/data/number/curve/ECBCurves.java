@@ -20,6 +20,29 @@ import java.util.List;
  */
 @EqualsAndHashCode
 public class ECBCurves {
+    /** Same layout as the legacy ListTag: one 8-float list per segment (see serialization note below). */
+    public static final com.mojang.serialization.Codec<ECBCurves> CODEC =
+            com.mojang.serialization.Codec.FLOAT.listOf().listOf().xmap(
+                    lists -> {
+                        var curves = new ECBCurves();
+                        curves.segments.clear();
+                        for (var points : lists) {
+                            if (points.size() >= 8) {
+                                curves.segments.add(new ExplicitCubicBezierCurve2(
+                                        new Vector2f(points.get(0), points.get(1)),
+                                        new Vector2f(points.get(2), points.get(3)),
+                                        new Vector2f(points.get(4), points.get(5)),
+                                        new Vector2f(points.get(6), points.get(7))));
+                            }
+                        }
+                        return curves;
+                    },
+                    curves -> curves.segments.stream()
+                            .map(curve -> List.of(
+                                    curve.p0.x(), curve.p0.y(), curve.c0.x(), curve.c0.y(),
+                                    curve.c1.x(), curve.c1.y(), curve.p1.x(), curve.p1.y()))
+                            .toList());
+
     @Getter
     private final List<ExplicitCubicBezierCurve2> segments = new ArrayList<>();
 

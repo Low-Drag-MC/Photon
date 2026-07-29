@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.aratrail;
 
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
@@ -59,7 +60,7 @@ public class TrailSection extends ToggleGroup {
         var container = new UIElement().layout(layout -> {
             layout.widthPercent(100);
             layout.heightPercent(100);
-        }).style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) this::drawCanvas));
+        }).style(style -> style.backgroundTexture(GuiTexture.of(this::drawCanvas)));
         AtomicReference<List<Vector2f>> verticesRef = new AtomicReference<>(new ArrayList<>(vertices));
         reloadCanvas(container, verticesRef.get());
         container.addEventListener(UIEvents.TICK, e -> {
@@ -72,7 +73,7 @@ public class TrailSection extends ToggleGroup {
         father.addConfigurator(new Configurator().addInlineChild(canvas));
     }
 
-    private void drawCanvas(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
+    private void drawCanvas(GUIContext graphics, float x, float y, float width, float height) {
         if (vertices.size() < 2) return;
         var centerX = x + width / 2;
         var centerY = y + height / 2;

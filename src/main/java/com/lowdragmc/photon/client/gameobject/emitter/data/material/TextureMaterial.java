@@ -7,6 +7,8 @@ import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
@@ -70,10 +72,24 @@ public class TextureMaterial extends ShaderInstanceMaterial {
         return mat;
     }
 
-    // TODO(M2): 1.21 getShader/setupUniform selected hdr_particle / pixel_hdr_particle ShaderInstances,
-    // with per-#define variants via LDShaderInstance + LDProgramDefineManager (dead in LDLib2 26.1).
-    // Replacement: RenderPipeline variants via builder.withShaderDefine + a pipeline cache; the
-    // DiscardThreshold/HDR/HDRMode/Bits uniforms become a std140 material UBO.
+    @Override
+    public net.minecraft.client.renderer.rendertype.RenderType getRenderType(
+            com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting setting,
+            com.mojang.blaze3d.vertex.VertexFormat.Mode mode) {
+        // 1.21 selected the pixel program only when pixel-art was on; the plain program has no Bits use
+        var fragment = pixelArt.isEnable() ? Photon.id("core/pixel_hdr_particle") : Photon.id("core/hdr_particle");
+        return MaterialRenderTypes.hdrParticle(texture, fragment,
+                setting.pipelineKey(mode),
+                com.lowdragmc.photon.client.render.PhotonMaterialUniforms.Values.of(
+                        hdr, discardThreshold, hdrMode.mode, pixelArt.isEnable() ? Math.max(pixelArt.bits, 1) : 0));
+    }
+
+
+    // live off-screen preview: renders the material's actual RenderType (HDR/discard/pixel-art applied)
+    @Override
+    public IGuiTexture preview() {
+        return com.lowdragmc.photon.client.render.MaterialPreviewRenderer.previewOf(this);
+    }
 
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {

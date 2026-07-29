@@ -1,29 +1,35 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
+import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailAdditionalGPUDataSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
-import com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle;
 import com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle.CurveFrame;
 import com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle.Point;
+import com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle;
 import com.lowdragmc.photon.client.gameobject.particle.aratrail.ElasticArray;
+import com.lowdragmc.photon.client.render.PhotonCameraUtils;
+import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
+import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntList;
 import net.minecraft.client.Camera;
 import net.minecraft.util.Mth;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-
+import org.lwjgl.system.MemoryUtil;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-
 import static com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle.EPSILON;
 
 /**
@@ -36,11 +42,9 @@ import static com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailP
 public class AraTrailParticleRenderer {
 
     private final AraTrailConfig config;
-    private final AraTrailInstanceRenderer instanceBackend;
 
     public AraTrailParticleRenderer(AraTrailConfig config) {
         this.config = config;
-        this.instanceBackend = new AraTrailInstanceRenderer(config);
     }
 
     // ---- mesh scratch (rebuilt per trail per frame) ----
@@ -73,15 +77,15 @@ public class AraTrailParticleRenderer {
     // reused per-trail life snapshot for renderAgedSpans (render thread only)
     private float[] savedLivesPool = new float[0];
 
-    // ---- instanced-collection scratch (active during uploadInstances; render thread only) ----
+    // ---- instanced-collection scratch (active during fillInstances; render thread only) ----
     private final Matrix4f collectMatrix = new Matrix4f();
     private final Vector3f collectTmp = new Vector3f();
     @javax.annotation.Nullable
-    private java.nio.FloatBuffer collectPointBuffer;
+    private FloatBuffer collectPointBuffer;
     @javax.annotation.Nullable
-    private java.nio.FloatBuffer collectDataBuffer;
+    private FloatBuffer collectDataBuffer;
     @javax.annotation.Nullable
-    private java.nio.FloatBuffer collectCustomBuffer;
+    private FloatBuffer collectCustomBuffer;
     private boolean collectTube;
     private int collectPointCount;
     private int collectSpanBase;
@@ -121,7 +125,9 @@ public class AraTrailParticleRenderer {
         // We need at least two points to create a trail mesh.
         if (points.size() > 1) {
             var worldToTrail = particle.getWorldToTrail();
-            Vector3f localCamPosition = worldToTrail.transformPosition(camera.position().toVector3f());
+            // facing math needs the true eye (the editor SceneCamera's position() is intentionally ZERO)
+            Vector3f localCamPosition = worldToTrail.transformPosition(
+                    PhotonCameraUtils.facingEye(camera));
 
             renderAgedSpans(particle, worldToTrail, partialTicks,
                     (start, end) -> updateSegmentMesh(particle, start, end, localCamPosition));
@@ -730,67 +736,42 @@ public class AraTrailParticleRenderer {
     // ---------------------------------------------------------------------
 
     /**
-     * Fill and upload one instance per rendered trail segment, with the per-point data (position,
-     * frame, color, uv — all CPU-computed through the same {@link #walkSpan} as the mesh path)
-     * uploaded once into the point buffer texture. Returns true if any instance was uploaded (the
-     * VAO is left bound for {@link #drawInstanced}). The flat/tube variant follows the pass-owning
-     * config (the base mesh is baked from it); per-point math uses each particle's own config,
-     * exactly like the CPU path.
+     * The 26.1 instanced fill: one instance per consecutive point pair, 16 floats per point (4 packed
+     * vec4s, tube or flat layout) into {@code points}, plus the per-segment attribute tail /
+     * additional-data records ({@code emitSpanInstances} stages each segment's point-channel pair first).
+     * Instance floats: 3 flat (point index, vA, vB), 1 tube (point index — the ring pair IS the base mesh,
+     * see {@link #tubeMesh()}).
      */
-    public boolean uploadInstances(Collection<IParticle> particles, Camera camera, float partialTicks) {
-        // capacity pre-scan (proven upper bound: renderable points per trail <= size * smoothness + 2)
-        var pointCapacity = 0;
-        for (var p : particles) {
-            if (p instanceof AraTrailParticle trail && trail.getPoints().size() > 1) {
-                pointCapacity += trail.getPoints().size() * Math.max(1, trail.config.smoothness) + 2;
-            }
-        }
-        if (pointCapacity == 0) return false;
-
-        var buffer = instanceBackend.beginUpload(pointCapacity); // instances per span = points - 1
-        if (buffer == null) return false;
-        var pointBuffer = instanceBackend.beginPointUpload(pointCapacity);
-        if (pointBuffer == null) return false;
-
-        var setting = config.additionalGPUDataSetting;
-        var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(pointCapacity) : null;
-        var customBuffer = setting.hasCustomRecord() ? instanceBackend.beginCustomUpload(pointCapacity) : null;
-        collectTube = instanceBackend.isTubeMode();
-        collectPointBuffer = pointBuffer;
+    public int fillInstances(Collection<IParticle> particles, Camera camera, float partialTicks,
+                             boolean tube,
+                             FloatBuffer instances, FloatBuffer points,
+                             @Nullable FloatBuffer dataBuffer,
+                             @Nullable FloatBuffer customBuffer) {
+        collectTube = tube;
+        collectPointBuffer = points;
         collectDataBuffer = dataBuffer;
         collectCustomBuffer = customBuffer;
         collectPointCount = 0;
         collectInstanceCount = 0;
+        var setting = config.additionalGPUDataSetting;
         var cameraPos = camera.position().toVector3f();
-
+        // frames face the TRUE eye (editor SceneCamera position() is ZERO); positions stay origin-relative
+        var facingEye = PhotonCameraUtils.facingEye(camera);
         for (var p : particles) {
             if (!(p instanceof AraTrailParticle trail) || trail.getPoints().size() <= 1) continue;
             trail.updateDynamicData(partialTicks);
             var worldToTrail = trail.getWorldToTrail();
-            Vector3f localCamPosition = worldToTrail.transformPosition(new Vector3f(cameraPos));
-            // same matrix renderMesh builds: trail space -> camera-relative world
+            Vector3f localCamPosition = worldToTrail.transformPosition(new Vector3f(facingEye));
             worldToTrail.invert(collectMatrix).translateLocal(-cameraPos.x, -cameraPos.y, -cameraPos.z);
-
             renderAgedSpans(trail, worldToTrail, partialTicks, (start, end) -> {
                 collectSpanBase = collectPointCount;
                 collectSpanCount = 0;
                 walkSpan(trail, start, end, localCamPosition, this::collectPoint);
-                emitSpanInstances(buffer, trail, partialTicks, setting);
+                emitSpanInstances(instances, trail, partialTicks, setting);
             });
         }
-
         collectPointBuffer = null;
-        collectDataBuffer = null;
-        collectCustomBuffer = null;
-        if (dataBuffer != null) {
-            instanceBackend.endDataUpload(dataBuffer);
-        }
-        if (customBuffer != null) {
-            instanceBackend.endCustomUpload(customBuffer);
-        }
-        instanceBackend.endPointUpload(pointBuffer);
-        instanceBackend.endUpload(buffer, collectInstanceCount);
-        return collectInstanceCount > 0;
+        return collectInstanceCount;
     }
 
     /**
@@ -838,8 +819,118 @@ public class AraTrailParticleRenderer {
         collectPointCount++;
     }
 
+    // ---- tube base mesh (ARA_TRAIL_TUBE_INSTANCE) -----------------------------------------------
+
+    @Nullable
+    private Emitter.BaseMesh tubeMesh;
+    private Vector2f[] tubeSection = new org.joml.Vector2f[0];
+    private float tubeUvWidthFactor;
+
+    /**
+     * The section-polygon ring pair every tube instance expands over: two rings of {@code segments + 1}
+     * vertices ({@code x = 0} curr point, then {@code x = 1} next point), vertex =
+     * {@code (x, sectionVert.xy, uAround)} — the 1.21 static geometry verbatim, baked from the section
+     * config and rebuilt when it changes ({@link #tubeGeometryStale}).
+     * <p>
+     * Ships its OWN index buffer, {@code (N_j, N_j+1, C_j), (N_j+1, C_j+1, C_j)} per section edge — also
+     * 1.21's. Adjacent edges share their ring vertices, which the shared sequential-quad pattern cannot
+     * express: expressing it as independent quads would cost {@code segments*4} vertices instead of
+     * {@code 2*(segments+1)} (32 vs 18 for the default 8-gon), i.e. ~1.8x the vertex-shader invocations,
+     * and this stage does 8 texelFetches per vertex.
+     * <p>
+     * Null when the polygon is degenerate (the CPU path renders nothing there either).
+     */
+    @Nullable
+    public Emitter.BaseMesh tubeMesh() {
+        if (tubeMesh != null && !tubeGeometryStale()) {
+            return tubeMesh;
+        }
+        closeTubeMesh();
+        var section = config.section;
+        var vertices = section.vertices;
+        var segments = section.getSegments();
+        tubeSection = new org.joml.Vector2f[vertices == null ? 0 : vertices.size()];
+        for (int i = 0; i < tubeSection.length; i++) {
+            tubeSection[i] = new Vector2f(vertices.get(i));
+        }
+        tubeUvWidthFactor = config.uvWidthFactor;
+        if (segments < 1) {
+            return null;
+        }
+        var ringVertices = segments + 1;
+        var device = RenderSystem.getDevice();
+
+        var vertexBytes = MemoryUtil.memAlloc(2 * ringVertices * 4 * Float.BYTES);
+        GpuBuffer vertexBuffer;
+        try {
+            for (int ring = 0; ring <= 1; ring++) {
+                for (int j = 0; j <= segments; j++) {
+                    var vertex = tubeSection[j];
+                    // mirrors the CPU uv: (j / (float) segments) * uvWidthFactor
+                    vertexBytes.putFloat(ring).putFloat(vertex.x).putFloat(vertex.y)
+                            .putFloat((j / (float) segments) * tubeUvWidthFactor);
+                }
+            }
+            vertexBytes.flip();
+            vertexBuffer = device.createBuffer(() -> "Photon ara tube ring",
+                    GpuBuffer.USAGE_VERTEX, vertexBytes);
+        } finally {
+            MemoryUtil.memFree(vertexBytes);
+        }
+
+        var indexBytes = MemoryUtil.memAlloc(segments * 6 * Integer.BYTES);
+        GpuBuffer indexBuffer;
+        try {
+            for (int j = 0; j < segments; j++) {
+                indexBytes.putInt(ringVertices + j).putInt(ringVertices + j + 1).putInt(j);
+                indexBytes.putInt(ringVertices + j + 1).putInt(j + 1).putInt(j);
+            }
+            indexBytes.flip();
+            indexBuffer = device.createBuffer(() -> "Photon ara tube ring indices",
+                    GpuBuffer.USAGE_INDEX, indexBytes);
+        } finally {
+            MemoryUtil.memFree(indexBytes);
+        }
+
+        tubeMesh = new Emitter.BaseMesh(
+                vertexBuffer, segments * 6, indexBuffer);
+        return tubeMesh;
+    }
+
+    /** Free the previous ring. Deferred to the frame boundary: a job queued earlier this frame (the
+     *  world pass, when the editor re-extracts after a section edit) may still reference it. */
+    private void closeTubeMesh() {
+        if (tubeMesh == null) {
+            return;
+        }
+        var stale = tubeMesh;
+        PhotonWorldRenderState.closeAtFrameEnd(() -> {
+            stale.vertices().close();
+            var indices = stale.indices();
+            if (indices != null) {
+                indices.close();
+            }
+        });
+        tubeMesh = null;
+    }
+
+    /** Whether the baked ring no longer matches the config (section polygon / uv width factor). */
+    private boolean tubeGeometryStale() {
+        var vertices = config.section.vertices;
+        var size = vertices == null ? 0 : vertices.size();
+        if (tubeSection.length != size || tubeUvWidthFactor != config.uvWidthFactor) {
+            return true;
+        }
+        for (int i = 0; i < size; i++) {
+            if (!tubeSection[i].equals(vertices.get(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Emits one instance per consecutive point pair of the just-collected span. */
-    private void emitSpanInstances(java.nio.FloatBuffer buffer, AraTrailParticle trail, float partialTicks,
+    private void emitSpanInstances(FloatBuffer buffer, AraTrailParticle trail, float partialTicks,
                                    AraTrailAdditionalGPUDataSetting setting) {
         if (collectSpanCount < 2) return;
         // cross-ribbon v pair, per particle — mirrors appendFlatTrail's +side / -side uv.y
@@ -873,19 +964,4 @@ public class AraTrailParticleRenderer {
         }
     }
 
-    // TODO(M2): drawInstanced — re-expressed as a RenderPass.drawIndexed(instanceCount) draw with
-    // the material pipeline when the instancing backend moves off raw GL.
-
-    /** Whether the baked instanced geometry no longer matches the config (mode / section / uvWidthFactor). */
-    public boolean geometryStale() {
-        return instanceBackend.geometryStale();
-    }
-
-    /**
-     * Full GL teardown of the instanced resources. Call when the instance layout or the baked
-     * geometry changes (not for capacity growth).
-     */
-    public void dispose() {
-        instanceBackend.dispose();
-    }
 }

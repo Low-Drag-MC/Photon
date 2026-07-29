@@ -101,8 +101,8 @@ public final class PhotonPostFX {
         PostEffectStack.GLOBAL.onFrameEnd();
         PostEffectStack.EDITOR_SCENE.onFrameEnd();
         PostFXTargetPool.endFrame();
-        // mask textures are per-frame — a no-particle frame must not reuse last frame's mask
-        com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline.markDrawTargetDirty(); // TODO(M3): was clearFrameMask() — per-frame mask drop returns with the mask pass
+        // TODO(M3): was clearFrameMask() — mask textures are per-frame (a no-particle frame must not
+        // reuse last frame's mask); the per-frame mask drop returns with the mask pass
         if (testEffect != null) {
             PostEffectStack.GLOBAL.submit(testEffect.path(), Map.of(), testEffect.weight());
         }

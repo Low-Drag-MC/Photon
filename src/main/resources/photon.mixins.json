@@ -5,10 +5,11 @@
   "compatibilityLevel": "JAVA_21",
   "plugin": "com.lowdragmc.photon.core.mixins.PhotonMixinPlugin",
   "client": [
-    "MinecraftMixin",
+    "GlConstMixin",
     "ParticleEngineMixin",
+    "RenderTypeMixin",
+    "VertexArrayCacheMixin",
     "accessor.ParticleEngineAccessor"
-
   ],
   "mixins": [
   ],

@@ -73,9 +73,7 @@ public class WorldToScreenUVNode extends ShaderNode {
         ctx.useMinecraftUniform("Projection", "minecraft:projection.glsl");
         String proj = "ProjMat";
         String modelView = ctx.transformField("ModelViewMat", GlslType.MAT4).code();
-        // TODO(M2): U_ViewPort was a Photon dynamic uniform staged by the dead ShaderInstance path —
-        // re-plumb it (std140) with the material pipeline; until then it reads as zeros.
-        String viewport = ctx.uniform(PhotonShaderCompiler.VIEWPORT, GlslType.VEC4).code();
+        String viewport = PhotonShaderCompiler.viewport(ctx).code();
         String screenSize = ctx.screenSize().code();
         // position -> clip -> ndc -> [0,1] over the viewport, then remap through the viewport rect into the
         // window-sized scene capture so it matches screenUv()'s window-relative convention.

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor.view.timeline;
 
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ColorConfigurator;
@@ -482,7 +483,7 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.widthPercent(100);
             layout.height(state.rowHeight);
         }).setOverflowVisible(false).style(style -> style
-                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
                     if (ctx.isTrackSelected(track)) {
                         DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
@@ -492,11 +493,11 @@ public class AnimationTrackEditor extends TrackEditor {
                     } else if (track.lock()) {
                         DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
                     }
-                })
-                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                }))
+                .overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     drawLaneContent(ctx, graphics, animation, x, y, w, h);
-                    ctx.drawPlayhead(graphics, x, y, w, h, pt);
-                }));
+                    ctx.drawPlayhead(graphics, x, y, w, h, graphics.partialTick);
+                })));
         lane.addEventListener(UIEvents.MOUSE_WHEEL, ctx::zoom);
         lane.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) ctx.selectTrack(track);
@@ -740,18 +741,18 @@ public class AnimationTrackEditor extends TrackEditor {
                 layout.widthPercent(100)).setOverflowVisible(false); // height from the host wrapper's flex(1)
         var box = new UIElement().setId("timeline.curveBox").layout(layout -> layout.widthPercent(100).heightPercent(100))
                 .style(style -> style
-                        .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                        .backgroundTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                             if (st.selectedProperty instanceof ColorAnimatedProperty color) {
                                 drawColorEditor(ctx, graphics, color, st, x, y, w, h);
                             } else {
                                 drawCurveEditor(ctx, graphics, animation, st, x, y, w, h);
                             }
-                        })
-                        .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
-                            ctx.drawPlayhead(graphics, x, y, w, h, pt);
-                            drawKeyTooltip(ctx, graphics, animation, st, mx, my, x, y, w, h);
+                        }))
+                        .overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
+                            ctx.drawPlayhead(graphics, x, y, w, h, graphics.partialTick);
+                            drawKeyTooltip(ctx, graphics, animation, st, graphics.mouseX, graphics.mouseY, x, y, w, h);
                             if (st.keyMarquee) drawKeyMarquee(graphics, st);
-                        }));
+                        })));
         container.addChild(box);
         // per-clip / per-stop sub-elements (own their own hit-testing, selection, drag, right-click)
         addCurveBoxItems(ctx, animation, st, box);
@@ -842,9 +843,9 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.height(12);
             layout.flexDirection(FlexDirection.ROW);
             layout.gapAll(2);
-        }).style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) ->
+        }).style(style -> style.backgroundTexture(GuiTexture.of((graphics, x, y, w, h) ->
                 DrawerHelperClient.drawSolidRect(graphics, x, y, w, h,
-                        (st.selectedProperty == property && st.selectedAxis < 0 ? ColorPattern.GRAY : ColorPattern.T_GRAY).color)));
+                        (st.selectedProperty == property && st.selectedAxis < 0 ? ColorPattern.GRAY : ColorPattern.T_GRAY).color))));
         row.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) {
                 selectProperty(ctx, track, st, property, -1);
@@ -883,9 +884,9 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.flexDirection(FlexDirection.ROW);
             layout.gapAll(2);
             layout.paddingLeft(12);
-        }).style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) ->
+        }).style(style -> style.backgroundTexture(GuiTexture.of((graphics, x, y, w, h) ->
                 DrawerHelperClient.drawSolidRect(graphics, x, y, w, h,
-                        (st.selectedProperty == property && st.selectedAxis == axis ? ColorPattern.GRAY : ColorPattern.T_DARK_GRAY).color)));
+                        (st.selectedProperty == property && st.selectedAxis == axis ? ColorPattern.GRAY : ColorPattern.T_DARK_GRAY).color))));
         row.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button == 0) {
                 selectProperty(ctx, track, st, property, axis);
@@ -1451,14 +1452,14 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.top(0);
             layout.heightPercent(100);
         }).style(style -> style
-                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     var selected = st.selectedExprClips.contains(clip);
                     var base = clip.error() != null ? ColorPattern.RED.color : channelColor(axis).color;
                     var invalid = st.subClipDragInvalid && st.clipDragOrigins.containsKey(clip);
                     DrawerHelperClient.drawSolidRect(graphics, x, y, w, h,
                             invalid ? ColorPattern.T_RED.color : withAlpha(base, selected ? 0x66 : 0x33));
-                })
-                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                }))
+                .overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     var error = clip.error() != null;
                     var selected = st.selectedExprClips.contains(clip);
                     var invalid = st.subClipDragInvalid && st.clipDragOrigins.containsKey(clip);
@@ -1471,8 +1472,8 @@ public class AnimationTrackEditor extends TrackEditor {
                             DrawerHelperClient.drawText(graphics, text, x + 2, y + 1, 1f, (error ? ColorPattern.RED : ColorPattern.WHITE).color);
                         }
                     }
-                    drawResizeCursor(graphics, track, mx, my, x, y, w, h, pt);
-                }));
+                    drawResizeCursor(graphics, track, graphics.mouseX, graphics.mouseY, x, y, w, h, graphics.partialTick);
+                })));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> onExprClipMouseDown(ctx, e, track, property, st, axis, clip, el));
         el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onClipDrag(ctx, e, st));
         el.addEventListener(UIEvents.DRAG_END, e -> { onClipDragEnd(ctx, st); e.stopPropagation(); });
@@ -1685,10 +1686,10 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.positionType(TaffyPosition.ABSOLUTE);
             layout.width(KEY_ELEM_SIZE);
             layout.height(KEY_ELEM_SIZE);
-        }).setDisplay(false).style(style -> style.overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+        }).setDisplay(false).style(style -> style.overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
             var selected = st.selectedKeys.contains(encodeKey(axis, index));
             DrawerHelperClient.drawSolidRect(graphics, x + w / 2f - 2, y + h / 2f - 2, 4, 4, (selected ? ColorPattern.WHITE : ColorPattern.ORANGE).color);
-        }));
+        })));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> onKeyframeMouseDown(ctx, e, track, property, st, axis, index, el));
         el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onCurveDrag(ctx, e, st));
         el.addEventListener(UIEvents.DRAG_END, e -> { onCurveDragEnd(ctx, st); e.stopPropagation(); });
@@ -1747,8 +1748,8 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.positionType(TaffyPosition.ABSOLUTE);
             layout.width(KEY_ELEM_SIZE);
             layout.height(KEY_ELEM_SIZE);
-        }).setDisplay(false).style(style -> style.overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) ->
-                DrawerHelperClient.drawSolidRect(graphics, x + w / 2f - 1.5f, y + h / 2f - 1.5f, 3, 3, ColorPattern.GREEN.color)));
+        }).setDisplay(false).style(style -> style.overlayTexture(GuiTexture.of((graphics, x, y, w, h) ->
+                DrawerHelperClient.drawSolidRect(graphics, x + w / 2f - 1.5f, y + h / 2f - 1.5f, 3, 3, ColorPattern.GREEN.color))));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> {
             if (e.button != 0 || track.lock() || !handleActive(st, property)) return;
             ctx.setActiveTrack(track);
@@ -1931,19 +1932,19 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.top(6);      // band top (see colorBandTop)
             layout.bottom(14);  // band bottom (colorBandTop + colorBandH = y + h - 14)
         }).style(style -> style
-                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     if (clip.gradient() != null) drawGradientColorRegion(graphics, clip.gradient(), x, y, w, h);
                     if (st.subClipDragInvalid && st.gradientClipDragOrigins.containsKey(clip)) {
                         DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_RED.color); // overlapping drop is invalid
                     }
-                })
-                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                }))
+                .overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     var invalid = st.subClipDragInvalid && st.gradientClipDragOrigins.containsKey(clip);
                     var sel = st.selectedGradientClips.contains(clip);
                     DrawerHelperClient.drawBorder(graphics, x, y, w, h,
                             invalid ? ColorPattern.RED.color : sel ? ColorPattern.WHITE.color : withAlpha(ColorPattern.WHITE.color, 0x88), 1);
-                    drawResizeCursor(graphics, track, mx, my, x, y, w, h, pt);
-                }));
+                    drawResizeCursor(graphics, track, graphics.mouseX, graphics.mouseY, x, y, w, h, graphics.partialTick);
+                })));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> onGradientClipMouseDown(ctx, e, track, color, st, clip, el));
         el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onGradientClipDrag(ctx, e, st));
         el.addEventListener(UIEvents.DRAG_END, e -> { onGradientClipDragEnd(ctx, st); e.stopPropagation(); });
@@ -2195,7 +2196,7 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.top(0);
             layout.heightPercent(100);
         }).style(style -> style
-                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     var cx = x + w / 2f;
                     var bandTop = colorBandTop(y);
                     var bandH = colorBandH(h);
@@ -2204,7 +2205,7 @@ public class AnimationTrackEditor extends TrackEditor {
                     DrawerHelperClient.drawSolidRect(graphics, cx - 0.5f, bandTop, 1, bandH, withAlpha(ColorPattern.WHITE.color, selected ? 0xFF : 0x66));
                     DrawerHelperClient.drawSolidRect(graphics, cx - 4, markerY + 1, 8, 6, (selected ? ColorPattern.WHITE : ColorPattern.GRAY).color);
                     DrawerHelperClient.drawSolidRect(graphics, cx - 3, markerY + 2, 6, 4, 0xFF000000 | (stop.argb & 0xFFFFFF));
-                }));
+                })));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> onColorStopMouseDown(ctx, e, track, color, st, stop, el));
         el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onColorDrag(ctx, e, st));
         el.addEventListener(UIEvents.DRAG_END, e -> { onColorDragEnd(ctx, st); e.stopPropagation(); });
@@ -2326,22 +2327,22 @@ public class AnimationTrackEditor extends TrackEditor {
             layout.top(0);
             layout.heightPercent(100);
         }).style(style -> style
-                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     var selected = st.selectedCurveClips.contains(clip);
                     var base = channelColor(axis).color;
                     var invalid = st.subClipDragInvalid && st.curveClipDragOrigins.containsKey(clip);
                     DrawerHelperClient.drawSolidRect(graphics, x, y, w, h,
                             invalid ? ColorPattern.T_RED.color : withAlpha(base, selected ? 0x44 : 0x22));
                     drawClipCurvePreview(graphics, clip, x, x + w, x, y, w, h, base);
-                })
-                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                }))
+                .overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     var invalid = st.subClipDragInvalid && st.curveClipDragOrigins.containsKey(clip);
                     var selected = st.selectedCurveClips.contains(clip);
                     var base = channelColor(axis).color;
                     DrawerHelperClient.drawBorder(graphics, x, y, w, h,
                             invalid ? ColorPattern.RED.color : selected ? ColorPattern.WHITE.color : base, 1);
-                    drawResizeCursor(graphics, track, mx, my, x, y, w, h, pt);
-                }));
+                    drawResizeCursor(graphics, track, graphics.mouseX, graphics.mouseY, x, y, w, h, graphics.partialTick);
+                })));
         el.addEventListener(UIEvents.MOUSE_DOWN, e -> onCurveClipMouseDown(ctx, e, track, cfg, st, axis, clip, el));
         el.addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> onCurveClipDrag(ctx, e, st));
         el.addEventListener(UIEvents.DRAG_END, e -> { onCurveClipDragEnd(ctx, st); e.stopPropagation(); });

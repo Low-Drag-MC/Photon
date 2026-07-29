@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.color;
 
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.configurator.ui.ValueConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
@@ -61,7 +62,7 @@ public class GradientColorConfigurator extends ValueConfigurator<GradientColor> 
                 .addClass("configurator_preview_bg")
                 .addChildren(new UIElement()
                         .layout(layout -> layout.heightPercent(100))
-                        .style(style -> style.backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) this::drawColorPreview))
+                        .style(style -> style.backgroundTexture(GuiTexture.of(this::drawColorPreview)))
                         .addEventListener(UIEvents.MOUSE_DOWN, this::onClick)));
 
         this.gradientSelector.setValue(value, false);
@@ -125,7 +126,8 @@ public class GradientColorConfigurator extends ValueConfigurator<GradientColor> 
     protected void onDropObject(@NotNull Object object) {
         if (object instanceof GradientResource.Gradients gradients) {
             if (value == null) return;
-            onValueUpdatePassively(gradients.gradient0);
+            // copy: without it the configurator edits the resource library's own gradient in place
+            onValueUpdatePassively(gradients.gradient0.copy());
             updateValue();
         } else {
             super.onDropObject(object);
@@ -172,7 +174,7 @@ public class GradientColorConfigurator extends ValueConfigurator<GradientColor> 
         }
     }
 
-    protected void drawColorPreview(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
+    protected void drawColorPreview(GUIContext graphics, float x, float y, float width, float height) {
         var gradientColor = value == null ? defaultValue : value;
         // render color bar (26.1: per-corner-colored context.fill segments, no immediate buffer)
 

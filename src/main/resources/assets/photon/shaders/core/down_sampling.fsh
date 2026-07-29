@@ -1,7 +1,10 @@
 #version 150
 
 uniform sampler2D inputSampler;
-uniform vec2 inputResolution;
+
+layout(std140) uniform PhotonBloom {
+    vec2 inputResolution;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

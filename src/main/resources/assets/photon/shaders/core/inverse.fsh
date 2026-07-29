@@ -1,8 +1,8 @@
 #version 150
 
 #moj_import <fog.glsl>
+#moj_import <minecraft:globals.glsl>
 
-uniform vec2 ScreenSize;
 uniform sampler2D SamplerSceneColor;
 
 out vec4 fragColor;

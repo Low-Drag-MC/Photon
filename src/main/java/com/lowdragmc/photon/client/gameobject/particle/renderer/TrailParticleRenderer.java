@@ -1,31 +1,29 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
-import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.trail.TrailAdditionalGPUDataSetting;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
+import com.lowdragmc.photon.client.render.PhotonCameraUtils;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.nio.FloatBuffer;
 import java.util.Collection;
 
 /**
  * Renders {@link TrailParticle}s as a camera-facing ribbon. The CPU path ({@link #renderQueue})
  * emits a triangle strip with degenerate-triangle stitching between trails — kept byte-identical
- * to the historical implementation. The GPU-instanced path ({@link #uploadInstances}/
- * {@link #drawInstanced}, backed by {@link TrailInstanceRenderer}) uploads one instance per
- * segment via {@link #collectRenderPoints}, which replicates the CPU point selection quirks
- * (head push with the oldest tail's color/width, dead-prefix skipping, oldest-live-tail
+ * to the historical implementation. The 26.1 GPU-instanced path ({@link #fillInstances}) uploads one
+ * instance per segment via {@link #collectRenderPoints}, which replicates the CPU point selection
+ * quirks (head push with the oldest tail's color/width, dead-prefix skipping, oldest-live-tail
  * partial-tick lerp); the ribbon expansion itself is mirrored in the TRAIL_INSTANCE branch of
  * photon:particle.glsl. Render-thread only (scratch state).
  */
 @ParametersAreNonnullByDefault
 public class TrailParticleRenderer {
-
-    private final TrailConfig config;
-    private final TrailInstanceRenderer instanceBackend;
 
     // ------------------------------------------------------------------
     // per-trail collection scratch (reused; render thread only)
@@ -34,13 +32,12 @@ public class TrailParticleRenderer {
     private float[] width = new float[0];
     private float[] cr = new float[0], cg = new float[0], cb = new float[0], ca = new float[0];
     private float[] u = new float[0];
+    /** Per-point channel pair staged into the setting before each segment's upload (1.21 parity). */
     private float[] pointT = new float[0], pointLife = new float[0];
     private float scratchV0, scratchV1;
     private int scratchLight;
 
-    public TrailParticleRenderer(TrailConfig config) {
-        this.config = config;
-        this.instanceBackend = new TrailInstanceRenderer(config);
+    public TrailParticleRenderer() {
     }
 
     // ---------------------------------------------------------------------
@@ -50,12 +47,17 @@ public class TrailParticleRenderer {
     public void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
         for (var particle : particles) {
             if (particle instanceof TrailParticle trailParticle && trailParticle.getDelay() <= 0) {
-                renderTrail(buffer, trailParticle, camera.position().toVector3f(), partialTicks);
+                renderTrail(buffer, trailParticle,
+                        PhotonCameraUtils.facingEye(camera),
+                        PhotonCameraUtils.renderOrigin(camera),
+                        partialTicks);
             }
         }
     }
 
-    private void renderTrail(VertexConsumer buffer, TrailParticle particle, Vector3f cameraPos, float partialTicks) {
+    /** {@code eye} drives the ribbon-facing math; {@code origin} is what emitted positions are relative
+     *  to — distinct in the editor scene, where the camera's position() is intentionally ZERO. */
+    private void renderTrail(VertexConsumer buffer, TrailParticle particle, Vector3f eye, Vector3f origin, float partialTicks) {
         var tails = particle.getTails();
         var rawTails = particle.getRawTails();
         var color = particle.getRealColor(partialTicks);
@@ -108,14 +110,14 @@ public class TrailParticleRenderer {
 
             Vector3f curr = new Vector3f(tailPos);
             Vector3f vec = new Vector3f(next).sub(curr);
-            Vector3f toTail = new Vector3f(curr).sub(cameraPos);
+            Vector3f toTail = new Vector3f(curr).sub(eye);
             Vector3f normal = new Vector3f(vec).cross(toTail).normalize();
 
             if (lastNormal == null) lastNormal = normal;
 
             Vector3f avgNormal = new Vector3f(lastNormal).add(normal).div(2);
-            Vector3f up = new Vector3f(tailPos).add(new Vector3f(avgNormal).mul(tails.getWidth(i))).sub(cameraPos);
-            Vector3f down = new Vector3f(tailPos).add(new Vector3f(avgNormal).mul(-tails.getWidth(i))).sub(cameraPos);
+            Vector3f up = new Vector3f(tailPos).add(new Vector3f(avgNormal).mul(tails.getWidth(i))).sub(origin);
+            Vector3f down = new Vector3f(tailPos).add(new Vector3f(avgNormal).mul(-tails.getWidth(i))).sub(origin);
             Vector3f faceNormal = new Vector3f(avgNormal).cross(vec).normalize();
 
             var tailColor = tails.getColor(i);
@@ -151,8 +153,8 @@ public class TrailParticleRenderer {
 
             // 注意这里，直接用 lastNormal
 
-            Vector3f up = new Vector3f(head).add(new Vector3f(lastNormal).mul(tails.getWidth(headIndex))).sub(cameraPos);
-            Vector3f down = new Vector3f(head).add(new Vector3f(lastNormal).mul(-tails.getWidth(headIndex))).sub(cameraPos);
+            Vector3f up = new Vector3f(head).add(new Vector3f(lastNormal).mul(tails.getWidth(headIndex))).sub(origin);
+            Vector3f down = new Vector3f(head).add(new Vector3f(lastNormal).mul(-tails.getWidth(headIndex))).sub(origin);
 
             var headColor = tails.getColor(headIndex);
             float ta = color.w() * headColor.w();
@@ -188,65 +190,42 @@ public class TrailParticleRenderer {
     // instanced path
     // ---------------------------------------------------------------------
 
-    /**
-     * Fill and upload one instance per rendered trail segment, with the per-point data uploaded
-     * once into the point buffer texture (vertex pulling). Returns true if any instance was
-     * uploaded (the VAO is left bound for {@link #drawInstanced}). Like the tile path, the
-     * additional-data selection comes from the pass-owning config (batched passes share it).
-     */
-    public boolean uploadInstances(Collection<IParticle> particles, Camera camera, float partialTicks) {
-        // capacity pre-scan (upper bounds: one segment per tail incl. the pushed head;
-        // points = tails + pushed head + 2 pads)
-        var instanceCapacity = 0;
-        var pointCapacity = 0;
-        for (var p : particles) {
-            if (p instanceof TrailParticle trail && trail.getDelay() <= 0) {
-                instanceCapacity += trail.getTails().size();
-                pointCapacity += trail.getTails().size() + 3;
-            }
-        }
-        if (instanceCapacity == 0) return false;
-
-        var buffer = instanceBackend.beginUpload(instanceCapacity);
-        if (buffer == null) return false;
-        var pointBuffer = instanceBackend.beginPointUpload(pointCapacity);
-        if (pointBuffer == null) return false;
-
-        var setting = config.additionalGPUDataSetting;
-        var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(instanceCapacity) : null;
-        var customBuffer = setting.hasCustomRecord() ? instanceBackend.beginCustomUpload(instanceCapacity) : null;
+    /** The 26.1 instanced fill: 4 floats per segment (point index, packed light, v0, v1) into
+     *  {@code instances}, 12 floats per point (3 packed vec4s: pos+width / premultiplied color / u,
+     *  endpoint-padded) into {@code points}. GPU-data configs are not eligible (CPU fallback). */
+    public int fillInstances(Collection<IParticle> particles, Camera camera, float partialTicks,
+                             FloatBuffer instances, FloatBuffer points,
+                             TrailAdditionalGPUDataSetting setting,
+                             @Nullable FloatBuffer dataBuffer,
+                             @Nullable FloatBuffer customBuffer) {
         var instanceCount = 0;
         var pointCount = 0;
-        var cameraPos = camera.position().toVector3f();
+        // EYE-relative points: the shader's facing math treats point coords as eye→point vectors
+        // (editor SceneCamera position() is ZERO); ModelOffset shifts back to render-origin space
+        var cameraPos = PhotonCameraUtils.facingEye(camera);
         for (var p : particles) {
             if (!(p instanceof TrailParticle trail) || trail.getDelay() > 0) continue;
             var count = collectRenderPoints(trail, cameraPos, partialTicks);
             if (count < 2) continue;
-
-            // padded point block: bitwise copies of the first/last point keep the shader's
-            // neighbor fetches (c-1 / c+2) inside this trail and make its endpoint-fallback
-            // equality tests hold
-            putPointTexels(pointBuffer, 0);
+            // padded point block: bitwise copies of the first/last point keep the shader's neighbor
+            // fetches (c-1 / c+2) inside this trail and its endpoint-fallback equality tests holding
+            putPointTexels(points, 0);
             for (int j = 0; j < count; j++) {
-                putPointTexels(pointBuffer, j);
+                putPointTexels(points, j);
             }
-            putPointTexels(pointBuffer, count - 1);
-            var base = pointCount + 1; // index of the first real point
+            putPointTexels(points, count - 1);
+            var base = pointCount + 1;
             pointCount += count + 2;
-
             for (int i = 0; i < count - 1; i++) {
-                // iSeg ivec2 (point index of the segment's curr point, packed light)
-                buffer.put(Float.intBitsToFloat(base + i)).put(Float.intBitsToFloat(scratchLight));
-                // iSegV vec2 (v0, v1)
-                buffer.put(scratchV0).put(scratchV1);
-
-                // stage the per-point channel pair (point_t/point_life) before any upload — this is also
-                // the representative segment t/length the per-segment custom-data sampling reads (curr end)
+                instances.put(Float.intBitsToFloat(base + i)).put(Float.intBitsToFloat(scratchLight));
+                instances.put(scratchV0).put(scratchV1);
+                // stage the per-point channel pair before any upload — also the representative segment
+                // t/length the per-segment custom-data sampling reads (curr endpoint)
                 if (setting.hasAttribs() || dataBuffer != null || customBuffer != null) {
                     setting.setSegmentValues(pointT[i], pointT[i + 1], pointLife[i], pointLife[i + 1]);
                 }
                 if (setting.hasAttribs()) {
-                    setting.uploadAttribs(trail, buffer, partialTicks);
+                    setting.uploadAttribs(trail, instances, partialTicks);
                 }
                 if (dataBuffer != null) {
                     setting.uploadDataRecord(trail, dataBuffer, partialTicks);
@@ -257,20 +236,12 @@ public class TrailParticleRenderer {
                 instanceCount++;
             }
         }
-
-        if (dataBuffer != null) {
-            instanceBackend.endDataUpload(dataBuffer);
-        }
-        if (customBuffer != null) {
-            instanceBackend.endCustomUpload(customBuffer);
-        }
-        instanceBackend.endPointUpload(pointBuffer);
-        instanceBackend.endUpload(buffer, instanceCount);
-        return instanceCount > 0;
+        return instanceCount;
     }
 
-    /** Writes one point's {@link TrailInstanceRenderer#POINT_TEXELS} texels from the scratch arrays. */
-    private void putPointTexels(java.nio.FloatBuffer pointBuffer, int j) {
+    /** Writes one point's 3 texels (12 floats: pos+width / premultiplied color / u,v0,v1 padding)
+     *  from the scratch arrays — mirrors the TRAIL point layout read by photon:particle.glsl. */
+    private void putPointTexels(FloatBuffer pointBuffer, int j) {
         // T0: pos + width
         pointBuffer.put(px[j]).put(py[j]).put(pz[j]).put(width[j]);
         // T1: premultiplied color
@@ -414,16 +385,5 @@ public class TrailParticleRenderer {
         u = new float[capacity];
         pointT = new float[capacity];
         pointLife = new float[capacity];
-    }
-
-    // TODO(M2): drawInstanced — re-expressed as a RenderPass.drawIndexed(instanceCount) draw with
-    // the material pipeline when the instancing backend moves off raw GL.
-
-    /**
-     * Full GL teardown of the instanced resources. Call when the instance layout changes
-     * (not for capacity growth).
-     */
-    public void dispose() {
-        instanceBackend.dispose();
     }
 }

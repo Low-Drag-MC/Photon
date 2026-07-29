@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor.view.timeline;
 
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
@@ -151,7 +152,7 @@ public class SignalTrackEditor extends TrackEditor {
             layout.widthPercent(100);
             layout.height(state.rowHeight);
         }).setOverflowVisible(false).style(style -> style
-                .backgroundTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                .backgroundTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.BLACK.color);
                     if (ctx.isTrackSelected(track)) {
                         DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_WHITE.color);
@@ -161,13 +162,13 @@ public class SignalTrackEditor extends TrackEditor {
                     } else if (track.lock()) {
                         DrawerHelperClient.drawSolidRect(graphics, x, y, w, h, ColorPattern.T_YELLOW.color);
                     }
-                })
-                .overlayTexture((com.lowdragmc.photon.utils.LegacyGuiTexture) (graphics, mx, my, x, y, w, h, pt) -> {
+                }))
+                .overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
                     drawSignals(ctx, graphics, signalTrack, st, x, y, w, h);
-                    ctx.drawPlayhead(graphics, x, y, w, h, pt);
-                    drawSignalTooltip(ctx, graphics, signalTrack, mx, my, x, y, w, h);
+                    ctx.drawPlayhead(graphics, x, y, w, h, graphics.partialTick);
+                    drawSignalTooltip(ctx, graphics, signalTrack, graphics.mouseX, graphics.mouseY, x, y, w, h);
                     if (st.marquee) drawMarquee(graphics, st);
-                }));
+                })));
         lane.addEventListener(UIEvents.MOUSE_WHEEL, ctx::zoom);
         lane.addEventListener(UIEvents.MOUSE_DOWN, e -> onLaneMouseDown(ctx, signalTrack, st, e));
         lane.addEventListener(UIEvents.DOUBLE_CLICK, e -> onLaneDoubleClick(ctx, signalTrack, st, e));

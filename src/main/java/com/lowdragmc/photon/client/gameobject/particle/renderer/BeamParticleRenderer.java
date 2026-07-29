@@ -1,23 +1,24 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
-import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamConfig;
+import com.lowdragmc.photon.client.render.PhotonCameraUtils;
+import com.lowdragmc.photon.client.gameobject.emitter.data.AdditionalGPUDataSetting;
 import com.lowdragmc.photon.client.gameobject.particle.BeamParticle;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
-
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.nio.FloatBuffer;
 import java.util.Collection;
 
 /**
  * Renders {@link BeamParticle}s: a single camera-facing quad from the emitter position to the
- * (raycast) beam end. Both the CPU vertex path ({@link #renderQueue}) and the GPU-instanced path
- * ({@link #uploadInstances}/{@link #drawInstanced}, backed by {@link BeamInstanceRenderer})
- * sample the beam through the same {@link #sampleBeam} helper; the quad expansion itself is
- * mirrored between {@link #renderBeam} and the BEAM_INSTANCE branch of photon:particle.glsl.
- * The raycast end resolution stays on the CPU in both paths.
+ * (raycast) beam end. Both the CPU vertex path ({@link #renderQueue}) and the 26.1 GPU-instanced
+ * path ({@link #fillInstances}) sample the beam through the same {@link #sampleBeam} helper; the
+ * quad expansion itself is mirrored between {@link #renderBeam} and the BEAM_INSTANCE branch of
+ * photon:particle.glsl. The raycast end resolution stays on the CPU in both paths.
  */
 @ParametersAreNonnullByDefault
 public class BeamParticleRenderer {
@@ -29,12 +30,7 @@ public class BeamParticleRenderer {
                              float r, float g, float b, float a) {
     }
 
-    private final BeamConfig config;
-    private final BeamInstanceRenderer instanceBackend;
-
-    public BeamParticleRenderer(BeamConfig config) {
-        this.config = config;
-        this.instanceBackend = new BeamInstanceRenderer(config);
+    public BeamParticleRenderer() {
     }
 
     private static BeamFrame sampleBeam(BeamParticle particle, Camera camera, float partialTicks) {
@@ -65,7 +61,10 @@ public class BeamParticleRenderer {
     }
 
     private void renderBeam(@Nonnull VertexConsumer pBuffer, BeamParticle particle, @Nonnull Camera camera, float partialTicks) {
-        var cameraPos = camera.position().toVector3f();
+        // eye drives the beam-facing plane; origin is what emitted positions are relative to —
+        // distinct in the editor scene, where the camera's position() is intentionally ZERO
+        var eye = PhotonCameraUtils.facingEye(camera);
+        var origin = PhotonCameraUtils.renderOrigin(camera);
         var frame = sampleBeam(particle, camera, partialTicks);
         var from = frame.from();
         var end = frame.end();
@@ -81,14 +80,14 @@ public class BeamParticleRenderer {
 
         var direction = new Vector3f(end).sub(from);
 
-        var toO = new Vector3f(from).sub(cameraPos);
+        var toO = new Vector3f(from).sub(eye);
         Vector3f n = new Vector3f(toO).cross(direction).normalize().mul(frame.width());
         Vector3f normal = new Vector3f(direction).cross(n).normalize();
 
-        var p0 = new Vector3f(from).add(n).sub(cameraPos);
-        var p1 = new Vector3f(from).add(n.mul(-1)).sub(cameraPos);
-        var p3 = new Vector3f(end).add(n).sub(cameraPos);
-        var p4 = new Vector3f(end).add(n.mul(-1)).sub(cameraPos);
+        var p0 = new Vector3f(from).add(n).sub(origin);
+        var p1 = new Vector3f(from).add(n.mul(-1)).sub(origin);
+        var p3 = new Vector3f(end).add(n).sub(origin);
+        var p4 = new Vector3f(end).add(n.mul(-1)).sub(origin);
 
         pBuffer.addVertex(p1.x, p1.y, p1.z).setUv(u0, v0).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
         pBuffer.addVertex(p0.x, p0.y, p0.z).setUv(u0, v1).setColor(r, g, b, a).setLight(light).setNormal(normal.x, normal.y, normal.z);
@@ -100,39 +99,28 @@ public class BeamParticleRenderer {
     // instanced path
     // ---------------------------------------------------------------------
 
-    /**
-     * Fill and upload the per-instance data for this pass's beams. Returns true if any instance
-     * was uploaded (the VAO is left bound for {@link #drawInstanced}). Like the tile path, the
-     * additional-data selection comes from the pass-owning config (batched passes share it).
-     */
-    public boolean uploadInstances(Collection<IParticle> particles, Camera camera, float partialTicks) {
-        var buffer = instanceBackend.beginUpload(particles.size());
-        if (buffer == null) return false;
-
-        var setting = config.additionalGPUDataSetting;
-        var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(particles.size()) : null;
-        var customBuffer = setting.hasCustomRecord() ? instanceBackend.beginCustomUpload(particles.size()) : null;
-        var instanceCount = 0;
-        var cameraPos = camera.position().toVector3f();
+    /** The 26.1 instanced fill: 16 floats per beam (start3+halfWidth end3 color4 uv4 light1), plus the
+     *  attribute tail / additional-data records when the pass needs them. */
+    public int fillInstances(Collection<IParticle> particles, Camera camera, float partialTicks,
+                             FloatBuffer out, AdditionalGPUDataSetting setting,
+                             @Nullable FloatBuffer dataBuffer,
+                             @Nullable FloatBuffer customBuffer) {
+        var count = 0;
+        // EYE-relative endpoints (see TrailParticleRenderer.fillInstances) + ModelOffset shift-back
+        var cameraPos = PhotonCameraUtils.facingEye(camera);
         for (var p : particles) {
             if (!(p instanceof BeamParticle particle) || particle.getDelay() > 0) continue;
-            instanceCount++;
+            count++;
             var frame = sampleBeam(particle, camera, partialTicks);
-
-            // iStart vec4 (camera-relative xyz + width)
-            buffer.put(frame.from().x - cameraPos.x).put(frame.from().y - cameraPos.y).put(frame.from().z - cameraPos.z);
-            buffer.put(frame.width());
-            // iEnd vec3
-            buffer.put(frame.end().x - cameraPos.x).put(frame.end().y - cameraPos.y).put(frame.end().z - cameraPos.z);
-            // iColor vec4
-            buffer.put(frame.r()).put(frame.g()).put(frame.b()).put(frame.a());
-            // iUV vec4 (scroll baked in)
-            buffer.put(frame.u0()).put(frame.v0()).put(frame.u1()).put(frame.v1());
-            // iLight int
-            buffer.put(Float.intBitsToFloat(frame.light()));
-
+            out.put(frame.from().x - cameraPos.x).put(frame.from().y - cameraPos.y).put(frame.from().z - cameraPos.z);
+            out.put(frame.width());
+            out.put(frame.end().x - cameraPos.x).put(frame.end().y - cameraPos.y).put(frame.end().z - cameraPos.z);
+            out.put(frame.r()).put(frame.g()).put(frame.b()).put(frame.a());
+            out.put(frame.u0()).put(frame.v0()).put(frame.u1()).put(frame.v1());
+            out.put(Float.intBitsToFloat(frame.light()));
+            // legacy per-channel attributes (custom shaders) + the packed records (shadergraph) — 1.21 parity
             if (setting.hasAttribs()) {
-                setting.uploadAttribs(particle, buffer, partialTicks);
+                setting.uploadAttribs(particle, out, partialTicks);
             }
             if (dataBuffer != null) {
                 setting.uploadDataRecord(particle, dataBuffer, partialTicks);
@@ -141,25 +129,7 @@ public class BeamParticleRenderer {
                 setting.uploadCustomRecord(particle, customBuffer, partialTicks);
             }
         }
-
-        if (dataBuffer != null) {
-            instanceBackend.endDataUpload(dataBuffer);
-        }
-        if (customBuffer != null) {
-            instanceBackend.endCustomUpload(customBuffer);
-        }
-        instanceBackend.endUpload(buffer, instanceCount);
-        return instanceCount > 0;
+        return count;
     }
 
-    // TODO(M2): drawInstanced — re-expressed as a RenderPass.drawIndexed(instanceCount) draw with
-    // the material pipeline when the instancing backend moves off raw GL.
-
-    /**
-     * Full GL teardown of the instanced resources. Call when the instance layout changes
-     * (not for capacity growth).
-     */
-    public void dispose() {
-        instanceBackend.dispose();
-    }
 }

@@ -60,15 +60,67 @@ public class GradientTexture implements AutoCloseable, IConfigurable, ValueIOSer
 
     @Override
     public void close() {
+        if (registeredId != null) {
+            // release() drops the registration AND closes the texture
+            net.minecraft.client.Minecraft.getInstance().getTextureManager().release(registeredId);
+            registeredId = null;
+            gradientTexture = null;
+            return;
+        }
         if (gradientTexture != null) {
             gradientTexture.close();
             gradientTexture = null;
         }
     }
 
+    /** Registration id, so the drain (which resolves samplers by {@link net.minecraft.resources.Identifier} before opening its
+     *  pass) can bind this live texture. Allocated on first use; released with the texture. */
+    @Nullable
+    private net.minecraft.resources.Identifier registeredId;
+    private static final java.util.concurrent.atomic.AtomicInteger ID_SEQ =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /**
+     * Upload if dirty, then hand back the {@link net.minecraft.resources.Identifier} this sampler is registered under. 1.21 bound
+     * the {@code DynamicTexture} straight to the shader ({@code shaderHolder.addDynamicSampler}); 26.1's
+     * draw path takes texture IDENTIFIERS and resolves them through the {@code TextureManager} before the
+     * pass opens, so the texture has to live in the registry. Render thread only.
+     */
+    @Nullable
+    public net.minecraft.resources.Identifier textureId() {
+        var texture = getGradientTexture();
+        if (texture == null) {
+            return null;
+        }
+        if (registeredId == null) {
+            registeredId = com.lowdragmc.photon.Photon.id("dynamic/gradient/" + ID_SEQ.getAndIncrement());
+            net.minecraft.client.Minecraft.getInstance().getTextureManager().register(registeredId, texture);
+        }
+        return registeredId;
+    }
+
+
+    /**
+     * One row per gradient, {@code width} samples across — the 1.21 layout. {@code GradientColor.getColor}
+     * returns ARGB, which is exactly what 26.1's {@code NativeImage.setPixel} takes (1.21 had to convert to
+     * ABGR first). Rows past the gradient list are left untouched, as in 1.21. Render thread only.
+     */
     public void uploadTexture() {
-        // TODO(M2): rebuild the gradient sampler upload — DynamicTexture's ctor and NativeImage's pixel
-        // API changed (FastColor→ARGB, label-based ctor); rebuilt with the material pipeline path.
+        if (!isDirty) return;
+        RenderSystem.assertOnRenderThread();
+        if (gradientTexture == null || gradientTexture.getPixels() == null) {
+            this.gradientTexture = new DynamicTexture(() -> "Photon gradient sampler", width, height, false);
+        }
+        var pixels = gradientTexture.getPixels();
+        if (pixels == null) return;
+        for (int h = 0; h < height && h < gradients.size(); h++) {
+            var gradient = gradients.get(h);
+            for (int w = 0; w < width; w++) {
+                pixels.setPixel(w, h, gradient.getColor(w / (width - 1f)));
+            }
+        }
+        this.gradientTexture.upload();
+        isDirty = false;
     }
 
     private Configurator buildGradientConfigurator(Supplier<GradientColor> getter, Consumer<GradientColor> setter) {

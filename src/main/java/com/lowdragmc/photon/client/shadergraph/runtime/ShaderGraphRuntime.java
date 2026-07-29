@@ -16,16 +16,14 @@ import net.minecraft.nbt.CompoundTag;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * The shared compile cache for {@link ShaderGraph} resources: one {@link Entry} per graph resource path,
- * holding the compiled GLSL plus the lazily-built {@code #define} shader variants ({@code ""} for the CPU
- * quad/trail/beam paths, {@code PARTICLE_INSTANCE} / {@code PARTICLE_MODEL_INSTANCE} for the GPU-instanced
- * particle paths). Every {@code ShaderGraphMaterial} referencing the same graph shares one entry — the
- * GL programs exist once; each material stages its own uniform values before its draw.
+ * holding the compiled GLSL. Every {@code ShaderGraphMaterial} referencing the same graph shares one entry;
+ * each material stages its own uniform values before its draw. The pipelines built from an entry are cached
+ * separately in {@code PhotonPipelines.graphShader}, keyed by the compile's {@code contentHash} plus the
+ * instancing variant and MaterialSetting state — so the GL programs also exist once per (source, variant).
  *
  * <p>Staleness is detected by tag identity: {@code ResourceInstance.getResource} returns the cached
  * {@link CompoundTag} instance, which is replaced when the resource is saved in the editor (or reloaded
@@ -39,7 +37,9 @@ public final class ShaderGraphRuntime {
 
     private ShaderGraphRuntime() {}
 
-    /** One compiled graph: sources + define variants. Closed (GL programs freed) when its source changes. */
+    /** One compiled graph's sources. Dropped when the resource changes; the pipelines compiled from it
+     *  live in {@code PhotonPipelines}, keyed by content hash, and are freed with the device's pipeline
+     *  cache on a resource reload (26.1 has no per-pipeline release). */
     public static final class Entry {
         /** The source tag this entry was compiled from — identity marker for staleness detection. */
         final CompoundTag sourceTag;
@@ -78,12 +78,8 @@ public final class ShaderGraphRuntime {
             return compiled != null;
         }
 
-        // TODO(M2): variant(define) — the lazily-built #define GL variants (was LDShaderInstance via
-        // KGShaderResourceProvider) become RenderPipeline variants built through KilaGraph 26.1's
-        // DynamicShaderSourceRegistry + RenderTypeFactory (withShaderDefine).
-
         private void close() {
-            // nothing GL-side to free until the M2 pipeline variants exist
+            // nothing GL-side is owned here — see the class note on pipeline lifetime
         }
     }
 

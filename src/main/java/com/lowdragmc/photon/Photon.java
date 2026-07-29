@@ -26,6 +26,7 @@ public class Photon {
 
     public Photon(IEventBus eventBus, ModContainer modContainer) {
         Photon.init();
+        com.lowdragmc.photon.test.gametest.PhotonGameTests.init(eventBus);
         if (FMLEnvironment.getDist() == Dist.CLIENT) {
             modContainer.registerConfig(ModConfig.Type.CLIENT, PhotonConfig.CONFIG_SPEC);
             modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);

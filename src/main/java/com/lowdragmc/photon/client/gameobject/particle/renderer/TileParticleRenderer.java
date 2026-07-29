@@ -1,43 +1,39 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
+import com.lowdragmc.photon.client.gameobject.emitter.data.AdditionalGPUDataSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
-import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.nio.FloatBuffer;
 import java.util.Collection;
 
 /**
  * Renders {@link TileParticle}s: the single entry point for both the CPU vertex path
- * ({@link #renderQueue}) and the GPU-instanced path ({@link #uploadInstances}/{@link #drawInstanced},
- * backed by {@link ParticleInstanceRenderer} for GL resources). Both paths share the same
- * billboard/stretched/model orientation math, so they stay visually identical by construction.
- * The particle itself only holds data and simulation.
+ * ({@link #renderQueue}) and the 26.1 GPU-instanced path ({@link #fillInstances} /
+ * {@link #fillInstancesModel} + {@link #modelMeshBuffer}, drawn via {@code PhotonInstancedDrawState}).
+ * Both paths share the same billboard/stretched/model orientation math, so they stay visually
+ * identical by construction. The particle itself only holds data and simulation.
  */
 @ParametersAreNonnullByDefault
 public class TileParticleRenderer {
-    private final ParticleConfig config;
     /** The renderer runtime this pass draws with (slot-or-config per field): the config's default runtime
-     *  for the shared pass, or a per-emitter overriding runtime for an override pass. Custom GPU data
-     *  still comes from the config. */
+     *  for the shared pass, or a per-emitter overriding runtime for an override pass. */
     private final ParticleRendererSetting.Runtime renderer;
-    private final ParticleInstanceRenderer instanceBackend;
 
-    public TileParticleRenderer(ParticleConfig config, ParticleRendererSetting.Runtime renderer) {
-        this.config = config;
+    public TileParticleRenderer(ParticleRendererSetting.Runtime renderer) {
         this.renderer = renderer;
-        this.instanceBackend = new ParticleInstanceRenderer(config, renderer);
     }
 
     // ---------------------------------------------------------------------
@@ -182,31 +178,144 @@ public class TileParticleRenderer {
     // instanced path
     // ---------------------------------------------------------------------
 
-    /**
-     * Fill and upload the per-instance data for this pass's particles. Returns true if any
-     * instance was uploaded (the VAO is left bound for {@link #drawInstanced}).
-     */
-    public boolean uploadInstances(Collection<IParticle> particles, Camera camera, float partialTicks) {
-        var renderMode = renderer.getRenderMode();
-        // rebuild the static geometry when the model mesh was hot-reloaded (identity compare), OR when a
-        // runtime renderMode override crossed the Model/non-Model boundary (different instance layout)
-        if (instanceBackend.isInitialized()
-                && (instanceBackend.wasBuiltForModel() != (renderMode == ParticleRendererSetting.Mode.Model)
-                    || (renderMode == ParticleRendererSetting.Mode.Model
-                        && instanceBackend.getBuiltMesh() != renderer.getModelSource().getMesh()))) {
-            instanceBackend.dispose();
-        }
-        var buffer = instanceBackend.beginUpload(particles.size());
-        if (buffer == null) return false;
-        var setting = config.additionalGPUDataSetting;
-        var dataBuffer = setting.hasDataRecord() ? instanceBackend.beginDataUpload(particles.size()) : null;
-        var customBuffer = setting.hasCustomRecord() ? instanceBackend.beginCustomUpload(particles.size()) : null;
+    /** Floats per billboard instance on the 26.1 texel-buffer path (pos3 size2 scale3 rot4 color4
+     *  uv4 light1) — MIRRORED IN particle.vsh; keep in lockstep. */
+    public static final int INSTANCE_FLOATS = 21;
 
-        var instanceCount = 0;
+    /** Floats per Model-mode instance (pos3 scale3 rot4 color4 light1) — MIRRORED IN the shader. */
+    public static final int MODEL_INSTANCE_FLOATS = 15;
+
+    /** The Model-mode instanced fill: {@value #MODEL_INSTANCE_FLOATS} floats per live particle. */
+    public int fillInstancesModel(Collection<IParticle> particles, Camera camera, float partialTicks,
+                                  FloatBuffer out, AdditionalGPUDataSetting setting,
+                                  @Nullable FloatBuffer dataBuffer,
+                                  @Nullable FloatBuffer customBuffer) {
+        var count = 0;
         var vec3 = camera.position();
         for (var p : particles) {
             if (!(p instanceof TileParticle particle) || particle.getDelay() > 0) continue;
-            instanceCount++;
+            count++;
+            var localPos = particle.getLocalPos(partialTicks).mulPosition(particle.getSpaceTransform());
+            var color = particle.getRealColor(partialTicks);
+            var rotation = particle.getRealRotation(partialTicks);
+            var size = particle.getRealSize(partialTicks);
+            var scale = particle.getSpaceScale();
+            var light = particle.getRealLight(partialTicks);
+            var quaternion = computeModelQuaternion(particle, rotation);
+            out.put((float) (localPos.x - vec3.x)).put((float) (localPos.y - vec3.y)).put((float) (localPos.z - vec3.z));
+            out.put(scale.x * size.x).put(scale.y * size.y).put(scale.z * size.z);
+            out.put(quaternion.x).put(quaternion.y).put(quaternion.z).put(quaternion.w);
+            out.put(color.x).put(color.y).put(color.z).put(color.w);
+            out.put(Float.intBitsToFloat(light));
+            // legacy per-channel attributes (custom shaders) + the packed records (shadergraph) — 1.21 parity
+            if (setting.hasAttribs()) {
+                setting.uploadAttribs(particle, out, partialTicks);
+            }
+            if (dataBuffer != null) {
+                setting.uploadDataRecord(particle, dataBuffer, partialTicks);
+            }
+            if (customBuffer != null) {
+                setting.uploadCustomRecord(particle, customBuffer, partialTicks);
+            }
+        }
+        return count;
+    }
+
+    /** Model base mesh baked in the 1.21 instanced layout — 9 floats per vertex (pos3+pivot,
+     *  uv2 optionally atlas-remapped, normal3, brightness1); locations 0-3 are applied by
+     *  {@code PhotonInstancedDrawState.MODEL}. Sequential-quad indexed (1.21's EBO pattern).
+     *  Rebuilt when the mesh hot-reloads (identity compare). */
+    @Nullable
+    private com.mojang.blaze3d.buffers.GpuBuffer modelVertexBuffer;
+    @Nullable
+    private com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh modelBuiltMesh;
+    private int modelIndexCount;
+
+    @Nullable
+    public com.mojang.blaze3d.buffers.GpuBuffer modelMeshBuffer() {
+        var source = renderer.getModelSource();
+        var mesh = source == null ? null : source.getMesh();
+        if (mesh == null) {
+            return null;
+        }
+        if (modelVertexBuffer == null || modelBuiltMesh != mesh) {
+            if (modelVertexBuffer != null) {
+                modelVertexBuffer.close();
+                modelVertexBuffer = null;
+            }
+            var remapUV = source.hasAtlasUV() && !renderer.isUseBlockUV();
+            var shade = renderer.isShade();
+            var pivot = renderer.getModelPivot();
+            var quadCount = mesh.quadCount();
+            var vertices = mesh.vertices();
+            var bounds = mesh.spriteBounds();
+            // pos 3, uv 2, normal 3, brightness 1 — the 1.21 layout
+            var bytes = org.lwjgl.system.MemoryUtil.memAlloc(quadCount * 4 * 9 * Float.BYTES);
+            try {
+                for (int quad = 0; quad < quadCount; quad++) {
+                    var brightness = shade ? mesh.shadeBrightness(quad) : 1f;
+                    float u0 = 0, v0 = 0, uw = 1, vh = 1;
+                    if (remapUV) {
+                        u0 = bounds[quad * 4];
+                        v0 = bounds[quad * 4 + 1];
+                        uw = bounds[quad * 4 + 2] - u0;
+                        vh = bounds[quad * 4 + 3] - v0;
+                    }
+                    for (int corner = 0; corner < 4; corner++) {
+                        int off = com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh.vertexOffset(quad, corner);
+                        var u = vertices[off + 3];
+                        var v = vertices[off + 4];
+                        if (remapUV) {
+                            u = (u - u0) / uw;
+                            v = (v - v0) / vh;
+                        }
+                        bytes.putFloat(vertices[off] + pivot.x)
+                                .putFloat(vertices[off + 1] + pivot.y)
+                                .putFloat(vertices[off + 2] + pivot.z);
+                        bytes.putFloat(u).putFloat(v);
+                        bytes.putFloat(vertices[off + 5]).putFloat(vertices[off + 6]).putFloat(vertices[off + 7]);
+                        bytes.putFloat(brightness);
+                    }
+                }
+                bytes.flip();
+                if (!bytes.hasRemaining()) {
+                    modelIndexCount = 0;
+                    return null;
+                }
+                modelVertexBuffer = com.mojang.blaze3d.systems.RenderSystem.getDevice().createBuffer(
+                        () -> "Photon model mesh", com.mojang.blaze3d.buffers.GpuBuffer.USAGE_VERTEX, bytes);
+            } finally {
+                org.lwjgl.system.MemoryUtil.memFree(bytes);
+            }
+            modelIndexCount = quadCount * 6;
+            modelBuiltMesh = mesh;
+        }
+        return modelVertexBuffer;
+    }
+
+    public int modelIndexCount() {
+        return modelIndexCount;
+    }
+
+    /**
+     * The 26.1 instanced fill: append {@value #INSTANCE_FLOATS} floats per live particle to
+     * {@code out} (the billboard/stretched branch). Model mode and GPU-data configs are not
+     * eligible — callers gate and fall back to the CPU path. Returns the appended instance count.
+     */
+    public int fillInstances(Collection<IParticle> particles, Camera camera, float partialTicks,
+                             FloatBuffer out, AdditionalGPUDataSetting setting,
+                             @Nullable FloatBuffer dataBuffer,
+                             @Nullable FloatBuffer customBuffer) {
+        var renderMode = renderer.getRenderMode();
+        if (renderMode == ParticleRendererSetting.Mode.None
+                || renderMode == ParticleRendererSetting.Mode.Model) {
+            return 0;
+        }
+        var count = 0;
+        var vec3 = camera.position();
+        for (var p : particles) {
+            if (!(p instanceof TileParticle particle) || particle.getDelay() > 0) continue;
+            count++;
             var localPos = particle.getLocalPos(partialTicks).mulPosition(particle.getSpaceTransform());
             var x = (float) (localPos.x - vec3.x);
             var y = (float) (localPos.y - vec3.y);
@@ -217,55 +326,32 @@ public class TileParticleRenderer {
             var size = particle.getRealSize(partialTicks);
             var scale = particle.getSpaceScale();
             var light = particle.getRealLight(partialTicks);
+            var uvs = particle.getRealUVs(partialTicks);
 
-            if (renderMode == ParticleRendererSetting.Mode.Model) {
-                var quaternion = computeModelQuaternion(particle, rotation);
-                // pos vec3
-                buffer.put(x).put(y).put(z);
-                // scale vec3
-                buffer.put(scale.x * size.x).put(scale.y * size.y).put(scale.z * size.z);
-                // rot quat (vec4)
-                buffer.put(quaternion.x).put(quaternion.y).put(quaternion.z).put(quaternion.w);
-                // color vec4
-                buffer.put(color.x).put(color.y).put(color.z).put(color.w);
-                // light int
-                buffer.put(Float.intBitsToFloat(light));
+            Quaternionf quaternion;
+            float finalSizeX = size.x;
+            float finalSizeY = size.y;
+            if (renderMode == ParticleRendererSetting.Mode.StretchedBillboard) {
+                var frame = computeStretchedFrame(particle, localPos, vec3.x, vec3.y, vec3.z, size, scale);
+                quaternion = frame.rotation;
+                finalSizeX = frame.stretchedSizeX;
+                x -= frame.offsetX;
+                y -= frame.offsetY;
+                z -= frame.offsetZ;
             } else {
-                var uvs = particle.getRealUVs(partialTicks);
-
-                Quaternionf quaternion;
-                float finalSizeX = size.x;
-                float finalSizeY = size.y;
-                if (renderMode == ParticleRendererSetting.Mode.StretchedBillboard) {
-                    var frame = computeStretchedFrame(particle, localPos, vec3.x, vec3.y, vec3.z, size, scale);
-                    quaternion = frame.rotation;
-                    finalSizeX = frame.stretchedSizeX;
-                    x -= frame.offsetX;
-                    y -= frame.offsetY;
-                    z -= frame.offsetZ;
-                } else {
-                    quaternion = computeBillboardQuaternion(particle, renderMode, camera, partialTicks, rotation);
-                }
-
-                // pos vec3
-                buffer.put(x).put(y).put(z);
-                // size vec2
-                buffer.put(finalSizeX).put(finalSizeY);
-                // scale vec3
-                buffer.put(scale.x).put(scale.y).put(scale.z);
-                // rot quat (vec4)
-                buffer.put(quaternion.x).put(quaternion.y).put(quaternion.z).put(quaternion.w);
-                // color vec4
-                buffer.put(color.x).put(color.y).put(color.z).put(color.w);
-                // uv vec4 (flip v)
-                buffer.put(uvs.x).put(uvs.w).put(uvs.z).put(uvs.y);
-                // light int
-                buffer.put(Float.intBitsToFloat(light));
+                quaternion = computeBillboardQuaternion(particle, renderMode, camera, partialTicks, rotation);
             }
 
-            // legacy per-channel attributes (custom shaders), + packed record for the data TBO (shadergraph)
+            out.put(x).put(y).put(z);                                             // pos vec3
+            out.put(finalSizeX).put(finalSizeY);                                  // size vec2
+            out.put(scale.x).put(scale.y).put(scale.z);                           // scale vec3
+            out.put(quaternion.x).put(quaternion.y).put(quaternion.z).put(quaternion.w); // rot quat
+            out.put(color.x).put(color.y).put(color.z).put(color.w);              // color vec4
+            out.put(uvs.x).put(uvs.w).put(uvs.z).put(uvs.y);                      // uv vec4 (flip v)
+            out.put(Float.intBitsToFloat(light));                                 // light int
+            // legacy per-channel attributes (custom shaders) + the packed records (shadergraph) — 1.21 parity
             if (setting.hasAttribs()) {
-                setting.uploadAttribs(particle, buffer, partialTicks);
+                setting.uploadAttribs(particle, out, partialTicks);
             }
             if (dataBuffer != null) {
                 setting.uploadDataRecord(particle, dataBuffer, partialTicks);
@@ -274,26 +360,7 @@ public class TileParticleRenderer {
                 setting.uploadCustomRecord(particle, customBuffer, partialTicks);
             }
         }
-
-        if (dataBuffer != null) {
-            instanceBackend.endDataUpload(dataBuffer);
-        }
-        if (customBuffer != null) {
-            instanceBackend.endCustomUpload(customBuffer);
-        }
-        instanceBackend.endUpload(buffer, instanceCount);
-        return instanceCount > 0;
-    }
-
-    // TODO(M2): drawInstanced — re-expressed as a RenderPass.drawIndexed(instanceCount) draw with
-    // the material pipeline when the instancing backend moves off raw GL.
-
-    /**
-     * Full GL teardown of the instanced resources. Call when the render mode / model / instance
-     * layout changes (not for capacity growth).
-     */
-    public void dispose() {
-        instanceBackend.dispose();
+        return count;
     }
 
     // ---------------------------------------------------------------------

@@ -27,8 +27,4 @@ public final class PostFXTargetPool {
     public static void endFrame() {
         FRAME_ID++;
     }
-
-    /** Drop every pooled target (window resize etc.). No-op until the M3 pool returns. */
-    public static void invalidateAll() {
-    }
 }

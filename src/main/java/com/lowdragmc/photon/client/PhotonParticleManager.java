@@ -2,14 +2,16 @@ package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
+import com.lowdragmc.photon.client.render.PhotonEditorRenderState;
+import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
+import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.particle.ParticleRenderType;
+import org.joml.Vector3f;
 
-import javax.annotation.Nullable;
 import java.util.Arrays;
 
 public class PhotonParticleManager extends ParticleManager implements ParticleTickHost {
@@ -19,17 +21,6 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     private long tickCounter = 0;
     /** {@link ParticleTickHost} wipe generation, bumped in {@link #clear()}. */
     private int generation = 0;
-    // runtime
-    @Nullable
-    @Getter
-    private static SceneView.DrawMode drawMode = null;
-    /**
-     * Whether the editor scene should run the bloom post-processing pass. Default {@code true} keeps
-     * in-game particle bloom following the mod config; the editor's top-bar toggle relays its
-     * {@link SceneView#isBloomEnabled()} here only for the duration of its own render.
-     */
-    @Getter
-    private static boolean sceneBloomEnabled = true;
     /**
      * True while a timeline seek replays ticks that will never be rendered: particles may skip
      * pure per-tick visual recomputes (color/rotation/light — see TileParticle.updateChanges).
@@ -75,11 +66,52 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         return time + (isPlaying ? pPartialTicks : 0);
     }
 
-    // TODO(M4): the 1.21 render() override (drawMode/bloom staging, editor-scene PostEffectStack
-    // routing, shader game-time swap, standalone effect consumption with the scissor dance) sat on
-    // the old immediate ParticleManager.render(PoseStack, Camera, ...) hook. The 26.1 LDLib2
-    // ParticleManager is extract/submit-based (render(SubmitNodeStorage, CameraRenderState, ...)),
-    // so the editor wiring returns with the M3 postfx executor + M4 editor milestone.
+    // TODO(M4): the 1.21 render() override also staged bloom / editor-scene PostEffectStack routing /
+    // shader game-time swap / standalone effect consumption — those return with the M3 postfx
+    // executor + M4 editor milestone. The pieces below are the extraction-critical subset.
+
+    /**
+     * Extraction-time overrides (the 1.21 render() line 103 semantics):
+     * <ul>
+     *   <li>freeze the intra-tick partial while the timeline is paused — the raw game partial keeps
+     *       sawtoothing 0→1 every game tick, which made {@code extractFrame}'s deltaTime oscillate
+     *       (pause flicker) and per-frame interpolation jitter;</li>
+     *   <li>stage the SceneView draw-mode flags for this scene's extraction (wireframe toggle).</li>
+     * </ul>
+     */
+    @Override
+    public void render(net.minecraft.client.renderer.SubmitNodeStorage storage,
+                       net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState,
+                       net.minecraft.client.Camera camera,
+                       net.minecraft.client.renderer.culling.Frustum frustum,
+                       float partialTicks) {
+        var frameStart = System.nanoTime();
+        if (sceneView != null) {
+            PhotonEditorRenderState.drawShaded = sceneView.getDrawMode() != SceneView.DrawMode.WIREFRAME;
+            PhotonEditorRenderState.drawWireframe = sceneView.getDrawMode() != SceneView.DrawMode.DRAW;
+            PhotonEditorRenderState.bloomEnabled = sceneView.isBloomEnabled();
+        }
+        if (cameraRenderState != null && cameraRenderState.initialized) {
+            // scene-local engine uniforms (U_* block) for custom shaders drawn in this scene.
+            // U_ViewPort = the actual render target of this scene (the PIP/FBO texture the output
+            // override points at during the scene render), not the main window.
+            var sceneTarget = RenderSystem.outputColorTextureOverride;
+            var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+            PhotonEngineUniforms.update(
+                    cameraRenderState.projectionMatrix, cameraRenderState.viewRotationMatrix,
+                    new Vector3f((float) cameraRenderState.pos.x,
+                            (float) cameraRenderState.pos.y, (float) cameraRenderState.pos.z),
+                    sceneTarget != null ? sceneTarget.getWidth(0) : mainTarget.width,
+                    sceneTarget != null ? sceneTarget.getHeight(0) : mainTarget.height);
+        }
+        try {
+            super.render(storage, cameraRenderState, camera, frustum, isPlaying ? partialTicks : 0);
+        } finally {
+            // extraction is the editor scene's CPU-side render cost — keep the F3-style stat fed
+            lastFrameTimes[frameIndex] = System.nanoTime() - frameStart;
+            frameIndex = (frameIndex + 1) % lastFrameTimes.length;
+        }
+    }
 
     @Override
     public void tick() {
@@ -98,6 +130,14 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         tickCounter++;
         super.tick();
         time++;
+    }
+
+    /** The editor scene's Photon draw slot: runs in the scene renderer's finally, after its
+     *  translucent particles, still inside the FBO output-override scope. */
+    @Override
+    public void afterRender() {
+        PhotonWorldRenderState.drainEditor();
+        super.afterRender();
     }
 
     public long getCPUTime() {

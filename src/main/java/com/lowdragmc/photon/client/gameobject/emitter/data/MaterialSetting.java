@@ -7,12 +7,13 @@ import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlendMode;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
+import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
-import com.mojang.blaze3d.systems.RenderSystem;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
+import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.Nonnull;
 import java.util.Optional;
@@ -42,8 +43,23 @@ public class MaterialSetting implements IConfigurable, IPersistedSerializable {
         this.material = material;
     }
 
-    // TODO(M2): pre()/post() applied blend/cull/depth via imperative RenderSystem calls — in 26.1
-    // these are RenderPipeline properties. This setting becomes part of the pipeline-variant cache
-    // key: (material pipeline, blendMode.toBlendFunction(), cull, depthTest, depthMask).
+    // 1.21's pre()/post() applied blend/cull/depth as imperative RenderSystem calls; in 26.1 they
+    // are pipeline properties, so this setting contributes the pipeline-variant key instead.
+    public PhotonPipelines.ParticlePipelineKey pipelineKey(
+            com.mojang.blaze3d.vertex.VertexFormat.Mode mode) {
+        var blend = blendMode.toBlendFunction();
+        var equation = blend != null && blendMode.getBlendFunc() != null
+                ? blendMode.getBlendFunc().op
+                : PhotonPipelines.BLEND_EQUATION_ADD;
+        return new PhotonPipelines.ParticlePipelineKey(blend, equation, cull, depthTest, depthMask, mode, false);
+    }
+
+    /** The RenderType this material slot draws with (material + this setting's pipeline state +
+     *  the emitter's primitive mode). */
+    @Nullable
+    public net.minecraft.client.renderer.rendertype.RenderType getRenderType(
+            com.mojang.blaze3d.vertex.VertexFormat.Mode mode) {
+        return material.getRenderType(this, mode);
+    }
 
 }

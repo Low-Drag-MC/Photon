@@ -268,7 +268,7 @@ public abstract class FXObject extends Particle implements IFXObject {
     /**
      * Per-frame drive (deltaTime bookkeeping + timeline frame animation). In 1.21 this ran from the
      * vanilla {@code Particle.render} call; 26.1 has no per-particle render call, so the render-state
-     * extraction (TODO(M1): PhotonParticleGroup.extractRenderState) must invoke it once per frame.
+     * extraction invokes it once per frame ({@code PhotonParticleGroup.extractRenderState}).
      */
     public void extractFrame(float partialTicks) {
         var tickTime = lastTick + partialTicks;
@@ -292,15 +292,12 @@ public abstract class FXObject extends Particle implements IFXObject {
         }
     }
 
-    /**
-     * TODO(M1): return Photon's registered ParticleGroup type instead. Until then all FX objects
-     * live in vanilla's {@code NoRenderParticleGroup}: ticked every engine tick, never extracted or
-     * rendered. Group lookup is identity-based, so this must stay a shared singleton instance.
-     */
+    /** All FX objects live in Photon's registered group ({@code PhotonParticleGroup}): ticked by the
+     *  engine, frame-driven and batched during extraction. Identity-keyed — shared singleton. */
     @Override
     @Nonnull
     public ParticleRenderType getGroup() {
-        return ParticleRenderType.NO_RENDER;
+        return com.lowdragmc.photon.client.render.PhotonParticleRenderTypes.FX;
     }
 
     /** 26.1: no Particle render-bounding-box hook — kept as Photon API; the M1 extraction and the

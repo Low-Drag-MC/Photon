@@ -28,6 +28,9 @@ import net.minecraft.nbt.Tag;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.render.PhotonInstancedDrawState;
+
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -36,11 +39,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-
-import static org.lwjgl.opengl.GL11.GL_FLOAT;
-import static org.lwjgl.opengl.GL20.glEnableVertexAttribArray;
-import static org.lwjgl.opengl.GL20.glVertexAttribPointer;
-import static org.lwjgl.opengl.GL33.glVertexAttribDivisor;
 
 /**
  * Per-emitter selection of {@link PhotonGpuChannels} to expose as per-instance data. Two paths,
@@ -57,12 +55,12 @@ import static org.lwjgl.opengl.GL33.glVertexAttribDivisor;
  *   config-independent fixed offset — so one compiled shadergraph program serves every config.</li>
  * </ul>
  * The two are independent: a pass batching both material kinds populates both. Only the attribute
- * layout is a GL vertex layout ({@link #attribRelayoutNeeded()}); the TBO record size is fixed per kind.
+ * layout is a vertex layout ({@link #planAttribs}); the TBO record size is fixed per kind.
  *
  * <h3>Custom data</h3>
  * Beyond the fixed registry, an emitter may define up to {@link #MAX_CUSTOM_DATA} user {@link CustomData}
  * streams (Unity-style Custom Data), each uploaded as one {@code vec4}. Custom shaders read them as extra
- * vertex attributes appended after the registry-channel attributes ({@link #layoutAttribs}); shadergraphs
+ * vertex attributes appended after the registry-channel attributes ({@link #planAttribs}); shadergraphs
  * read them from a SEPARATE {@code PhotonCustomData} buffer texture with a constant stride of
  * {@code MAX_CUSTOM_DATA} slots ({@link #uploadCustomRecord}), so the {@code photon_custom_data(i)}
  * accessor stays config-independent. The custom TBO is only uploaded when a shadergraph material on the
@@ -82,7 +80,6 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
     private long materialMask = 0;
 
     // ---- vertex-attribute path (legacy custom shaders) ----
-    private long lastAttribMask = -1; // the userMask the current attribute layout was built for
     private int lastCustomDataCount = -1; // custom-data streams the current attribute layout was built for
     private final List<PhotonGpuChannels.Channel> attribPlan = new ArrayList<>();
 
@@ -187,11 +184,6 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
         return attribMask() != 0 || customDataCount() > 0;
     }
 
-    /** True when the vertex-attribute layout no longer matches the user toggles / custom-data count. */
-    public boolean attribRelayoutNeeded() {
-        return attribMask() != lastAttribMask || customDataCount() != lastCustomDataCount;
-    }
-
     /** Floats per instance the attribute tail occupies in the instance VBO (enabled channels + custom vec4s). */
     public int attribFloats() {
         var mask = attribMask();
@@ -205,25 +197,34 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
     }
 
     /**
-     * Defines one divisor-1 attribute per enabled channel, sequentially from the kind's base
-     * location, in registry order (the legacy layout), then one {@code vec4} attribute per custom-data
-     * stream after them. The instance VBO is bound. Rebuilds the upload plan. Call unconditionally when
-     * (re)creating the layout.
+     * One divisor-1 attribute per enabled channel, sequentially from the kind's base location, in registry
+     * order (the legacy layout), then one {@code vec4} per custom-data stream after them — the 1.21
+     * {@code layoutAttribs} layout, expressed as C1 {@link PhotonInstancedDrawState.Attrib} entries instead
+     * of raw {@code glVertexAttribPointer} calls (26.1 drives VAOs through the engine; Photon's divisor
+     * attributes are applied by {@code VertexArrayCacheMixin}, not at layout time).
+     * <p>
+     * {@code offsetFloats} is where the tail starts inside the instance record, i.e. the variant's base
+     * stride. Rebuilds the upload plan {@link #uploadAttribs} follows, so layout and upload can't disagree.
      */
-    public void layoutAttribs(int offset, int stride) {
+    public List<PhotonInstancedDrawState.Attrib> planAttribs(int offsetFloats) {
         var kind = kind();
         var mask = attribMask();
-        lastAttribMask = mask;
         attribPlan.clear();
+        var attribs = new ArrayList<PhotonInstancedDrawState.Attrib>();
 
+        int limit = PhotonInstancedDrawState.maxVertexAttribs();
         int attribIndex = kind.baseAttribLocation;
         for (var channel : PhotonGpuChannels.CHANNELS) {
             if ((mask & channel.bit()) == 0 || !channel.supported().contains(kind) || !channel.uploadable()) continue;
-            glVertexAttribPointer(attribIndex, channel.floats(), GL_FLOAT, false, stride, offset);
-            glEnableVertexAttribArray(attribIndex);
-            glVertexAttribDivisor(attribIndex, 1);
-            offset += channel.floats() * Float.BYTES;
+            // The floats stay in the record either way — dropping only the DECLARATION keeps every later
+            // channel's offset (and the stride the upload writes) unchanged.
+            if (attribIndex < limit) {
+                attribs.add(new PhotonInstancedDrawState.Attrib(attribIndex, channel.floats(), false, offsetFloats));
+            } else {
+                warnAttribOverflow(kind, limit);
+            }
             attribIndex++;
+            offsetFloats += channel.floats();
             attribPlan.add(channel);
         }
 
@@ -231,12 +232,15 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
         int customCount = customDataCount();
         lastCustomDataCount = customCount;
         for (int i = 0; i < customCount; i++) {
-            glVertexAttribPointer(attribIndex, 4, GL_FLOAT, false, stride, offset);
-            glEnableVertexAttribArray(attribIndex);
-            glVertexAttribDivisor(attribIndex, 1);
-            offset += 4 * Float.BYTES;
+            if (attribIndex < limit) {
+                attribs.add(new PhotonInstancedDrawState.Attrib(attribIndex, 4, false, offsetFloats));
+            } else {
+                warnAttribOverflow(kind, limit);
+            }
             attribIndex++;
+            offsetFloats += 4;
         }
+        return attribs;
     }
 
     /** Appends one instance's attribute tail (enabled channels in registry order, then custom vec4s). */
@@ -261,10 +265,10 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
     // ---------------------------------------------------------------------
 
     /**
-     * Whether the data buffer texture is needed this frame — i.e. a shadergraph material on the
-     * pass reads additional channels ({@code materialMask != 0}). Hand-written custom shaders read
-     * their channels through the legacy vertex attributes instead, so a custom-shader-only pass
-     * skips the TBO entirely (the tornado etc.).
+     * Whether any shadergraph channel this KIND supports is requested. Note the caller decides whether to
+     * upload from the RAW material union instead ({@code Emitter.extractInstancedGroup}): a graph asking
+     * only for channels this kind doesn't have still gets a (zeroed) record, because its pipeline declares
+     * {@code PhotonData} and a declared uniform must be bound.
      */
     public boolean hasDataRecord() {
         return materialMask != 0;
@@ -320,10 +324,10 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
     }
 
     /**
-     * Whether the custom-data buffer texture must be uploaded this frame — i.e. a shadergraph material
-     * on the pass reads custom data. Uploaded even when the emitter defines no streams (all-zero record),
-     * so the shared graph's {@code photon_custom_data(i)} accessor always fetches a valid (zeroed) texel
-     * rather than a stale texture unit; a pass with no custom-data-reading graph skips it entirely.
+     * Whether a shadergraph material on the pass reads custom data. The record is uploaded even when the
+     * emitter defines no streams (all-zero), so the shared graph's {@code photon_custom_data(i)} accessor
+     * always fetches a valid (zeroed) texel rather than a stale texture unit; a pass with no
+     * custom-data-reading graph skips it entirely.
      */
     public boolean hasCustomRecord() {
         return customDataMaterialUsed;
@@ -345,6 +349,23 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
             } else {
                 buffer.put(0f).put(0f).put(0f).put(0f);
             }
+        }
+    }
+
+    /** Kinds already warned about, so the message appears once per kind rather than every frame. */
+    private static final Set<PhotonGpuChannels.Kind> WARNED_OVERFLOW = EnumSet.noneOf(PhotonGpuChannels.Kind.class);
+
+    /**
+     * The legacy attribute layout is one attribute PER CHANNEL from the kind's base location, so a config
+     * with enough channels + custom-data streams runs past the device's attribute budget (TILE starts at 8
+     * and can ask for 15). The record/TBO path is unaffected — it packs into fixed vec4 slots — so this only
+     * costs hand-written custom shaders their highest-numbered {@code in} declarations.
+     */
+    private static void warnAttribOverflow(PhotonGpuChannels.Kind kind, int limit) {
+        if (WARNED_OVERFLOW.add(kind)) {
+            Photon.LOGGER.warn("{}: additional-GPU-data attributes exceed the device's {} vertex attribute "
+                    + "slots — the overflow is uploaded but not bound. Disable channels, or read them from "
+                    + "a shader graph (which uses the packed PhotonData buffer instead).", kind, limit);
         }
     }
 

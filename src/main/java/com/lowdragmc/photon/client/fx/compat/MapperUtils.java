@@ -240,7 +240,6 @@ public class MapperUtils {
         tag.put("cull", cull);
 
         tag.putInt("orderInLayer", 0);
-        tag.putString("layer", "Translucent");
         tag.putString("vertexSortingMode", "NONE");
 
         // materials section
@@ -325,7 +324,6 @@ public class MapperUtils {
         newRendererTag.putString("renderMode", renderTag.getStringOr("renderMode", ""));
         newRendererTag.putByte("useBlockUV",  renderTag.getByteOr("useBlockUV", (byte) 0));
         newRendererTag.putByte("shade",  renderTag.getByteOr("shade", (byte) 0));
-        newRendererTag.putString("layer",  renderTag.getStringOr("layer", ""));
         newRendererTag.put("cull", mapCullTag(renderTag.getCompoundOrEmpty("cull")));
 
         CompoundTag materialsTag = new CompoundTag();

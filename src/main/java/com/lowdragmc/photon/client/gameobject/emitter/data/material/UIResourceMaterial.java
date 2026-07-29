@@ -49,12 +49,22 @@ public final class UIResourceMaterial implements IMaterial {
         return material;
     }
 
-    // TODO(M2): delegate the pipeline/uniform contribution to getInternalMaterial() once the
-    // pipeline-based material seam replaces the removed begin/end.
+    @Override
+    public net.minecraft.client.renderer.rendertype.RenderType getRenderType(
+            com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting setting,
+            com.mojang.blaze3d.vertex.VertexFormat.Mode mode) {
+        return getRawMaterial().getRenderType(setting, mode);
+    }
 
     @Override
     public IGuiTexture preview() {
         return getInternalMaterial().preview();
+    }
+
+    /** Delegate too, so a ui_resource slot still gets the inspector's live full-resolution preview. */
+    @Override
+    public IGuiTexture previewLive() {
+        return getInternalMaterial().previewLive();
     }
 
     @Override

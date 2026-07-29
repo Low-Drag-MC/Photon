@@ -171,7 +171,7 @@ public class NoiseSetting extends ToggleGroup {
         protected NumberFunction remapCurve = new Curve(Integer.MIN_VALUE, Integer.MAX_VALUE, -1, 1, 1f, "base noise", "remap result");
     }
 
-    private class NoisePreview implements IGuiTexture {
+    public class NoisePreview implements IGuiTexture {
 
         private final double seed;
 
@@ -179,8 +179,7 @@ public class NoiseSetting extends ToggleGroup {
             this.seed = seed;
         }
 
-        // TODO(M4): register a GuiTextureRenderer for the registry path
-        public void draw(GUIContext graphics, float mouseX, float mouseY, float x, float y, float width, float height, float partialTicks) {
+        void drawInternal(GUIContext graphics, float x, float y, float width, float height) {
             noise.get().setSeed(seed);
 
             // render color bar (26.1: per-cell context.fill, no immediate buffer)
@@ -216,6 +215,26 @@ public class NoiseSetting extends ToggleGroup {
         private static int grayscale(float value) {
             int v = Math.min(255, Math.max(0, (int) (value * 255)));
             return 0xFF000000 | (v << 16) | (v << 8) | v;
+        }
+    }
+
+    /**
+     * The noise preview strip/field. Same root cause as the curve/gradient previews: LDLib2 26.1 draws
+     * {@link IGuiTexture}s through {@code GuiTextureRendererRegistry} rather than a method on the
+     * interface, so the 1.21-shaped {@code draw} override was never called.
+     */
+    @com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient(
+            name = "photon_noise_preview", registry = "ldlib2:gui_texture_renderer")
+    public static final class Renderer implements
+            com.lowdragmc.lowdraglib2.gui.texture.rendering.RegisteredGuiTextureRenderer<NoisePreview, Renderer> {
+        @Override
+        public Class<NoisePreview> type() {
+            return NoisePreview.class;
+        }
+
+        @Override
+        public void draw(NoisePreview texture, GUIContext context, float x, float y, float width, float height) {
+            texture.drawInternal(context, x, y, width, height);
         }
     }
 }

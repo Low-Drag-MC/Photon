@@ -2,7 +2,6 @@ package com.lowdragmc.photon.client.postfx.runtime;
 
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.PhotonShaders;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
 import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
 import com.mojang.blaze3d.pipeline.RenderTarget;

@@ -14,7 +14,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InstancedRendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;

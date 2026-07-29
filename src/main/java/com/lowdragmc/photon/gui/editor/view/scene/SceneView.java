@@ -12,6 +12,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.*;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.IGUIContext;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonIcons;
@@ -58,6 +59,9 @@ public class SceneView extends View {
             this.translateKey = translateKey;
         }
     }
+    /** Opaque near-black backdrop for the scene view (ARGB). */
+    private static final int SCENE_BACKGROUND = 0xFF101418;
+
     public final FXEditor fxEditor;
     public final ParticleSceneEditor sceneEditor;
     public final TrackedDummyWorld level = new TrackedDummyWorld();
@@ -71,7 +75,7 @@ public class SceneView extends View {
     private boolean isCullBoxVisible = true;
     @Getter
     private SceneMode sceneMode = SceneMode.PLATFORM;
-    @Getter @Setter
+    @Getter
     private DrawMode drawMode = DrawMode.DRAW;
     @Getter @Setter
     private boolean bloomEnabled = true;
@@ -87,11 +91,19 @@ public class SceneView extends View {
     /** Coalesced seek target (-1 = none): scrub/edit streams request here, flushed once per frame. */
     private long pendingSimulateTarget = -1;
 
+    /** Pushes the draw mode into the global editor render flags the extraction reads. */
+    public void setDrawMode(DrawMode drawMode) {
+        this.drawMode = drawMode;
+        com.lowdragmc.photon.client.render.PhotonEditorRenderState.drawShaded = drawMode != DrawMode.WIREFRAME;
+        com.lowdragmc.photon.client.render.PhotonEditorRenderState.drawWireframe = drawMode != DrawMode.DRAW;
+    }
+
     public SceneView(FXEditor fxEditor) {
         super("editor.scene", Icons.CAMERA);
         this.getLayout().widthPercent(100.0F);
         this.getLayout().heightPercent(100.0F);
         this.fxEditor = fxEditor;
+        setDrawMode(drawMode); // reset the global flags a previous editor session may have left behind
         level.setParticleManager(particleManager);
 
         sceneEditor = new ParticleSceneEditor();
@@ -103,6 +115,21 @@ public class SceneView extends View {
                 .createScene(level)
                 .setTickWorld(true)
                 .useCacheBuffer();
+        // Opaque scene backdrop (drawn before the world): with the default transparent clear,
+        // "void" pixels carry alpha 0 and PIP-composite over the editor UI, while bloom writes
+        // RGB only — glow straddling the void/content boundary composites differently on each
+        // side and visibly tears. An opaque backdrop makes alpha 1 everywhere, so translucency,
+        // bloom and the PIP blit all resolve against one consistent background.
+        var renderer = sceneEditor.scene.<com.lowdragmc.lowdraglib2.client.scene.WorldSceneRenderer>getRenderer();
+        if (renderer != null) {
+            renderer.setBeforeWorldRender(r -> {
+                var target = RenderSystem.outputColorTextureOverride;
+                if (target != null) {
+                    RenderSystem.getDevice().createCommandEncoder()
+                            .clearColorTexture(target.texture(), SCENE_BACKGROUND);
+                }
+            });
+        }
         this.addChild(sceneEditor);
         this.addChild(fxObjectInfoView);
         this.addChild(fxObjectAnimationView);
@@ -148,7 +175,7 @@ public class SceneView extends View {
     // 26.1: drawContents moved into the UIElementRenderer registry; drawBackgroundAdditional runs
     // right before the children draw — same per-frame slot.
     @Override
-    protected void drawBackgroundAdditional(@NotNull com.lowdragmc.lowdraglib2.gui.ui.rendering.IGUIContext context) {
+    protected void drawBackgroundAdditional(@NotNull IGUIContext context) {
         // flush before the children draw so the seek result is visible this frame
         flushPendingSimulate();
         // keep the floating panels pinned to their anchor corner when the scene is resized

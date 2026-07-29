@@ -5,7 +5,6 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InstancedRendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;

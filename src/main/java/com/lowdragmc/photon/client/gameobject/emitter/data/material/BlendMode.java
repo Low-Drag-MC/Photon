@@ -15,8 +15,9 @@ import javax.annotation.Nullable;
  * it is a {@link BlendFunction} baked into a {@code RenderPipeline}. This class stays the serialized
  * blend configuration; {@link #toBlendFunction()} feeds the M2 pipeline-variant cache.
  * <p>
- * TODO(M2): vanilla 26.1 has no blend-equation concept (our SUB/REVERSE_SUB/MIN/MAX modes) —
- * needs a decision: NeoForge pipeline extension, custom pass state, or dropping those modes.
+ * Blend equations (SUB/REVERSE_SUB/MIN/MAX): vanilla 26.1 pipelines can't express them — the
+ * {@link BlendFuc#op} rides in the pipeline key and Photon's own drain applies it as a raw
+ * {@code glBlendEquation} escape around the draw (M3 decision D4-C; GL backend only).
  */
 @Getter @Setter
 @EqualsAndHashCode
@@ -68,12 +69,20 @@ public class BlendMode {
         this(true, srcColorFactor, dstColorFactor, srcAlphaFactor, dstAlphaFactor, blendFunc);
     }
 
-    /** Pipeline-side blend state; null = blending disabled (opaque pipeline variant). */
+    /**
+     * Pipeline-side blend state; null = blending disabled (opaque pipeline variant).
+     * <p>
+     * The ALPHA channel always uses coverage semantics {@code (ONE, ONE_MINUS_SRC_ALPHA)} — the
+     * configured alpha factors (1.21 default {@code (ONE, ZERO)}) never affected on-screen color,
+     * but in 26.1 they'd overwrite the render target's alpha/coverage channel, which the editor's
+     * premultiplied PIP composite (and vanilla's translucency stages) trust. Matches vanilla's
+     * {@code BlendFunction.TRANSLUCENT} alpha behavior; the serialized fields stay untouched.
+     */
     @Nullable
     public BlendFunction toBlendFunction() {
         if (!enableBlend) {
             return null;
         }
-        return new BlendFunction(srcColorFactor, dstColorFactor, srcAlphaFactor, dstAlphaFactor);
+        return new BlendFunction(srcColorFactor, dstColorFactor, SourceFactor.ONE, DestFactor.ONE_MINUS_SRC_ALPHA);
     }
 }

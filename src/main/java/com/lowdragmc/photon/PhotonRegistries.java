@@ -39,9 +39,10 @@ public class PhotonRegistries {
     public static LDLRegistry.String<AnimatedPropertyType> ANIMATED_PROPERTIES;
 
     static {
-        if (LDLib2.isClient()) {
-            Client.load();
-        }
+        // 26.1: loaded unconditionally (matching LDLib2's own registries) — no @OnlyIn stripping
+        // any more, classes load lazily and none touch GL at registration; this also lets the FX
+        // serialization gametests run fully on the headless game-test server.
+        Client.load();
     }
 
     public static void init() {
@@ -59,6 +60,12 @@ public class PhotonRegistries {
                     .create(Photon.id("shape"), IShape.class, AutoRegistry::noArgsCreator);
             MODEL_SOURCES = AutoRegistry.LDLibRegisterClient
                     .create(Photon.id("model_source"), IModelSource.class, AutoRegistry::noArgsCreator);
+            // LDLib2's LDLibRegisterClient.autoRegister() no-ops on the dedicated server, but the FX
+            // serialization codecs dispatch through these registries on every dist — scan ourselves there.
+            registerAnnotatedClasses(MATERIALS, IMaterial.class);
+            registerAnnotatedClasses(NUMBER_FUNCTIONS, NumberFunction.class);
+            registerAnnotatedClasses(SHAPES, IShape.class);
+            registerAnnotatedClasses(MODEL_SOURCES, IModelSource.class);
             TIMELINE_TRACKS = new LDLRegistry.String<>(Photon.id("timeline_track"));
             registerStaticInstances(TIMELINE_TRACKS, TrackType.class);
             ANIMATED_PROPERTIES = new LDLRegistry.String<>(Photon.id("animated_property"));
@@ -73,6 +80,25 @@ public class PhotonRegistries {
                     BlockTextureSheetMaterial.class.getAnnotation(LDLRegisterClient.class),
                     BlockTextureSheetMaterial.class,
                     () -> BlockTextureSheetMaterial.INSTANCE));
+        }
+
+        /** Server-dist replacement for {@code LDLibRegisterClient.autoRegister()} (which is client-gated
+         *  upstream): register every {@code @LDLRegisterClient}-annotated class targeting the registry. */
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private static <T extends com.lowdragmc.lowdraglib2.registry.ILDLRegisterClient> void registerAnnotatedClasses(
+                AutoRegistry.LDLibRegisterClient<T, Supplier<T>> registry, Class<T> baseType) {
+            if (LDLib2.isClient()) return; // client dist already auto-scanned on creation
+            var registryId = registry.getRegistryName().toString();
+            ReflectionUtils.findAnnotationClasses(LDLRegisterClient.class,
+                    data -> data.get("registry") instanceof String r && r.equals(registryId),
+                    clazz -> {
+                        if (baseType.isAssignableFrom(clazz)) {
+                            var realClass = (Class<? extends T>) clazz;
+                            var annotation = realClass.getAnnotation(LDLRegisterClient.class);
+                            registry.registerOrOverride(annotation.name(), AutoRegistry.Holder.of(
+                                    annotation, realClass, AutoRegistry.noArgsCreator(annotation, realClass)));
+                        }
+                    }, () -> {});
         }
 
         /** Register the {@code @LDLRegisterClient}-annotated {@code static} singleton instances of a type
