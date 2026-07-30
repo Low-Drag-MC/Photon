@@ -38,8 +38,8 @@ public final class PhotonPipelines {
 
     /** The state that selects a pipeline variant: MaterialSetting blend/cull/depth + the emitter's
      *  primitive mode (quads for tiles/beams, TRIANGLE_STRIP for trails, TRIANGLES for ara-trails)
-     *  + the editor wireframe overlay flag. Blend null = no blending (also what routes the draw
-     *  into the solid rather than translucent feature phase). */
+     *  + the editor wireframe overlay flag. Blend null = no blending; it does NOT decide when the draw
+     *  happens — that is {@code RendererSetting.Layer} / {@link PhotonStage}, per emitter. */
     public record ParticlePipelineKey(@Nullable BlendFunction blend, int blendEquation,
                                       boolean cull, boolean depthTest,
                                       boolean depthMask, VertexFormat.Mode mode, boolean wireframe) {
@@ -100,8 +100,8 @@ public final class PhotonPipelines {
     /**
      * Build, applying the editor wireframe overlay when the key asks for it: polygon mode plus the 1.21
      * {@code inverse} fragment stage over the captured scene color, tracked so the drain knows to capture
-     * and bind it. The overlay is ALWAYS Photon's own program — see {@code Emitter.extractGroup} /
-     * {@code extractInstancedGroup}, which build it from a dedicated wireframe key rather than from a
+     * and bind it. The overlay is ALWAYS Photon's own program — see {@code Emitter.bakeGroup} /
+     * {@code bakeInstancedGroup}, which build it from a dedicated wireframe key rather than from a
      * material's — so only these two builders ever see {@code wireframe == true}.
      */
     private static RenderPipeline build(RenderPipeline.Builder builder, boolean wireframe) {
@@ -155,17 +155,17 @@ public final class PhotonPipelines {
     public enum InstancedVariant {
         // DEDICATED formats (unique element names -> value-unequal -> exclusive VAOs) so the
         // divisor mixin never touches shared VAOs; real pointers are applied by the mixin
-        TILE("PARTICLE_INSTANCE", instancedFormat("PhotonTileCorner"), false, true,
+        TILE("PARTICLE_INSTANCE", instancedFormat("PhotonTileCorner"), false, true, true,
                 PhotonGpuChannels.Kind.TILE, PhotonInstancedDrawState.TILE),
-        MODEL("PARTICLE_MODEL_INSTANCE", instancedFormat("PhotonModelVertex"), false, true,
+        MODEL("PARTICLE_MODEL_INSTANCE", instancedFormat("PhotonModelVertex"), false, true, true,
                 PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstancedDrawState.MODEL),
-        TRAIL("TRAIL_INSTANCE", instancedFormat("PhotonTrailCorner"), true, false,
+        TRAIL("TRAIL_INSTANCE", instancedFormat("PhotonTrailCorner"), true, false, false,
                 PhotonGpuChannels.Kind.TRAIL, PhotonInstancedDrawState.TRAIL),
-        ARA("ARA_TRAIL_INSTANCE", instancedFormat("PhotonAraCorner"), true, false,
+        ARA("ARA_TRAIL_INSTANCE", instancedFormat("PhotonAraCorner"), true, false, false,
                 PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstancedDrawState.ARA),
-        ARA_TUBE("ARA_TRAIL_TUBE_INSTANCE", instancedFormat("PhotonAraTubeCorner"), true, false,
+        ARA_TUBE("ARA_TRAIL_TUBE_INSTANCE", instancedFormat("PhotonAraTubeCorner"), true, false, false,
                 PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstancedDrawState.ARA_TUBE),
-        BEAM("BEAM_INSTANCE", instancedFormat("PhotonBeamCorner"), false, false,
+        BEAM("BEAM_INSTANCE", instancedFormat("PhotonBeamCorner"), false, false, true,
                 PhotonGpuChannels.Kind.BEAM, PhotonInstancedDrawState.BEAM);
 
         final String define;
@@ -174,18 +174,28 @@ public final class PhotonPipelines {
         /** Whether {@code particle.glsl} declares {@code PhotonCustomData} for this define — per-particle
          *  kinds only; trail/ara/beam instances aren't particles, so {@code photon_custom_data()} reads 0. */
         public final boolean usesCustomData;
+        /**
+         * Whether this variant's instance record STARTS with the instance's own position, which is what
+         * lets {@code Emitter.bakeInstancedGroup} honour {@code SortMode.DISTANCE} by permuting whole
+         * records far-to-near. False for trail/ara: their records lead with a PhotonPoints index (the
+         * position lives in that buffer), and their instances are consecutive segments of one ribbon,
+         * where the emit order is the meaningful one anyway. Always false when {@link #usesPoints} is
+         * true — a permutation must not reorder records that index a shared point block.
+         */
+        public final boolean positionAtRecordHead;
         /** The additional-GPU-data kind this variant's instances are, which fixes the record packing and
          *  the base location of the attribute tail. */
         public final PhotonGpuChannels.Kind kind;
         public final PhotonInstancedDrawState.Layout layout;
 
         InstancedVariant(String define, com.mojang.blaze3d.vertex.VertexFormat format, boolean usesPoints,
-                         boolean usesCustomData, PhotonGpuChannels.Kind kind,
+                         boolean usesCustomData, boolean positionAtRecordHead, PhotonGpuChannels.Kind kind,
                          PhotonInstancedDrawState.Layout layout) {
             this.define = define;
             this.format = format;
             this.usesPoints = usesPoints;
             this.usesCustomData = usesCustomData;
+            this.positionAtRecordHead = positionAtRecordHead;
             this.kind = kind;
             this.layout = layout;
         }

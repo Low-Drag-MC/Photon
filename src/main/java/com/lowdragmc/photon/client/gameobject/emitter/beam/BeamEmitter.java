@@ -16,6 +16,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.particle.BeamParticle;
+import com.lowdragmc.photon.client.render.PhotonViewSettings;
 import lombok.Getter;
 import net.minecraft.world.phys.AABB;
 
@@ -240,14 +241,15 @@ public class BeamEmitter extends Emitter {
     }
 
     @Override
-    public void extractBatches(com.lowdragmc.photon.client.render.PhotonFXRenderState state,
+    protected void bakeBatches(PhotonViewSettings settings,
+                               java.util.List<com.lowdragmc.photon.client.render.PhotonWorldRenderState.DrawJob> out,
                                net.minecraft.client.Camera camera, float partialTicks) {
         var setting = config.additionalGPUDataSetting;
         if (runtime().renderer.isUseGPUInstance()) {
             if (extractRenderer == null) {
                 extractRenderer = new com.lowdragmc.photon.client.gameobject.particle.renderer.BeamParticleRenderer();
             }
-            if (extractInstancedGroup(camera, rendererRuntime(), setting,
+            if (bakeInstancedGroup(settings, out, camera, rendererRuntime(), setting,
                     com.lowdragmc.photon.client.render.PhotonPipelines.InstancedVariant.BEAM,
                     BaseMesh.quads(com.lowdragmc.photon.client.render.PhotonWorldRenderState.beamQuad(), 6),
                     16, 0,
@@ -258,7 +260,7 @@ public class BeamEmitter extends Emitter {
                 return;
             }
         }
-        super.extractBatches(state, camera, partialTicks);
+        super.bakeBatches(settings, out, camera, partialTicks);
     }
 
     @Override

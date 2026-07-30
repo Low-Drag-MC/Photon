@@ -2,7 +2,9 @@ package com.lowdragmc.photon.client;
 
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.postfx.PhotonPostFX;
+import com.lowdragmc.photon.client.render.IPhotonFXCollector;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
+import com.lowdragmc.photon.client.render.PhotonStage;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.client.Minecraft;
@@ -43,12 +45,29 @@ public class PhotonClientListeners {
         PhotonWorldRenderState.endFrame();
     }
 
-    /** Photon's world draw slot (the 1.21 semantics: after vanilla translucent particles, inside
-     *  the main frame pass with the output targets already routed) + standalone post-effect
+    /**
+     * The world view's collector. {@code LevelRenderer} takes its storage straight off the
+     * {@code FeatureRenderDispatcher} the {@code GameRenderer} built, so this public getter IS the
+     * instance particle submission goes into — no accessor needed. {@code SubmitNodeStorageMixin}
+     * makes it an {@link IPhotonFXCollector}.
+     */
+    private static IPhotonFXCollector worldCollector() {
+        return (IPhotonFXCollector) Minecraft.getInstance().gameRenderer.getSubmitNodeStorage();
+    }
+
+    /** Photon's opaque draw slot: right after vanilla's solid feature pass, so these draws write
+     *  depth before translucent world geometry is drawn against it (RendererSetting.Layer.Opaque). */
+    @SubscribeEvent
+    public static void onRenderLevelStageAfterOpaque(RenderLevelStageEvent.AfterOpaqueFeatures event) {
+        worldCollector().drain(PhotonStage.AFTER_OPAQUE_FEATURES);
+    }
+
+    /** Photon's translucent draw slot (the 1.21 semantics: after vanilla translucent particles,
+     *  inside the main frame pass with the output targets already routed) + standalone post-effect
      *  consumption for frames without Photon particles. */
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent.AfterTranslucentParticles event) {
-        PhotonWorldRenderState.drainWorld();
+        worldCollector().drain(PhotonStage.AFTER_TRANSLUCENT_PARTICLES);
         PhotonPostFX.onLevelStageAfterParticles();
     }
 

@@ -11,10 +11,8 @@ import com.lowdragmc.lowdraglib2.gui.ui.data.Horizontal;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.*;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.IGUIContext;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
-import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.FXObject;
@@ -26,14 +24,11 @@ import dev.vfyjxf.taffy.style.FlexDirection;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.NotNull;
-import org.lwjgl.opengl.GL11;
 
 import java.util.List;
 
@@ -91,11 +86,10 @@ public class SceneView extends View {
     /** Coalesced seek target (-1 = none): scrub/edit streams request here, flushed once per frame. */
     private long pendingSimulateTarget = -1;
 
-    /** Pushes the draw mode into the global editor render flags the extraction reads. */
+    /** The draw mode is read per frame by {@code PhotonParticleManager.render}, which publishes it
+     *  as this scene's {@code PhotonViewSettings} on the collector its particles submit into. */
     public void setDrawMode(DrawMode drawMode) {
         this.drawMode = drawMode;
-        com.lowdragmc.photon.client.render.PhotonEditorRenderState.drawShaded = drawMode != DrawMode.WIREFRAME;
-        com.lowdragmc.photon.client.render.PhotonEditorRenderState.drawWireframe = drawMode != DrawMode.DRAW;
     }
 
     public SceneView(FXEditor fxEditor) {
@@ -103,7 +97,6 @@ public class SceneView extends View {
         this.getLayout().widthPercent(100.0F);
         this.getLayout().heightPercent(100.0F);
         this.fxEditor = fxEditor;
-        setDrawMode(drawMode); // reset the global flags a previous editor session may have left behind
         level.setParticleManager(particleManager);
 
         sceneEditor = new ParticleSceneEditor();

@@ -449,13 +449,13 @@ public final class MaterialPreviewRenderer {
         // resolve textures BEFORE opening the pass: first use uploads to the GPU, illegal inside a pass
         var textureManager = Minecraft.getInstance().getTextureManager();
         var textures = new ArrayList<Map.Entry<String, AbstractTexture>>();
-        for (var e : info.textures().entrySet()) {
+        for (var e : info.bindings().textures().entrySet()) {
             textures.add(Map.entry(e.getKey(), textureManager.getTexture(e.getValue())));
         }
 
         // shader graphs own their uniforms/textures; upload+resolve them before the pass opens
-        if (info.graph() != null) {
-            info.graph().material().prepareUniforms();
+        if (info.bindings().graph() != null) {
+            info.bindings().graph().material().prepareUniforms();
         }
 
         RenderSystem.backupProjectionMatrix();
@@ -465,14 +465,14 @@ public final class MaterialPreviewRenderer {
         try (RenderPass pass = device.createCommandEncoder().createRenderPass(
                 () -> "Photon material preview", entry.colorView, OptionalInt.of(0),
                 depthView(entry.size), OptionalDouble.of(1.0))) {
-            pass.setPipeline(info.pipeline());
+            pass.setPipeline(info.programs().main());
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", dynamicTransforms);
             var materialSlice = PhotonMaterialUniforms.sliceFor(renderType);
             if (materialSlice != null) pass.setUniform("PhotonMaterial", materialSlice);
             var engineSlice = PhotonEngineUniforms.sliceFor(renderType);
             if (engineSlice != null) pass.setUniform("PhotonEngine", engineSlice);
-            var custom = info.customUniforms();
+            var custom = info.bindings().customUniforms();
             var customSlice = custom == null ? null : custom.slice();
             if (customSlice != null) pass.setUniform("PhotonCustomMaterial", customSlice);
             for (var e : textures) {
@@ -482,14 +482,14 @@ public final class MaterialPreviewRenderer {
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
             // no scene behind a preview — the pipeline still requires every declared sampler to be bound
             var neutral = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
-            if (PhotonPipelines.isWireframe(info.pipeline())) {
+            if (PhotonPipelines.isWireframe(info.programs().main())) {
                 pass.bindTexture("SamplerSceneColor", dummyColorView(), neutral);
             }
-            for (var name : info.sceneSamplers()) {
+            for (var name : info.bindings().sceneSamplers()) {
                 pass.bindTexture(name, name.contains("Depth") ? dummyDepthView() : dummyColorView(), neutral);
             }
-            if (info.graph() != null) {
-                info.graph().material().bindCustomUniforms(pass);
+            if (info.bindings().graph() != null) {
+                info.bindings().graph().material().bindCustomUniforms(pass);
             }
             var autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
             pass.setVertexBuffer(0, quad());

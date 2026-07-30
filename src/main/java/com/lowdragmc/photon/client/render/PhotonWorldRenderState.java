@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.render;
 
+import com.lowdragmc.photon.PhotonConfig;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -34,16 +35,17 @@ import java.util.Queue;
 import java.util.Set;
 
 /**
- * Frame-scoped draw jobs for Photon's own draw slot (the 1.21 semantics: after vanilla translucent
- * particles). Translucent/HDR batches are baked straight into {@link MeshData} at extraction and
- * drained here:
+ * Frame-scoped draw jobs for Photon's own draw slots. Every job carries the {@link PhotonStage} its
+ * emitter's {@code RendererSetting.Layer} asked for, and a view drains one stage at a time:
  * <ul>
- *   <li>world: {@code RenderLevelStageEvent.AfterTranslucentParticles} — inside the main frame
- *       pass, output targets already routed;</li>
- *   <li>editor: {@code PhotonParticleManager.afterRender()} — inside the scene FBO scope, after
- *       the scene's translucent particles.</li>
+ *   <li>world: {@code RenderLevelStageEvent.AfterOpaqueFeatures} /
+ *       {@code AfterTranslucentParticles} — inside the main frame pass, output targets already
+ *       routed;</li>
+ *   <li>LDLib2 scenes: {@code PhotonParticleManager.afterRender}, inside the scene FBO scope (see
+ *       there for why the scene drains both stages at one point rather than per dispatch phase).</li>
  * </ul>
- * Jobs sort by {@code orderInLayer}, then far-to-near — the 1.21 cross-batch ordering.
+ * Within a stage, jobs sort by {@code orderInLayer}, then far-to-near — the 1.21 cross-batch
+ * ordering.
  * <p>
  * Draw paths: render types with {@link PhotonRenderTypes.PhotonDrawInfo} use the vanilla-particle
  * ring-buffer pattern — the frame's vertices go once into a triple-buffered mapped GPU buffer
@@ -54,39 +56,59 @@ import java.util.Set;
  * Bloom: after the main draws, every fast-path run is drawn a second time into the
  * {@link PhotonBloom} source (encoded {@code ColorModulator = 1/HDR_SCALE}, depth-write-off
  * pipeline, tested against the same depth), then the mip chain composites back — the 1.21
- * "everything participates by brightness" semantics. Only this slot participates in bloom;
- * opaque fx render in the vanilla solid phase and stay LDR. Render-thread only.
+ * "everything participates by brightness" semantics, for every stage. Render-thread only.
  */
 public final class PhotonWorldRenderState {
 
     /** One sortable draw in Photon's slot: a baked-mesh {@link Job} or an {@link InstancedJob}. */
     public sealed interface DrawJob permits Job, InstancedJob {
+        /** Which frame slot this draw belongs to; a view drains one bucket per stage. */
+        PhotonStage stage();
+
         int orderInLayer();
 
         float distanceSq();
     }
 
     public record Job(RenderType renderType, MeshData mesh, ByteBufferBuilder buffer,
-                      int orderInLayer, float distanceSq) implements DrawJob {
+                      PhotonStage stage, int orderInLayer, float distanceSq) implements DrawJob {
     }
 
     /** An instanced draw: base geometry (sequential-quad indexed) + per-instance texel-buffer data
      *  (whole-buffer binds) + optional per-point pulling buffer. Textures/material values are
      *  carried directly — no RenderType involved. */
-    public record InstancedJob(RenderPipeline pipeline, RenderPipeline bloomPipeline,
-                               Map<String, Identifier> textures,
-                               GpuBufferSlice materialSlice,
-                               GpuBuffer vertices, int indexCount,
-                               @Nullable GpuBuffer indices,
-                               GpuBuffer instances, int instanceCount,
-                               @Nullable GpuBuffer points,
-                               @Nullable GpuBuffer data, @Nullable GpuBuffer customData,
+    public record InstancedJob(PhotonRenderTypes.PhotonDrawInfo.Programs programs,
+                               InstancedGeometry geometry,
+                               DrawBindings bindings,
                                Vector3f positionOffset, int blendEquation,
-                               java.util.List<String> sceneSamplers,
+                               PhotonStage stage, int orderInLayer, float distanceSq) implements DrawJob {
+    }
+
+    /**
+     * The GPU geometry of one instanced draw: a base mesh every instance expands over, plus the
+     * per-instance streams. {@code indices} null = the shared sequential-quad indices (every base mesh
+     * except the ara tube ring); {@code points} is the vertex-pulling buffer trail/ara variants read;
+     * {@code data}/{@code customData} are the additional-GPU-data records, present only when a material
+     * on the pass reads them. {@code layout} is the divisor-attribute table {@code VertexArrayCacheMixin}
+     * applies — it carries this emitter's attribute tail, so it is per-draw, not per-variant.
+     */
+    public record InstancedGeometry(GpuBuffer vertices, int indexCount, @Nullable GpuBuffer indices,
+                                    GpuBuffer instances, int instanceCount,
+                                    @Nullable GpuBuffer points,
+                                    @Nullable GpuBuffer data, @Nullable GpuBuffer customData,
+                                    PhotonInstancedDrawState.Layout layout) {
+    }
+
+    /**
+     * The drain-side twin of {@link PhotonRenderTypes.PhotonDrawInfo.Bindings}: same role, but the
+     * uniform buffers are already resolved to slices (extraction staged them; the draw only binds).
+     * An instanced draw carries no RenderType, so this is the only place its bindings live.
+     */
+    public record DrawBindings(Map<String, Identifier> textures,
+                               GpuBufferSlice materialSlice,
                                @Nullable GpuBufferSlice customSlice,
-                               PhotonInstancedDrawState.Layout instanceLayout,
-                               @Nullable PhotonRenderTypes.GraphSource graph,
-                               int orderInLayer, float distanceSq) implements DrawJob {
+                               java.util.List<String> sceneSamplers,
+                               @Nullable PhotonRenderTypes.GraphSource graph) {
     }
 
     /** A merged draw over the frame's ring buffer (adjacent same-RenderType jobs). */
@@ -113,8 +135,10 @@ public final class PhotonWorldRenderState {
         }
     }
 
-    private static final List<DrawJob> WORLD_JOBS = new ArrayList<>();
-    private static final List<DrawJob> EDITOR_JOBS = new ArrayList<>();
+    /** Views that took work this frame — the frame boundary frees whatever no drain consumed
+     *  (a collector nobody drains, or a stage nobody asked for, must not leak its meshes). */
+    private static final Set<IPhotonFXCollector> TRACKED_COLLECTORS =
+            Collections.newSetFromMap(new IdentityHashMap<>());
 
     private static final Comparator<DrawJob> DRAW_ORDER = Comparator.comparingInt(DrawJob::orderInLayer)
             .thenComparing(Comparator.comparingDouble(DrawJob::distanceSq).reversed());
@@ -205,8 +229,9 @@ public final class PhotonWorldRenderState {
     private PhotonWorldRenderState() {
     }
 
-    public static void add(boolean editorScene, DrawJob job) {
-        (editorScene ? EDITOR_JOBS : WORLD_JOBS).add(job);
+    /** Register a view that was handed bake tasks this frame (called from the submit phase). */
+    public static void trackCollector(IPhotonFXCollector collector) {
+        TRACKED_COLLECTORS.add(collector);
     }
 
     /** Register an instance ring written this frame for the frame-boundary rotate. */
@@ -222,13 +247,35 @@ public final class PhotonWorldRenderState {
         CLOSE_AT_FRAME_END.add(resource);
     }
 
-    public static void drainWorld() {
-        drain(WORLD_JOBS, com.lowdragmc.photon.PhotonConfig.INSTANCE.enableBloom.get());
-    }
-
-    public static void drainEditor() {
-        drain(EDITOR_JOBS, com.lowdragmc.photon.PhotonConfig.INSTANCE.enableBloom.get()
-                && PhotonEditorRenderState.bloomEnabled);
+    /**
+     * Bake one view's collected tasks and draw them. The view's {@link PhotonViewSettings} are known
+     * here — which is the whole reason baking is deferred to this point — so a wireframe-only view
+     * never generates shaded geometry, and a collector nobody drains never generates anything.
+     */
+    public static void drain(IPhotonFXCollector collector, PhotonStage stage) {
+        var tasks = collector.photonFXTasks();
+        var baked = collector.photonFXBaked();
+        var settings = collector.photonViewSettings();
+        if (!tasks.isEmpty()) {
+            // first drain of the frame for this view: generate every stage's geometry once, with
+            // this view's settings in hand — which is the whole reason baking is deferred here
+            for (var task : tasks) {
+                task.bake(settings, baked);
+            }
+            tasks.clear();
+        }
+        if (baked.isEmpty()) {
+            return;
+        }
+        var jobs = new ArrayList<DrawJob>();
+        baked.removeIf(job -> {
+            if (job.stage() != stage) {
+                return false;
+            }
+            jobs.add(job);
+            return true;
+        });
+        drain(jobs, PhotonConfig.INSTANCE.enableBloom.get() && settings.bloom());
     }
 
     private static void drain(List<DrawJob> jobs, boolean bloomEnabled) {
@@ -273,13 +320,13 @@ public final class PhotonWorldRenderState {
             List<String> scene;
             boolean wf;
             if (drawJob instanceof InstancedJob ij) {
-                wf = PhotonPipelines.isWireframe(ij.pipeline());
-                scene = ij.sceneSamplers();
+                wf = PhotonPipelines.isWireframe(ij.programs().main());
+                scene = ij.bindings().sceneSamplers();
             } else {
                 var info = PhotonRenderTypes.drawInfo(((Job) drawJob).renderType());
                 if (info == null) continue;
-                wf = PhotonPipelines.isWireframe(info.pipeline());
-                scene = info.sceneSamplers();
+                wf = PhotonPipelines.isWireframe(info.programs().main());
+                scene = info.bindings().sceneSamplers();
             }
             needColor |= wf;
             for (var name : scene) {
@@ -298,7 +345,7 @@ public final class PhotonWorldRenderState {
         for (int i = 0; i < jobs.size(); i++) {
             if (jobs.get(i) instanceof InstancedJob instanced) {
                 instancedJobs.add(instanced);
-                drawInstancedJob(instanced, instanced.pipeline(), colorTexture, depthTexture, 1f, sceneColor, sceneDepth);
+                drawInstancedJob(instanced, instanced.programs().main(), colorTexture, depthTexture, 1f, sceneColor, sceneDepth);
                 continue;
             }
             var job = (Job) jobs.get(i);
@@ -324,7 +371,7 @@ public final class PhotonWorldRenderState {
             }
             var run = new Run(job.renderType(), info, mode, baseVertex, indexCount);
             runs.add(run);
-            drawRun(cache, run, run.info().pipeline(), colorTexture, depthTexture, 1f, sceneColor, sceneDepth);
+            drawRun(cache, run, run.info().programs().main(), colorTexture, depthTexture, 1f, sceneColor, sceneDepth);
             baseVertex += vertexCount;
             closeFastJob(job);
         }
@@ -335,11 +382,11 @@ public final class PhotonWorldRenderState {
             var bloom = PhotonBloom.acquire(colorTexture.getWidth(0), colorTexture.getHeight(0));
             bloom.clearSource();
             for (var run : runs) {
-                drawRun(cache, run, run.info().bloomPipeline(), bloom.sourceView(), depthTexture,
+                drawRun(cache, run, run.info().programs().bloom(), bloom.sourceView(), depthTexture,
                         1f / PhotonBloom.HDR_SCALE, sceneColor, sceneDepth);
             }
             for (var instanced : instancedJobs) {
-                drawInstancedJob(instanced, instanced.bloomPipeline(), bloom.sourceView(), depthTexture,
+                drawInstancedJob(instanced, instanced.programs().bloom(), bloom.sourceView(), depthTexture,
                         1f / PhotonBloom.HDR_SCALE, sceneColor, sceneDepth);
             }
             bloom.run(colorTexture);
@@ -359,22 +406,22 @@ public final class PhotonWorldRenderState {
                 RenderSystem.getModelViewMatrix(),
                 new Vector4f(colorModulator, colorModulator, colorModulator, 1),
                 job.positionOffset(), new Matrix4f());
-        if (job.graph() != null) {
-            job.graph().material().prepareUniforms();
+        if (job.bindings().graph() != null) {
+            job.bindings().graph().material().prepareUniforms();
         }
         // the base mesh's own index buffer when it has one (the ara tube ring shares vertices between
         // adjacent section edges, which the shared quad pattern can't express), else the shared quads
-        var autoIndices = job.indices() == null
+        var autoIndices = job.geometry().indices() == null
                 ? RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS) : null;
         final GpuBuffer indices = autoIndices == null
-                ? job.indices() : autoIndices.getBuffer(job.indexCount());
+                ? job.geometry().indices() : autoIndices.getBuffer(job.geometry().indexCount());
         final VertexFormat.IndexType indexType = autoIndices == null
                 ? VertexFormat.IndexType.INT : autoIndices.type();
 
         // resolve textures BEFORE opening the pass (first use triggers a GPU upload)
         var textureManager = Minecraft.getInstance().getTextureManager();
-        var boundTextures = new ArrayList<BoundTexture>(job.textures().size());
-        for (var entry : job.textures().entrySet()) {
+        var boundTextures = new ArrayList<BoundTexture>(job.bindings().textures().size());
+        for (var entry : job.bindings().textures().entrySet()) {
             var texture = textureManager.getTexture(entry.getValue());
             boundTextures.add(new BoundTexture(entry.getKey(), texture.getTextureView(), texture.getSampler()));
         }
@@ -388,25 +435,25 @@ public final class PhotonWorldRenderState {
             }
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.setUniform("PhotonMaterial", job.materialSlice());
+            renderPass.setUniform("PhotonMaterial", job.bindings().materialSlice());
             var engineSlice = PhotonEngineUniforms.currentSlice();
             if (engineSlice != null) {
                 renderPass.setUniform("PhotonEngine", engineSlice); // custom fsh U_* block
             }
-            if (job.customSlice() != null) {
-                renderPass.setUniform("PhotonCustomMaterial", job.customSlice());
+            if (job.bindings().customSlice() != null) {
+                renderPass.setUniform("PhotonCustomMaterial", job.bindings().customSlice());
             }
-            if (job.points() != null) {
-                renderPass.setUniform("PhotonPoints", job.points());
+            if (job.geometry().points() != null) {
+                renderPass.setUniform("PhotonPoints", job.geometry().points());
             }
             // additional GPU data (the shadergraph photon_data_*() / photon_custom_data() accessors);
             // present only when a material on the pass reads it, and then every variant's pipeline that
             // declares it is drawn from this same job
-            if (job.data() != null) {
-                renderPass.setUniform("PhotonData", job.data());
+            if (job.geometry().data() != null) {
+                renderPass.setUniform("PhotonData", job.geometry().data());
             }
-            if (job.customData() != null) {
-                renderPass.setUniform("PhotonCustomData", job.customData());
+            if (job.geometry().customData() != null) {
+                renderPass.setUniform("PhotonCustomData", job.geometry().customData());
             }
             for (var bound : boundTextures) {
                 renderPass.bindTexture(bound.sampler(), bound.view(), bound.samplerState());
@@ -419,21 +466,21 @@ public final class PhotonWorldRenderState {
             if (sceneColor != null && PhotonPipelines.isWireframe(pipeline)) {
                 renderPass.bindTexture("SamplerSceneColor", sceneColor, PhotonSceneCapture.sampler());
             }
-            for (var name : job.sceneSamplers()) {
+            for (var name : job.bindings().sceneSamplers()) {
                 var view = name.contains("Depth") ? sceneDepth : sceneColor;
                 if (view != null) {
                     renderPass.bindTexture(name, view, PhotonSceneCapture.sampler());
                 }
             }
-            if (job.graph() != null) {
-                job.graph().material().bindCustomUniforms(renderPass);
+            if (job.bindings().graph() != null) {
+                job.bindings().graph().material().bindCustomUniforms(renderPass);
             }
-            renderPass.setVertexBuffer(0, job.vertices());
+            renderPass.setVertexBuffer(0, job.geometry().vertices());
             renderPass.setIndexBuffer(indices, indexType);
             // C1/C2: the 1.21 divisor attributes + RGBA32F texel respec apply inside this draw
-            PhotonInstancedDrawState.begin(job.instanceLayout(), job.instances(), job.vertices());
+            PhotonInstancedDrawState.begin(job.geometry().layout(), job.geometry().instances(), job.geometry().vertices());
             try {
-                renderPass.drawIndexed(0, 0, job.indexCount(), job.instanceCount());
+                renderPass.drawIndexed(0, 0, job.geometry().indexCount(), job.geometry().instanceCount());
             } finally {
                 PhotonInstancedDrawState.end();
             }
@@ -457,18 +504,19 @@ public final class PhotonWorldRenderState {
         // resolve textures BEFORE opening the pass: first use of a texture triggers registerAndLoad
         // (a GPU upload), which is illegal while a render pass is open
         var textureManager = Minecraft.getInstance().getTextureManager();
-        var boundTextures = new ArrayList<BoundTexture>(run.info().textures().size());
-        for (var entry : run.info().textures().entrySet()) {
+        var boundTextures = new ArrayList<BoundTexture>(run.info().bindings().textures().size());
+        for (var entry : run.info().bindings().textures().entrySet()) {
             var texture = textureManager.getTexture(entry.getValue());
             boundTextures.add(new BoundTexture(entry.getKey(), texture.getTextureView(), texture.getSampler()));
         }
         // KilaGraph graph materials: upload their UBOs + resolve their textures BEFORE the pass (both are
         // illegal inside one), then bind them in it — KG's own draw hook never fires for a pass we opened.
-        var graph = run.info().graph();
+        var graph = run.info().bindings().graph();
         if (graph != null) {
             graph.material().prepareUniforms();
         }
-        var key = run.info().hdrPipelineKey();
+        var recipe = run.info().instanced();
+        var key = recipe == null ? null : recipe.key();
         withBlendEquation(key != null ? key.blendEquation() : PhotonPipelines.BLEND_EQUATION_ADD, () -> {
         try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> "Photon fx slot", colorTexture, OptionalInt.empty(), depthTexture, OptionalDouble.empty())) {
@@ -492,7 +540,7 @@ public final class PhotonWorldRenderState {
             if (engineSlice != null) {
                 renderPass.setUniform("PhotonEngine", engineSlice);
             }
-            var custom = run.info().customUniforms();
+            var custom = run.info().bindings().customUniforms();
             if (custom != null && custom.slice() != null) {
                 renderPass.setUniform("PhotonCustomMaterial", custom.slice());
             }
@@ -504,7 +552,7 @@ public final class PhotonWorldRenderState {
             if (sceneColor != null && PhotonPipelines.isWireframe(pipeline)) {
                 renderPass.bindTexture("SamplerSceneColor", sceneColor, PhotonSceneCapture.sampler());
             }
-            for (var name : run.info().sceneSamplers()) {
+            for (var name : run.info().bindings().sceneSamplers()) {
                 var view = name.contains("Depth") ? sceneDepth : sceneColor;
                 if (view != null) {
                     renderPass.bindTexture(name, view, PhotonSceneCapture.sampler());
@@ -543,8 +591,11 @@ public final class PhotonWorldRenderState {
             }
         }
         CLOSE_AT_FRAME_END.clear();
-        release(WORLD_JOBS);
-        release(EDITOR_JOBS);
+        for (var collector : TRACKED_COLLECTORS) {
+            collector.photonFXTasks().clear();
+            release(collector.photonFXBaked());
+        }
+        TRACKED_COLLECTORS.clear();
         PhotonBloom.endFrame();
     }
 

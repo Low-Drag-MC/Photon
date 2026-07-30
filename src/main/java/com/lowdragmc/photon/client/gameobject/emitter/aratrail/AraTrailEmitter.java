@@ -14,7 +14,6 @@ import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
-import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle;
 import net.minecraft.world.phys.AABB;
@@ -228,7 +227,8 @@ public class AraTrailEmitter extends Emitter {
     }
 
     @Override
-    public void extractBatches(com.lowdragmc.photon.client.render.PhotonFXRenderState state,
+    protected void bakeBatches(com.lowdragmc.photon.client.render.PhotonViewSettings settings,
+                               java.util.List<com.lowdragmc.photon.client.render.PhotonWorldRenderState.DrawJob> out,
                                net.minecraft.client.Camera camera, float partialTicks) {
         var setting = config.additionalGPUDataSetting;
         // 1.21's gate: the tube instances too; only high-quality corners on a non-Local FLAT ribbon
@@ -242,7 +242,7 @@ public class AraTrailEmitter extends Emitter {
             var pointCapacity = trailParticle.getPoints().size() * Math.max(1, config.smoothness) + 2;
             var mesh = tube ? extractRenderer.tubeMesh()
                     : BaseMesh.quads(com.lowdragmc.photon.client.render.PhotonWorldRenderState.araQuad(), 6);
-            if (mesh != null && extractInstancedGroup(camera, rendererRuntime(), setting,
+            if (mesh != null && bakeInstancedGroup(settings, out, camera, rendererRuntime(), setting,
                     tube ? com.lowdragmc.photon.client.render.PhotonPipelines.InstancedVariant.ARA_TUBE
                             : com.lowdragmc.photon.client.render.PhotonPipelines.InstancedVariant.ARA,
                     mesh,
@@ -254,7 +254,7 @@ public class AraTrailEmitter extends Emitter {
                 return;
             }
         }
-        super.extractBatches(state, camera, partialTicks);
+        super.bakeBatches(settings, out, camera, partialTicks);
     }
 
     @Override

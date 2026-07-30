@@ -8,6 +8,7 @@
     "GlConstMixin",
     "ParticleEngineMixin",
     "RenderTypeMixin",
+    "SubmitNodeStorageMixin",
     "VertexArrayCacheMixin",
     "accessor.ParticleEngineAccessor"
   ],

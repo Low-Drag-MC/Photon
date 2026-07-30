@@ -28,8 +28,8 @@ import com.lowdragmc.photon.client.gameobject.particle.renderer.AraTrailParticle
 import com.lowdragmc.photon.client.gameobject.particle.renderer.TileParticleRenderer;
 import com.lowdragmc.photon.client.gameobject.particle.renderer.TrailParticleRenderer;
 import com.lowdragmc.photon.client.render.PhotonCameraUtils;
-import com.lowdragmc.photon.client.render.PhotonFXRenderState;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
+import com.lowdragmc.photon.client.render.PhotonViewSettings;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -584,10 +584,12 @@ public class ParticleEmitter extends Emitter {
     }
 
     @Override
-    public void extractBatches(PhotonFXRenderState state, Camera camera, float partialTicks) {
+    protected void bakeBatches(PhotonViewSettings settings,
+                               java.util.List<PhotonWorldRenderState.DrawJob> out,
+                               Camera camera, float partialTicks) {
         // GPU-instanced tile quads when the config qualifies; CPU baking otherwise
-        if (!(canInstanceTiles() && extractInstancedTiles(state, camera, partialTicks))) {
-            super.extractBatches(state, camera, partialTicks); // the tile quads (CPU)
+        if (!(canInstanceTiles() && extractInstancedTiles(settings, out, camera, partialTicks))) {
+            super.bakeBatches(settings, out, camera, partialTicks); // the tile quads (CPU)
         }
         // The embedded per-particle trails (TrailsSetting) are separate geometry groups: their own
         // sub-config renderer/materials and primitive mode, mirroring TrailEmitter/AraTrailEmitter.
@@ -615,7 +617,7 @@ public class ParticleEmitter extends Emitter {
                 }
                 var offset = new Vector3f(PhotonCameraUtils.facingEye(camera))
                         .sub(PhotonCameraUtils.renderOrigin(camera));
-                instanced = extractInstancedGroup(camera, trails.config.defaultRenderRuntime, s,
+                instanced = bakeInstancedGroup(settings, out, camera, trails.config.defaultRenderRuntime, s,
                         PhotonPipelines.InstancedVariant.TRAIL,
                         BaseMesh.quads(PhotonWorldRenderState.segmentQuad(), 6),
                         (tails + trailCount) * 4, (tails + 3 * trailCount) * 12, offset,
@@ -631,7 +633,7 @@ public class ParticleEmitter extends Emitter {
                         });
             }
             if (!instanced) {
-                extractGroup(state, camera, partialTicks, trails.config.defaultRenderRuntime,
+                bakeGroup(settings, out, camera, partialTicks, trails.config.defaultRenderRuntime,
                         VertexFormat.Mode.TRIANGLE_STRIP, (geometry, cam, pt) ->
                                 renderQueuesOf(TrailParticle.class,
                                         queue -> trailExtractRenderer.renderQueue(geometry, queue, cam, pt)));
@@ -659,7 +661,7 @@ public class ParticleEmitter extends Emitter {
                 var araMesh = araTube ? araTrailExtractRenderer.tubeMesh()
                         : BaseMesh.quads(PhotonWorldRenderState.araQuad(), 6);
                 instanced = araMesh != null
-                        && extractInstancedGroup(camera, trails.araConfig.defaultRenderRuntime, s,
+                        && bakeInstancedGroup(settings, out, camera, trails.araConfig.defaultRenderRuntime, s,
                         araTube ? PhotonPipelines.InstancedVariant.ARA_TUBE : PhotonPipelines.InstancedVariant.ARA,
                         araMesh,
                         pointCapacity * (araTube ? 1 : 3), pointCapacity * 16, new Vector3f(),
@@ -675,7 +677,7 @@ public class ParticleEmitter extends Emitter {
                         });
             }
             if (!instanced) {
-                extractGroup(state, camera, partialTicks, trails.araConfig.defaultRenderRuntime,
+                bakeGroup(settings, out, camera, partialTicks, trails.araConfig.defaultRenderRuntime,
                         VertexFormat.Mode.TRIANGLES, (geometry, cam, pt) ->
                                 renderQueuesOf(AraTrailParticle.class,
                                         queue -> araTrailExtractRenderer.renderQueue(geometry, queue, cam, pt)));
@@ -696,7 +698,9 @@ public class ParticleEmitter extends Emitter {
     }
 
     /** Extract the tiles as instanced draws (billboard quad or baked model mesh). */
-    private boolean extractInstancedTiles(PhotonFXRenderState state, Camera camera, float partialTicks) {
+    private boolean extractInstancedTiles(com.lowdragmc.photon.client.render.PhotonViewSettings settings,
+                                          java.util.List<PhotonWorldRenderState.DrawJob> out,
+                                          Camera camera, float partialTicks) {
         if (extractRenderer == null) {
             extractRenderer = new TileParticleRenderer(runtime().renderer);
         }
@@ -720,7 +724,7 @@ public class ParticleEmitter extends Emitter {
             indexCount = 6;
         }
         var floats = model ? TileParticleRenderer.MODEL_INSTANCE_FLOATS : TileParticleRenderer.INSTANCE_FLOATS;
-        return extractInstancedGroup(camera, runtime().renderer, config.additionalGPUDataSetting,
+        return bakeInstancedGroup(settings, out, camera, runtime().renderer, config.additionalGPUDataSetting,
                 model ? PhotonPipelines.InstancedVariant.MODEL : PhotonPipelines.InstancedVariant.TILE,
                 BaseMesh.quads(vertices, indexCount), tileCount * floats, 0, new org.joml.Vector3f(),
                 (instances, points, data, custom) -> {

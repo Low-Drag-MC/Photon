@@ -266,7 +266,7 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
 
     /**
      * Whether any shadergraph channel this KIND supports is requested. Note the caller decides whether to
-     * upload from the RAW material union instead ({@code Emitter.extractInstancedGroup}): a graph asking
+     * upload from the RAW material union instead ({@code Emitter.bakeInstancedGroup}): a graph asking
      * only for channels this kind doesn't have still gets a (zeroed) record, because its pipeline declares
      * {@code PhotonData} and a declared uniform must be bound.
      */

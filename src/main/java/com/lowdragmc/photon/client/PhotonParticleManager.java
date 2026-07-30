@@ -2,14 +2,16 @@ package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
-import com.lowdragmc.photon.client.render.PhotonEditorRenderState;
+import com.lowdragmc.photon.client.render.IPhotonFXCollector;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
-import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
+import com.lowdragmc.photon.client.render.PhotonStage;
+import com.lowdragmc.photon.client.render.PhotonViewSettings;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 
 import java.util.Arrays;
@@ -39,6 +41,9 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
 
     private final long[] lastFrameTimes = new long[60];
     private int frameIndex = 0;
+    /** The collector this scene's particles submitted into this frame (its {@code SubmitNodeStorage}). */
+    @Nullable
+    private IPhotonFXCollector collector;
 
     public PhotonParticleManager(SceneView sceneView) {
         this.sceneView = sceneView;
@@ -76,7 +81,9 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
      *   <li>freeze the intra-tick partial while the timeline is paused — the raw game partial keeps
      *       sawtoothing 0→1 every game tick, which made {@code extractFrame}'s deltaTime oscillate
      *       (pause flicker) and per-frame interpolation jitter;</li>
-     *   <li>stage the SceneView draw-mode flags for this scene's extraction (wireframe toggle).</li>
+     *   <li>publish this scene's {@link PhotonViewSettings} on the collector its particles submit
+     *       into, so the deferred bake honours the SceneView toggles (wireframe/shaded/bloom) for
+     *       THIS view only — the world keeps drawing the same emitters plainly.</li>
      * </ul>
      */
     @Override
@@ -86,10 +93,12 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
                        net.minecraft.client.renderer.culling.Frustum frustum,
                        float partialTicks) {
         var frameStart = System.nanoTime();
-        if (sceneView != null) {
-            PhotonEditorRenderState.drawShaded = sceneView.getDrawMode() != SceneView.DrawMode.WIREFRAME;
-            PhotonEditorRenderState.drawWireframe = sceneView.getDrawMode() != SceneView.DrawMode.DRAW;
-            PhotonEditorRenderState.bloomEnabled = sceneView.isBloomEnabled();
+        collector = storage instanceof IPhotonFXCollector fx ? fx : null;
+        if (collector != null) {
+            collector.photonViewSettings(sceneView == null ? PhotonViewSettings.DEFAULT
+                    : new PhotonViewSettings(sceneView.getDrawMode() != SceneView.DrawMode.WIREFRAME,
+                            sceneView.getDrawMode() != SceneView.DrawMode.DRAW,
+                            sceneView.isBloomEnabled()));
         }
         if (cameraRenderState != null && cameraRenderState.initialized) {
             // scene-local engine uniforms (U_* block) for custom shaders drawn in this scene.
@@ -132,11 +141,23 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         time++;
     }
 
-    /** The editor scene's Photon draw slot: runs in the scene renderer's finally, after its
-     *  translucent particles, still inside the FBO output-override scope. */
+    /**
+     * The scene's Photon draw slot: runs in {@code WorldSceneRenderer.drawWorld}'s finally, after
+     * its translucent particles, still inside the FBO output-override scope. Both stages drain here,
+     * in order, rather than at the scene's per-stage hooks — {@code drawWorld} has no post-solid
+     * hook at all, and {@code afterTranslucentDispatch} is already owned by LDLib2's {@code Scene}
+     * (it renders the editor overlay there). Draining both at the end keeps the two layers ordered
+     * against each other and depth-tested against the finished scene; the only thing a scene-side
+     * opaque hook would add is letting scene TRANSLUCENT geometry blend over opaque fx, which needs
+     * a new LDLib2 hook to express.
+     */
     @Override
     public void afterRender() {
-        PhotonWorldRenderState.drainEditor();
+        if (collector != null) {
+            collector.drain(PhotonStage.AFTER_OPAQUE_FEATURES);
+            collector.drain(PhotonStage.AFTER_TRANSLUCENT_PARTICLES);
+            collector = null;
+        }
         super.afterRender();
     }
 

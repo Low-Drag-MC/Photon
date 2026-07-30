@@ -9,8 +9,7 @@ import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.VertexSorting;
+import com.lowdragmc.photon.client.render.PhotonStage;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
@@ -29,22 +28,43 @@ import java.util.function.Supplier;
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class RendererSetting {
 
+    /**
+     * Which frame slot this emitter's draws belong to — the 1.21 setting, restored. 1.21 routed the
+     * emitter into the opaque or the translucent particle queue; 26.1 has no such queues, so the
+     * layer picks the {@link PhotonStage} Photon opens its own pass at (right after the solid
+     * feature pass, or after vanilla's translucent particles).
+     * <p>
+     * Independent of a material's blend function: {@code Opaque} means "drawn early, writes depth so
+     * later translucent geometry sorts against it", not "unblended".
+     */
+    public enum Layer {
+        Opaque(PhotonStage.AFTER_OPAQUE_FEATURES),
+        Translucent(PhotonStage.AFTER_TRANSLUCENT_PARTICLES);
+
+        public final PhotonStage stage;
+
+        Layer(PhotonStage stage) {
+            this.stage = stage;
+        }
+    }
+
     public enum SortMode {
         NONE,
         DISTANCE;
 
         /**
-         * The quad sorting to apply to this emitter's baked geometry, or null for none. 1.21 read
+         * The point to sort distances from, or null when this mode does not sort. 1.21 read
          * {@code RenderSystem.getVertexSorting()} — the engine's current global, which 26.1 dropped when
          * sorting moved onto {@code RenderSetup.sortOnUpload}; Photon bypasses that path (its drain opens
-         * its own passes), so the extraction hands in the eye position instead.
+         * its own passes), so the extraction hands in the eye position instead. The sort itself is
+         * {@link com.lowdragmc.photon.client.render.PhotonDistanceSort}.
          *
          * @param eye the viewer, in the space the geometry was baked in (Photon bakes camera-relative, so
          *            that is zero in-world and the scene eye in the editor, whose camera sits at origin)
          */
         @Nullable
-        public VertexSorting vertexSorting(org.joml.Vector3fc eye) {
-            return this == DISTANCE ? VertexSorting.byDistance(eye) : null;
+        public org.joml.Vector3fc sortOrigin(org.joml.Vector3fc eye) {
+            return this == DISTANCE ? eye : null;
         }
     }
 
@@ -53,6 +73,10 @@ public class RendererSetting {
     @ReadOnlyManaged(serializeMethod = "materialSerialize", deserializeMethod = "materialDeserialize")
     @EqualsAndHashCode.Include
     protected List<MaterialSetting> materials = new ArrayList<>();
+
+    @Configurable(name = "RendererSetting.layer", tips = "photon.emitter.config.renderer.layer")
+    @EqualsAndHashCode.Include
+    protected Layer layer = Layer.Translucent;
 
     @Configurable(name = "RendererSetting.cull", subConfigurable = true, tips = "photon.emitter.config.renderer.cull")
     protected final Cull cull = new Cull();
@@ -185,6 +209,7 @@ public class RendererSetting {
     public static class Runtime {
         protected final RendererSetting config;
         public final RuntimeValue<List<MaterialSetting>> materials;
+        public final RuntimeValue<Layer> layer;
         public final RuntimeValue<Cull> cull;
         public final RuntimeValue<Integer> orderInLayer;
         public final RuntimeValue<SortMode> vertexSortingMode;
@@ -195,6 +220,7 @@ public class RendererSetting {
         protected Runtime(RendererSetting config) {
             this.config = config;
             this.materials = new RuntimeValue<>(config::getMaterials);
+            this.layer = new RuntimeValue<>(config::getLayer);
             this.cull = new RuntimeValue<>(config::getCull);
             this.orderInLayer = new RuntimeValue<>(config::getOrderInLayer);
             this.vertexSortingMode = new RuntimeValue<>(config::getVertexSortingMode);
@@ -204,6 +230,7 @@ public class RendererSetting {
         }
 
         public List<MaterialSetting> getMaterials() { return materials.get(); }
+        public Layer getLayer() { return layer.get(); }
         public Cull getCull() { return cull.get(); }
         public int getOrderInLayer() { return orderInLayer.get(); }
         public SortMode getVertexSortingMode() { return vertexSortingMode.get(); }
@@ -218,7 +245,7 @@ public class RendererSetting {
          * per-emitter culling read by {@code getCullBox}, not a pass concern, so overriding it needs no pass.
          */
         public boolean hasOverride() {
-            return materials.isOverridden()
+            return materials.isOverridden() || layer.isOverridden()
                     || orderInLayer.isOverridden() || vertexSortingMode.isOverridden()
                     || writeCustomMask.isOverridden() || maskGroup.isOverridden()
                     || maskAlphaCutoff.isOverridden();
@@ -227,6 +254,7 @@ public class RendererSetting {
         /** Clear every override slot (fall back to the authored config). */
         public void clear() {
             materials.clear();
+            layer.clear();
             cull.clear();
             orderInLayer.clear();
             vertexSortingMode.clear();
@@ -242,6 +270,7 @@ public class RendererSetting {
          */
         public boolean effectiveEquals(Runtime o) {
             return Objects.equals(getMaterials(), o.getMaterials())
+                    && getLayer() == o.getLayer()
                     && getOrderInLayer() == o.getOrderInLayer()
                     && getVertexSortingMode() == o.getVertexSortingMode()
                     && isWriteCustomMask() == o.isWriteCustomMask()
@@ -250,7 +279,7 @@ public class RendererSetting {
         }
 
         public int effectiveHashCode() {
-            return Objects.hash(getMaterials(), getOrderInLayer(), getVertexSortingMode(),
+            return Objects.hash(getMaterials(), getLayer(), getOrderInLayer(), getVertexSortingMode(),
                     isWriteCustomMask(), getMaskGroup(), getMaskAlphaCutoff());
         }
     }

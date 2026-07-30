@@ -28,15 +28,41 @@ public final class PhotonRenderTypes {
      *  the pipeline + explicit texture bindings + the depth-write-off variant used when drawing
      *  the same geometry into the bloom source. Absent (e.g. KilaGraph graph types) → the drain
      *  falls back to {@code RenderType.draw}, keeping foreign draw hooks (KG's mixin) intact. */
-    public record PhotonDrawInfo(RenderPipeline pipeline,
-                                 RenderPipeline bloomPipeline,
-                                 Map<String, Identifier> textures,
-                                 @Nullable PhotonPipelines.ParticlePipelineKey hdrPipelineKey,
-                                 @Nullable Identifier hdrFragment,
-                                 @Nullable PhotonPipelines.CustomShaderKey customShaderKey,
-                                 java.util.List<String> sceneSamplers,
-                                 @Nullable PhotonCustomUniforms customUniforms,
-                                 @Nullable GraphSource graph) {
+    public record PhotonDrawInfo(Programs programs, Bindings bindings,
+                                 @Nullable InstancedRecipe instanced) {
+
+        /** The two compiled programs: the main draw, and the bloom re-draw (same state, depth
+         *  writes off) that replays the geometry into the bloom source. */
+        public record Programs(RenderPipeline main, RenderPipeline bloom) {
+        }
+
+        /**
+         * Everything a render pass must bind for this material. Photon opens its own passes, so none
+         * of this comes from the RenderSetup: textures by {@link Identifier} (resolved before the pass
+         * opens — first use uploads), the {@code SamplerScene*} names the drain fills from its capture,
+         * the material's own custom UBO, and the KilaGraph material that owns a shader graph's values.
+         */
+        public record Bindings(Map<String, Identifier> textures,
+                               java.util.List<String> sceneSamplers,
+                               @Nullable PhotonCustomUniforms customUniforms,
+                               @Nullable GraphSource graph) {
+        }
+
+        /**
+         * The recipe for re-deriving this material's pipeline against a GPU-instanced vertex stage —
+         * the instanced variants are separate pipelines, not a bind-time choice (26.1 bakes the
+         * {@code #define} and the vertex format into the pipeline). {@code null} = the material has no
+         * instanced form and its emitter must take the CPU path.
+         * <p>
+         * The three sources are mutually exclusive and checked in this order by
+         * {@code Emitter.bakeInstancedGroup}: a shader graph (read from {@link Bindings#graph}),
+         * a custom user shader ({@link #customShaderKey}), else Photon's own stage
+         * ({@link #hdrFragment}).
+         */
+        public record InstancedRecipe(PhotonPipelines.ParticlePipelineKey key,
+                                      @Nullable Identifier hdrFragment,
+                                      @Nullable PhotonPipelines.CustomShaderKey customShaderKey) {
+        }
     }
 
     /**
@@ -125,8 +151,10 @@ public final class PhotonRenderTypes {
         var bloomPipeline = PhotonPipelines.customShader(new PhotonPipelines.CustomShaderKey(
                 key.vertexShader(), key.fragmentShader(), key.defines(), key.samplerNames(),
                 key.sceneSamplers(), bloomPipelineKey));
-        DRAW_INFO.put(renderType, new PhotonDrawInfo(pipeline, bloomPipeline, liveTextures,
-                key.pipelineKey(), null, key, key.sceneSamplers(), uniforms, null));
+        DRAW_INFO.put(renderType, new PhotonDrawInfo(
+                new PhotonDrawInfo.Programs(pipeline, bloomPipeline),
+                new PhotonDrawInfo.Bindings(liveTextures, key.sceneSamplers(), uniforms, null),
+                new PhotonDrawInfo.InstancedRecipe(key.pipelineKey(), null, key)));
         return Optional.of(renderType);
     }
 
@@ -170,10 +198,12 @@ public final class PhotonRenderTypes {
         var bloomKey = new PhotonPipelines.ParticlePipelineKey(
                 pipelineKey.blend(), pipelineKey.blendEquation(), pipelineKey.cull(),
                 pipelineKey.depthTest(), false, pipelineKey.mode(), pipelineKey.wireframe());
-        DRAW_INFO.put(renderType, new PhotonDrawInfo(pipeline,
-                PhotonPipelines.graphShader(compiled, null, bloomKey, usedChannelMask, usesCustomData),
-                Map.of(), pipelineKey, null, null, sceneSamplers, null,
-                new GraphSource(compiled, material, usedChannelMask, usesCustomData)));
+        DRAW_INFO.put(renderType, new PhotonDrawInfo(
+                new PhotonDrawInfo.Programs(pipeline,
+                        PhotonPipelines.graphShader(compiled, null, bloomKey, usedChannelMask, usesCustomData)),
+                new PhotonDrawInfo.Bindings(Map.of(), sceneSamplers, null,
+                        new GraphSource(compiled, material, usedChannelMask, usesCustomData)),
+                new PhotonDrawInfo.InstancedRecipe(pipelineKey, null, null)));
         return Optional.of(renderType);
     }
 

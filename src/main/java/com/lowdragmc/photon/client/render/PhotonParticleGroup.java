@@ -16,8 +16,13 @@ import net.minecraft.world.phys.AABB;
  * <p>
  * Ticking is inherited; extraction drives the per-frame chain that used to hang off the 1.21
  * {@code Particle.render} call ({@link FXObject#extractFrame}: deltaTime bookkeeping, timeline
- * frame animation, {@code FXRuntime}'s onUpdateFrame) and bakes visible emitter geometry into a
- * {@link PhotonFXRenderState} (M1 decision D2: geometry is built HERE, not at draw time).
+ * frame animation, {@code FXRuntime}'s onUpdateFrame) and registers each visible emitter's deferred
+ * bake on the {@link PhotonFXRenderState}.
+ * <p>
+ * Geometry is NOT built here: extraction only culls and decides which emitters draw, and the vertices
+ * are generated in {@code PhotonWorldRenderState.drain} once the draining view's
+ * {@link PhotonViewSettings} are known — vanilla's extract/prepare split, and what lets one emitter
+ * bake differently per view (shaded world vs wireframe editor scene).
  */
 public final class PhotonParticleGroup extends ParticleGroup<FXObject> {
 
@@ -36,6 +41,7 @@ public final class PhotonParticleGroup extends ParticleGroup<FXObject> {
     @Override
     public ParticleGroupRenderState extractRenderState(Frustum frustum, Camera camera, float partialTick) {
         var startTime = System.nanoTime();
+        renderState.clear(); // reused across frames; vanilla's reset() may not have run for this view
         for (var fxObject : particles) {
             // every FX object gets its frame drive, visible or not — timelines must not freeze
             // when the emitter happens to be off-screen

@@ -13,7 +13,6 @@ import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
-import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
@@ -233,7 +232,8 @@ public class TrailEmitter extends Emitter {
     }
 
     @Override
-    public void extractBatches(com.lowdragmc.photon.client.render.PhotonFXRenderState state,
+    protected void bakeBatches(com.lowdragmc.photon.client.render.PhotonViewSettings settings,
+                               java.util.List<com.lowdragmc.photon.client.render.PhotonWorldRenderState.DrawJob> out,
                                net.minecraft.client.Camera camera, float partialTicks) {
         var setting = config.additionalGPUDataSetting;
         if (runtime().renderer.isUseGPUInstance()) {
@@ -241,7 +241,7 @@ public class TrailEmitter extends Emitter {
                 extractRenderer = new com.lowdragmc.photon.client.gameobject.particle.renderer.TrailParticleRenderer();
             }
             var tails = trailParticle.getTails().size();
-            if (extractInstancedGroup(camera, rendererRuntime(), setting,
+            if (bakeInstancedGroup(settings, out, camera, rendererRuntime(), setting,
                     com.lowdragmc.photon.client.render.PhotonPipelines.InstancedVariant.TRAIL,
                     BaseMesh.quads(com.lowdragmc.photon.client.render.PhotonWorldRenderState.segmentQuad(), 6),
                     (tails + 1) * 4, (tails + 4) * 12,
@@ -252,7 +252,7 @@ public class TrailEmitter extends Emitter {
                 return;
             }
         }
-        super.extractBatches(state, camera, partialTicks);
+        super.bakeBatches(settings, out, camera, partialTicks);
     }
 
     @Override

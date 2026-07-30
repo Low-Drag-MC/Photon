@@ -54,13 +54,9 @@ public final class MaterialRenderTypes {
             var setup = RenderSetup.builder(PhotonPipelines.hdrParticle(key.fragmentShader(), key.pipelineKey()))
                     .withTexture("Sampler0", key.texture())
                     .useLightmap();
-            if (key.pipelineKey().blend() != null
-                    && key.pipelineKey().mode() == VertexFormat.Mode.QUADS) {
-                // D3: translucent quads sort back-to-front at upload (vertices are camera-relative,
-                // so vanilla's origin-distance sort is exactly the camera distance); quad-only —
-                // strips/triangles keep their emit order
-                setup.sortOnUpload();
-            }
+            // NB: no sortOnUpload() — 26.1 only honours it in MultiBufferSource.BufferSource, which no
+            // Photon draw path goes through (RenderType.draw doesn't sort either). Back-to-front sorting
+            // is RendererSetting.SortMode, applied by PhotonDistanceSort in the bake.
             var renderType = RenderType.create("photon_hdr_particle", setup.createRenderSetup());
             PhotonMaterialUniforms.associate(renderType, key.uniforms());
             var bloomKey = new PhotonPipelines.ParticlePipelineKey(
@@ -68,10 +64,13 @@ public final class MaterialRenderTypes {
                     key.pipelineKey().cull(), key.pipelineKey().depthTest(),
                     false, key.pipelineKey().mode(), key.pipelineKey().wireframe());
             PhotonRenderTypes.registerDrawInfo(renderType, new PhotonRenderTypes.PhotonDrawInfo(
-                    PhotonPipelines.hdrParticle(key.fragmentShader(), key.pipelineKey()),
-                    PhotonPipelines.hdrParticle(key.fragmentShader(), bloomKey),
-                    Map.of("Sampler0", key.texture()),
-                    key.pipelineKey(), key.fragmentShader(), null, java.util.List.of(), null, null));
+                    new PhotonRenderTypes.PhotonDrawInfo.Programs(
+                            PhotonPipelines.hdrParticle(key.fragmentShader(), key.pipelineKey()),
+                            PhotonPipelines.hdrParticle(key.fragmentShader(), bloomKey)),
+                    new PhotonRenderTypes.PhotonDrawInfo.Bindings(
+                            Map.of("Sampler0", key.texture()), java.util.List.of(), null, null),
+                    new PhotonRenderTypes.PhotonDrawInfo.InstancedRecipe(
+                            key.pipelineKey(), key.fragmentShader(), null)));
             return renderType;
         });
     }
