@@ -73,15 +73,14 @@ public class WorldToScreenUVNode extends ShaderNode {
         ctx.useMinecraftUniform("Projection", "minecraft:projection.glsl");
         String proj = "ProjMat";
         String modelView = ctx.transformField("ModelViewMat", GlslType.MAT4).code();
-        String viewport = PhotonShaderCompiler.viewport(ctx).code();
-        String screenSize = ctx.screenSize().code();
-        // position -> clip -> ndc -> [0,1] over the viewport, then remap through the viewport rect into the
-        // window-sized scene capture so it matches screenUv()'s window-relative convention.
+        // position -> clip -> ndc -> [0,1] over the viewport. That IS the scene-capture UV: the capture is
+        // sized after the target being drawn into, so viewport-relative is the right space. (This used to
+        // remap through U_ViewPort into a window-sized capture, which was the 1.21 layout — 26.1's PIP gives
+        // the editor scene its own widget-sized texture, so that remap stretched the result and made it
+        // depend on the panel size.)
         String clip = ctx.temp(GlslType.VEC4, proj + " * " + modelView + " * vec4(" + pos + ", 1.0)").code();
-        String vpUv = ctx.temp(GlslType.VEC2, "((" + clip + ".xy / " + clip + ".w) * 0.5 + 0.5)").code();
         ctx.output("uv", new ShaderExpr(
-                "((" + viewport + ".xy + " + vpUv + " * " + viewport + ".zw) / " + screenSize + ")",
-                GlslType.VEC2));
+                "((" + clip + ".xy / " + clip + ".w) * 0.5 + 0.5)", GlslType.VEC2));
     }
 
     @Override

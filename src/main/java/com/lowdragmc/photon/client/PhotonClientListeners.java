@@ -29,8 +29,9 @@ public class PhotonClientListeners {
         commands.forEach(dispatcher::register);
     }
 
-    /** Frame start — the only editor-screen slot with NO render pass open, so the material previews
-     *  (which create a pass and may upload textures) must render here, not from the GUI draw. */
+    /** Frame start — before the GUI builds its draw list, so previews rendered here are ready for it.
+     *  Note this is NOT a guaranteed pass-free slot: anything that clears/uploads must still do it
+     *  before opening its own pass (see {@code MaterialPreviewRenderer.renderInto}). */
     @SubscribeEvent
     public static void onRenderFramePre(RenderFrameEvent.Pre event) {
         com.lowdragmc.photon.client.render.MaterialPreviewRenderer.processPending();

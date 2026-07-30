@@ -515,13 +515,6 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         return PhotonDistanceSort.farToNear(count);
     }
 
-    /** The bloom twin of a material's pipeline key: same state, depth writes off — the bloom pass
-     *  re-draws the same geometry into the encoded source and must not disturb the depth buffer. */
-    private static PhotonPipelines.ParticlePipelineKey bloomKey(PhotonPipelines.ParticlePipelineKey key) {
-        return new PhotonPipelines.ParticlePipelineKey(
-                key.blend(), key.blendEquation(), key.cull(), key.depthTest(), false, key.mode(), key.wireframe());
-    }
-
     /**
      * Extract one geometry group as instanced draws (one {@code InstancedJob} per material, one
      * shared instance/point buffer). Returns false when any material can't take the shared
@@ -626,27 +619,19 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                 var recipe = info.instanced();
                 var key = recipe.key();
                 com.mojang.blaze3d.pipeline.RenderPipeline pipeline;
-                com.mojang.blaze3d.pipeline.RenderPipeline bloomPipeline;
                 if (info.bindings().graph() != null) {
                     // shader graphs compile the same generated GLSL against the instanced format + define
                     var graph = info.bindings().graph();
                     pipeline = PhotonPipelines.graphShader(graph.compiled(), variant, key,
                             graph.usedChannelMask(), graph.usesCustomData());
-                    bloomPipeline = PhotonPipelines.graphShader(graph.compiled(), variant, bloomKey(key),
-                            graph.usedChannelMask(), graph.usesCustomData());
                 } else if (recipe.customShaderKey() != null) {
-                    var ck = recipe.customShaderKey();
-                    pipeline = PhotonPipelines.instancedCustomShader(variant, ck);
-                    bloomPipeline = PhotonPipelines.instancedCustomShader(variant,
-                            new PhotonPipelines.CustomShaderKey(ck.vertexShader(), ck.fragmentShader(),
-                                    ck.defines(), ck.samplerNames(), ck.sceneSamplers(), bloomKey(key)));
+                    pipeline = PhotonPipelines.instancedCustomShader(variant, recipe.customShaderKey());
                 } else {
                     pipeline = PhotonPipelines.instancedHdrParticle(variant, recipe.hdrFragment(), key);
-                    bloomPipeline = PhotonPipelines.instancedHdrParticle(variant, recipe.hdrFragment(), bloomKey(key));
                 }
                 var customUniforms = info.bindings().customUniforms();
                 out.add(new PhotonWorldRenderState.InstancedJob(
-                        new PhotonRenderTypes.PhotonDrawInfo.Programs(pipeline, bloomPipeline),
+                        new PhotonRenderTypes.PhotonDrawInfo.Programs(pipeline),
                         new PhotonWorldRenderState.InstancedGeometry(
                                 mesh.vertices(), mesh.indexCount(), mesh.indices(),
                                 instanceBuffer, count, pointBuffer, dataBuffer, customBuffer, layout),
@@ -662,7 +647,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
             var wfKey = PhotonPipelines.ParticlePipelineKey.wireframe(VertexFormat.Mode.QUADS);
             var wfPipeline = PhotonPipelines.instancedHdrParticle(variant, wfKey);
             out.add(new PhotonWorldRenderState.InstancedJob(
-                    new PhotonRenderTypes.PhotonDrawInfo.Programs(wfPipeline, wfPipeline),
+                    new PhotonRenderTypes.PhotonDrawInfo.Programs(wfPipeline),
                     new PhotonWorldRenderState.InstancedGeometry(
                             mesh.vertices(), mesh.indexCount(), mesh.indices(),
                             instanceBuffer, count, pointBuffer,

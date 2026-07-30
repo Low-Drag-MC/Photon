@@ -100,18 +100,39 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
                             sceneView.getDrawMode() != SceneView.DrawMode.DRAW,
                             sceneView.isBloomEnabled()));
         }
+        // The size of the target this scene draws into — the PIP texture (sized to the widget's rect x
+        // guiScale), not the window. Everything that turns gl_FragCoord into a scene-capture UV has to
+        // divide by THIS, or it samples a corner of the capture and the result shifts when the panel is
+        // resized. Published twice: to Photon's own U_ViewPort, and to KilaGraph's KG_ScreenSize (which
+        // shadergraph screen-space nodes use, and which otherwise reads the game window).
+        var sceneTarget = RenderSystem.outputColorTextureOverride;
+        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var targetWidth = sceneTarget != null ? sceneTarget.getWidth(0) : mainTarget.width;
+        var targetHeight = sceneTarget != null ? sceneTarget.getHeight(0) : mainTarget.height;
+        com.lowdragmc.kilagraph.rendertype.runtime.KGEngineUniforms
+                .setScreenSizeOverride(targetWidth, targetHeight);
+        var eye = cameraRenderState != null
+                ? new Vector3f((float) cameraRenderState.pos.x,
+                        (float) cameraRenderState.pos.y, (float) cameraRenderState.pos.z)
+                : new Vector3f();
         if (cameraRenderState != null && cameraRenderState.initialized) {
-            // scene-local engine uniforms (U_* block) for custom shaders drawn in this scene.
-            // U_ViewPort = the actual render target of this scene (the PIP/FBO texture the output
-            // override points at during the scene render), not the main window.
-            var sceneTarget = RenderSystem.outputColorTextureOverride;
-            var mainTarget = Minecraft.getInstance().getMainRenderTarget();
             PhotonEngineUniforms.update(
                     cameraRenderState.projectionMatrix, cameraRenderState.viewRotationMatrix,
-                    new Vector3f((float) cameraRenderState.pos.x,
-                            (float) cameraRenderState.pos.y, (float) cameraRenderState.pos.z),
-                    sceneTarget != null ? sceneTarget.getWidth(0) : mainTarget.width,
-                    sceneTarget != null ? sceneTarget.getHeight(0) : mainTarget.height);
+                    eye, targetWidth, targetHeight);
+        } else if (com.lowdragmc.lowdraglib2.client.scene.SceneCameraContext.isActive()) {
+            // LDLib2's buildCameraRenderState() fills only pos/blockPos, so `initialized` is false and it
+            // carries no matrices. The scene publishes its real ones here instead (LDLib2 26.1.2.30 widened
+            // that scope to cover submit + afterRender for exactly this) — without them U_Inverse*Matrix
+            // stayed on the WORLD camera, so depth->world reconstruction (scan's ring) was wrong in scenes.
+            PhotonEngineUniforms.update(
+                    com.lowdragmc.lowdraglib2.client.scene.SceneCameraContext.projection(),
+                    com.lowdragmc.lowdraglib2.client.scene.SceneCameraContext.viewRotation(),
+                    eye, targetWidth, targetHeight);
+        } else {
+            // No camera to publish, but the viewport is knowable regardless — and it must be right, or
+            // every scene-capture sample divides gl_FragCoord by the wrong size (debugger-verified: this
+            // used to hold the world frame's 3840x2054 while the PIP texture was 2340x1308).
+            PhotonEngineUniforms.updateViewport(targetWidth, targetHeight);
         }
         try {
             super.render(storage, cameraRenderState, camera, frustum, isPlaying ? partialTicks : 0);
@@ -158,6 +179,8 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
             collector.drain(PhotonStage.AFTER_TRANSLUCENT_PARTICLES);
             collector = null;
         }
+        // the scene's target is gone — anything drawn after this is window-sized again
+        com.lowdragmc.kilagraph.rendertype.runtime.KGEngineUniforms.clearScreenSizeOverride();
         super.afterRender();
     }
 

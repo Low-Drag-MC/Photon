@@ -59,14 +59,9 @@ public final class MaterialRenderTypes {
             // is RendererSetting.SortMode, applied by PhotonDistanceSort in the bake.
             var renderType = RenderType.create("photon_hdr_particle", setup.createRenderSetup());
             PhotonMaterialUniforms.associate(renderType, key.uniforms());
-            var bloomKey = new PhotonPipelines.ParticlePipelineKey(
-                    key.pipelineKey().blend(), key.pipelineKey().blendEquation(),
-                    key.pipelineKey().cull(), key.pipelineKey().depthTest(),
-                    false, key.pipelineKey().mode(), key.pipelineKey().wireframe());
             PhotonRenderTypes.registerDrawInfo(renderType, new PhotonRenderTypes.PhotonDrawInfo(
                     new PhotonRenderTypes.PhotonDrawInfo.Programs(
-                            PhotonPipelines.hdrParticle(key.fragmentShader(), key.pipelineKey()),
-                            PhotonPipelines.hdrParticle(key.fragmentShader(), bloomKey)),
+                            PhotonPipelines.hdrParticle(key.fragmentShader(), key.pipelineKey())),
                     new PhotonRenderTypes.PhotonDrawInfo.Bindings(
                             Map.of("Sampler0", key.texture()), java.util.List.of(), null, null),
                     new PhotonRenderTypes.PhotonDrawInfo.InstancedRecipe(

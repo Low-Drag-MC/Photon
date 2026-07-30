@@ -35,6 +35,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
@@ -129,6 +130,9 @@ public final class MaterialPreviewRenderer {
     private static final Map<IMaterial, Integer> LIVE_REQUESTS = new IdentityHashMap<>();
     /** material -> epoch millis before which we don't retry (failed render / not previewable). */
     private static final Map<IMaterial, Long> FAILED = new IdentityHashMap<>();
+    /** Entries whose render failed: released on the NEXT frame, because GUI elements already hold their
+     *  texture Identifier and closing one mid-frame crashes the GuiRenderer on a closed view. */
+    private static final List<Entry> RELEASE_NEXT_FRAME = new ArrayList<>();
     /** When a preview was last drawn — drives {@link #IDLE_RELEASE_MS}. */
     private static long lastRequestMs;
 
@@ -197,6 +201,11 @@ public final class MaterialPreviewRenderer {
      */
     public static void processPending() {
         if (!RenderSystem.isOnRenderThread()) return;
+        // a full frame has passed since these failed, so no GUI draw list can still reference them
+        if (!RELEASE_NEXT_FRAME.isEmpty()) {
+            RELEASE_NEXT_FRAME.forEach(Entry::close);
+            RELEASE_NEXT_FRAME.clear();
+        }
         var now = System.currentTimeMillis();
         if (PENDING.isEmpty() && LIVE_REQUESTS.isEmpty()) {
             // nothing on screen wants a preview — release everything once we've been idle a while
@@ -330,7 +339,7 @@ public final class MaterialPreviewRenderer {
     private static void renderTile(IMaterial material, @Nullable Entry entry, Resolved resolved, long now) {
         var rendered = render(material, entry, resolved, TILE_SIZE, now);
         if (rendered == null) {
-            CACHE.remove(material); // render() already closed the failed target
+            CACHE.remove(material); // render() queued the failed target for release next frame
             markFailed(material, now, null, null);
         } else {
             CACHE.put(material, rendered);
@@ -353,7 +362,10 @@ public final class MaterialPreviewRenderer {
             if (!FAILED.containsKey(material)) {
                 Photon.LOGGER.warn("Material preview render failed: {}", material.getClass().getSimpleName(), e);
             }
-            if (entry != null) entry.close();
+            // NOT closed here: this entry's texture is registered under an Identifier that GUI elements
+            // already hold, and releasing it mid-frame left the GuiRenderer drawing a closed view
+            // ("Texture view Sampler0 has been closed!" — a hard crash). Release a frame later instead.
+            if (entry != null) RELEASE_NEXT_FRAME.add(entry);
             return null;
         }
     }
@@ -403,6 +415,8 @@ public final class MaterialPreviewRenderer {
             dummyDepth.close();
             dummyDepth = null;
         }
+        RELEASE_NEXT_FRAME.forEach(Entry::close);
+        RELEASE_NEXT_FRAME.clear();
         FAILED.clear();
         PENDING.clear();
         LIVE_REQUESTS.clear();
@@ -458,6 +472,19 @@ public final class MaterialPreviewRenderer {
             info.bindings().graph().material().prepareUniforms();
         }
 
+        // Same rule for the scene stand-ins: creating them CLEARS them, and clearColorTexture throws
+        // "Close the existing render pass before creating a new one!" inside a pass. They used to be
+        // built lazily at bind time (inside the pass), so the first material with a scene sampler —
+        // any Scene Color/Depth graph, or the wireframe overlay — always threw.
+        var needsSceneColor = PhotonPipelines.isWireframe(info.programs().main());
+        var needsSceneDepth = false;
+        for (var name : info.bindings().sceneSamplers()) {
+            if (name.contains("Depth")) needsSceneDepth = true;
+            else needsSceneColor = true;
+        }
+        if (needsSceneColor) dummyColorView();
+        if (needsSceneDepth) dummyDepthView();
+
         RenderSystem.backupProjectionMatrix();
         // ortho that maps the unit quad straight to the target: ProjMat * identity(ModelView) * (±1,±1,0)
         RenderSystem.setProjectionMatrix(projBuffer().getBuffer(PREVIEW_ORTHO),
@@ -480,16 +507,31 @@ public final class MaterialPreviewRenderer {
             }
             pass.bindTexture("Sampler2", Minecraft.getInstance().gameRenderer.lightmap(),
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
-            // no scene behind a preview — the pipeline still requires every declared sampler to be bound
+            // A preview has no scene of its own, but every declared sampler must still be bound — and a
+            // blank stand-in makes a Scene Color/Depth material preview a useless flat black. Prefer the
+            // most recent capture the real drain took (the world or the editor scene, whichever drew last),
+            // which is what makes these previews show the same content they will sample in place.
             var neutral = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
-            if (PhotonPipelines.isWireframe(info.programs().main())) {
-                pass.bindTexture("SamplerSceneColor", dummyColorView(), neutral);
-            }
-            for (var name : info.bindings().sceneSamplers()) {
-                pass.bindTexture(name, name.contains("Depth") ? dummyDepthView() : dummyColorView(), neutral);
-            }
+            var previewSceneColor = PhotonSceneCapture.lastColorView();
+            var previewSceneDepth = PhotonSceneCapture.lastDepthView();
+            var sceneSampler = previewSceneColor != null || previewSceneDepth != null
+                    ? PhotonSceneCapture.sampler() : neutral;
             if (info.bindings().graph() != null) {
                 info.bindings().graph().material().bindCustomUniforms(pass);
+            }
+            // Photon-owned scene samplers, after the graph's own binds — see PhotonWorldRenderState.drawRun.
+            if (PhotonPipelines.isWireframe(info.programs().main())) {
+                pass.bindTexture("SamplerSceneColor",
+                        previewSceneColor != null ? previewSceneColor : dummyColorView(), sceneSampler);
+            }
+            for (var name : info.bindings().sceneSamplers()) {
+                GpuTextureView view;
+                if (name.contains("Depth")) {
+                    view = previewSceneDepth != null ? previewSceneDepth : dummyDepthView();
+                } else {
+                    view = previewSceneColor != null ? previewSceneColor : dummyColorView();
+                }
+                pass.bindTexture(name, view, sceneSampler);
             }
             var autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
             pass.setVertexBuffer(0, quad());
@@ -523,8 +565,10 @@ public final class MaterialPreviewRenderer {
     private static GpuTextureView dummyColorView() {
         if (dummyColorView == null) {
             var device = RenderSystem.getDevice();
+            // COPY_DST is required by clearColorTexture below (verifyColorTexture rejects without it)
             dummyColor = device.createTexture(() -> "Photon preview scene color stand-in",
-                    GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT,
+                    GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT
+                            | GpuTexture.USAGE_COPY_DST,
                     TextureFormat.RGBA8, 1, 1, 1, 1);
             dummyColorView = device.createTextureView(dummyColor);
             device.createCommandEncoder().clearColorTexture(dummyColor, 0);
@@ -537,7 +581,8 @@ public final class MaterialPreviewRenderer {
             var device = RenderSystem.getDevice();
             var format = depthFormat();
             dummyDepth = device.createTexture(() -> "Photon preview scene depth stand-in",
-                    GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT, format, 1, 1, 1, 1);
+                    GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT
+                            | GpuTexture.USAGE_COPY_DST, format, 1, 1, 1, 1);
             dummyDepthView = device.createTextureView(dummyDepth);
             device.createCommandEncoder().clearDepthTexture(dummyDepth, 1.0);
         }

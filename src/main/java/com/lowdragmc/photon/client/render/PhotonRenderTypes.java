@@ -31,9 +31,10 @@ public final class PhotonRenderTypes {
     public record PhotonDrawInfo(Programs programs, Bindings bindings,
                                  @Nullable InstancedRecipe instanced) {
 
-        /** The two compiled programs: the main draw, and the bloom re-draw (same state, depth
-         *  writes off) that replays the geometry into the bloom source. */
-        public record Programs(RenderPipeline main, RenderPipeline bloom) {
+        /** The compiled program for the draw. There used to be a second, depth-write-off variant that
+         *  replayed the geometry into the bloom source; bloom now reads the HDR draw target directly, so
+         *  every material compiles exactly one pipeline. */
+        public record Programs(RenderPipeline main) {
         }
 
         /**
@@ -144,15 +145,8 @@ public final class PhotonRenderTypes {
         var renderType = RenderType.create("photon_custom_shader", setup.createRenderSetup());
         PhotonEngineUniforms.register(renderType);
         PhotonCustomUniforms.register(renderType, uniforms); // vanilla-phase mixin bind
-        var bloomPipelineKey = new PhotonPipelines.ParticlePipelineKey(
-                key.pipelineKey().blend(), key.pipelineKey().blendEquation(),
-                key.pipelineKey().cull(), key.pipelineKey().depthTest(),
-                false, key.pipelineKey().mode(), key.pipelineKey().wireframe());
-        var bloomPipeline = PhotonPipelines.customShader(new PhotonPipelines.CustomShaderKey(
-                key.vertexShader(), key.fragmentShader(), key.defines(), key.samplerNames(),
-                key.sceneSamplers(), bloomPipelineKey));
         DRAW_INFO.put(renderType, new PhotonDrawInfo(
-                new PhotonDrawInfo.Programs(pipeline, bloomPipeline),
+                new PhotonDrawInfo.Programs(pipeline),
                 new PhotonDrawInfo.Bindings(liveTextures, key.sceneSamplers(), uniforms, null),
                 new PhotonDrawInfo.InstancedRecipe(key.pipelineKey(), null, key)));
         return Optional.of(renderType);
@@ -195,12 +189,8 @@ public final class PhotonRenderTypes {
             setup.sortOnUpload();
         }
         var renderType = RenderType.create("photon_shader_graph", setup.createRenderSetup());
-        var bloomKey = new PhotonPipelines.ParticlePipelineKey(
-                pipelineKey.blend(), pipelineKey.blendEquation(), pipelineKey.cull(),
-                pipelineKey.depthTest(), false, pipelineKey.mode(), pipelineKey.wireframe());
         DRAW_INFO.put(renderType, new PhotonDrawInfo(
-                new PhotonDrawInfo.Programs(pipeline,
-                        PhotonPipelines.graphShader(compiled, null, bloomKey, usedChannelMask, usesCustomData)),
+                new PhotonDrawInfo.Programs(pipeline),
                 new PhotonDrawInfo.Bindings(Map.of(), sceneSamplers, null,
                         new GraphSource(compiled, material, usedChannelMask, usesCustomData)),
                 new PhotonDrawInfo.InstancedRecipe(pipelineKey, null, null)));

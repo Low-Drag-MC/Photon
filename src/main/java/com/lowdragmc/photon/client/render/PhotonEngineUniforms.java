@@ -64,6 +64,34 @@ public final class PhotonEngineUniforms {
         return buffer.slice();
     }
 
+    /** Byte offset of the {@code U_ViewPort} vec4 in the std140 block (mat4 + mat4 + vec4 before it). */
+    private static final int VIEWPORT_OFFSET = 144;
+
+    /**
+     * Rewrite ONLY {@code U_ViewPort}, leaving the matrices alone.
+     * <p>
+     * The viewport is the size of the target being drawn into, and every scene-capture sample divides
+     * {@code gl_FragCoord} by it. A view can know that without knowing its camera matrices — which is
+     * exactly the editor scene's situation: LDLib2's {@code buildCameraRenderState()} fills only
+     * pos/blockPos, so there is no projection/view to publish, and folding the viewport into
+     * {@link #update} meant it silently kept the world frame's window size for the whole scene render.
+     */
+    public static void updateViewport(float width, float height) {
+        RenderSystem.assertOnRenderThread();
+        if (buffer == null) {
+            return; // nothing uploaded yet — the first full update will carry this viewport anyway
+        }
+        var bytes = MemoryUtil.memAlloc(16);
+        try {
+            bytes.putFloat(0).putFloat(0).putFloat(width).putFloat(height);
+            bytes.rewind();
+            RenderSystem.getDevice().createCommandEncoder()
+                    .writeToBuffer(buffer.slice(VIEWPORT_OFFSET, 16), bytes);
+        } finally {
+            MemoryUtil.memFree(bytes);
+        }
+    }
+
     /**
      * Upload the per-frame values. {@code projection}/{@code viewRotation} are the CPU-side camera
      * matrices ({@code CameraRenderState.projectionMatrix}/{@code viewRotationMatrix}); the view

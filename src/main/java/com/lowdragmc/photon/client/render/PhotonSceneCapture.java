@@ -66,10 +66,9 @@ public final class PhotonSceneCapture {
                 RenderSystem.getDevice().createCommandEncoder()
                         .copyTextureToTexture(source, texture, 0, 0, 0, 0, 0, w, h);
             } else {
-                // sources we don't own (the editor's PIP textures) lack USAGE_COPY_SRC — raw-GL
-                // framebuffer blit with binding save/restore (KilaGraph's proven Iris-copy pattern)
-                blit(((GlTexture) source).glId(), ((GlTexture) texture).glId(), w, h,
-                        blitBufferBit, blitAttachment);
+                // sources we don't own (the editor's PIP textures) lack USAGE_COPY_SRC
+                PhotonFramebufferBlit.blit(((GlTexture) source).glId(), ((GlTexture) texture).glId(),
+                        w, h, blitBufferBit, blitAttachment);
             }
             return view;
         }
@@ -79,9 +78,6 @@ public final class PhotonSceneCapture {
             GL11.GL_COLOR_BUFFER_BIT, GL30.GL_COLOR_ATTACHMENT0);
     private static final Slot DEPTH = new Slot("Photon scene depth capture",
             GL11.GL_DEPTH_BUFFER_BIT, GL30.GL_DEPTH_ATTACHMENT);
-
-    /** Lazily created FBO pair for the raw-GL blit path. */
-    private static int blitReadFbo, blitDrawFbo;
 
     private PhotonSceneCapture() {
     }
@@ -96,26 +92,17 @@ public final class PhotonSceneCapture {
         return DEPTH.capture(target);
     }
 
-    private static void blit(int srcTex, int dstTex, int w, int h, int bufferBit, int attachment) {
-        if (blitReadFbo == 0) blitReadFbo = GL30.glGenFramebuffers();
-        if (blitDrawFbo == 0) blitDrawFbo = GL30.glGenFramebuffers();
-        int prevRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
-        int prevDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
-        try {
-            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, blitReadFbo);
-            GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, attachment,
-                    GL11.GL_TEXTURE_2D, srcTex, 0);
-            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, blitDrawFbo);
-            GL30.glFramebufferTexture2D(GL30.GL_DRAW_FRAMEBUFFER, attachment,
-                    GL11.GL_TEXTURE_2D, dstTex, 0);
-            GL30.glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, bufferBit, GL11.GL_NEAREST);
-            // detach so a later blit of the other aspect doesn't inherit a stale attachment
-            GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, attachment, GL11.GL_TEXTURE_2D, 0, 0);
-            GL30.glFramebufferTexture2D(GL30.GL_DRAW_FRAMEBUFFER, attachment, GL11.GL_TEXTURE_2D, 0, 0);
-        } finally {
-            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevRead);
-            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDraw);
-        }
+    /** The most recent color capture, or null before the first one. Lets an off-screen renderer with no
+     *  scene of its own (the material previews) show real content instead of a blank stand-in. */
+    @Nullable
+    public static GpuTextureView lastColorView() {
+        return COLOR.view;
+    }
+
+    /** The most recent depth capture, or null before the first one. */
+    @Nullable
+    public static GpuTextureView lastDepthView() {
+        return DEPTH.view;
     }
 
     /** Clamp/nearest sampler for screen-space lookups of the captures. */

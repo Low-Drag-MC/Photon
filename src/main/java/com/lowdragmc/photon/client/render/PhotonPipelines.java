@@ -108,7 +108,9 @@ public final class PhotonPipelines {
         if (wireframe) {
             builder.withPolygonMode(PolygonMode.WIREFRAME)
                     .withFragmentShader(Photon.id("core/inverse"))
-                    .withUniform("Globals", UniformType.UNIFORM_BUFFER)
+                    // PhotonEngine, not Globals: inverse.fsh divides gl_FragCoord by U_ViewPort.zw (the
+                    // size of the target it is drawing into), which is what the scene capture is sized to
+                    .withUniform("PhotonEngine", UniformType.UNIFORM_BUFFER)
                     .withSampler("SamplerSceneColor");
         }
         var pipeline = builder.build();

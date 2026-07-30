@@ -178,6 +178,11 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
      * {@code KG_SceneColor}/{@code KG_SceneDepth} (bound from {@code SceneCaptureManager} by the preview
      * material) — the editor has no Photon render pass, so this is what lets the Scene Color/Depth nodes
      * show the captured world behind the editor instead of black. (No world rendering = still black.)
+     * <p>
+     * Do NOT "unify" these onto Photon's names: the preview branch serves KilaGraph's own node previews,
+     * which bind KG's sampler themselves. Photon's {@code MaterialPreviewRenderer} is unaffected either
+     * way — it renders the REAL compile ({@code resolve} calls {@code material.getRenderType}), never a
+     * preview one.
      */
     @Override
     protected String sceneColorSamplerName() {

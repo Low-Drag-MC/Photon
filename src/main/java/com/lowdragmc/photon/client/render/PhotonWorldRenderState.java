@@ -50,13 +50,18 @@ import java.util.Set;
  * Draw paths: render types with {@link PhotonRenderTypes.PhotonDrawInfo} use the vanilla-particle
  * ring-buffer pattern — the frame's vertices go once into a triple-buffered mapped GPU buffer
  * ({@link PhotonBufferCache}), and adjacent same-RenderType jobs merge into a single
- * {@code drawIndexed} (cross-emitter batching). Foreign types (KilaGraph graph materials) fall back
- * to {@code RenderType.draw}, keeping their own draw-time hooks intact.
+ * {@code drawIndexed} (cross-emitter batching). Every RenderType Photon creates registers one — the
+ * {@code RenderType.draw} branch is the safety net for a type registered without, which then keeps its
+ * own draw-time hooks but takes no part in batching or bloom.
  * <p>
- * Bloom: after the main draws, every fast-path run is drawn a second time into the
- * {@link PhotonBloom} source (encoded {@code ColorModulator = 1/HDR_SCALE}, depth-write-off
- * pipeline, tested against the same depth), then the mip chain composites back — the 1.21
- * "everything participates by brightness" semantics, for every stage. Render-thread only.
+ * Target: every draw lands in Photon's own RGBA16F {@link PhotonDrawTarget}, not the engine's RGBA8
+ * output — HDR fx colors above 1.0 would otherwise clamp before bloom ever sees them. The drain seeds
+ * that target from the output, draws into it against the ENGINE's depth view, and composites it back
+ * at the end; the single clamp happens there.
+ * <p>
+ * Bloom reads that same target — the draws are not repeated for it. What glows is decided by the luma
+ * threshold, the 1.21 "everything participates by brightness" semantics, and occlusion comes free
+ * because it is already resolved in the target. Runs per stage. Render-thread only.
  */
 public final class PhotonWorldRenderState {
 
@@ -143,8 +148,8 @@ public final class PhotonWorldRenderState {
     private static final Comparator<DrawJob> DRAW_ORDER = Comparator.comparingInt(DrawJob::orderInLayer)
             .thenComparing(Comparator.comparingDouble(DrawJob::distanceSq).reversed());
 
-    /** Instance rings written this frame — rotated once at the frame boundary (after the last
-     *  drain that may read them, main + bloom draws included). */
+    /** Instance rings written this frame — rotated once at the frame boundary, after the last drain
+     *  that may read them. */
     private static final Set<PhotonInstanceRing> USED_RINGS =
             Collections.newSetFromMap(new IdentityHashMap<>());
 
@@ -305,10 +310,21 @@ public final class PhotonWorldRenderState {
         }
 
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
-        var colorTexture = RenderSystem.outputColorTextureOverride != null
+        var outputColor = RenderSystem.outputColorTextureOverride != null
                 ? RenderSystem.outputColorTextureOverride : mainTarget.getColorTextureView();
         var depthTexture = RenderSystem.outputDepthTextureOverride != null
                 ? RenderSystem.outputDepthTextureOverride : mainTarget.getDepthTextureView();
+
+        // Every draw below goes into Photon's own HDR target rather than the engine's RGBA8 output:
+        // seed it with the scene (blended fx need the real background), draw, then composite back at
+        // the end of the drain. Depth stays the engine's, so occlusion is unaffected.
+        var drawTarget = PhotonDrawTarget.acquire(outputColor.getWidth(0), outputColor.getHeight(0));
+        if (drawTarget == null) {
+            release(jobs); // nothing to draw into — free the meshes rather than leak them
+            return;
+        }
+        drawTarget.copyFrom(outputColor);
+        var colorTexture = drawTarget.view();
 
         // pre-fx scene captures (the 1.21 "scene texture"): taken BEFORE any fx draws, consumed
         // by wireframe-inverse pipelines and SamplerScene* custom-shader samplers
@@ -345,7 +361,7 @@ public final class PhotonWorldRenderState {
         for (int i = 0; i < jobs.size(); i++) {
             if (jobs.get(i) instanceof InstancedJob instanced) {
                 instancedJobs.add(instanced);
-                drawInstancedJob(instanced, instanced.programs().main(), colorTexture, depthTexture, 1f, sceneColor, sceneDepth);
+                drawInstancedJob(instanced, instanced.programs().main(), colorTexture, depthTexture, sceneColor, sceneDepth);
                 continue;
             }
             var job = (Job) jobs.get(i);
@@ -371,40 +387,38 @@ public final class PhotonWorldRenderState {
             }
             var run = new Run(job.renderType(), info, mode, baseVertex, indexCount);
             runs.add(run);
-            drawRun(cache, run, run.info().programs().main(), colorTexture, depthTexture, 1f, sceneColor, sceneDepth);
+            drawRun(cache, run, run.info().programs().main(), colorTexture, depthTexture, sceneColor, sceneDepth);
             baseVertex += vertexCount;
             closeFastJob(job);
         }
         jobs.clear();
 
-        // bloom pass: draw every fast/instanced run again into the encoded source, run the mip chain
-        if (bloomEnabled && (!runs.isEmpty() && cache != null || !instancedJobs.isEmpty())) {
+        // Bloom reads the HDR target the draws just landed in — no second geometry pass. That replay only
+        // existed because pre-S3 the draws went to the engine's RGBA8 output, where anything above 1.0 was
+        // already clamped away, so bloom needed its own un-clamped copy of the fx. Reading the target also
+        // makes occlusion free (it is already resolved in there) and matches 1.21, whose bloom ran over the
+        // whole DRAW_TARGET: what participates is decided by the luma threshold, not by who drew it.
+        if (bloomEnabled && (!runs.isEmpty() || !instancedJobs.isEmpty())) {
             var bloom = PhotonBloom.acquire(colorTexture.getWidth(0), colorTexture.getHeight(0));
-            bloom.clearSource();
-            for (var run : runs) {
-                drawRun(cache, run, run.info().programs().bloom(), bloom.sourceView(), depthTexture,
-                        1f / PhotonBloom.HDR_SCALE, sceneColor, sceneDepth);
+            if (bloom != null) {
+                bloom.run(colorTexture);
             }
-            for (var instanced : instancedJobs) {
-                drawInstancedJob(instanced, instanced.programs().bloom(), bloom.sourceView(), depthTexture,
-                        1f / PhotonBloom.HDR_SCALE, sceneColor, sceneDepth);
-            }
-            bloom.run(colorTexture);
         }
+
+        drawTarget.compositeTo(outputColor);
     }
 
     /** The instanced flavor of {@link #drawRun}: base quad + texel-buffer instance data,
      *  {@code drawIndexed(instanceCount)}. Same binding sequence and pre-pass texture resolution. */
     private static void drawInstancedJob(InstancedJob job, RenderPipeline pipeline,
                                          GpuTextureView colorTexture, GpuTextureView depthTexture,
-                                         float colorModulator,
                                 @Nullable GpuTextureView sceneColor, @Nullable GpuTextureView sceneDepth) {
         // ModelOffset carries the facing-eye → render-origin delta: trail/beam facing math runs on
         // EYE-relative data (the editor SceneCamera's position() is ZERO, its true eye is sceneEye),
         // the shader adds the offset back into render-origin space. Zero in-world.
         var dynamicTransforms = RenderSystem.getDynamicUniforms().writeTransform(
                 RenderSystem.getModelViewMatrix(),
-                new Vector4f(colorModulator, colorModulator, colorModulator, 1),
+                new Vector4f(1, 1, 1, 1),
                 job.positionOffset(), new Matrix4f());
         if (job.bindings().graph() != null) {
             job.bindings().graph().material().prepareUniforms();
@@ -463,6 +477,10 @@ public final class PhotonWorldRenderState {
             // editor full-bright semantics (particle.vsh samples via sample_lightmap, clamped)
             renderPass.bindTexture("Sampler2", Minecraft.getInstance().gameRenderer.lightmap(),
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+            if (job.bindings().graph() != null) {
+                job.bindings().graph().material().bindCustomUniforms(renderPass);
+            }
+            // Photon-owned scene samplers, after the graph's own binds — see the note in drawRun.
             if (sceneColor != null && PhotonPipelines.isWireframe(pipeline)) {
                 renderPass.bindTexture("SamplerSceneColor", sceneColor, PhotonSceneCapture.sampler());
             }
@@ -471,9 +489,6 @@ public final class PhotonWorldRenderState {
                 if (view != null) {
                     renderPass.bindTexture(name, view, PhotonSceneCapture.sampler());
                 }
-            }
-            if (job.bindings().graph() != null) {
-                job.bindings().graph().material().bindCustomUniforms(renderPass);
             }
             renderPass.setVertexBuffer(0, job.geometry().vertices());
             renderPass.setIndexBuffer(indices, indexType);
@@ -492,11 +507,10 @@ public final class PhotonWorldRenderState {
      *  come from the frame's ring buffer at the run's base vertex. */
     private static void drawRun(PhotonBufferCache cache, Run run, RenderPipeline pipeline,
                                 GpuTextureView colorTexture, GpuTextureView depthTexture,
-                                float colorModulator,
                                 @Nullable GpuTextureView sceneColor, @Nullable GpuTextureView sceneDepth) {
         var dynamicTransforms = RenderSystem.getDynamicUniforms().writeTransform(
                 RenderSystem.getModelViewMatrix(),
-                new Vector4f(colorModulator, colorModulator, colorModulator, 1),
+                new Vector4f(1, 1, 1, 1),
                 new Vector3f(), new Matrix4f());
         var autoIndices = RenderSystem.getSequentialBuffer(run.mode());
         GpuBuffer indices = autoIndices.getBuffer(run.indexCount());
@@ -549,6 +563,16 @@ public final class PhotonWorldRenderState {
             }
             renderPass.bindTexture("Sampler2", Minecraft.getInstance().gameRenderer.lightmap(),
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+            if (graph != null) {
+                graph.material().bindCustomUniforms(renderPass);
+            }
+            // MUST stay after bindCustomUniforms — this is load-bearing, not style. Scene samplers are
+            // Photon's to bind, but KilaGraph's material also re-binds every sampler in the graph's layout
+            // each draw, and its "skip the scene ones" guard compares against KG_SceneColor/KG_SceneDepth
+            // while the layout holds the name Photon's compiler renamed them to. So they slip through as
+            // ordinary material textures whose default is the missing texture: bind before this call and
+            // every Scene Color graph renders missingno. Photon 1.21 solved it the same way — its
+            // ShaderGraphMaterial.begin() set the scene samplers last, after KilaGraph's values.
             if (sceneColor != null && PhotonPipelines.isWireframe(pipeline)) {
                 renderPass.bindTexture("SamplerSceneColor", sceneColor, PhotonSceneCapture.sampler());
             }
@@ -557,9 +581,6 @@ public final class PhotonWorldRenderState {
                 if (view != null) {
                     renderPass.bindTexture(name, view, PhotonSceneCapture.sampler());
                 }
-            }
-            if (graph != null) {
-                graph.material().bindCustomUniforms(renderPass);
             }
             renderPass.setVertexBuffer(0, cache.get());
             renderPass.setIndexBuffer(indices, autoIndices.type());
@@ -597,6 +618,7 @@ public final class PhotonWorldRenderState {
         }
         TRACKED_COLLECTORS.clear();
         PhotonBloom.endFrame();
+        PhotonDrawTarget.endFrame();
     }
 
     private static void release(List<DrawJob> jobs) {
