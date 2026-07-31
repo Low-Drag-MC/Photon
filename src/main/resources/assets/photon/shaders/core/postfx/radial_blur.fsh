@@ -3,8 +3,11 @@
 // Zoom blur toward Center; Strength = how far the ray samples reach (0..1).
 
 uniform sampler2D DiffuseSampler;
-uniform vec2 Center;
-uniform float Strength;
+
+layout(std140) uniform PhotonPass {
+    vec2 Center;
+    float Strength;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

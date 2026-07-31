@@ -3,7 +3,10 @@
 // Bloom prefilter: keeps energy above Threshold, proportionally per pixel.
 
 uniform sampler2D DiffuseSampler;
-uniform float Threshold;
+
+layout(std140) uniform PhotonPass {
+    float Threshold;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

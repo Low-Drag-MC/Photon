@@ -3,7 +3,10 @@
 // Color multiply: TintColor.rgb scales the scene, .a blends the effect (gradient-friendly).
 
 uniform sampler2D DiffuseSampler;
-uniform vec4 TintColor;
+
+layout(std140) uniform PhotonPass {
+    vec4 TintColor;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

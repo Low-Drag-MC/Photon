@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.render;
 
-import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.AddressMode;
 import com.mojang.blaze3d.textures.FilterMode;
@@ -67,8 +66,8 @@ public final class PhotonSceneCapture {
                         .copyTextureToTexture(source, texture, 0, 0, 0, 0, 0, w, h);
             } else {
                 // sources we don't own (the editor's PIP textures) lack USAGE_COPY_SRC
-                PhotonFramebufferBlit.blit(((GlTexture) source).glId(), ((GlTexture) texture).glId(),
-                        w, h, blitBufferBit, blitAttachment);
+                PhotonFramebufferBlit.blit(PhotonFramebufferBlit.glId(source),
+                        PhotonFramebufferBlit.glId(texture), w, h, blitBufferBit, blitAttachment);
             }
             return view;
         }

@@ -32,7 +32,7 @@ public class MeshDataConfigurator extends ValueConfigurator<MeshData> {
             value = defaultValue;
         }
 
-        inlineContainer.addChild(value.createPreviewScene());
+        inlineContainer.addChild(value.createInspectorPreview());
         // the preview scene consumes drags for camera rotation, so selection gets its own button
         inlineContainer.addChild(new Button().setText("photon.gui.editor.tips.select_mesh")
                 .setOnClick(this::showMeshDialog)
@@ -83,6 +83,6 @@ public class MeshDataConfigurator extends ValueConfigurator<MeshData> {
         if (!children.isEmpty()) {
             inlineContainer.removeChild(children.get(0));
         }
-        inlineContainer.addChildAt(newValue.createPreviewScene(), 0);
+        inlineContainer.addChildAt(newValue.createInspectorPreview(), 0);
     }
 }

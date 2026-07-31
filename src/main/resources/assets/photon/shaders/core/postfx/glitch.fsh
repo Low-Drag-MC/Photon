@@ -4,8 +4,11 @@
 // row displacement bursts + RGB split + fine line noise. Intensity 0..1 drives everything.
 
 uniform sampler2D DiffuseSampler;
-uniform float GameTime;
-uniform float Intensity;
+
+layout(std140) uniform PhotonPass {
+    float Intensity;
+    float GameTime;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

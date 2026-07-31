@@ -243,6 +243,43 @@ public final class PhotonPipelines {
         });
     }
 
+    private record MaskKey(@Nullable InstancedVariant variant, VertexFormat.Mode mode) {
+    }
+
+    private static final Map<MaskKey, RenderPipeline> MASK_VARIANTS = new ConcurrentHashMap<>();
+
+    /**
+     * The CustomMask sub-pass pipeline: the flat-id shader over the SAME geometry the material pass
+     * drew, so it needs the same format/variant combination. {@code variant} null = CPU-baked
+     * {@link #PARTICLE_FORMAT} geometry in the emitter's own primitive mode.
+     * <p>
+     * State is fixed rather than taken from the material: the mask draws opaque (an id is not a colour
+     * to blend), unculled (a billboard's winding is arbitrary), and depth-tests <b>and writes</b> against
+     * the mask target's own depth — that write is what makes the buffer a custom depth an effect can read.
+     */
+    public static RenderPipeline mask(@Nullable InstancedVariant variant, VertexFormat.Mode mode) {
+        return MASK_VARIANTS.computeIfAbsent(new MaskKey(variant, mode), mk -> {
+            var builder = RenderPipeline.builder(RenderPipelines.MATRICES_FOG_SNIPPET)
+                    .withLocation(Photon.id("pipeline/mask_" + VARIANT_ID.getAndIncrement()))
+                    .withVertexShader(Photon.id("core/mask"))
+                    .withFragmentShader(Photon.id("core/mask"))
+                    .withSampler("Sampler0")
+                    .withUniform("PhotonMask", UniformType.UNIFORM_BUFFER)
+                    .withVertexFormat(mk.variant() == null ? PARTICLE_FORMAT : mk.variant().format,
+                            mk.variant() == null ? mk.mode() : VertexFormat.Mode.QUADS)
+                    .withColorTargetState(ColorTargetState.DEFAULT)
+                    .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, true))
+                    .withCull(false);
+            if (mk.variant() != null) {
+                builder.withShaderDefine(mk.variant().define);
+                if (mk.variant().usesPoints) {
+                    builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
+                }
+            }
+            return builder.build();
+        });
+    }
+
     private record InstancedCustomKey(InstancedVariant variant, CustomShaderKey key) {
     }
 
@@ -367,6 +404,49 @@ public final class PhotonPipelines {
                 if (usesCustomData && variant.usesCustomData) {
                     builder.withUniform("PhotonCustomData", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
                 }
+            }
+            return builder.build();
+        });
+    }
+
+    private static final Map<String, RenderPipeline> FULLSCREEN_GRAPHS = new ConcurrentHashMap<>();
+
+    /**
+     * A Photon pipeline over a compiled FULLSCREEN shader graph — one post-effect pass. Same GLSL source
+     * KilaGraph registered for the graph, but our own state, taken from {@link PhotonFullscreenPass#builder()}
+     * so there is one definition of what a fullscreen pipeline is. KilaGraph's own pipeline for the same
+     * graph cannot be reused: its {@code depthState} is never null, and a post-effect target has no depth
+     * attachment, so every draw would warn.
+     */
+    public static RenderPipeline fullscreenGraph(
+            com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph compiled) {
+        return FULLSCREEN_GRAPHS.computeIfAbsent(compiled.contentHash(), hash -> {
+            var shaderId = com.lowdragmc.kilagraph.rendertype.runtime.DynamicShaderSourceRegistry.shaderId(hash);
+            var builder = PhotonFullscreenPass.builder()
+                    .withLocation(Photon.id("pipeline/postfx_graph_" + VARIANT_ID.getAndIncrement()))
+                    .withVertexShader(shaderId)
+                    .withFragmentShader(shaderId)
+                    .withColorTargetState(ColorTargetState.DEFAULT);
+            for (var ubo : compiled.builtinUniforms()) {
+                builder.withUniform(ubo, UniformType.UNIFORM_BUFFER);
+            }
+            if (!compiled.layout().isEmpty()) {
+                builder.withUniform(com.lowdragmc.kilagraph.rendertype.compiler.MaterialUniformLayout.UBO_NAME,
+                        UniformType.UNIFORM_BUFFER);
+            }
+            for (var block : compiled.uniformBlocks()) {
+                builder.withUniform(block.uboName(), UniformType.UNIFORM_BUFFER);
+            }
+            for (var sampler : compiled.layout().samplers()) {
+                builder.withSampler(sampler);
+            }
+            // a fullscreen graph keeps KilaGraph's own scene-sampler names (PhotonShaderCompiler's
+            // rename is particle-side only), so KilaGraph's bindCustomUniforms binds them for us
+            if (compiled.usesSceneColor()) {
+                builder.withSampler(com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler.SCENE_COLOR_SAMPLER);
+            }
+            if (compiled.usesSceneDepth()) {
+                builder.withSampler(com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler.SCENE_DEPTH_SAMPLER);
             }
             return builder.build();
         });

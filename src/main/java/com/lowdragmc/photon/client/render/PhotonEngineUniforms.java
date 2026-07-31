@@ -34,6 +34,51 @@ public final class PhotonEngineUniforms {
     private static final Matrix4f INVERSE_PROJECTION = new Matrix4f();
     private static final Matrix4f INVERSE_VIEW = new Matrix4f();
 
+    /** The current view's depth range, recovered from its projection — see {@link #zNear()}. */
+    private static float zNear = 0.05f;
+    private static float zFar = 1000f;
+
+    /**
+     * The near/far planes of the view Photon is drawing for.
+     * <p>
+     * Screen-space effects that reason about DISTANCE (an outline's silhouette test, depth of field)
+     * cannot use the raw depth buffer directly: it stores a hyperbolic encoding, so the same physical
+     * step produces wildly different gradients depending on how far away it is. Linearising needs the
+     * two planes, and this is where they are known — {@link #update} is handed the very projection the
+     * view renders with, so an editor scene reports ITS planes rather than the world's.
+     */
+    public static float zNear() {
+        return zNear;
+    }
+
+    public static float zFar() {
+        return zFar;
+    }
+
+    /**
+     * Recover near/far from a projection matrix. JOML already inverts the perspective case
+     * ({@code perspectiveNear/Far}); orthographic is the branch it does not cover, and an editor scene
+     * may use either, so it is derived here ({@code m22 = -2/(f-n)}, {@code m32 = -(f+n)/(f-n)}).
+     * A projection we cannot make sense of leaves the previous range in place rather than poisoning it.
+     */
+    private static void captureDepthRange(Matrix4fc projection) {
+        float near;
+        float far;
+        if (projection.m23() < -0.5f) { // perspective (m23 == -1)
+            near = projection.perspectiveNear();
+            far = projection.perspectiveFar();
+        } else if (projection.m22() != 0f) {
+            near = (projection.m32() + 1f) / projection.m22();
+            far = (projection.m32() - 1f) / projection.m22();
+        } else {
+            return;
+        }
+        if (Float.isFinite(near) && Float.isFinite(far) && far > near) {
+            zNear = near;
+            zFar = far;
+        }
+    }
+
     private PhotonEngineUniforms() {
     }
 
@@ -108,6 +153,7 @@ public final class PhotonEngineUniforms {
         }
         projection.invert(INVERSE_PROJECTION);
         viewRotation.invert(INVERSE_VIEW);
+        captureDepthRange(projection);
         var bytes = MemoryUtil.memAlloc(STD140_SIZE);
         try {
             Std140Builder.intoBuffer(bytes)

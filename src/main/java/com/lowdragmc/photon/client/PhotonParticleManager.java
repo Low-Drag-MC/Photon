@@ -71,10 +71,6 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         return time + (isPlaying ? pPartialTicks : 0);
     }
 
-    // TODO(M4): the 1.21 render() override also staged bloom / editor-scene PostEffectStack routing /
-    // shader game-time swap / standalone effect consumption — those return with the M3 postfx
-    // executor + M4 editor milestone. The pieces below are the extraction-critical subset.
-
     /**
      * Extraction-time overrides (the 1.21 render() line 103 semantics):
      * <ul>
@@ -98,7 +94,20 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
             collector.photonViewSettings(sceneView == null ? PhotonViewSettings.DEFAULT
                     : new PhotonViewSettings(sceneView.getDrawMode() != SceneView.DrawMode.WIREFRAME,
                             sceneView.getDrawMode() != SceneView.DrawMode.DRAW,
-                            sceneView.isBloomEnabled()));
+                            sceneView.isBloomEnabled(),
+                            // the editor's own request stack: a timeline post-process clip previewed
+                            // here must not tint the world, nor the world's effects this panel
+                            com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE,
+                            sceneView.isEffectsEnabled()));
+            if (sceneView != null && sceneView.isMaskViewEnabled()) {
+                // top-bar debug toggle: show the CustomMask contents instead of the scene this frame.
+                // Submitting it like any other request is what makes the mask sub-pass run at all —
+                // the sub-pass is demand-driven on there being a pending mask consumer.
+                com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE.submit(
+                        com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider.TYPE
+                                .createFullPath("show_mask"),
+                        java.util.Map.of(), 1f);
+            }
         }
         // The size of the target this scene draws into — the PIP texture (sized to the widget's rect x
         // guiScale), not the window. Everything that turns gl_FragCoord into a scene-capture UV has to
@@ -111,6 +120,15 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         var targetHeight = sceneTarget != null ? sceneTarget.getHeight(0) : mainTarget.height;
         com.lowdragmc.kilagraph.rendertype.runtime.KGEngineUniforms
                 .setScreenSizeOverride(targetWidth, targetHeight);
+        // This scene's shaders run on the TIMELINE's clock, not the world's — the 1.21
+        // setShaderGameTime(getRealTime(), isPlaying ? partial : 0) semantics, which is what makes a
+        // paused timeline freeze time-driven shaders too (getRealTime already zeroes the partial when
+        // paused). Published twice, because there are two blocks carrying a clock: Minecraft's Globals,
+        // which PhotonGlobals substitutes for Photon's own draws, and KilaGraph's KG_Globals, which its
+        // Time / Game Time nodes read and only KilaGraph can rewrite.
+        var sceneTime = getRealTime(partialTicks);
+        com.lowdragmc.photon.client.render.PhotonTime.setOverride(sceneTime);
+        com.lowdragmc.kilagraph.rendertype.runtime.KGEngineUniforms.setTimeOverride(sceneTime);
         var eye = cameraRenderState != null
                 ? new Vector3f((float) cameraRenderState.pos.x,
                         (float) cameraRenderState.pos.y, (float) cameraRenderState.pos.z)
@@ -179,8 +197,10 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
             collector.drain(PhotonStage.AFTER_TRANSLUCENT_PARTICLES);
             collector = null;
         }
-        // the scene's target is gone — anything drawn after this is window-sized again
+        // the scene's target and clock are gone — anything drawn after this is the world's again
         com.lowdragmc.kilagraph.rendertype.runtime.KGEngineUniforms.clearScreenSizeOverride();
+        com.lowdragmc.kilagraph.rendertype.runtime.KGEngineUniforms.clearTimeOverride();
+        com.lowdragmc.photon.client.render.PhotonTime.clearOverride();
         super.afterRender();
     }
 

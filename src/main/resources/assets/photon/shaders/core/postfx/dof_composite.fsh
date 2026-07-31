@@ -6,10 +6,13 @@
 uniform sampler2D DiffuseSampler;
 uniform sampler2D BlurSampler;
 uniform sampler2D DepthSampler;
-uniform vec2 Center;
-uniform float FocusRange;
-uniform float Near;
-uniform float Far;
+
+layout(std140) uniform PhotonPass {
+    vec2 Center;
+    float FocusRange;
+    float Near;
+    float Far;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

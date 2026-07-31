@@ -3,9 +3,12 @@
 // three.js DotScreenShader: halftone dot grid, Scale = dot density, Angle in radians.
 
 uniform sampler2D DiffuseSampler;
-uniform vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
-uniform float Scale;
-uniform float Angle;
+
+layout(std140) uniform PhotonPass {
+    float Scale;
+    float Angle;
+    vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

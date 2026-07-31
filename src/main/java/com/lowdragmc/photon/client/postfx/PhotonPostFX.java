@@ -75,21 +75,20 @@ public final class PhotonPostFX {
     }
 
     /**
-     * The standalone consumption fallback (RenderLevelStageEvent.AFTER_PARTICLES): when effects are
-     * requested but no Photon particle queued this frame, the particle-pipeline seam
-     * ({@code RenderPassPipeline.afterRendering}) never ran — post-processing must not depend on
-     * particles existing, so run the chain here over a copy of the main target instead. Builtin bloom
-     * stays out of this path on purpose: it only ever applies when Photon content rendered.
+     * The preview capture fallback (RenderLevelStageEvent.AFTER_PARTICLES). The chain itself no longer
+     * needs a standalone path: the world's drain runs it whenever a request is pending, whether or not
+     * a single particle queued — see {@code PhotonWorldRenderState.drain}. What is left is the editor
+     * preview's clean-scene copy for the frames where the drain never got that far (effects disabled,
+     * or the HDR target unavailable).
      */
     public static void onLevelStageAfterParticles() {
         var stack = PostEffectStack.GLOBAL;
-        var previewTarget = Minecraft.getInstance().getMainRenderTarget();
         if (!stack.isConsumedThisFrame()) {
-            // no effects ran yet this frame — the main target IS the clean scene
-            com.lowdragmc.photon.client.postfx.runtime.PostFXPreview.captureIfRequested(previewTarget);
+            // no chain ran this frame — the main target IS the clean scene
+            var main = Minecraft.getInstance().getMainRenderTarget();
+            com.lowdragmc.photon.client.postfx.runtime.PostFXPreview.captureIfRequested(
+                    main.getColorTextureView(), main.getDepthTextureView());
         }
-        // TODO(M3): the standalone chain execution (pooled HDR copy of main → consumeAndExecute →
-        // fastBlit back) was cut with the 1.21 HDR pipeline; returns as a Photon frame pass.
     }
 
     /**
@@ -101,8 +100,6 @@ public final class PhotonPostFX {
         PostEffectStack.GLOBAL.onFrameEnd();
         PostEffectStack.EDITOR_SCENE.onFrameEnd();
         PostFXTargetPool.endFrame();
-        // TODO(M3): was clearFrameMask() — mask textures are per-frame (a no-particle frame must not
-        // reuse last frame's mask); the per-frame mask drop returns with the mask pass
         if (testEffect != null) {
             PostEffectStack.GLOBAL.submit(testEffect.path(), Map.of(), testEffect.weight());
         }

@@ -1,5 +1,5 @@
 {
-    "vertex": "ldlib2:fast_blit",
+    "vertex": "photon:fullscreen",
     "fragment": "photon:postfx/outline",
     "samplers": [
         { "name": "DiffuseSampler" },
@@ -7,9 +7,11 @@
     ],
     "uniforms": [
         { "name": "OutlineColor", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 1.0 ] },
-        { "name": "DepthThreshold", "type": "float", "count": 1, "values": [ 0.001 ] },
+        { "name": "DepthThreshold", "type": "float", "count": 1, "values": [ 1.0 ] },
         { "name": "LumaThreshold", "type": "float", "count": 1, "values": [ 0.5 ] },
         { "name": "Thickness", "type": "float", "count": 1, "values": [ 1.0 ] },
-        { "name": "DiffuseSampler_TexelSize", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] }
+        { "name": "DiffuseSampler_TexelSize", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+        { "name": "ZNear", "type": "float", "count": 1, "values": [ 0.05 ] },
+        { "name": "ZFar", "type": "float", "count": 1, "values": [ 1000.0 ] }
     ]
 }

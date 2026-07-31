@@ -3,8 +3,11 @@
 // three.js BrightnessContrastShader: Brightness/Contrast both -1..1, 0 = no change.
 
 uniform sampler2D DiffuseSampler;
-uniform float Brightness;
-uniform float Contrast;
+
+layout(std140) uniform PhotonPass {
+    float Brightness;
+    float Contrast;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

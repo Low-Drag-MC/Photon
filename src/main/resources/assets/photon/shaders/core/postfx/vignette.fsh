@@ -3,8 +3,11 @@
 // three.js VignetteShader: Offset scales the falloff start, Darkness the edge strength.
 
 uniform sampler2D DiffuseSampler;
-uniform float Offset;
-uniform float Darkness;
+
+layout(std140) uniform PhotonPass {
+    float Offset;
+    float Darkness;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

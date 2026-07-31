@@ -4,7 +4,10 @@
 
 uniform sampler2D DiffuseSampler;
 uniform sampler2D AddSampler;
-uniform float Strength;
+
+layout(std140) uniform PhotonPass {
+    float Strength;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

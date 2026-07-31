@@ -1,35 +1,21 @@
 package com.lowdragmc.photon.gui.editor.resource;
 
-import com.lowdragmc.lowdraglib2.client.scene.FBOWorldSceneRenderer;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
-import com.lowdragmc.lowdraglib2.editor.resource.ResourceProviderType;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
-import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.ObjModelSource;
-import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.ResourceMeshSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
-import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.resources.Identifier;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Vector3f;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Consumer;
 
 
 public class MeshResource extends Resource<MeshData> {
@@ -92,6 +78,12 @@ public class MeshResource extends Resource<MeshData> {
                 }
             }
         };
+        // 26.1: the tile used to drive an FBOWorldSceneRenderer straight from a GuiTexture lambda,
+        // i.e. from INSIDE the open GUI render pass — where drawScene's opening
+        // clearColorAndDepthTextures is illegal. createTilePreview keeps 1.21's per-tile FBO but
+        // hands it to Scene, whose ScenePIPRenderer defers the draw out of that pass and blits the
+        // FBO's own texture. It also auto-frames, releases on removal, and leaves the mouse to the
+        // tile so drag-to-emitter and click-to-select still work.
         container.setUiSupplier(path -> {
             var meshData = provider.getResource(path);
             if (meshData == null) {
@@ -100,44 +92,10 @@ public class MeshResource extends Resource<MeshData> {
                     layout.heightPercent(100);
                 });
             }
-            var level = new TrackedDummyWorld();
-            var fboRenderer = new FBOWorldSceneRenderer(level, 512, 512);
-            fboRenderer.setFov(40);
-            // Re-frame whenever the underlying geometry changes (obj set/hot-reloaded, source
-            // switched): the tile isn't rebuilt on every edit, and drawLineFrames reads the live
-            // mesh each frame, so a fixed build-time camera would leave edits looking off-screen
-            // until a tab switch. Identity compare is a cheap map lookup.
-            final PhotonMesh[] framed = {null};
-            fboRenderer.setBeforeWorldRender(r -> {
-                var mesh = meshData.getSource().getMesh();
-                if (mesh == framed[0]) return;
-                framed[0] = mesh;
-                var min = new Vector3f(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE);
-                var max = new Vector3f(-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE);
-                var vertices = meshData.getVertices();
-                if (vertices.isEmpty()) {
-                    min.set(0, 0, 0);
-                    max.set(1, 1, 1);
-                } else {
-                    for (var vertex : vertices) {
-                        min.min(vertex);
-                        max.max(vertex);
-                    }
-                }
-                var center = new Vector3f((min.x + max.x) / 2f + 0.5F, (min.y + max.y) / 2f + 0.5F, (min.z + max.z) / 2f + 0.5F);
-                var zoom = (float) (3.5 * Math.sqrt(Math.max(Math.max(Math.max(max.x - min.x + 1, max.y - min.y + 1), max.z - min.z + 1), 1)));
-                fboRenderer.setCameraLookAt(center, zoom, Math.toRadians(-135), Math.toRadians(25));
+            return meshData.createTilePreview().layout(layout -> {
+                layout.widthPercent(100);
+                layout.heightPercent(100);
             });
-            // 26.1: the after-world hook is dispatch-phase based; the FBO draws via drawScene (no
-            // drawAsTexture) — wrap it as a functional GuiTexture
-            fboRenderer.setAfterAllDispatch(ctx -> meshData.drawLineFrames(new PoseStack()));
-            return new UIElement().layout(layout -> {
-                        layout.widthPercent(100);
-                        layout.heightPercent(100);
-                    }).style(style -> style.backgroundTexture(com.lowdragmc.lowdraglib2.gui.texture.GuiTexture.of(
-                            (ctx, x, y, w, h) -> fboRenderer.drawScene(x, y, w, h, ctx.mouseX, ctx.mouseY))))
-                    // release resources here
-                    .addEventListener(UIEvents.REMOVED, e -> fboRenderer.releaseResource());
         });
         container.setOnEdit((c, path) -> {
             var meshData = provider.getResource(path);
@@ -150,30 +108,4 @@ public class MeshResource extends Resource<MeshData> {
         return container;
     }
 
-    public void onAdditionalModel(Consumer<Identifier> registry) {
-        // TODO(M2): re-register json mesh models once the standalone-model path is restored
-        // (StandaloneModelKey/UnbakedStandaloneModel replaces ModelResourceLocation.standalone;
-        // blocked on LDLib2 26.1's `// TODO RENDERER` model pipeline). See PhotonClientProxy.registerModels.
-    }
-
-    private List<MeshData> getLoadedResourceMeshes() {
-        var instance = getResourceInstance();
-        refreshProviders(instance.getBuiltinProviders());
-        refreshProviders(instance.getCustomProviders());
-        var meshes = new ArrayList<MeshData>();
-        for (var entry : instance.listAllResources()) {
-            if (entry.getValue() != null) {
-                meshes.add(entry.getValue());
-            }
-        }
-        return meshes;
-    }
-
-    private static void refreshProviders(Map<ResourceProviderType, List<IResourceProvider<MeshData>>> providersByType) {
-        for (var providers : providersByType.values()) {
-            for (var provider : providers) {
-                provider.checkAndUpdateResourceProvider();
-            }
-        }
-    }
 }

@@ -6,6 +6,7 @@
   "plugin": "com.lowdragmc.photon.core.mixins.PhotonMixinPlugin",
   "client": [
     "GlConstMixin",
+    "GlobalSettingsUniformMixin",
     "ParticleEngineMixin",
     "RenderTypeMixin",
     "SubmitNodeStorageMixin",

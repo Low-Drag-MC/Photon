@@ -31,8 +31,20 @@ public final class PhotonFramebufferBlit {
 
     /** Blit {@code source}'s color into {@code destination}, both sized {@code width x height}. */
     public static void color(GpuTexture source, GpuTexture destination, int width, int height) {
-        blit(((GlTexture) source).glId(), ((GlTexture) destination).glId(), width, height,
+        blit(glId(source), glId(destination), width, height,
                 GL11.GL_COLOR_BUFFER_BIT, GL30.GL_COLOR_ATTACHMENT0);
+    }
+
+    /** Blit {@code source}'s depth into {@code destination}. The two formats must match EXACTLY —
+     *  {@code glBlitFramebuffer} rejects a depth blit between differing formats, and silently: no error
+     *  surfaces, the destination simply keeps whatever it had. */
+    public static void depth(GpuTexture source, GpuTexture destination, int width, int height) {
+        blit(glId(source), glId(destination), width, height,
+                GL11.GL_DEPTH_BUFFER_BIT, GL30.GL_DEPTH_ATTACHMENT);
+    }
+
+    public static int glId(GpuTexture texture) {
+        return ((GlTexture) texture).glId();
     }
 
     /** {@link #color(GpuTexture, GpuTexture, int, int)} over views, sized after the source. */

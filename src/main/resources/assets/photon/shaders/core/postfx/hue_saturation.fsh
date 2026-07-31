@@ -3,8 +3,11 @@
 // three.js HueSaturationShader: Hue -1..1 (full rotation), Saturation -1..1, 0 = no change.
 
 uniform sampler2D DiffuseSampler;
-uniform float Hue;
-uniform float Saturation;
+
+layout(std140) uniform PhotonPass {
+    float Hue;
+    float Saturation;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

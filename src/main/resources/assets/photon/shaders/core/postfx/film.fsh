@@ -3,10 +3,13 @@
 // three.js FilmShader: animated grain + scanlines. GameTime is engine-driven (0..1 per day cycle).
 
 uniform sampler2D DiffuseSampler;
-uniform float GameTime;
-uniform float NoiseIntensity;
-uniform float ScanlineIntensity;
-uniform float ScanlineCount;
+
+layout(std140) uniform PhotonPass {
+    float NoiseIntensity;
+    float ScanlineIntensity;
+    float ScanlineCount;
+    float GameTime;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

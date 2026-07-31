@@ -8,10 +8,7 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.IGraphTool;
 import com.lowdragmc.photon.client.postfx.graph.RenderGraph;
 import com.lowdragmc.photon.client.postfx.graph.RenderGraphCompiler;
 import com.lowdragmc.photon.client.postfx.runtime.CompiledEffect;
-import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.postfx.runtime.PostFXPreview;
-import com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool;
-import com.lowdragmc.photon.client.postfx.runtime.RenderGraphExecutor;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
@@ -19,12 +16,14 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Map;
 
 /**
- * The render-graph editor's live preview: every frame the panel is visible it requests a clean
- * world-frame capture ({@link PostFXPreview}), runs THIS editor's graph (the live, unsaved model)
- * over that copy at weight 1 with schema defaults, and draws the result into the panel —
- * production effects and other open editors are untouched (the output is a pooled target released
- * right after drawing). Without a world frame (no level rendering behind the editor) it shows a
- * hint instead.
+ * The render-graph editor's live preview: every frame the panel is visible it asks {@link PostFXPreview}
+ * to run THIS editor's graph (the live, unsaved model) over a clean world-frame capture at weight 1 with
+ * schema defaults, and draws the result — production effects and other open editors are untouched.
+ * <p>
+ * The run itself happens a frame later, at {@code RenderFrameEvent.Pre}: GUI drawing is inside an open
+ * render pass, where opening another one throws. So the panel always shows the previous frame's result,
+ * and shows a hint until there is one (no level rendering behind the editor, or a graph that won't
+ * compile).
  */
 public class PostFXPreviewTool extends UIElement implements IGraphTool {
 
@@ -56,31 +55,30 @@ public class PostFXPreviewTool extends UIElement implements IGraphTool {
         if (!(rawContext instanceof GUIContext guiContext)) return;
         if (!(view.getGraph() instanceof RenderGraph renderGraph)) return;
 
-        PostFXPreview.requestCapture(); // next frame's render hooks refresh the capture
-        var source = PostFXPreview.source();
-
         float x = getContentX();
         float y = getContentY();
         float width = getContentWidth();
         float height = getPaddingHeight();
 
-        if (source == null) {
-            guiContext.drawTexture(new TextTexture("photon.render_graph.preview.no_frame"), x, y, width, height);
-            return;
-        }
-
         ensureCompiled(renderGraph);
         if (compiled == null) {
+            PostFXPreview.requestCapture(); // keep the capture warm while the author fixes the graph
             guiContext.drawTexture(new TextTexture(compileError.isEmpty()
                     ? "photon.render_graph.preview.no_frame" : compileError, 0xffff5555)
                     .setWidth((int) width), x, y, width, height);
             return;
         }
 
-        // TODO(M3): run the compiled chain offscreen over the scene capture and blit the result
-        // (was RenderGraphExecutor.execute + an HDRTarget aspect-fit draw — cut with the 1.21
-        // HDR pipeline). Until then the preview shows the clean capture placeholder text.
-        guiContext.drawTexture(new TextTexture("photon.render_graph.preview.no_frame"), x, y, width, height);
+        // GUI drawing runs inside an open render pass, so the chain cannot execute here: ask for it and
+        // blit the frame that was rendered at RenderFrameEvent.Pre. Production effects and other open
+        // editors are untouched — this runs the LIVE, unsaved graph at weight 1 with schema defaults.
+        PostFXPreview.requestPreview(compiled, defaultParams);
+        var preview = PostFXPreview.previewTexture();
+        if (preview == null) {
+            guiContext.drawTexture(new TextTexture("photon.render_graph.preview.no_frame"), x, y, width, height);
+            return;
+        }
+        guiContext.drawTexture(preview, x, y, width, height);
     }
 
     /** Recompile the LIVE graph when it (or any referenced fullscreen graph) changed. */

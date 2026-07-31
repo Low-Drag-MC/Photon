@@ -1,6 +1,6 @@
 #version 330
 
-// Shared fullscreen-quad vertex stage for the bloom chain: Position is a [0,1]² quad,
+// Shared fullscreen-quad vertex stage (bloom chain + post-effect passes): Position is a [0,1]² quad,
 // passed through as texCoord and expanded to NDC.
 
 in vec3 Position;

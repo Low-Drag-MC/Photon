@@ -3,8 +3,11 @@
 // Horizontal 9-tap gaussian (linear-sampling optimized, 5 fetches). Radius scales the kernel.
 
 uniform sampler2D DiffuseSampler;
-uniform vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
-uniform float Radius;
+
+layout(std140) uniform PhotonPass {
+    float Radius;
+    vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

@@ -6,10 +6,13 @@
 
 uniform sampler2D DiffuseSampler;
 uniform sampler2D MaskSampler;
-uniform vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
-uniform vec4 OutlineColor;
-uniform float MaskFilter;
-uniform float Thickness;
+
+layout(std140) uniform PhotonPass {
+    vec4 OutlineColor;
+    float MaskFilter;
+    float Thickness;
+    vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

@@ -337,14 +337,20 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                 if (renderType == null) {
                     continue; // material not ported yet — skip rather than render wrongly
                 }
+                // the CustomMask sub-pass alpha-clips against the pass's OWN texture — the one this
+                // material bound as Sampler0 (1.21 hunted for a TextureMaterial to the same end)
+                var info = PhotonRenderTypes.drawInfo(renderType);
+                var mask = PhotonWorldRenderState.MaskWrite.of(renderer,
+                        info == null ? null : info.bindings().textures().get("Sampler0"));
                 bakeJob(out, renderType, mode, camera, partialTicks, stage,
-                        renderer.getOrderInLayer(), sortOrigin, baker);
+                        renderer.getOrderInLayer(), sortOrigin, baker, mask);
             }
         }
         if (settings.wireframe()) {
             // overlay always on top of everything, whatever layer the emitter itself draws in
             bakeJob(out, MaterialRenderTypes.wireframe(mode), mode, camera, partialTicks,
-                    PhotonStage.AFTER_TRANSLUCENT_PARTICLES, Integer.MAX_VALUE, null, baker);
+                    PhotonStage.AFTER_TRANSLUCENT_PARTICLES, Integer.MAX_VALUE, null, baker,
+                    null); // an editor overlay is not content — it never writes the mask
         }
     }
 
@@ -616,6 +622,10 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         if (shaded) {
             for (int m = 0; m < infos.size(); m++) {
                 var info = infos.get(m);
+                // the CustomMask sub-pass alpha-clips against the pass's OWN texture, which is exactly
+                // what this material bound as Sampler0 (1.21 hunted for a TextureMaterial to the same end)
+                var mask = PhotonWorldRenderState.MaskWrite.of(renderer,
+                        info.bindings().textures().get("Sampler0"));
                 var recipe = info.instanced();
                 var key = recipe.key();
                 com.mojang.blaze3d.pipeline.RenderPipeline pipeline;
@@ -640,7 +650,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                                 customUniforms == null ? null : customUniforms.slice(),
                                 info.bindings().sceneSamplers(), info.bindings().graph()),
                         positionOffset, key.blendEquation(),
-                        stage, renderer.getOrderInLayer(), distanceSq));
+                        stage, renderer.getOrderInLayer(), distanceSq, variant, mask));
             }
         }
         if (wireframe) {
@@ -660,7 +670,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                             null, List.of(),
                             null), // wireframe overlay draws Photon's own shader, never a graph
                     positionOffset, PhotonPipelines.BLEND_EQUATION_ADD,
-                    PhotonStage.AFTER_TRANSLUCENT_PARTICLES, Integer.MAX_VALUE, distanceSq));
+                    PhotonStage.AFTER_TRANSLUCENT_PARTICLES, Integer.MAX_VALUE, distanceSq,
+                    variant, null)); // an editor overlay is not content — it never writes the mask
         }
         return true;
     }
@@ -671,7 +682,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                          Camera camera, float partialTicks,
                          PhotonStage stage, int orderInLayer,
                          @Nullable org.joml.Vector3fc sortOrigin,
-                         GeometryBaker baker) {
+                         GeometryBaker baker,
+                         @Nullable PhotonWorldRenderState.MaskWrite mask) {
         var buffer = new ByteBufferBuilder(64 * 1024);
         var builder = new BufferBuilder(buffer, mode, PhotonPipelines.PARTICLE_FORMAT);
         baker.bake(builder, camera, partialTicks);
@@ -685,7 +697,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         }
         var eye = PhotonCameraUtils.facingEye(camera);
         var distanceSq = transform.position().distanceSquared(eye);
-        out.add(new PhotonWorldRenderState.Job(renderType, mesh, buffer, stage, orderInLayer, distanceSq));
+        out.add(new PhotonWorldRenderState.Job(renderType, mesh, buffer, stage, orderInLayer,
+                distanceSq, mask));
     }
 
     /**

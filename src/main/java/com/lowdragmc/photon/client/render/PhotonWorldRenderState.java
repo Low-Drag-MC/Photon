@@ -1,6 +1,9 @@
 package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.photon.PhotonConfig;
+import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
+import com.lowdragmc.photon.client.postfx.runtime.RenderGraphExecutor;
+import com.lowdragmc.photon.client.postfx.runtime.SceneBlit;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -75,8 +78,36 @@ public final class PhotonWorldRenderState {
         float distanceSq();
     }
 
+    /**
+     * What a job contributes to the CustomMask sub-pass, or absent when its emitter isn't flagged.
+     * A value record on purpose: it takes part in the run-merge test, so two emitters that share a
+     * RenderType but write different mask groups still get their own draws.
+     *
+     * @param value        the group id in 0..1 ({@code MaskGroups.idOf(name) / 255})
+     * @param alphaCutoff  0 = the mask covers the whole geometry; above 0 the sub-pass alpha-clips
+     *                     against {@code clipTexture} so it hugs the sprite instead of the quad
+     * @param clipTexture  the pass's own {@code Sampler0} texture (null = nothing to clip against,
+     *                     which forces the cutoff off)
+     */
+    public record MaskWrite(float value, float alphaCutoff, @Nullable Identifier clipTexture) {
+
+        /** The mask a flagged emitter writes; null when it isn't flagged. */
+        @Nullable
+        public static MaskWrite of(com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting.Runtime renderer,
+                                   @Nullable Identifier clipTexture) {
+            if (!renderer.isWriteCustomMask()) {
+                return null;
+            }
+            var cutoff = clipTexture == null ? 0f : renderer.getMaskAlphaCutoff();
+            return new MaskWrite(
+                    com.lowdragmc.photon.client.postfx.runtime.MaskGroups.idOf(renderer.getMaskGroup()) / 255f,
+                    cutoff, clipTexture);
+        }
+    }
+
     public record Job(RenderType renderType, MeshData mesh, ByteBufferBuilder buffer,
-                      PhotonStage stage, int orderInLayer, float distanceSq) implements DrawJob {
+                      PhotonStage stage, int orderInLayer, float distanceSq,
+                      @Nullable MaskWrite mask) implements DrawJob {
     }
 
     /** An instanced draw: base geometry (sequential-quad indexed) + per-instance texel-buffer data
@@ -86,7 +117,9 @@ public final class PhotonWorldRenderState {
                                InstancedGeometry geometry,
                                DrawBindings bindings,
                                Vector3f positionOffset, int blendEquation,
-                               PhotonStage stage, int orderInLayer, float distanceSq) implements DrawJob {
+                               PhotonStage stage, int orderInLayer, float distanceSq,
+                               PhotonPipelines.InstancedVariant variant,
+                               @Nullable MaskWrite mask) implements DrawJob {
     }
 
     /**
@@ -116,10 +149,11 @@ public final class PhotonWorldRenderState {
                                @Nullable PhotonRenderTypes.GraphSource graph) {
     }
 
-    /** A merged draw over the frame's ring buffer (adjacent same-RenderType jobs). */
+    /** A merged draw over the frame's ring buffer (adjacent same-RenderType, same-mask jobs). */
     private record Run(RenderType renderType, PhotonRenderTypes.PhotonDrawInfo info,
                        VertexFormat.Mode mode,
-                       int baseVertex, int indexCount) {
+                       int baseVertex, int indexCount,
+                       @Nullable MaskWrite mask) {
     }
 
     private record BoundTexture(String sampler, GpuTextureView view, GpuSampler samplerState) {
@@ -139,6 +173,12 @@ public final class PhotonWorldRenderState {
             org.lwjgl.opengl.GL14.glBlendEquation(org.lwjgl.opengl.GL14.GL_FUNC_ADD);
         }
     }
+
+    /** Constant draw inputs — the mask sub-pass and the fast path both build transforms from these
+     *  every draw, and only the position offset ever varies. */
+    private static final Vector4f NO_MODULATION = new Vector4f(1, 1, 1, 1);
+    private static final Vector3f NO_OFFSET = new Vector3f();
+    private static final Matrix4f IDENTITY = new Matrix4f();
 
     /** Views that took work this frame — the frame boundary frees whatever no drain consumed
      *  (a collector nobody drains, or a stage nobody asked for, must not leak its meshes). */
@@ -269,9 +309,6 @@ public final class PhotonWorldRenderState {
             }
             tasks.clear();
         }
-        if (baked.isEmpty()) {
-            return;
-        }
         var jobs = new ArrayList<DrawJob>();
         baked.removeIf(job -> {
             if (job.stage() != stage) {
@@ -280,11 +317,32 @@ public final class PhotonWorldRenderState {
             jobs.add(job);
             return true;
         });
-        drain(jobs, PhotonConfig.INSTANCE.enableBloom.get() && settings.bloom());
+        // The post-effect chain runs on this view's LAST stage, so it sees everything the view drew —
+        // and runs even with no jobs at all, because an effect is a property of the frame, not of
+        // Photon having rendered something (a screen-wide colour grade must not blink off the moment
+        // the last particle dies). The MASK, in contrast, is written on every stage: both stages'
+        // flagged emitters accumulate into it before the chain reads it.
+
+        // A view that runs on its own clock (the editor timeline) gets Minecraft's Globals block
+        // substituted for a copy carrying THAT clock, so `GameTime` means the timeline for everything
+        // Photon draws here — hand-written shaders and KilaGraph's Globals node alike, with no shader
+        // change. Nothing is substituted for the world, where the engine's own block is already right.
+        var substituted = PhotonGlobals.substitute();
+        try {
+            drain(jobs, PhotonConfig.INSTANCE.enableBloom.get() && settings.bloom(),
+                    settings.effects() ? settings.postEffects() : null, stage == PhotonStage.LAST);
+        } finally {
+            if (substituted) {
+                PhotonGlobals.restore(); // leaving ours bound would freeze the rest of the frame
+            }
+        }
     }
 
-    private static void drain(List<DrawJob> jobs, boolean bloomEnabled) {
-        if (jobs.isEmpty()) {
+    private static void drain(List<DrawJob> jobs, boolean bloomEnabled,
+                              @Nullable PostEffectStack stack, boolean lastStage) {
+        // the chain runs on the view's last stage only; the MASK is written on every stage
+        var runChain = lastStage && stack != null && stack.wantsExecution();
+        if (jobs.isEmpty() && !runChain) {
             return;
         }
         jobs.sort(DRAW_ORDER);
@@ -377,6 +435,9 @@ public final class PhotonWorldRenderState {
             while (i + 1 < jobs.size()) {
                 if (!(jobs.get(i + 1) instanceof Job next)
                         || next.renderType() != job.renderType()
+                        // the mask sub-pass redraws a whole run with ONE group id, so jobs that write
+                        // different masks must stay separate draws even when they share everything else
+                        || !java.util.Objects.equals(next.mask(), job.mask())
                         || PhotonRenderTypes.drawInfo(next.renderType()) == null) {
                     break;
                 }
@@ -385,7 +446,7 @@ public final class PhotonWorldRenderState {
                 indexCount += next.mesh().drawState().indexCount();
                 closeFastJob(next);
             }
-            var run = new Run(job.renderType(), info, mode, baseVertex, indexCount);
+            var run = new Run(job.renderType(), info, mode, baseVertex, indexCount, job.mask());
             runs.add(run);
             drawRun(cache, run, run.info().programs().main(), colorTexture, depthTexture, sceneColor, sceneDepth);
             baseVertex += vertexCount;
@@ -398,14 +459,192 @@ public final class PhotonWorldRenderState {
         // already clamped away, so bloom needed its own un-clamped copy of the fx. Reading the target also
         // makes occlusion free (it is already resolved in there) and matches 1.21, whose bloom ran over the
         // whole DRAW_TARGET: what participates is decided by the luma threshold, not by who drew it.
-        if (bloomEnabled && (!runs.isEmpty() || !instancedJobs.isEmpty())) {
-            var bloom = PhotonBloom.acquire(colorTexture.getWidth(0), colorTexture.getHeight(0));
+        var drewSomething = !runs.isEmpty() || !instancedJobs.isEmpty();
+        java.util.function.Consumer<GpuTextureView> bloomStep = !bloomEnabled || !drewSomething ? null : target -> {
+            var bloom = PhotonBloom.acquire(target.getWidth(0), target.getHeight(0));
             if (bloom != null) {
-                bloom.run(colorTexture);
+                bloom.run(target);
             }
+        };
+
+        // CustomMask: redraw the flagged jobs as flat ids into their own target. Demand-driven — a
+        // flagged emitter costs nothing on a frame when no effect looks at the mask.
+        var mask = maskSubPass(cache, runs, instancedJobs, stack, colorTexture, depthTexture);
+
+        if (runChain) {
+            // the chain slots bloom in at effect priority 0 and hands back its final target (null when
+            // nothing changed the picture); depth is the engine's, which is what SCENE_DEPTH passes read
+            var inputs = RenderGraphExecutor.FrameInputs
+                    .of(colorTexture, depthTexture);
+            if (mask != null) {
+                inputs = inputs.withMask(mask.colorView(), mask.depthView());
+            }
+            var chain = stack.consumeAndExecute(inputs, bloomStep);
+            if (chain != null) {
+                SceneBlit.writeBack(chain, colorTexture);
+            }
+        } else if (bloomStep != null) {
+            bloomStep.accept(colorTexture);
         }
 
         drawTarget.compositeTo(outputColor);
+    }
+
+    /**
+     * The CustomMask sub-pass: every flagged run/instanced job redrawn as a flat group id into
+     * {@link PhotonMaskTarget}. Returns the target when it holds this frame's mask, else null.
+     * <p>
+     * Skipped entirely — no target, no clear, no draws — unless something flagged is on screen AND some
+     * pending effect this frame actually reads the mask ({@code hasPendingMaskConsumer}). That is what
+     * lets an author leave the flag on permanently: it only costs anything while an effect uses it.
+     */
+    @Nullable
+    private static PhotonMaskTarget maskSubPass(
+            @Nullable PhotonBufferCache cache, List<Run> runs, List<InstancedJob> instancedJobs,
+            @Nullable PostEffectStack maskStack,
+            GpuTextureView colorTexture, GpuTextureView depthTexture) {
+        if (maskStack == null || !maskStack.hasPendingMaskConsumer() || !anyMask(runs, instancedJobs)) {
+            // nothing flagged on THIS stage — but an earlier one of the same frame may have written the
+            // mask already, and the chain still has to see it
+            return PhotonMaskTarget.writtenThisFrame(colorTexture.getWidth(0), colorTexture.getHeight(0));
+        }
+        var target = PhotonMaskTarget.acquire(colorTexture.getWidth(0), colorTexture.getHeight(0), depthTexture);
+
+        // Resolve every draw BEFORE opening the pass — see resolveMask for why that split is mandatory.
+        var draws = new ArrayList<MaskDraw>();
+        for (var run : runs) {
+            if (run.mask() != null && cache != null) {
+                draws.add(new MaskDraw(PhotonPipelines.mask(null, run.mode()),
+                        resolveMask(run.mask(), NO_OFFSET), run, null,
+                        sequentialIndices(run.mode(), run.indexCount())));
+            }
+        }
+        for (var job : instancedJobs) {
+            if (job.mask() != null) {
+                draws.add(new MaskDraw(PhotonPipelines.mask(job.variant(), VertexFormat.Mode.QUADS),
+                        resolveMask(job.mask(), job.positionOffset()), null, job,
+                        indicesFor(job.geometry())));
+            }
+        }
+
+        // Then one pass for all of them. The attachments never change between draws, so a pass each would
+        // only re-bind the same framebuffer N times; pipeline, id block and clip texture are per-draw state
+        // a single pass changes freely. The colour clear rides along as this pass's own load op on the
+        // frame's first sub-pass, which is why the target needs no pass of its own just to clear.
+        var clear = target.takeClear();
+        try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+                () -> "Photon custom mask", target.colorView(), clear ? OptionalInt.of(0) : OptionalInt.empty(),
+                target.depthView(), OptionalDouble.empty())) {
+            applyScissor(renderPass);
+            RenderSystem.bindDefaultUniforms(renderPass);
+            for (var draw : draws) {
+                draw.bindings().bind(renderPass, draw.pipeline());
+                if (draw.run() != null) {
+                    renderPass.setVertexBuffer(0, cache.get());
+                    renderPass.setIndexBuffer(draw.indices().buffer(), draw.indices().type());
+                    renderPass.drawIndexed(draw.run().baseVertex(), 0, draw.run().indexCount(), 1);
+                } else {
+                    drawMaskInstanced(renderPass, draw);
+                }
+            }
+        }
+        target.markWritten();
+        return target;
+    }
+
+    private static boolean anyMask(List<Run> runs, List<InstancedJob> instancedJobs) {
+        for (var run : runs) {
+            if (run.mask() != null) return true;
+        }
+        for (var job : instancedJobs) {
+            if (job.mask() != null) return true;
+        }
+        return false;
+    }
+
+    /**
+     * One mask draw, with every allocating lookup already done. Exactly one of {@code run}/{@code job}
+     * is set — they differ only in where the geometry comes from.
+     */
+    private record MaskDraw(RenderPipeline pipeline, MaskBindings bindings, @Nullable Run run,
+                            @Nullable InstancedJob job, Indices indices) {
+    }
+
+    /** What a mask draw binds. Every one of these three is resolved BEFORE the pass opens, because each
+     *  allocates or uploads on first use — see {@link #resolveMask}. */
+    private record MaskBindings(GpuBufferSlice transforms, GpuBufferSlice block, BoundTexture clip) {
+
+        void bind(RenderPass renderPass, RenderPipeline pipeline) {
+            renderPass.setPipeline(pipeline);
+            renderPass.setUniform("DynamicTransforms", transforms);
+            renderPass.setUniform("PhotonMask", block);
+            renderPass.bindTexture("Sampler0", clip.view(), clip.samplerState());
+        }
+    }
+
+    /**
+     * The pre-pass half of a mask draw. All three lookups can allocate or upload the first time they see
+     * a value — the transform appends to the dynamic-uniform buffer, an unseen (group, cutoff) pair
+     * creates and fills its block, an unseen clip texture is loaded to the GPU — and all three are
+     * illegal once a render pass is open.
+     */
+    private static MaskBindings resolveMask(MaskWrite mask, Vector3f positionOffset) {
+        return new MaskBindings(
+                RenderSystem.getDynamicUniforms().writeTransform(
+                        RenderSystem.getModelViewMatrix(), NO_MODULATION, positionOffset, IDENTITY),
+                PhotonMaskUniforms.sliceFor(mask),
+                resolveMaskClip(mask));
+    }
+
+    private static void drawMaskInstanced(RenderPass renderPass, MaskDraw draw) {
+        var job = draw.job();
+        if (job.geometry().points() != null) {
+            renderPass.setUniform("PhotonPoints", job.geometry().points());
+        }
+        renderPass.setVertexBuffer(0, job.geometry().vertices());
+        renderPass.setIndexBuffer(draw.indices().buffer(), draw.indices().type());
+        PhotonInstancedDrawState.begin(job.geometry().layout(), job.geometry().instances(),
+                job.geometry().vertices());
+        try {
+            renderPass.drawIndexed(0, 0, job.geometry().indexCount(), job.geometry().instanceCount());
+        } finally {
+            PhotonInstancedDrawState.end();
+        }
+    }
+
+    /** The shared sequential quad/strip indices for a CPU-baked run. */
+    private static Indices sequentialIndices(VertexFormat.Mode mode, int indexCount) {
+        var autoIndices = RenderSystem.getSequentialBuffer(mode);
+        return new Indices(autoIndices.getBuffer(indexCount), autoIndices.type());
+    }
+
+    /** The base mesh's own index buffer when it has one (the ara tube ring shares vertices between
+     *  adjacent section edges, which the shared quad pattern can't express), else the shared quads. */
+    private record Indices(GpuBuffer buffer, VertexFormat.IndexType type) {
+    }
+
+    private static Indices indicesFor(InstancedGeometry geometry) {
+        if (geometry.indices() != null) {
+            return new Indices(geometry.indices(), VertexFormat.IndexType.INT);
+        }
+        var autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
+        return new Indices(autoIndices.getBuffer(geometry.indexCount()), autoIndices.type());
+    }
+
+    /** The texture the alpha clip samples — resolved before the pass opens (first use uploads), and
+     *  the missing texture when the pass has none (the shader then never samples it: cutoff is 0). */
+    private static BoundTexture resolveMaskClip(MaskWrite mask) {
+        var id = mask.clipTexture() != null ? mask.clipTexture()
+                : net.minecraft.client.renderer.texture.MissingTextureAtlasSprite.getLocation();
+        var texture = Minecraft.getInstance().getTextureManager().getTexture(id);
+        return new BoundTexture("Sampler0", texture.getTextureView(), texture.getSampler());
+    }
+
+    private static void applyScissor(RenderPass renderPass) {
+        var scissor = RenderSystem.getScissorStateForRenderTypeDraws();
+        if (scissor.enabled()) {
+            renderPass.enableScissor(scissor.x(), scissor.y(), scissor.width(), scissor.height());
+        }
     }
 
     /** The instanced flavor of {@link #drawRun}: base quad + texel-buffer instance data,
@@ -423,14 +662,7 @@ public final class PhotonWorldRenderState {
         if (job.bindings().graph() != null) {
             job.bindings().graph().material().prepareUniforms();
         }
-        // the base mesh's own index buffer when it has one (the ara tube ring shares vertices between
-        // adjacent section edges, which the shared quad pattern can't express), else the shared quads
-        var autoIndices = job.geometry().indices() == null
-                ? RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS) : null;
-        final GpuBuffer indices = autoIndices == null
-                ? job.geometry().indices() : autoIndices.getBuffer(job.geometry().indexCount());
-        final VertexFormat.IndexType indexType = autoIndices == null
-                ? VertexFormat.IndexType.INT : autoIndices.type();
+        var indices = indicesFor(job.geometry());
 
         // resolve textures BEFORE opening the pass (first use triggers a GPU upload)
         var textureManager = Minecraft.getInstance().getTextureManager();
@@ -443,10 +675,7 @@ public final class PhotonWorldRenderState {
         try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> "Photon fx instanced", colorTexture, OptionalInt.empty(), depthTexture, OptionalDouble.empty())) {
             renderPass.setPipeline(pipeline);
-            var scissor = RenderSystem.getScissorStateForRenderTypeDraws();
-            if (scissor.enabled()) {
-                renderPass.enableScissor(scissor.x(), scissor.y(), scissor.width(), scissor.height());
-            }
+            applyScissor(renderPass);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.setUniform("PhotonMaterial", job.bindings().materialSlice());
@@ -491,7 +720,7 @@ public final class PhotonWorldRenderState {
                 }
             }
             renderPass.setVertexBuffer(0, job.geometry().vertices());
-            renderPass.setIndexBuffer(indices, indexType);
+            renderPass.setIndexBuffer(indices.buffer(), indices.type());
             // C1/C2: the 1.21 divisor attributes + RGBA32F texel respec apply inside this draw
             PhotonInstancedDrawState.begin(job.geometry().layout(), job.geometry().instances(), job.geometry().vertices());
             try {
@@ -535,10 +764,7 @@ public final class PhotonWorldRenderState {
         try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> "Photon fx slot", colorTexture, OptionalInt.empty(), depthTexture, OptionalDouble.empty())) {
             renderPass.setPipeline(pipeline);
-            var scissor = RenderSystem.getScissorStateForRenderTypeDraws();
-            if (scissor.enabled()) {
-                renderPass.enableScissor(scissor.x(), scissor.y(), scissor.width(), scissor.height());
-            }
+            applyScissor(renderPass);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             var materialSlice = PhotonMaterialUniforms.sliceFor(run.renderType());
@@ -619,6 +845,7 @@ public final class PhotonWorldRenderState {
         TRACKED_COLLECTORS.clear();
         PhotonBloom.endFrame();
         PhotonDrawTarget.endFrame();
+        PhotonMaskTarget.endFrame();
     }
 
     private static void release(List<DrawJob> jobs) {

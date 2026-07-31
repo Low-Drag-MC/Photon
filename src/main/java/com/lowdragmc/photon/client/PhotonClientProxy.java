@@ -13,7 +13,6 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
-import net.neoforged.neoforge.client.event.ModelEvent;
 
 
 public class PhotonClientProxy extends PhotonCommonProxy {
@@ -21,7 +20,6 @@ public class PhotonClientProxy extends PhotonCommonProxy {
     public PhotonClientProxy(IEventBus eventBus) {
         super(eventBus);
         eventBus.addListener(this::clientSetup);
-        eventBus.addListener(this::registerModels);
         eventBus.addListener(this::registerReloadListeners);
         eventBus.addListener(this::addPackFinders);
         eventBus.addListener(this::registerRenderPipelines);
@@ -54,6 +52,14 @@ public class PhotonClientProxy extends PhotonCommonProxy {
         event.addListener(Photon.id("shader_reload"),
                 (net.minecraft.server.packs.resources.ResourceManagerReloadListener)
                         resourceManager -> com.lowdragmc.photon.client.render.PhotonRenderTypes.onResourceReload());
+        // the post-effect side of the same problem: a pass shader's json IS its uniform layout and its
+        // pipeline's sampler set, and a compiled effect bakes both — so all three must be re-derived
+        event.addListener(Photon.id("postfx_reload"),
+                (net.minecraft.server.packs.resources.ResourceManagerReloadListener) resourceManager -> {
+                    com.lowdragmc.photon.client.postfx.runtime.CustomShaderPass.clearAll();
+                    com.lowdragmc.photon.client.postfx.runtime.RenderGraphRuntime.invalidateAll();
+                    com.lowdragmc.photon.client.postfx.runtime.MaskGroups.clearAll();
+                });
     }
 
     @SubscribeEvent
@@ -64,11 +70,4 @@ public class PhotonClientProxy extends PhotonCommonProxy {
                 com.lowdragmc.photon.client.shadergraph.ShaderGraph.NODE_REGISTRY.getNodeClasses().size());
     }
 
-    @SubscribeEvent
-    public void registerModels(ModelEvent.RegisterStandalone event) {
-        // TODO(M2): standalone model registration for mesh particles. Blocked on the LDLib2 26.1
-        // renderer/model path (its own RegisterStandalone body is still `// TODO RENDERER`); the old
-        // ModelResourceLocation.standalone API is gone in favor of StandaloneModelKey/UnbakedStandaloneModel.
-        // See MeshResource.onAdditionalModel for the editor-side counterpart, disabled the same way.
-    }
 }

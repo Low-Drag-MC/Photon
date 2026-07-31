@@ -8,8 +8,11 @@
 uniform sampler2D SamplerA; // chain input (scene)
 uniform sampler2D SamplerB; // effect output
 uniform sampler2D MaskSampler;
-uniform float Weight;
-uniform float MaskFilter;
+
+layout(std140) uniform PhotonPass {
+    float Weight;
+    float MaskFilter;
+};
 
 in vec2 texCoord;
 

@@ -35,6 +35,7 @@ public class PhotonClientListeners {
     @SubscribeEvent
     public static void onRenderFramePre(RenderFrameEvent.Pre event) {
         com.lowdragmc.photon.client.render.MaterialPreviewRenderer.processPending();
+        com.lowdragmc.photon.client.postfx.runtime.PostFXPreview.processPending();
     }
 
     /** Fires once per render frame (in-world and in the editor screen alike) — the post-effect

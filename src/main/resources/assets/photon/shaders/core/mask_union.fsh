@@ -4,9 +4,12 @@
 // invocation covering several groups culls EXACTLY their union.
 
 uniform sampler2D MaskSampler;
-uniform vec4 IdsA;
-uniform vec4 IdsB;
-uniform float IdCount;
+
+layout(std140) uniform PhotonPass {
+    vec4 IdsA;
+    vec4 IdsB;
+    float IdCount;
+};
 
 in vec2 texCoord;
 

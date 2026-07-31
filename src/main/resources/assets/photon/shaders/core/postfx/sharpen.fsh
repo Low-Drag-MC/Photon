@@ -3,8 +3,11 @@
 // Unsharp mask: center*5 - cross neighbors, Amount = 0..~2 strength.
 
 uniform sampler2D DiffuseSampler;
-uniform vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
-uniform float Amount;
+
+layout(std140) uniform PhotonPass {
+    float Amount;
+    vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

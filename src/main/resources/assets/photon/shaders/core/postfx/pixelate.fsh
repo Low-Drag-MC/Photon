@@ -3,8 +3,11 @@
 // Mosaic: snaps sampling to PixelSize-sized blocks (RenderPixelatedPass-style).
 
 uniform sampler2D DiffuseSampler;
-uniform vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
-uniform float PixelSize;
+
+layout(std140) uniform PhotonPass {
+    float PixelSize;
+    vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

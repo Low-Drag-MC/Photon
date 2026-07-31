@@ -6,7 +6,9 @@ import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorSelectorConfigurator;
+import com.lowdragmc.lowdraglib2.client.scene.WorldSceneRenderer;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Scene;
+import com.lowdragmc.lowdraglib2.math.Size;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
@@ -16,10 +18,8 @@ import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.IModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import dev.vfyjxf.taffy.style.AlignItems;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.util.Mth;
@@ -34,7 +34,6 @@ import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
-import org.lwjgl.opengl.GL11;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -244,16 +243,23 @@ public final class MeshData implements IConfigurable, IPersistedSerializable {
         }
     }
 
-    public Scene createPreviewScene() {
-        var level = new TrackedDummyWorld();
-        level.addBlock(BlockPos.ZERO, BlockInfo.fromBlock(Blocks.AIR));
-        var scene = new Scene();
-        scene.setRenderFacing(false);
-        scene.setRenderSelect(false);
-        scene.createScene(level);
-        assert scene.getRenderer() != null;
-        scene.setRenderedCore(Collections.singleton(BlockPos.ZERO), null);
-        scene.setAfterWorldRender(s -> drawLineFrames(new PoseStack()));
+    /**
+     * Edge (px) of a tile preview's own FBO. One target per tile, so this is the whole memory story:
+     * edge² × (4 B colour + 4 B depth), live for as long as the tile is in the panel.
+     * <p>
+     * 1.21 used 512 here, which was ~18× the linear size it is ever drawn at — the tile box is
+     * {@code Resource#defaultUIWidth} = 30 GUI units, i.e. 120 physical px even at GUI scale 4. 128
+     * covers that with no upscaling and costs 128 KB instead of 2 MB per tile; a panel of 20 meshes
+     * is 2.5 MB rather than 40 MB.
+     */
+    private static final int TILE_FBO_SIZE = 128;
+
+    /**
+     * The preview as an inspector/inline slot expects it: an inset, bordered square, orbitable with
+     * the mouse, drawn by the immediate renderer (there is only ever one or two on screen).
+     */
+    public Scene createInspectorPreview() {
+        var scene = buildPreview(null);
         scene.layout(layout -> {
             layout.setAspectRatio(1.0f);
             layout.widthPercent(80);
@@ -264,6 +270,82 @@ public final class MeshData implements IConfigurable, IPersistedSerializable {
         scene.moveInlineAsDefault();
         scene.addClass("preview_bg");
         return scene;
+    }
+
+    /**
+     * The resource panel's tile: its own fixed-size FBO rather than the immediate renderer, because a
+     * panel holds dozens of these and rendering each at GUI resolution every frame is what 1.21
+     * avoided by going through an FBO.
+     * <p>
+     * Not interactive: a tile has to stay draggable (that is how a mesh is dragged onto an emitter)
+     * and clickable to select, but {@link Scene} otherwise claims MOUSE_DOWN/WHEEL/DRAG to orbit its
+     * camera and swallows both. Orbiting is a feature of the inspector preview, not of a 30px tile.
+     */
+    public Scene createTilePreview() {
+        var scene = buildPreview(Size.of(TILE_FBO_SIZE, TILE_FBO_SIZE));
+        scene.setIntractable(false);
+        return scene;
+    }
+
+    /** A wireframe preview of this mesh, auto-framed to whatever geometry the source yields.
+     *  {@code fboSize} non-null selects the FBO renderer at that resolution. */
+    private Scene buildPreview(@Nullable Size fboSize) {
+        var scene = new Scene();
+        var level = new TrackedDummyWorld();
+        level.addBlock(BlockPos.ZERO, BlockInfo.fromBlock(Blocks.AIR));
+        scene.setRenderFacing(false);
+        scene.setRenderSelect(false);
+        // the preview world is a single AIR block and the wireframe is drawn from MeshData, not from
+        // world content — ticking it every tick, once per preview on screen, buys nothing
+        scene.setTickWorld(false);
+        scene.createScene(level, fboSize != null, fboSize);
+        var renderer = scene.<WorldSceneRenderer>getRenderer();
+        assert renderer != null;
+        // createScene wires a hover callback, and a non-null one makes every frame ray-trace the
+        // world. Nothing here consumes hover state (renderFacing/renderSelect/showHoverBlockTips are
+        // all off), so drop it — 1.21 did this explicitly ("better performance") and the port lost it.
+        renderer.setOnLookingAt(null);
+        if (fboSize != null) {
+            renderer.setFov(40); // 1.21's tile framing
+        }
+        scene.setRenderedCore(Collections.singleton(BlockPos.ZERO), null);
+        // Re-frame whenever the underlying geometry changes (obj set/hot-reloaded, source switched):
+        // the scene isn't rebuilt on every edit and drawLineFrames reads the live mesh each frame, so a
+        // fixed build-time camera would leave edits off-screen until the panel is rebuilt. The shared
+        // cache hands out a fresh PhotonMesh after any invalidation, so an identity compare is enough.
+        var framed = new PhotonMesh[]{null};
+        scene.setBeforeWorldRender(s -> {
+            var mesh = source.getMesh();
+            if (mesh == framed[0]) return;
+            framed[0] = mesh;
+            frame(s);
+        });
+        scene.setAfterWorldRender(s -> drawLineFrames(new PoseStack()));
+        return scene;
+    }
+
+    /** Point the preview camera at the mesh's bounding box, so any model size fills the slot. */
+    private void frame(Scene scene) {
+        var min = new Vector3f(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE);
+        var max = new Vector3f(-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE);
+        var vertices = getVertices();
+        if (vertices.isEmpty()) {
+            min.set(0, 0, 0);
+            max.set(1, 1, 1);
+        } else {
+            for (var vertex : vertices) {
+                min.min(vertex);
+                max.max(vertex);
+            }
+        }
+        // +0.5 for the same reason drawLineFrames adds it: mesh space is centered, the preview
+        // block spans 0..1
+        scene.setCenter(new Vector3f((min.x + max.x) / 2f + 0.5F,
+                (min.y + max.y) / 2f + 0.5F,
+                (min.z + max.z) / 2f + 0.5F));
+        var extent = Math.max(Math.max(max.x - min.x, max.y - min.y), max.z - min.z) + 1;
+        scene.setZoom((float) (3.5 * Math.sqrt(Math.max(extent, 1))));
+        scene.setCameraYawAndPitch(-135, 25);
     }
 
     // 26.1: immediate Tesselator+BufferUploader draws are gone — batch through the shared buffer
@@ -297,7 +379,7 @@ public final class MeshData implements IConfigurable, IPersistedSerializable {
 
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
-        father.addConfigurators(new Configurator("ldlib.gui.editor.group.preview").addChild(createPreviewScene()));
+        father.addConfigurators(new Configurator("ldlib.gui.editor.group.preview").addChild(createInspectorPreview()));
         father.addConfigurator(new ConfiguratorSelectorConfigurator<>(
                 "photon.model_source",
                 () -> source.name(),

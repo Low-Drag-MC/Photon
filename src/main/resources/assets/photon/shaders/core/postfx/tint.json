@@ -1,5 +1,5 @@
 {
-    "vertex": "ldlib2:fast_blit",
+    "vertex": "photon:fullscreen",
     "fragment": "photon:postfx/tint",
     "samplers": [
         { "name": "DiffuseSampler" }

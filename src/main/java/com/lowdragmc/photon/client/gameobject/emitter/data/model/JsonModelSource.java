@@ -8,21 +8,26 @@ import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
+import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.LoadingOverlay;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.resources.Identifier;
+import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Objects;
 
 /**
- * Geometry from a baked Minecraft JSON model. UVs are block-atlas coordinates and the model must be
- * known to the model bakery (registered via {@code ModelEvent.RegisterAdditional} or loadable
- * dynamically), so picking a new model file needs a resource-pack reload. Positions are shifted
- * into centered space and per-face shade factors are baked per quad (the {@code shade} toggle is
- * applied at consumption time).
+ * Geometry from a Minecraft JSON model, baked by {@link PhotonModelBaker} straight off the resource
+ * manager — any model id works, at any time, with no registration and no resource-pack reload.
+ * UVs are block-atlas coordinates (a texture missing from the atlas comes back as the missing
+ * sprite; see {@link PhotonModelBaker}). Positions are shifted into centered space and per-face
+ * shade factors are baked per quad (the {@code shade} toggle is applied at consumption time).
  */
 @LDLRegisterClient(name = "json_model", registry = "photon:model_source")
 public class JsonModelSource implements IModelSource {
@@ -65,11 +70,26 @@ public class JsonModelSource implements IModelSource {
 
     @Nullable
     private PhotonMesh bake() {
-        // TODO(M2): rebake via the 26.1 model system — the 1.21 path went through LDLib2's
-        // ModelFactory/getQuads (its 26.1 model pipeline is still `// TODO RENDERER`), and the
-        // standalone-model registration hook is stubbed (see PhotonClientProxy.registerModels).
-        // Returning null = "retry later, not cached", so meshes appear as soon as M2 lands.
-        return null;
+        // don't touch the resource manager mid-reload (null = retry later, not cached)
+        if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
+            return null;
+        }
+        var quads = PhotonModelBaker.bake(modelLocation);
+        if (quads == null) {
+            return null; // atlas not ready yet
+        }
+        var collected = new ArrayList<Pair<BakedQuad, Float>>();
+        for (var side : TileParticle.MODEL_SIDES) {
+            var brightness = side == null ? 1f : switch (side) {
+                case DOWN, UP -> 0.9F;
+                case NORTH, SOUTH -> 0.8F;
+                case WEST, EAST -> 0.6F;
+            };
+            for (var quad : quads.getQuads(side)) {
+                collected.add(Pair.of(quad, brightness));
+            }
+        }
+        return PhotonMesh.fromBakedQuads(collected);
     }
 
     @Override
@@ -98,13 +118,14 @@ public class JsonModelSource implements IModelSource {
             }).show(mui.ui.rootElement);
         }).layout(layout -> layout.alignSelf(AlignItems.CENTER)));
 
+        // geometry is re-read from disk on the next getMesh(), so dropping the cache entry is the
+        // whole reload — no more full reloadResourcePacks() stall. (A texture that is not yet in
+        // the block atlas still needs a real resource reload to get stitched in.)
         var reloadButton = new Configurator().addInlineChild(new Button()
-                .setOnClick(event -> Minecraft.getInstance().reloadResourcePacks().thenAccept(v ->
-                        Minecraft.getInstance().execute(() -> {
-                            invalidate();
-                            buttonConfigurator.notifyChanges();
-                        })
-                )).setText("photon.reload_mesh").layout(layout -> layout.alignSelf(AlignItems.CENTER)));
+                .setOnClick(event -> {
+                    invalidate();
+                    buttonConfigurator.notifyChanges();
+                }).setText("photon.reload_mesh").layout(layout -> layout.alignSelf(AlignItems.CENTER)));
         father.addConfigurators(buttonConfigurator, reloadButton);
     }
 

@@ -70,11 +70,20 @@ public record CompiledEffect(
     /** Whether any pass reads the CustomMask/CustomDepth inputs — lets the pipeline skip the mask
      *  sub-pass when no pending effect (and no MaskFilter request) would consume it. */
     public boolean usesCustomMask() {
+        return readsAny(ResourceRef.Source.CUSTOM_MASK, ResourceRef.Source.CUSTOM_DEPTH);
+    }
+
+    /** Whether any pass reads the scene depth — the chain only pays for a sampleable copy of it when
+     *  something asks (the render target's own depth view is not always bindable as a texture). */
+    public boolean usesSceneDepth() {
+        return readsAny(ResourceRef.Source.SCENE_DEPTH);
+    }
+
+    private boolean readsAny(ResourceRef.Source... sources) {
         for (var pass : passes) {
             for (var ref : pass.textures().values()) {
-                if (ref.source() == ResourceRef.Source.CUSTOM_MASK
-                        || ref.source() == ResourceRef.Source.CUSTOM_DEPTH) {
-                    return true;
+                for (var source : sources) {
+                    if (ref.source() == source) return true;
                 }
             }
         }

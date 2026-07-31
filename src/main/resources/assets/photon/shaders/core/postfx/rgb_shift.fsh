@@ -3,8 +3,11 @@
 // three.js RGBShiftShader (chromatic aberration): Amount = UV offset, Angle in radians.
 
 uniform sampler2D DiffuseSampler;
-uniform float Amount;
-uniform float Angle;
+
+layout(std140) uniform PhotonPass {
+    float Amount;
+    float Angle;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

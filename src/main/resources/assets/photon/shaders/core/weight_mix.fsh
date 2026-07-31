@@ -5,7 +5,9 @@
 
 uniform sampler2D SamplerA; // chain input
 uniform sampler2D SamplerB; // effect output
-uniform float Weight;
+layout(std140) uniform PhotonPass {
+    float Weight;
+};
 
 in vec2 texCoord;
 

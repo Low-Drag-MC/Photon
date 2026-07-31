@@ -6,8 +6,11 @@
 // cutoff are discarded, so the mask hugs the sprite's shape instead of the whole quad.
 
 uniform sampler2D Sampler0;
-uniform float MaskValue;
-uniform float AlphaCutoff;
+
+layout(std140) uniform PhotonMask {
+    float MaskValue;
+    float AlphaCutoff;
+};
 
 in vec2 texCoord0;
 

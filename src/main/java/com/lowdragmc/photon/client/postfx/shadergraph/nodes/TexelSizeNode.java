@@ -41,7 +41,7 @@ public class TexelSizeNode extends ShaderNode {
         // by the same convention when it binds the sampler.
         ShaderExpr sampler = ctx.isConnected("sampler") ? ctx.input("sampler") : ctx.missingSampler();
         String uniform = ctx.uniform(
-                sampler.code() + PhotonFullscreenCompiler.TEXEL_SIZE_SUFFIX, GlslType.VEC4).code(); // TODO(M3): executor stages _TexelSize
+                sampler.code() + PhotonFullscreenCompiler.TEXEL_SIZE_SUFFIX, GlslType.VEC4).code();
         ctx.output("size", new ShaderExpr(uniform + ".xy", GlslType.VEC2));
         ctx.output("texelSize", new ShaderExpr(uniform + ".zw", GlslType.VEC2));
     }

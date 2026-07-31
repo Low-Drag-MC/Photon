@@ -20,5 +20,9 @@ public enum PhotonStage {
     /**
      * After vanilla's translucent particles — the 1.21 slot, and where every blended/HDR effect goes.
      */
-    AFTER_TRANSLUCENT_PARTICLES
+    AFTER_TRANSLUCENT_PARTICLES;
+
+    /** The frame's last Photon draw slot for a view — where the post-effect chain runs, so it sees
+     *  every stage's output. Keep this pointing at the last constant when stages are added. */
+    public static final PhotonStage LAST = AFTER_TRANSLUCENT_PARTICLES;
 }

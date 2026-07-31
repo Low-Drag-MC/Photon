@@ -36,6 +36,20 @@ public final class PhotonFloatTextures {
     /** An RGBA16F texture usable as render attachment + sampler, or null when unsupported/failed. */
     @Nullable
     public static GpuTexture createRgba16f(String label, int usage, int width, int height) {
+        return createHalfFloat(label, usage, width, height, GL30.GL_RGBA16F, GL11.GL_RGBA,
+                TextureFormat.RGBA8);
+    }
+
+    /**
+     * A half-float texture of an arbitrary channel count. {@code declaredFormat} is what the abstraction
+     * will BELIEVE this texture is — pick one with the right aspect (a color format for color
+     * attachments); its channel count and size are never read for these textures, because the only
+     * places that would care ({@code copyTextureToTexture}, format conversions) are exactly what Photon
+     * routes around with {@link PhotonFramebufferBlit}.
+     */
+    @Nullable
+    public static GpuTexture createHalfFloat(String label, int usage, int width, int height,
+                                             int internalFormat, int format, TextureFormat declaredFormat) {
         if (!isSupported()) {
             return null;
         }
@@ -45,14 +59,15 @@ public final class PhotonFloatTextures {
         GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
         GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL_TEXTURE_MIN_LOD, 0);
         GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL_TEXTURE_MAX_LOD, 0);
-        GlStateManager._texImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_RGBA16F, width, height, 0,
-                GL11.GL_RGBA, GL_HALF_FLOAT, null);
+        GlStateManager._texImage2D(GL11.GL_TEXTURE_2D, 0, internalFormat, width, height, 0,
+                format, GL_HALF_FLOAT, null);
         int error = GlStateManager._getError();
         if (error != 0) {
             GlStateManager._deleteTexture(id);
-            com.lowdragmc.photon.Photon.LOGGER.warn("RGBA16F allocation failed (GL error {}), falling back", error);
+            com.lowdragmc.photon.Photon.LOGGER.warn("half-float texture allocation failed (GL error {}), "
+                    + "falling back", error);
             return null;
         }
-        return new GlTexture(usage, label, TextureFormat.RGBA8, width, height, 1, 1, id);
+        return new GlTexture(usage, label, declaredFormat, width, height, 1, 1, id);
     }
 }

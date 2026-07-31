@@ -3,7 +3,10 @@
 // Color quantization to Levels steps per channel.
 
 uniform sampler2D DiffuseSampler;
-uniform float Levels;
+
+layout(std140) uniform PhotonPass {
+    float Levels;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

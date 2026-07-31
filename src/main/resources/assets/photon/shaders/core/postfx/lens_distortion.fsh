@@ -3,7 +3,10 @@
 // Barrel (>0) / pincushion (<0) distortion with a small rescale to hide the borders.
 
 uniform sampler2D DiffuseSampler;
-uniform float Amount;
+
+layout(std140) uniform PhotonPass {
+    float Amount;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;

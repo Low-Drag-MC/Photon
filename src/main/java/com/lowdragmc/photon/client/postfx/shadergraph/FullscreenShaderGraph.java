@@ -34,9 +34,7 @@ import com.lowdragmc.kilagraph.rendertype.nodes.scene.ScreenPositionNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.texture.LightMapTextureNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.texture.OverlayTextureNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.texture.SamplerTexture2DNode;
-import com.lowdragmc.kilagraph.rendertype.nodes.transform.CameraNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.transform.DynamicTransformsUboNode;
-import com.lowdragmc.kilagraph.rendertype.nodes.transform.KGTransformsUboNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.transform.ProjectionFromPositionNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.transform.ProjectionUboNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.vertex.VaryingCustomFloatBlock;
@@ -89,7 +87,8 @@ public class FullscreenShaderGraph extends RenderTypeGraph {
 
     /**
      * KilaGraph nodes that don't apply to a bare fullscreen pass: vertex-format-bound inputs (only
-     * {@code Position} exists), model/world/view transforms (no matrices bound at dispatch), fog and
+     * {@code Position} exists), geometry-derived transforms and Minecraft's per-draw uniform blocks
+     * (nothing binds them here), fog and
      * lighting (no such state), overlay/lightmap (vanilla geometry concerns), scene capture (the
      * pure-function rule), and the particle fragment blocks ({@link FullscreenOutputBlock} replaces them).
      */
@@ -102,9 +101,17 @@ public class FullscreenShaderGraph extends RenderTypeGraph {
             VertexIdNode.class, InstanceIdNode.class,
             // vertex-format-bound inputs (only Position exists on the quad)
             VertexColorNode.class, PositionNode.class, NormalNode.class, ViewDirectionNode.class,
-            // spaces/camera/matrices are unbound in a fullscreen blit draw
-            TransformNode.class, FresnelNode.class, CameraNode.class, DynamicTransformsUboNode.class,
-            KGTransformsUboNode.class, ProjectionFromPositionNode.class, ProjectionUboNode.class,
+            // Geometry-derived spaces: a fullscreen quad has no object to transform, so anything that
+            // needs a surface position/normal is meaningless here.
+            TransformNode.class, FresnelNode.class, ProjectionFromPositionNode.class,
+            // MINECRAFT's per-draw blocks: a fullscreen pass never binds them (PhotonFullscreenPass.draw
+            // deliberately skips bindDefaultUniforms — its javadoc says why), so a graph referencing one would
+            // declare a uniform nothing fills and fail draw validation. KilaGraph's OWN blocks are a
+            // different matter: RenderTypeGraphMaterial.bindCustomUniforms binds every one of them, which
+            // is why CameraNode and KGTransformsUboNode are allowed — a camera's planes and basis are
+            // properties of the VIEW, not of the geometry, and a depth-reading pass legitimately needs
+            // them (linearising the depth buffer is impossible without near/far).
+            DynamicTransformsUboNode.class, ProjectionUboNode.class,
             // fog + lighting state doesn't exist here
             ApplyFogNode.class, FogUboNode.class, FogCylindricalDistanceNode.class,
             FogSphericalDistanceNode.class, LinearFogValueNode.class, TotalFogValueNode.class,

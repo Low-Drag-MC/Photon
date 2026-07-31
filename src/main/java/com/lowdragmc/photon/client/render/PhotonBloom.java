@@ -12,16 +12,12 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import org.lwjgl.opengl.GL14;
 import org.lwjgl.system.MemoryUtil;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.OptionalDouble;
-import java.util.OptionalInt;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -131,18 +127,9 @@ public final class PhotonBloom implements AutoCloseable {
     private static RenderPipeline downPipeline;
     @Nullable
     private static RenderPipeline upPipeline;
-    @Nullable
-    private static GpuBuffer quadBuffer;
 
     private static RenderPipeline.Builder fullscreenBuilder(String fragment) {
-        // no DepthStencilState at all: wantsDepthTexture() == (state != null), and these passes
-        // render into color-only targets — a state (even ALWAYS_PASS) makes every draw warn
-        return RenderPipeline.builder()
-                .withVertexShader(Photon.id("core/bloom_fullscreen"))
-                .withFragmentShader(Photon.id("core/" + fragment))
-                .withSampler("inputSampler")
-                .withVertexFormat(DefaultVertexFormat.POSITION, VertexFormat.Mode.QUADS)
-                .withCull(false);
+        return PhotonFullscreenPass.builder(Photon.id("core/" + fragment)).withSampler("inputSampler");
     }
 
     /** The converted 1.21 bright_pass: Threshold/Knee ride in the PhotonBloom UBO; outputScale 1 starts
@@ -249,25 +236,6 @@ public final class PhotonBloom implements AutoCloseable {
         return radiusParams;
     }
 
-    private static GpuBuffer quadBuffer() {
-        if (quadBuffer == null) {
-            var bytes = MemoryUtil.memAlloc(4 * 3 * Float.BYTES);
-            try {
-                // [0,1]² quad, counter-clockwise
-                bytes.putFloat(0).putFloat(0).putFloat(0)
-                        .putFloat(1).putFloat(0).putFloat(0)
-                        .putFloat(1).putFloat(1).putFloat(0)
-                        .putFloat(0).putFloat(1).putFloat(0)
-                        .flip();
-                quadBuffer = RenderSystem.getDevice().createBuffer(() -> "Photon bloom quad",
-                        GpuBuffer.USAGE_VERTEX, bytes);
-            } finally {
-                MemoryUtil.memFree(bytes);
-            }
-        }
-        return quadBuffer;
-    }
-
     // ---- per-size targets ------------------------------------------------------------------------
 
     private final GpuTexture source;
@@ -329,20 +297,13 @@ public final class PhotonBloom implements AutoCloseable {
 
     private static void fullscreenPass(RenderPipeline pipeline, GpuTextureView target, GpuTextureView input,
                                        @Nullable com.mojang.blaze3d.buffers.GpuBufferSlice params) {
-        var autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
-        var indices = autoIndices.getBuffer(6);
-        try (var pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                () -> "Photon bloom", target, OptionalInt.empty(), null, OptionalDouble.empty())) {
-            pass.setPipeline(pipeline);
+        PhotonFullscreenPass.draw("Photon bloom", pipeline, target, pass -> {
             pass.bindTexture("inputSampler", input,
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
             if (params != null) {
                 pass.setUniform("PhotonBloom", params);
             }
-            pass.setVertexBuffer(0, quadBuffer());
-            pass.setIndexBuffer(indices, autoIndices.type());
-            pass.drawIndexed(0, 0, 6, 1);
-        }
+        });
     }
 
     @Override

@@ -1,6 +1,8 @@
 package com.lowdragmc.photon.client.postfx.shadergraph.runtime;
 
 import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
+import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeFactory;
+import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeGraphMaterial;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.Graph;
@@ -9,7 +11,9 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.IGraphReferenceResolver;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.postfx.shadergraph.FullscreenShaderGraph;
 import com.lowdragmc.photon.client.postfx.shadergraph.PhotonFullscreenCompiler;
+import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
 import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
@@ -47,6 +51,15 @@ public final class FullscreenGraphRuntime {
         @Getter
         private final String errorMessage;
 
+        /** The KilaGraph material: this graph's uniform UBO + sampler bindings, and — as a side effect of
+         *  building it — the registration of the generated GLSL that our pipeline compiles from. Built on
+         *  first dispatch; null when KilaGraph rejected the pipeline (logged there). */
+        @Nullable
+        private RenderTypeGraphMaterial material;
+        @Nullable
+        private RenderPipeline pipeline;
+        private boolean materialFailed;
+
         private Entry(CompoundTag sourceTag, @Nullable FullscreenShaderGraph graph,
                       @Nullable CompiledShaderGraph compiled, String errorMessage) {
             this.sourceTag = sourceTag;
@@ -59,13 +72,36 @@ public final class FullscreenGraphRuntime {
             return compiled != null;
         }
 
-        // TODO(M3): shader() (was a single LDShaderInstance via KGShaderResourceProvider with
-        // PhotonFullscreenCompiler.DEFINE) and values() (KGMaterialValues staging) — rebuilt on
-        // KilaGraph 26.1's DynamicShaderSourceRegistry pipelines + std140 material UBOs when the
-        // fullscreen executor returns.
+        /**
+         * The value store this pass stages into, or null when the graph is broken / its pipeline failed.
+         * The 1.21 {@code KGMaterialValues} equivalent — same role, but the values now live in a std140
+         * UBO the material owns.
+         */
+        @Nullable
+        public RenderTypeGraphMaterial material() {
+            if (material == null && !materialFailed && compiled != null) {
+                material = RenderTypeFactory.createMaterial(compiled);
+                if (material == null) {
+                    materialFailed = true; // KilaGraph logged why; don't retry every frame
+                } else {
+                    pipeline = PhotonPipelines.fullscreenGraph(compiled);
+                }
+            }
+            return material;
+        }
+
+        /** The pipeline this pass draws with; null until (and unless) {@link #material()} succeeds. */
+        @Nullable
+        public RenderPipeline pipeline() {
+            return material() == null ? null : pipeline;
+        }
 
         private void close() {
-            // nothing GL-side to free until the M3 pipeline exists
+            if (material != null) {
+                material.close(); // releases KilaGraph's refcount on the generated pipeline + GLSL
+                material = null;
+            }
+            pipeline = null;
         }
     }
 

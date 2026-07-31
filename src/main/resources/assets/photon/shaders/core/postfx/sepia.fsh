@@ -3,7 +3,10 @@
 // Sepia tone (three.js SepiaShader matrix), Amount = 0..1 blend.
 
 uniform sampler2D DiffuseSampler;
-uniform float Amount;
+
+layout(std140) uniform PhotonPass {
+    float Amount;
+};
 
 in vec2 texCoord;
 out vec4 fragColor;
