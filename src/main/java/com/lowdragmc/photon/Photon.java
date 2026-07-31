@@ -3,7 +3,7 @@ package com.lowdragmc.photon;
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.client.PhotonClientProxy;
-import net.irisshaders.iris.api.v0.IrisApi;
+import com.lowdragmc.photon.client.compat.iris.IrisCompat;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -46,15 +46,9 @@ public class Photon {
         return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);
     }
 
-    public static boolean isShaderModInstalled() {
-        return LDLib2.isModLoaded("iris") || LDLib2.isModLoaded("oculus");
-    }
-
+    /** @see com.lowdragmc.photon.client.compat.iris.IrisCompat */
     public static boolean isUsingShaderPack() {
-        if (isShaderModInstalled()) {
-            return IrisApi.getInstance().isShaderPackInUse();
-        }
-        return false;
+        return FMLEnvironment.dist == Dist.CLIENT && IrisCompat.isUsingShaderPack();
     }
 }
 

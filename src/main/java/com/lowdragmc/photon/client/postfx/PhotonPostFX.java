@@ -2,8 +2,9 @@ package com.lowdragmc.photon.client.postfx;
 
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
-import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
+import com.lowdragmc.photon.client.compat.iris.IrisCompat;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool;
 import com.lowdragmc.photon.client.postfx.runtime.SceneBlit;
@@ -86,6 +87,34 @@ public final class PhotonPostFX {
      * stays out of this path on purpose: it only ever applies when Photon content rendered.
      */
     public static void onLevelStageAfterParticles() {
+        // Under a shader pack this stage is far too early: the pack's deferred/composite/final chain
+        // has not run, so the main target does not hold the frame yet and anything we did here would
+        // be re-exposed and re-tonemapped by the pack. onLevelRenderComplete() takes over.
+        if (IrisCompat.isUsingShaderPack()) return;
+        runChainOverMainTarget();
+    }
+
+    /**
+     * The shader-pack slot for the custom effect chain: after Iris' {@code finalizeLevelRendering()}
+     * (composite + final passes) and before its colour-space conversion, so the main render target
+     * holds the pack's finished frame.
+     *
+     * <p>Effects therefore operate on a real, finished image instead of on whichever gbuffer the
+     * pack happened to leave bound during the particle pass — which is what made them useless (and
+     * off by default) under packs before.
+     *
+     * @see com.lowdragmc.photon.core.mixins.GameRendererMixin
+     */
+    public static void onLevelRenderComplete() {
+        if (!IrisCompat.isUsingShaderPack()) return;
+        // Packs whose particle program writes encoded gbuffer data park their FX layer for here —
+        // composite it before the effect chain so effects operate on a frame that contains the FX.
+        RenderPassPipeline.compositePendingAfterPackLayer();
+        if (!PhotonConfig.INSTANCE.enableCustomEffectsWithShaderPack.get()) return;
+        runChainOverMainTarget();
+    }
+
+    private static void runChainOverMainTarget() {
         var stack = PostEffectStack.GLOBAL;
         var previewTarget = Minecraft.getInstance().getMainRenderTarget();
         if (!stack.isConsumedThisFrame()) {
@@ -93,11 +122,6 @@ public final class PhotonPostFX {
             com.lowdragmc.photon.client.postfx.runtime.PostFXPreview.captureIfRequested(previewTarget);
         }
         if (!stack.hasPending() || stack.isConsumedThisFrame()) return;
-        // Iris keeps its own framebuffers; discovering the right one outside the particle draw is
-        // unverified there (plan risk R3) — opt-in via config under shader packs.
-        if (Photon.isUsingShaderPack() && !PhotonConfig.INSTANCE.enableCustomEffectsWithIrisShader.get()) {
-            return;
-        }
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
         var chain = PostFXTargetPool.acquire(mainTarget.width, mainTarget.height);
         chain.copyColorFrom(mainTarget);
@@ -121,7 +145,7 @@ public final class PhotonPostFX {
         PostEffectStack.EDITOR_SCENE.onFrameEnd();
         PostFXTargetPool.endFrame();
         // mask textures are per-frame — a no-particle frame must not reuse last frame's mask
-        com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline.clearFrameMask();
+        RenderPassPipeline.clearFrameMask();
         if (testEffect != null) {
             PostEffectStack.GLOBAL.submit(testEffect.path(), Map.of(), testEffect.weight());
         }

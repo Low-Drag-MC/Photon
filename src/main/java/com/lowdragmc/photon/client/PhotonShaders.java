@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib2.client.shader.LDLibShaders;
 import com.lowdragmc.lowdraglib2.client.shader.management.Shader;
 import com.lowdragmc.lowdraglib2.client.shader.management.ShaderProgram;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.compat.iris.IrisCompat;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import lombok.Getter;
 import net.minecraft.client.renderer.ShaderInstance;
@@ -43,6 +44,8 @@ public class PhotonShaders {
     private static ShaderInstance weightMaskMixShader;
     @Getter
     private static ShaderInstance maskUnionShader;
+    @Getter
+    private static ShaderInstance irisCompositeShader;
 
     public static void init() {
         if (LDLibShaders.supportComputeShader()) {
@@ -65,6 +68,9 @@ public class PhotonShaders {
         com.lowdragmc.photon.client.postfx.runtime.MaskGroups.clearAll();
         // compiled effects embed custom-shader port bindings — recompile against the fresh files
         com.lowdragmc.photon.client.postfx.runtime.RenderGraphRuntime.invalidateAll();
+        // a resource reload can follow a shader-pack reload, which recreates every Iris render
+        // target — drop the resolved layout and the composite framebuffer with it
+        IrisCompat.invalidate();
         var resourceProvider = registerShadersEvent.getResourceProvider();
         try {
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
@@ -106,6 +112,9 @@ public class PhotonShaders {
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
                             Photon.id("mask_union"), DefaultVertexFormat.POSITION),
                     shaderInstance -> maskUnionShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("iris_composite"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> irisCompositeShader = shaderInstance);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

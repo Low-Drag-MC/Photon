@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.compat.iris.IrisOverlay;
 import com.lowdragmc.photon.client.postfx.PhotonPostFX;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
@@ -9,6 +10,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 
 import java.util.List;
@@ -36,5 +38,11 @@ public class PhotonClientListeners {
         if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
             PhotonPostFX.onLevelStageAfterParticles();
         }
+    }
+
+    /** Opt-in shader-pack layout readout (/photon_iris overlay). */
+    @SubscribeEvent
+    public static void onRenderGui(RenderGuiEvent.Post event) {
+        IrisOverlay.render(event.getGuiGraphics());
     }
 }

@@ -99,10 +99,31 @@ abstract class InstancedRenderBackend {
     public static final String DATA_SAMPLER = "PhotonData";
     /** Vertex-shader sampler name of the per-instance custom-data buffer texture. */
     public static final String CUSTOM_SAMPLER = "PhotonCustomData";
-    /** Texture units the buffer textures bind to (combined limit is >= 48 on GL 3.3; MC uses 0-11). */
-    private static final int POINT_SAMPLER_UNIT = 15;
-    private static final int DATA_SAMPLER_UNIT = 14;
-    private static final int CUSTOM_SAMPLER_UNIT = 13;
+    /**
+     * Texture units the buffer textures bind to, resolved once against the driver limit instead of
+     * hardcoded.
+     *
+     * <p>These do not have to dodge a shader pack: {@code GL_TEXTURE_BUFFER} and
+     * {@code GL_TEXTURE_2D} are separate binding points on the same unit, and the pack's samplers
+     * live in its own programs, not ours. What they do have to dodge is the sampler numbering of the
+     * <b>Photon material program itself</b> — vanilla assigns {@code Sampler0..N} upward from 0, so
+     * a material with many textures could otherwise reach these units and end up sampling two
+     * targets from one unit in a single program, which is undefined.
+     */
+    private static int pointSamplerUnit = -1;
+    private static int dataSamplerUnit = -1;
+    private static int customSamplerUnit = -1;
+
+    private static void resolveSamplerUnits() {
+        if (pointSamplerUnit >= 0) return;
+        int limit = GlStateManager._getInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
+        // 16 is the GL 3.3 floor and comfortably above MC's 0-11; clamp so a stingy driver cannot
+        // hand us an out-of-range unit, and keep a floor so we never collide with MC's own range.
+        int top = Math.max(14, Math.min(limit, 16)) - 1;
+        pointSamplerUnit = top;
+        dataSamplerUnit = top - 1;
+        customSamplerUnit = top - 2;
+    }
 
     @Getter
     private boolean initialized = false;
@@ -499,9 +520,15 @@ abstract class InstancedRenderBackend {
         shader.apply();
 
         if (resource != null) {
-            bindBufferSampler(shader, POINT_SAMPLER, POINT_SAMPLER_UNIT, resource.pointTex, POINT_MEMO);
-            bindBufferSampler(shader, DATA_SAMPLER, DATA_SAMPLER_UNIT, resource.dataTex, DATA_MEMO);
-            bindBufferSampler(shader, CUSTOM_SAMPLER, CUSTOM_SAMPLER_UNIT, resource.customTex, CUSTOM_MEMO);
+            resolveSamplerUnits();
+            // One active-unit save/restore around all three: the unit alternates away from and back
+            // to 0 on each bind, so a per-sampler save/restore misses GlStateManager's redundancy
+            // cache every time and issues two real glActiveTexture calls per sampler.
+            int previousUnit = GlStateManager._getActiveTexture();
+            bindBufferSampler(shader, POINT_SAMPLER, pointSamplerUnit, resource.pointTex, POINT_MEMO);
+            bindBufferSampler(shader, DATA_SAMPLER, dataSamplerUnit, resource.dataTex, DATA_MEMO);
+            bindBufferSampler(shader, CUSTOM_SAMPLER, customSamplerUnit, resource.customTex, CUSTOM_MEMO);
+            GlStateManager._activeTexture(previousUnit);
         }
 
         // draw instance
@@ -527,9 +554,14 @@ abstract class InstancedRenderBackend {
     /**
      * Binds a buffer texture to {@code samplerName} via raw GL (after apply(), the program is bound).
      * Raw lookup works uniformly for core-shader JSONs and KilaGraph-compiled programs — no sampler
-     * metadata needed. The TEXTURE_BUFFER target is separate from the 2D bindings GlStateManager
-     * tracks, and the active unit is saved/restored through its client-side cache (no synchronous
-     * glGet). A missing uniform (location < 0) just skips — shaders that don't pull are unaffected.
+     * metadata needed. A missing uniform (location < 0) just skips — shaders that don't pull are
+     * unaffected.
+     *
+     * <p>Leaves the active texture unit changed; the caller restores it once for the whole group.
+     * The binding itself is deliberately left in place after the draw: {@code GL_TEXTURE_BUFFER} is
+     * a separate binding point from the {@code GL_TEXTURE_2D} that everything else uses, so a stale
+     * buffer-texture binding cannot affect any other program, and clearing it would double this
+     * method's GL traffic on every instanced draw.
      */
     private void bindBufferSampler(ShaderInstance shader, String samplerName, int unit, int tex, int memo) {
         if (tex == -1) return;
@@ -555,9 +587,7 @@ abstract class InstancedRenderBackend {
         }
         if (location < 0) return;
         glUniform1i(location, unit);
-        int previousUnit = GlStateManager._getActiveTexture();
         GlStateManager._activeTexture(GL_TEXTURE0 + unit);
         glBindTexture(GL_TEXTURE_BUFFER, tex);
-        GlStateManager._activeTexture(previousUnit);
     }
 }

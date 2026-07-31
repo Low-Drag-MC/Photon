@@ -5,6 +5,11 @@ import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.editor.ui.EditorWindow;
 import com.lowdragmc.lowdraglib2.gui.holder.ModularUIScreen;
 import com.lowdragmc.lowdraglib2.gui.ui.*;
+import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.compat.iris.IrisCompat;
+import com.lowdragmc.photon.client.compat.iris.IrisCompositeMode;
+import com.lowdragmc.photon.client.compat.iris.IrisDiagnostics;
+import com.lowdragmc.photon.client.compat.iris.IrisOverlay;
 import com.lowdragmc.photon.client.fx.compat.FXCompat;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQueueRenderType;
@@ -25,6 +30,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -121,8 +127,57 @@ public class ClientCommands {
                                         );
                                     }
                                     return 1;
-                                }))
+                                })),
+                // shader-pack compatibility diagnostics: what layout did we resolve, and what had
+                // to be approximated. Resolution does not need FX on screen, so a whole pack can be
+                // characterised by loading it and running "status".
+                (LiteralArgumentBuilder<S>) createLiteral("photon_iris")
+                        .executes(context -> irisStatus(false))
+                        .then(createLiteral("status").executes(context -> irisStatus(false)))
+                        .then(createLiteral("probe").executes(context -> {
+                            IrisCompat.invalidate();
+                            return irisStatus(false);
+                        }))
+                        .then(createLiteral("dump").executes(context -> irisStatus(true)))
+                        .then(createLiteral("overlay")
+                                .executes(context -> setIrisOverlay(!IrisOverlay.isEnabled()))
+                                .then(createLiteral("on").executes(context -> setIrisOverlay(true)))
+                                .then(createLiteral("off").executes(context -> setIrisOverlay(false))))
+                        .then(createLiteral("mode")
+                                .then(createLiteral("auto").executes(context -> setIrisMode(null)))
+                                .then(createLiteral("primary")
+                                        .executes(context -> setIrisMode(IrisCompositeMode.PREMULTIPLIED_ACCUM)))
+                                .then(createLiteral("after")
+                                        .executes(context -> setIrisMode(IrisCompositeMode.AFTER_PACK)))
+                                .then(createLiteral("scene")
+                                        .executes(context -> setIrisMode(IrisCompositeMode.SCENE_REPLACE)))
+                                .then(createLiteral("off")
+                                        .executes(context -> setIrisMode(IrisCompositeMode.DISABLED))))
         );
+    }
+
+    private static int irisStatus(boolean toClipboard) {
+        var lines = IrisDiagnostics.report(IrisCompat.diagnosticsTarget());
+        lines.forEach(ClientCommands::feedback);
+        var joined = String.join("\n", lines);
+        Photon.LOGGER.info("Iris compatibility report:\n{}", joined);
+        if (toClipboard) {
+            Minecraft.getInstance().keyboardHandler.setClipboard(joined);
+            feedback("photon_iris: copied to clipboard");
+        }
+        return 1;
+    }
+
+    private static int setIrisOverlay(boolean enabled) {
+        IrisOverlay.setEnabled(enabled);
+        feedback("photon_iris: overlay " + (enabled ? "on" : "off"));
+        return 1;
+    }
+
+    private static int setIrisMode(@Nullable IrisCompositeMode mode) {
+        IrisCompat.setModeOverride(mode);
+        feedback("photon_iris: composite mode " + (mode == null ? "auto (config)" : mode.name()));
+        return 1;
     }
 
     private static <S> int startTestEffect(CommandContext<S> context, float weight) {

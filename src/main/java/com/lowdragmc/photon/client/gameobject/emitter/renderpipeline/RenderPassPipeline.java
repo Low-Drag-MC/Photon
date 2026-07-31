@@ -3,24 +3,23 @@ package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 import com.google.common.collect.Maps;
 import com.lowdragmc.lowdraglib2.client.shader.HDRTarget;
 import com.lowdragmc.lowdraglib2.math.PositionedRect;
-import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.PhotonParticleManager;
+import com.lowdragmc.photon.client.compat.iris.IrisCompat;
+import com.lowdragmc.photon.client.compat.iris.IrisCompositeMode;
+import com.lowdragmc.photon.client.compat.iris.IrisFrameTarget;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.postfx.graph.TargetFormat;
 import com.lowdragmc.photon.client.postfx.runtime.FormatTarget;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.postfx.runtime.SceneBlit;
 import com.lowdragmc.photon.client.postprocessing.PhotonPostProcessing;
-import com.lowdragmc.photon.core.mixins.iris.ExtendedShaderAccessor;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
-import net.irisshaders.iris.gl.blending.DepthColorStorage;
-import net.irisshaders.iris.gl.framebuffer.GlFramebuffer;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
@@ -57,6 +56,25 @@ public class RenderPassPipeline extends BufferBuilder {
     @Nullable
     @Getter
     private static RenderPassPipeline current = null;
+    /** The shader pack's resolved particle-stage layout for this build, null on the plain path. */
+    @Nullable
+    @Getter
+    private IrisFrameTarget irisTarget;
+    /** The framebuffer + viewport the pack had bound when it handed us the particle pass. */
+    private int entryFramebuffer;
+    private PositionedRect entryViewport = PositionedRect.of(0, 0, 0, 0);
+    /** Identity of the Iris depth texture currently attached to {@link #DRAW_TARGET}: texture id,
+     *  Iris' buffer version, and the framebuffer it was attached to (a resize builds a new one and
+     *  silently re-attaches the target's own depth). */
+    private static int attachedDepthTexture = -1;
+    private static int attachedDepthVersion = -1;
+    private static int attachedDepthFramebuffer = -1;
+    /** AFTER_PACK: the accumulated FX layer waiting to be composited onto the finished frame
+     *  ({@code null} = nothing pending). Both queues accumulate into it before it is consumed. */
+    @Nullable
+    private static RenderTarget pendingAfterPackLayer = null;
+    private static boolean pendingAfterPackBloom = false;
+    private static boolean afterPackLayerStarted = false;
     private final Map<PhotonFXRenderPass, Queue<IParticle>> particles = Maps.newTreeMap(makeRenderPassComparator());
     @Getter
     private Camera camera;
@@ -87,13 +105,48 @@ public class RenderPassPipeline extends BufferBuilder {
         this.sortingBuffer = sortingBuffer;
     }
 
+    /**
+     * Whether the draws in this build go into a transparent premultiplied accumulator rather than
+     * straight onto the scene — true exactly on the shader-pack path, and never during the mask
+     * sub-pass (that one writes flat ids into its own R8 target, where coverage is meaningless).
+     *
+     * @see com.lowdragmc.photon.client.compat.iris.IrisBlendPlan
+     */
+    public boolean isPremultipliedAccumulation() {
+        return irisTarget != null && !maskSubPass;
+    }
+
     @Override
     public @Nullable MeshData build() {
         if (particles.isEmpty()) return null;
+        // The shadow pass re-runs world geometry into a different framebuffer, at a different
+        // resolution, with a different projection. Nothing we resolve or draw would be valid there,
+        // and writing into the pack's shadow map is actively harmful.
+        if (IrisCompat.isShadowPass()) {
+            clearRenderingState();
+            return null;
+        }
+        // Resolve BEFORE anything binds a framebuffer: resolution goes through Iris' ShaderMap, so
+        // it does not depend on MC's main target still being bound (which is what the shader-getter
+        // override keys off).
+        irisTarget = IrisCompat.resolveFrameTarget(this == ParticleQueueRenderType.TRANSLUCENT_QUEUE.pipeline);
+        if (irisTarget != null && !irisTarget.canComposite()) {
+            clearRenderingState();
+            irisTarget = null;
+            return null;
+        }
+        if (irisTarget != null) {
+            // only the pack path hands the framebuffer back; capturing this on the plain path would
+            // cost a synchronous glGet and three allocations per build for nothing
+            entryFramebuffer = GlStateManager.getBoundFramebuffer();
+            entryViewport = PositionedRect.of(GlStateManager.Viewport.x(), GlStateManager.Viewport.y(),
+                    GlStateManager.Viewport.width(), GlStateManager.Viewport.height());
+        }
         beforeRendering();
         RenderSystem.setShader(GameRenderer::getParticleShader);
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
         // the draw target was freshly copied from the scene in beforeRendering -> stale sampler
+        // (no-op under a shader pack, where the samplers point at Iris' textures directly)
         markSceneSamplerDirty();
 
         // shaded sub-pass (DRAW and BOTH)
@@ -172,6 +225,10 @@ public class RenderPassPipeline extends BufferBuilder {
     public static void clearFrameMask() {
         maskColorTexture = -1;
         maskDepthTexture = -1;
+        // a frame that produced an AFTER_PACK layer but never reached the composite hook (screenshot
+        // paths, a cancelled level render) must not leak it into the next frame
+        pendingAfterPackLayer = null;
+        afterPackLayerStarted = false;
     }
 
     /** Draw all queued render passes once for the current sub-pass. The queues are iterated (not
@@ -193,13 +250,42 @@ public class RenderPassPipeline extends BufferBuilder {
         }
     }
 
+    /**
+     * Whether Photon's own bloom should run on this build's FX layer.
+     *
+     * <p>Under a pack it depends on where the layer ends up. When we composite into the pack's own
+     * colour target the pack's bloom chain will process our FX along with everything else, so ours
+     * would double up — off unless explicitly asked for. When the layer is held back to after the
+     * pack's passes ({@link IrisCompositeMode#AFTER_PACK}) the pack never sees those pixels, so
+     * <b>nothing</b> would bloom them; ours is the only bloom they can get.
+     */
+    private boolean wantsBloom() {
+        if (!PhotonParticleManager.isSceneBloomEnabled() || !PhotonConfig.INSTANCE.enableBloom.get()) {
+            return false;
+        }
+        if (irisTarget == null) return true;
+        return irisTarget.compositeMode() == IrisCompositeMode.AFTER_PACK
+                || PhotonConfig.INSTANCE.enableBloomWithIrisShader.get();
+    }
+
     private void beforeRendering() {
         current = this;
         var mode = PhotonParticleManager.getDrawMode();
         drawMode = mode == null ? SceneView.DrawMode.DRAW : mode;
+        // Size the accumulator to whatever we will composite ONTO, because the composite is a
+        // texelFetch at matching resolution:
+        //  - into the pack's own target -> the pack's buffer size. Render scale (TAAU) and
+        //    per-buffer `size.buffer.colortexN` make that differ from MC's window, and a mismatch
+        //    shows up as FX that do not line up with the scene.
+        //  - AFTER_PACK -> MC's main target, since that is where the layer eventually lands.
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
-        PhotonPostProcessing.prepareTarget(mainTarget.width, mainTarget.height);
-        prepareTarget(mainTarget.width, mainTarget.height); // ends bound to DRAW_TARGET
+        boolean packSized = irisTarget != null && irisTarget.compositeMode() != IrisCompositeMode.AFTER_PACK;
+        int width = packSized ? irisTarget.width() : mainTarget.width;
+        int height = packSized ? irisTarget.height() : mainTarget.height;
+        if (irisTarget == null || wantsBloom()) {
+            PhotonPostProcessing.prepareTarget(width, height);
+        }
+        prepareTarget(width, height); // ends bound to DRAW_TARGET
     }
 
     public static HDRTarget resize(@Nullable HDRTarget target, int width, int height, boolean useDepth) {
@@ -221,7 +307,7 @@ public class RenderPassPipeline extends BufferBuilder {
         if (target != null && !forceResize && target.width == width && target.height == height) {
             return target; // no allocation, nothing to restore
         }
-        int framebuffer = GL30.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        int framebuffer = GlStateManager.getBoundFramebuffer();
         int viewportX = GlStateManager.Viewport.x();
         int viewportY = GlStateManager.Viewport.y();
         int viewportWidth = GlStateManager.Viewport.width();
@@ -244,55 +330,68 @@ public class RenderPassPipeline extends BufferBuilder {
     private void prepareTarget(int width, int height) {
         DRAW_TARGET = resize(DRAW_TARGET, width, height, true, IS_DRAW_TARGET_DIRTY);
         IS_DRAW_TARGET_DIRTY = false;
-        // we will copy the color texture and share the depth texture of the main target.
-        if (Photon.isShaderModInstalled() && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
-            // iris has its own separated fbo. we should use it instead
-            GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
-                    extendedShader.getWritingToBeforeTranslucent() :
-                    extendedShader.getWritingToAfterTranslucent();
-            DRAW_TARGET.copyColorFrom(fbo.getId(), width, height);
-            if (fbo.hasDepthAttachment()) {
-                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.getId());
-                boolean useStencil = false;
-                int objType = GL30.glGetFramebufferAttachmentParameteri(
-                        GL30.GL_FRAMEBUFFER,
-                        GL30.GL_DEPTH_ATTACHMENT,
-                        GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
-                int depthTexture = GL30.glGetFramebufferAttachmentParameteri(
-                        GL30.GL_FRAMEBUFFER,
-                        GL30.GL_DEPTH_ATTACHMENT,
-                        GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
-                if (objType == GL30.GL_NONE) {
-                    objType = GL30.glGetFramebufferAttachmentParameteri(
-                            GL30.GL_FRAMEBUFFER,
-                            GL30.GL_DEPTH_STENCIL_ATTACHMENT,
-                            GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
-
-                    depthTexture = GL30.glGetFramebufferAttachmentParameteri(
-                            GL30.GL_FRAMEBUFFER,
-                            GL30.GL_DEPTH_STENCIL_ATTACHMENT,
-                            GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
-                    if (objType != GL30.GL_NONE) {
-                        useStencil = true;
-                    }
-                }
-                if (objType != GL30.GL_NONE) {
-                    if (!DRAW_TARGET.hasOtherAttachedDepthTexture() || DRAW_TARGET.getAttachedDepthTexture() != depthTexture) {
-                        DRAW_TARGET.attachDepthBufferInternal(depthTexture, useStencil, true);
-                    }
-                }
-            }
-        } else {
-            var mainTarget = Minecraft.getInstance().getMainRenderTarget();
-            DRAW_TARGET.copyColorFrom(mainTarget);
-            if (!DRAW_TARGET.hasOtherAttachedDepthTexture() || DRAW_TARGET.getAttachedDepthTexture() != mainTarget.getDepthTextureId()) {
-                DRAW_TARGET.attachDepthBuffer(mainTarget);
-            }
+        if (irisTarget != null) {
+            prepareIrisAccumulator();
+            return;
         }
+        // No shader pack: DRAW_TARGET is a working copy of the frame, so the write-back can replace.
+        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        DRAW_TARGET.copyColorFrom(mainTarget);
+        if (!DRAW_TARGET.hasOtherAttachedDepthTexture() || DRAW_TARGET.getAttachedDepthTexture() != mainTarget.getDepthTextureId()) {
+            DRAW_TARGET.attachDepthBuffer(mainTarget);
+        }
+        // this path owns the attachment now; the pack path must re-attach when it takes over again
+        attachedDepthTexture = -1;
         DRAW_TARGET.bindWrite(false);
     }
 
+    /**
+     * Set {@link #DRAW_TARGET} up as a <b>transparent premultiplied accumulator</b> for the shader-pack
+     * path — deliberately NOT seeded from the pack's buffer.
+     *
+     * <p>Copying it is what the old code did, and it is only meaningful when the pack's particle
+     * program writes the scene colour (BSL, Complementary). On a deferred pack that buffer is the
+     * translucent layer, cleared to zero every frame — copying it gives black, and replacing it
+     * afterwards throws away the water and weather already accumulated there. What Photon actually
+     * owns is the FX <i>layer</i>; building it standalone and letting
+     * {@code SceneBlit.compositePremultipliedToBound} blend it in reproduces exactly what the pack's
+     * own translucent programs do, and works the same whether the target is the scene or an
+     * accumulator.
+     *
+     * <p>Depth is shared with the pack (occlusion against the real scene) but never cleared:
+     * {@code RenderTarget.clear} would clear the depth attachment too, i.e. wipe the pack's
+     * {@code depthtex0}. Hence the explicit colour-only clear.
+     */
+    private void prepareIrisAccumulator() {
+        assert irisTarget != null;
+        int depthTexture = irisTarget.depthTexture();
+        if (depthTexture != 0 && (attachedDepthTexture != depthTexture
+                || attachedDepthVersion != irisTarget.depthBufferVersion()
+                || attachedDepthFramebuffer != DRAW_TARGET.frameBufferId)) {
+            DRAW_TARGET.attachDepthBuffer(depthTexture);
+            attachedDepthTexture = depthTexture;
+            attachedDepthVersion = irisTarget.depthBufferVersion();
+            attachedDepthFramebuffer = DRAW_TARGET.frameBufferId;
+        }
+        DRAW_TARGET.bindWrite(false);
+        RenderSystem.viewport(entryViewport.position.x, entryViewport.position.y,
+                entryViewport.size.width, entryViewport.size.height);
+        // AFTER_PACK keeps one layer for the whole frame (both queues accumulate into it before it
+        // is composited), so it must be cleared once per frame, not once per build.
+        boolean deferred = irisTarget.compositeMode() == IrisCompositeMode.AFTER_PACK;
+        if (!deferred || !afterPackLayerStarted) {
+            GlStateManager._colorMask(true, true, true, true);
+            GlStateManager._clearColor(0f, 0f, 0f, 0f);
+            GlStateManager._clear(GL11.GL_COLOR_BUFFER_BIT, Minecraft.ON_OSX);
+        }
+        if (deferred) afterPackLayerStarted = true;
+    }
+
     private void afterRendering() {
+        if (irisTarget != null) {
+            compositeToShaderPack();
+            return;
+        }
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
         var lastViewport = PositionedRect.of(GlStateManager.Viewport.x(), GlStateManager.Viewport.y(), GlStateManager.Viewport.width(), GlStateManager.Viewport.height());
         var background = Minecraft.getInstance().getMainRenderTarget();
@@ -305,7 +404,7 @@ public class RenderPassPipeline extends BufferBuilder {
             RenderSystem.viewport(0, 0, background.width, background.height);
         }
 
-        var doBloom = PhotonParticleManager.isSceneBloomEnabled() && PhotonConfig.INSTANCE.enableBloom.get() && (!Photon.isUsingShaderPack() || PhotonConfig.INSTANCE.enableBloomWithIrisShader.get());
+        var doBloom = wantsBloom();
         // Bloom and the custom effect chain want DIFFERENT timing, and the opaque/translucent queues
         // own separate pipelines that may both build in one frame:
         //
@@ -333,23 +432,7 @@ public class RenderPassPipeline extends BufferBuilder {
                     lastViewport.size.width, lastViewport.size.height);
         }
 
-        // we need it because extended shaders only work while the main target bound.
-        mainTarget.bindWrite(false);
-        if (Photon.isShaderModInstalled() && GameRenderer.getParticleShader() instanceof ExtendedShaderAccessor extendedShader) {
-            // We want to blit our result back to iris's fbo
-            GlFramebuffer fbo = extendedShader.getParent().isBeforeTranslucent ?
-                    extendedShader.getWritingToBeforeTranslucent() :
-                    extendedShader.getWritingToAfterTranslucent();
-            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo.getId());
-            // Unlock depth colour from the iris manager — and it MUST happen between the shader's
-            // apply() and the mask setup, which is exactly what the hook is. Iris takes that lock when
-            // a shader it does not manage is applied, and while it is held every colour-mask call is
-            // swallowed, so the blit writes nothing at all and FX simply vanish under a shader pack.
-            SceneBlit.writeBackToBound(outputTarget.getColorTextureId(), DepthColorStorage::unlockDepthColor);
-            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainTarget.frameBufferId);
-        } else {
-            SceneBlit.writeBack(outputTarget, mainTarget);
-        }
+        SceneBlit.writeBack(outputTarget, mainTarget);
 
         // restore the UI clip state the scene render suspended (the box outlives the disabled test)
         if (uiScissorBox != null) {
@@ -364,6 +447,115 @@ public class RenderPassPipeline extends BufferBuilder {
 
         RenderSystem.setShader(GameRenderer::getParticleShader);
         current = null;
+    }
+
+    /**
+     * Hand the accumulated FX layer to the shader pack.
+     *
+     * <p>Three things here are load-bearing:
+     *
+     * <ul>
+     *   <li><b>MC's main render target is never bound.</b> Iris only overrides shaders while
+     *       {@code isMainBound}, and binding the main target is what re-arms the depth/colour lock
+     *       that silently swallows every write. Keeping our own {@code RenderTarget} bound until the
+     *       composite is what makes the whole path work without fighting Iris.</li>
+     *   <li>The composite goes through a <b>private single-attachment framebuffer</b>, so the pack's
+     *       other draw buffers (normals, specular, …) are never written with undefined values.</li>
+     *   <li>Neither Photon's bloom nor its post-effect chain runs here. FX now live in the pack's own
+     *       translucent layer, so the pack's bloom/DOF/tonemap already apply to them; Photon's bloom
+     *       would double up and would destroy the coverage alpha the composite depends on. The
+     *       custom chain runs later, after the pack's final pass.</li>
+     * </ul>
+     */
+    private void compositeToShaderPack() {
+        assert irisTarget != null;
+        // Defensive: a lock leaked from elsewhere would make the composite a no-op with no other
+        // symptom than "the FX vanished".
+        if (IrisCompat.isDepthColorLocked()) {
+            IrisCompat.degrade("LOCK", "Iris held the depth/colour lock at composite time; released it");
+            IrisCompat.unlockDepthColorIfLocked();
+        }
+        if (irisTarget.compositeMode() == IrisCompositeMode.AFTER_PACK) {
+            // Nothing to write yet: the pack's particle target is packed material data. Park the
+            // layer and let PhotonPostFX composite it once the pack's own passes are done. Bloom is
+            // applied there, once, on the finished layer — not per build.
+            pendingAfterPackLayer = DRAW_TARGET;
+            pendingAfterPackBloom = wantsBloom();
+            restoreEntryState();
+            irisTarget = null;
+            current = null;
+            return;
+        }
+
+        int compositeFramebuffer = IrisCompat.compositeFramebuffer(irisTarget);
+        if (compositeFramebuffer != 0) {
+            int colorTexture = bloomedColorOf(DRAW_TARGET, wantsBloom());
+            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, compositeFramebuffer);
+            RenderSystem.viewport(entryViewport.position.x, entryViewport.position.y,
+                    entryViewport.size.width, entryViewport.size.height);
+            // Write alpha only into a translucent accumulator, whose alpha IS the coverage the pack
+            // blends with. A scene-colour target's alpha is either absent or the pack's own data.
+            SceneBlit.compositePremultipliedToBound(colorTexture, DRAW_TARGET.getColorTextureId(),
+                    !irisTarget.primaryIsSceneColor());
+        }
+
+        restoreEntryState();
+        irisTarget = null;
+        current = null;
+    }
+
+    /**
+     * The texture the composite should read <b>colour</b> from: the bloom result when bloom is on,
+     * the layer itself otherwise. Coverage always stays with the layer — the bloom chain ends on an
+     * opaque alpha, which would destroy the coverage the premultiplied composite depends on.
+     *
+     * <p>Must be called <b>before</b> the destination framebuffer is bound: the bloom chain binds
+     * its own targets and would otherwise leave the wrong one active for the composite.
+     */
+    private static int bloomedColorOf(RenderTarget layer, boolean bloom) {
+        return bloom
+                ? PhotonPostProcessing.postTarget(layer).getColorTextureId()
+                : layer.getColorTextureId();
+    }
+
+    /**
+     * Hand the pack back exactly the framebuffer and viewport it gave us.
+     *
+     * <p>Through {@code bindWrite} when that is MC's main target: Iris tracks {@code isMainBound}
+     * from {@code RenderTarget.bindWrite} alone, and our own {@code DRAW_TARGET.bindWrite} set it
+     * false. Restoring with a raw GL bind would leave it false for the rest of the frame, silently
+     * switching Iris' shader override off for the hand, weather and everything after us. Safe here
+     * and not earlier: no foreign shader is applied after this point, so the depth/colour lock is
+     * not re-armed.
+     */
+    private void restoreEntryState() {
+        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        if (entryFramebuffer == mainTarget.frameBufferId) {
+            mainTarget.bindWrite(false);
+        } else {
+            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, entryFramebuffer);
+        }
+        RenderSystem.viewport(entryViewport.position.x, entryViewport.position.y,
+                entryViewport.size.width, entryViewport.size.height);
+        RenderSystem.setShader(GameRenderer::getParticleShader);
+    }
+
+    /**
+     * Composite the parked AFTER_PACK layer onto the finished frame. Called once, after the pack's
+     * composite and final passes have run, from {@link
+     * com.lowdragmc.photon.client.postfx.PhotonPostFX#onLevelRenderComplete()} — before the custom
+     * effect chain, so effects see the FX.
+     */
+    public static void compositePendingAfterPackLayer() {
+        var layer = pendingAfterPackLayer;
+        if (layer == null) return;
+        pendingAfterPackLayer = null;
+        // The pack will never see these pixels, so its bloom cannot reach them — ours is the only
+        // one they can get. It runs here, once, on the layer both queues finished accumulating.
+        int colorTexture = bloomedColorOf(layer, pendingAfterPackBloom);
+        // bindWrite(true) also restores the full-frame viewport that the bloom chain left mip-sized
+        Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
+        SceneBlit.compositePremultipliedToBound(colorTexture, layer.getColorTextureId(), false);
     }
 
     /**
@@ -392,6 +584,33 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     ///  Scene Sampler
+
+    /** What a scene-sampling material (soft particles, refraction, distortion) reads. */
+    public record SceneSamplers(int colorTexture, int depthTexture) {}
+
+    /**
+     * Scene colour and depth for the materials drawing in this build.
+     *
+     * <p>Under a shader pack these are the pack's own textures, bound directly: {@code DRAW_TARGET}
+     * is a transparent accumulator there, so copying it would hand every sampling material a black
+     * frame. No feedback loop is possible — neither texture is a draw target while Photon renders
+     * (we are bound to {@code DRAW_TARGET}), and the composite happens after the last sample.
+     *
+     * <p>The pack's scene colour is <b>lit, pre-tonemap, and in the pack's working colour space</b>
+     * (linear Rec.2020 for Photon/SixthSurge), and it does not contain FX drawn earlier in the same
+     * frame. Materials authored against the plain path will read differently; that is reported as a
+     * degradation rather than silently papered over.
+     */
+    public @Nonnull SceneSamplers getSceneSamplers() {
+        if (irisTarget != null) {
+            IrisCompat.degrade("SCENE_SAMPLER", "materials sampling scene colour read the pack's "
+                    + "colortex0 (lit, pre-tonemap, pack colour space) instead of the finished frame");
+            return new SceneSamplers(irisTarget.sceneColorTexture(), irisTarget.sceneDepthTexture());
+        }
+        var sampler = getSceneSampler();
+        return new SceneSamplers(sampler.getColorTextureId(), sampler.getDepthTextureId());
+    }
+
     public @Nonnull HDRTarget getSceneSampler() {
         if (SCENE_SAMPLER != null && !IS_SCENE_SAMPLER_DIRTY) return SCENE_SAMPLER;
         updateSceneSampler();
@@ -400,6 +619,9 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     public void markSceneSamplerDirty() {
+        // On the pack path there is nothing to refresh: samplers point straight at Iris' textures,
+        // so this also skips a full-screen copy per drawing pass.
+        if (irisTarget != null) return;
         IS_SCENE_SAMPLER_DIRTY = true;
     }
 

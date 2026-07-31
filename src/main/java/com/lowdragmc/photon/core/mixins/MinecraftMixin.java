@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.core.mixins;
 
+import com.lowdragmc.photon.client.compat.iris.IrisCompat;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool;
 import net.minecraft.client.Minecraft;
@@ -18,5 +19,8 @@ public class MinecraftMixin {
     private void photon$resizeDisplay(CallbackInfo ci) {
         RenderPassPipeline.markDrawTargetDirty();
         PostFXTargetPool.invalidateAll();
+        // a resize recreates every Iris render target, and GL happily reuses the old texture names —
+        // the resolved layout and our composite framebuffer must not survive it
+        IrisCompat.invalidate();
     }
 }

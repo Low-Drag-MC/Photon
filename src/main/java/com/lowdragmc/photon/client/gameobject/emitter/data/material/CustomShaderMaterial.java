@@ -160,11 +160,11 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         }
         if (samplerNames.contains("SamplerSceneColor")) {
             shaderHolder.addDynamicSampler("SamplerSceneColor", () -> Optional.ofNullable(RenderPassPipeline.getCurrent())
-                    .map(pipeline -> pipeline.getSceneSampler().getColorTextureId()).orElse(-1));
+                    .map(pipeline -> pipeline.getSceneSamplers().colorTexture()).orElse(-1));
         }
         if (samplerNames.contains("SamplerSceneDepth")) {
             shaderHolder.addDynamicSampler("SamplerSceneDepth", () -> Optional.ofNullable(RenderPassPipeline.getCurrent())
-                    .map(pipeline -> pipeline.getSceneSampler().getDepthTextureId()).orElse(-1));
+                    .map(pipeline -> pipeline.getSceneSamplers().depthTexture()).orElse(-1));
         }
     }
 

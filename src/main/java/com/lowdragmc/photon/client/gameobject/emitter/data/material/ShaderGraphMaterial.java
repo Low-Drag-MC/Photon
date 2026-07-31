@@ -225,11 +225,11 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         }
         if (compiled.usesSceneColor() || compiled.usesSceneDepth()) {
             var sampler = Optional.ofNullable(RenderPassPipeline.getCurrent())
-                    .map(RenderPassPipeline::getSceneSampler);
+                    .map(RenderPassPipeline::getSceneSamplers);
             shader.setSampler(PhotonShaderCompiler.SCENE_COLOR,
-                    sampler.map(RenderTarget::getColorTextureId).orElse(-1));
+                    sampler.map(RenderPassPipeline.SceneSamplers::colorTexture).orElse(-1));
             shader.setSampler(PhotonShaderCompiler.SCENE_DEPTH,
-                    sampler.map(RenderTarget::getDepthTextureId).orElse(-1));
+                    sampler.map(RenderPassPipeline.SceneSamplers::depthTexture).orElse(-1));
         }
     }
 

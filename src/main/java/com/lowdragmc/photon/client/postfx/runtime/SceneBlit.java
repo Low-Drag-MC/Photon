@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.postfx.runtime;
 
 import com.lowdragmc.lowdraglib2.client.shader.LDLibShaders;
+import com.lowdragmc.photon.client.PhotonShaders;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -9,7 +10,8 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import org.jetbrains.annotations.Nullable;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 
 /**
  * Writing a finished composite back into the frame.
@@ -41,10 +43,6 @@ public final class SceneBlit {
         writeBackToBound(from.getColorTextureId());
     }
 
-    public static void writeBackToBound(int colorTexture) {
-        writeBackToBound(colorTexture, null);
-    }
-
     /**
      * Same, into whatever framebuffer the caller already bound — Iris keeps its own framebuffers and
      * binds them itself, so the binding is left untouched here.
@@ -54,23 +52,19 @@ public final class SceneBlit {
      * in the shader JSON, and under a shader pack Iris <i>locks</i> the depth and colour masks at that
      * moment so that shaders it does not manage cannot write into its gbuffers — while that lock is held
      * it silently swallows every {@code GlStateManager._colorMask} call. State set before apply() is
-     * therefore discarded, and the blit writes nothing at all.
-     *
-     * <p>{@code afterShaderApply} is the seam between the two: Iris uses it to release the lock that
-     * apply() just took.
+     * therefore discarded, and the blit writes nothing at all. (Photon no longer trips that lock on
+     * the shader-pack path — it keeps its own {@code RenderTarget} bound, which makes Iris stand
+     * down entirely — but the ordering rule still holds for any caller that does.)
      *
      * <p>Leaves the render state {@code ShaderUtils.fastBlit} used to leave (depth write + test on,
      * full color mask, blend enabled on the default func): every call site was written against that
      * contract.
      */
-    public static void writeBackToBound(int colorTexture, @Nullable Runnable afterShaderApply) {
+    public static void writeBackToBound(int colorTexture) {
         RenderSystem.assertOnRenderThread();
         var shader = LDLibShaders.getBlitShader();
         shader.setSampler("DiffuseSampler", colorTexture);
         shader.apply();
-        if (afterShaderApply != null) {
-            afterShaderApply.run();
-        }
 
         GlStateManager._disableBlend();
         GlStateManager._colorMask(true, true, true, false);
@@ -83,6 +77,53 @@ public final class SceneBlit {
         GlStateManager._colorMask(true, true, true, true);
         GlStateManager._enableDepthTest();
         GlStateManager._enableBlend();
+        RenderSystem.defaultBlendFunc();
+    }
+
+    /**
+     * Composite Photon's premultiplied FX accumulator into whatever framebuffer the caller bound.
+     *
+     * <p>This is the shader-pack counterpart of {@link #writeBack}: there, Photon owns a complete
+     * picture and must replace the destination; here it owns only the FX <i>layer</i>, and the pack
+     * owns the picture. Blending {@code ONE / ONE_MINUS_SRC_ALPHA} is exactly what a pack's own
+     * translucent program does, so the pack composites our FX the same way it composites water.
+     *
+     * <p>The caller must bind a framebuffer with a single colour attachment. Binding the pack's own
+     * gbuffer framebuffer instead would leave its other draw buffers undefined across the whole
+     * screen, since this shader has one output.
+     *
+     * <p>{@code writeAlpha} is false only when the destination IS the pack's scene colour, whose
+     * alpha channel is either absent or pack-owned. When the destination is a translucent
+     * accumulator, its alpha is the coverage the pack's blend pass reads back, so it must be written.
+     *
+     * <p>Same ordering contract as {@link #writeBackToBound}: apply the shader first, set render
+     * state second.
+     *
+     * @param alphaTexture where coverage comes from — the un-bloomed accumulator when {@code
+     *                     colorTexture} is a bloom result, since the bloom chain ends on an opaque
+     *                     alpha that would destroy it. Pass the same texture when no bloom ran.
+     */
+    public static void compositePremultipliedToBound(int colorTexture, int alphaTexture, boolean writeAlpha) {
+        RenderSystem.assertOnRenderThread();
+        var shader = PhotonShaders.getIrisCompositeShader();
+        if (shader == null) return;
+        shader.setSampler("DiffuseSampler", colorTexture);
+        shader.setSampler("AlphaSampler", alphaTexture);
+        shader.apply();
+
+        GlStateManager._enableBlend();
+        GlStateManager._blendEquation(GL14.GL_FUNC_ADD);
+        GlStateManager._blendFuncSeparate(GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager._colorMask(true, true, true, writeAlpha);
+        GlStateManager._disableDepthTest();
+        GlStateManager._depthMask(false);
+        drawFullscreenQuad();
+        shader.clear();
+
+        GlStateManager._colorMask(true, true, true, true);
+        GlStateManager._depthMask(true);
+        GlStateManager._enableDepthTest();
         RenderSystem.defaultBlendFunc();
     }
 

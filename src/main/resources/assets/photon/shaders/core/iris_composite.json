@@ -1,0 +1,11 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:iris_composite",
+    "samplers": [
+        { "name": "DiffuseSampler" },
+        { "name": "AlphaSampler" }
+    ],
+    "uniforms": [
+        { "name": "ColorModulate", "type": "float", "count": 4, "values": [ 1.0, 1.0, 1.0, 1.0 ] }
+    ]
+}

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon;
 
+import com.lowdragmc.photon.client.compat.iris.IrisCompositeMode;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -19,18 +20,27 @@ public class PhotonConfig {
         SCATTER
     }
 
+
     public final ModConfigSpec.ConfigValue<Boolean> enableBloom;
     public final ModConfigSpec.ConfigValue<Integer> bloomMipLevel;
 //    public final ModConfigSpec.ConfigValue<BloomMode> bloomMode;
     public final ModConfigSpec.ConfigValue<Double> bloomThreshold;
     public final ModConfigSpec.ConfigValue<Double> bloomIntensity;
     public final ModConfigSpec.ConfigValue<Boolean> enableBloomWithIrisShader;
-    public final ModConfigSpec.ConfigValue<Boolean> irisShaderCompatibleMode;
+    /** How Photon hands its FX image back to a shader pack — see {@code IrisCompositeMode}.
+     *  AUTO picks per pack; the others are escape hatches for a pack we get wrong. */
+    public final ModConfigSpec.ConfigValue<IrisCompositeMode> irisCompositeMode;
+    /** Resolve the translucent Photon queue through the pack's {@code gbuffers_particles_translucent}
+     *  program instead of {@code gbuffers_particles}. Off by default: on NeoForge 1.21.1 Iris does not
+     *  split the vanilla particle pass at all, so that program is not what the engine itself uses. */
+    public final ModConfigSpec.ConfigValue<Boolean> irisUseTranslucentParticleProgram;
     /** Master switch for the custom post-processing chain (requests are dropped when off). */
     public final ModConfigSpec.ConfigValue<Boolean> enableCustomEffects;
-    /** R3: the standalone (no-particle) fallback under Iris shader packs — the framebuffer
-     *  discovery outside the particle draw is unverified there, so it's opt-in. */
-    public final ModConfigSpec.ConfigValue<Boolean> enableCustomEffectsWithIrisShader;
+    /** The custom effect chain under a shader pack. Deliberately a NEW key rather than a new default
+     *  for {@code enable_custom_effects_with_iris_shader}: that option gated a fallback that could
+     *  not work, so every existing config has it persisted as false, and the option now means
+     *  something else entirely (run after the pack's composite/final passes, on the finished frame). */
+    public final ModConfigSpec.ConfigValue<Boolean> enableCustomEffectsWithShaderPack;
     /** VRAM cap for the pooled post-processing render targets (free targets evict oldest-first). */
     public final ModConfigSpec.ConfigValue<Integer> postFxPoolBudgetMB;
 
@@ -41,11 +51,17 @@ public class PhotonConfig {
         bloomThreshold = builder.defineInRange("bloom_threshold", 1, 0, 10d);
         bloomIntensity = builder.defineInRange("bloom_intensity", 0.7, 0, 1);
 
+        // Only consulted when the FX layer is composited into the pack's own colour target, where
+        // the pack's bloom chain will also process it — leaving this on means both apply. It is
+        // ignored (and Photon's bloom always runs) when the layer is held back to after the pack's
+        // passes, because nothing else would ever bloom those pixels.
         enableBloomWithIrisShader = builder.define("enable_bloom_with_iris_shader", true);
-        irisShaderCompatibleMode = builder.define("iris_shader_compatible_mode", true);
+        irisCompositeMode = builder.defineEnum("iris_composite_mode", IrisCompositeMode.AUTO,
+                IrisCompositeMode.values());
+        irisUseTranslucentParticleProgram = builder.define("iris_use_translucent_particle_program", false);
 
         enableCustomEffects = builder.define("enable_custom_effects", true);
-        enableCustomEffectsWithIrisShader = builder.define("enable_custom_effects_with_iris_shader", false);
+        enableCustomEffectsWithShaderPack = builder.define("enable_custom_effects_with_shader_pack", true);
         postFxPoolBudgetMB = builder.defineInRange("postfx_pool_budget_mb", 256, 16, 4096);
     }
 }
