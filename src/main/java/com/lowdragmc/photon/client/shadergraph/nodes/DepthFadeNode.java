@@ -10,7 +10,6 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandles;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IPortDefinitionContext;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderFunctionGraph;
 import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
-import net.minecraft.network.chat.Component;
 
 /**
  * Soft-particle depth fade: {@code saturate((sceneEyeDepth - fragmentEyeDepth) / distance)} — 0 where the
@@ -22,10 +21,6 @@ import net.minecraft.network.chat.Component;
 @NodeAttribute(name = "photon_depth_fade", group = "photon_scene",
         graphTypes = {ShaderGraph.class, PhotonShaderFunctionGraph.class})
 public class DepthFadeNode extends ShaderNode {
-    @Override
-    protected Component getNodeTooltip() {
-        return Component.translatable("photon.node.depth_fade.tooltip");
-    }
 
     @Override
     public StageAffinity stageAffinity() {
@@ -52,5 +47,14 @@ public class DepthFadeNode extends ShaderNode {
     @Override
     protected String previewOutputPortId() {
         return "fade";
+    }
+
+    @Override
+    public String glslExample() {
+        return """
+                float sceneEye = /* scene depth, eye space */;
+                float fragEye  = /* this fragment, eye space */;
+                fade = clamp((sceneEye - fragEye)
+                             / distance, 0.0, 1.0);""";
     }
 }

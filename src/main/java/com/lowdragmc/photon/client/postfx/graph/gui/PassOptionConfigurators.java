@@ -183,7 +183,7 @@ public final class PassOptionConfigurators {
 
     public static String graphDisplayName(String pathWithType) {
         if (pathWithType == null || pathWithType.isEmpty()) {
-            return I18n.get("photon.node.pass.select_graph");
+            return I18n.get("photon.pass.select_graph");
         }
         var path = IResourcePath.parse(pathWithType);
         var name = path == null ? pathWithType : path.getResourceName();

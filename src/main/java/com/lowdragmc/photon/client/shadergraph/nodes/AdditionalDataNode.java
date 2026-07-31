@@ -5,6 +5,7 @@ import com.lowdragmc.kilagraph.rendertype.compiler.GlslType;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderCompileContext;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderExpr;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderNode;
+import com.lowdragmc.kilagraph.graph.util.NodeDescriptionUI;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Tooltips;
@@ -42,11 +43,6 @@ public class AdditionalDataNode extends ShaderNode {
     private static final String OPTION = "channel";
     private static final String DEFAULT_ID = "addition_gpu_data.t";
 
-    @Override
-    protected Component getNodeTooltip() {
-        return Component.translatable("photon.node.additional_data.tooltip");
-    }
-
     /** The currently-selected channel (read from the option; falls back to T). */
     private PhotonGpuChannels.Channel currentChannel() {
         String id = DEFAULT_ID;
@@ -68,7 +64,7 @@ public class AdditionalDataNode extends ShaderNode {
     public void onDefineOptions(IOptionDefinitionContext context) {
         context.addOption(OPTION, TypeHandles.STRING)
                 .withDefaultValue(DEFAULT_ID)
-                .withTooltips(Tooltips.of("photon.node.additional_data.option.channel.tooltip"))
+                .withTooltips(Tooltips.of("kg.node.photon_additional_data.option.channel.tooltip"))
                 .withConfigurable((vc, type) -> buildChannelSelector(vc))
                 .build();
     }
@@ -99,6 +95,26 @@ public class AdditionalDataNode extends ShaderNode {
     @Override
     protected String previewOutputPortId() {
         return "out";
+    }
+
+    @Override
+    public String glslExample() {
+        return """
+                // vertex stage, routed through a varying
+                float t = photon_data_t();""";
+    }
+
+    /**
+     * The channel list is a registry, not a lang table — generate the reference here so the panel can
+     * never drift from what the dropdown actually offers.
+     */
+    @Override
+    public void appendDescription(NodeDescriptionUI ui) {
+        ui.section("photon.desc.section.channels");
+        for (var channel : PhotonGpuChannels.CHANNELS) {
+            ui.entry(Component.translatable(channel.id()), portType(channel),
+                    channel.hasTips() ? Component.translatable(channel.id() + ".tips") : Component.empty());
+        }
     }
 
     private static TypeHandle portType(PhotonGpuChannels.Channel channel) {

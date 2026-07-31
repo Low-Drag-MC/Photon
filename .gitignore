@@ -27,3 +27,4 @@ CLAUDE.md
 /docs
 /logs
 /.claude-tmp
+/.gradle-user-home

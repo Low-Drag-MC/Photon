@@ -7,7 +7,6 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.NodeAttribute;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IPortDefinitionContext;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderFunctionGraph;
 import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
-import net.minecraft.network.chat.Component;
 
 /**
  * The particle's per-vertex data, valid on every Photon path (CPU quads / trails / beams and both
@@ -23,10 +22,6 @@ import net.minecraft.network.chat.Component;
 @NodeAttribute(name = "photon_particle_data", group = "photon_input",
         graphTypes = {ShaderGraph.class, PhotonShaderFunctionGraph.class})
 public class ParticleDataNode extends ShaderNode {
-    @Override
-    protected Component getNodeTooltip() {
-        return Component.translatable("photon.node.particle_data.tooltip");
-    }
 
     @Override
     public void onDefinePorts(IPortDefinitionContext context) {

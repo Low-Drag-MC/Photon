@@ -9,7 +9,6 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.NodeAttribute;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IPortDefinitionContext;
 import com.lowdragmc.photon.client.postfx.shadergraph.FullscreenShaderGraph;
 import com.lowdragmc.photon.client.postfx.shadergraph.PhotonFullscreenCompiler;
-import net.minecraft.network.chat.Component;
 
 /**
  * The size of a bound texture: {@code size} = (width, height) in pixels, {@code texelSize} =
@@ -21,11 +20,6 @@ import net.minecraft.network.chat.Component;
 @NodeAttribute(name = "photon_texel_size", group = "photon_fullscreen",
         graphTypes = FullscreenShaderGraph.class)
 public class TexelSizeNode extends ShaderNode {
-
-    @Override
-    protected Component getNodeTooltip() {
-        return Component.translatable("photon.node.texel_size.tooltip");
-    }
 
     @Override
     public void onDefinePorts(IPortDefinitionContext context) {
@@ -44,5 +38,15 @@ public class TexelSizeNode extends ShaderNode {
                 sampler.code() + PhotonFullscreenCompiler.TEXEL_SIZE_SUFFIX, GlslType.VEC4);
         ctx.output("size", new ShaderExpr(uniform + ".xy", GlslType.VEC2));
         ctx.output("texelSize", new ShaderExpr(uniform + ".zw", GlslType.VEC2));
+    }
+
+    @Override
+    public String glslExample() {
+        return """
+                // vec4(w, h, 1/w, 1/h), set when the
+                // executor binds the sampler
+                uniform vec4 MyTex_TexelSize;
+                size = MyTex_TexelSize.xy;
+                texelSize = MyTex_TexelSize.zw;""";
     }
 }

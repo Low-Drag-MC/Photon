@@ -5,7 +5,6 @@ import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes.Sampler2DValue;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Tooltips;
-import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.NodeAttribute;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandles;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IOptionDefinitionContext;
@@ -16,6 +15,7 @@ import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Supplies an external texture to a pass's texture port — the render-graph counterpart of the
@@ -33,7 +33,7 @@ import java.util.Arrays;
  * this node is the only way to expose one.
  */
 @NodeAttribute(name = "photon_texture_input", group = "photon_render_graph", graphTypes = RenderGraph.class)
-public class TextureInputNode extends Node {
+public class TextureInputNode extends RenderGraphNode {
 
     public static final String OPTION_MODE = "mode";
     public static final String OPTION_TEXTURE = "texture";
@@ -41,6 +41,8 @@ public class TextureInputNode extends Node {
     public static final String OUTPUT_PORT = "out";
 
     public enum Mode { ASSET, PARAMETER }
+
+    private static final List<String> MODES = Arrays.stream(Mode.values()).map(Enum::name).toList();
 
     @Override
     public Component getDisplayName() {
@@ -56,10 +58,9 @@ public class TextureInputNode extends Node {
 
     @Override
     public void onDefineOptions(IOptionDefinitionContext context) {
-        var modes = Arrays.stream(Mode.values()).map(Enum::name).toList();
         context.addOption(OPTION_MODE, TypeHandles.STRING)
                 .withDefaultValue(Mode.ASSET.name())
-                .withTooltips(Tooltips.of("photon.node.texture_input.option.mode.tooltip"))
+                .withTooltips(Tooltips.of("kg.node.photon_texture_input.option.mode.tooltip"))
                 .withConfigurable((vc, type) -> IConfigurable.create(group ->
                         group.addConfigurator(new SelectorConfigurator<>(
                                 "photon.texture_input.mode",
@@ -67,7 +68,7 @@ public class TextureInputNode extends Node {
                                 vc::setValue,
                                 Mode.ASSET.name(),
                                 vc.forceUpdate(),
-                                modes,
+                                MODES,
                                 name -> name))))
                 .showInInspectorOnly()
                 .build();
@@ -75,12 +76,12 @@ public class TextureInputNode extends Node {
         context.addOption(OPTION_TEXTURE, RenderTypeGraphTypes.SAMPLER2D)
                 .withDisplayName(Component.empty())
                 .withDefaultValue(Sampler2DValue.defaultValue())
-                .withTooltips(Tooltips.of("photon.node.texture_input.option.texture.tooltip"))
+                .withTooltips(Tooltips.of("kg.node.photon_texture_input.option.texture.tooltip"))
                 .showInInspectorOnly()
                 .build();
         context.addOption(OPTION_NAME, TypeHandles.STRING)
                 .withDefaultValue("")
-                .withTooltips(Tooltips.of("photon.node.texture_input.option.name.tooltip"))
+                .withTooltips(Tooltips.of("kg.node.photon_texture_input.option.name.tooltip"))
                 .showInInspectorOnly()
                 .build();
     }
@@ -108,6 +109,11 @@ public class TextureInputNode extends Node {
 
     public String paramName() {
         return optionValue(OPTION_NAME) instanceof String name ? name : "";
+    }
+
+    @Override
+    public List<String> optionChoices(String optionId) {
+        return OPTION_MODE.equals(optionId) ? MODES : List.of();
     }
 
     @Nullable
