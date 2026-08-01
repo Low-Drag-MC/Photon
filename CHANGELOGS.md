@@ -1,4 +1,9 @@
 ## ChangeLogs
+## v2.2.2
+* Fixed cloud rendering
+* Added more iris compact
+* Added node descriptions
+
 ## v2.2.1
 * Fixed cloud rendering issue
 * Fixed blit blend while bloom off
