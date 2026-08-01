@@ -50,6 +50,18 @@ public class TimelineSoundInstance extends AbstractTickableSoundInstance {
         }
     }
 
+    /**
+     * Our volume is an envelope driven from the outside, so starting at zero is normal — without this
+     * the engine refuses to start the sound at all ({@code SoundEngine.play}: "volume was zero"), and
+     * since the instance is only created on clip enter it would never get a second chance, so a clip
+     * whose volume curve begins at 0 would be silent for its whole span. Only the initial start is
+     * gated; the per-tick loop happily rides a volume of 0 and back up again.
+     */
+    @Override
+    public boolean canStartSilent() {
+        return true;
+    }
+
     /** Ask the instance to stop on its next {@link #tick}; the sound engine then drops it. */
     public void requestStop() {
         this.stopRequested = true;

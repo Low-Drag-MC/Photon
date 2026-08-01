@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.postfx;
 
-import com.lowdragmc.lowdraglib2.client.utils.ShaderUtils;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.Photon;

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.postfx.graph.gui;
 
+import com.lowdragmc.kilagraph.graph.util.KGGraphView;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphEditorView;
@@ -21,7 +22,7 @@ import org.joml.Vector2f;
 
 /**
  * The effect render graph editor view. On top of the stock {@link GraphView} (canvas, item
- * library, blackboard = the effect's parameter schema, inspector):
+ * library with node descriptions, blackboard = the effect's parameter schema, inspector):
  * <ul>
  *   <li>dropping a fullscreen shader graph from the resource panel creates a ready-wired
  *       {@link PassNode} for it;</li>
@@ -30,7 +31,7 @@ import org.joml.Vector2f;
  *       every pass node using it.</li>
  * </ul>
  */
-public class RenderGraphView extends GraphView {
+public class RenderGraphView extends KGGraphView {
 
     public RenderGraphView() {
         graphView.addEventListener(UIEvents.DOUBLE_CLICK, this::onCanvasDoubleClick);

@@ -19,9 +19,9 @@ import javax.annotation.Nullable;
  * {@code PARTICLE_MODEL_INSTANCE} (model instancing) — selected by {@code #define}s injected at shader
  * build, so ONE compiled source pair serves every path.
  *
- * <p>Scene color/depth read Photon's pipeline capture ({@code SamplerSceneColor}/{@code SamplerSceneDepth},
- * bound from {@code RenderPassPipeline}'s scene sampler — Iris-compatible) instead of KilaGraph's
- * {@code SceneCaptureManager}. The screen UV is window-relative {@code gl_FragCoord.xy / ScreenSize}
+ * <p>Scene color/depth read Photon's own pre-fx capture ({@code SamplerSceneColor}/{@code SamplerSceneDepth},
+ * taken by {@link com.lowdragmc.photon.client.render.PhotonSceneCapture} before any fx draws) instead of
+ * KilaGraph's {@code SceneCaptureManager}. The screen UV is window-relative {@code gl_FragCoord.xy / ScreenSize}
  * (see {@link #screenUv()}) — the immediate editor scene renders into a sub-viewport of the window-sized
  * capture, so window-relative sampling is correct there and in-world alike.</p>
  */

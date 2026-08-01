@@ -73,8 +73,11 @@ public final class PostFXPreview {
         pending = new Request(effect, params);
     }
 
+    /** "Asked for within the last frame". Written as a comparison, NOT as
+     *  {@code currentFrame - requestFrame <= 1}: that subtraction overflows against the never-asked
+     *  sentinel and reports true forever, which had every world frame copying the screen. */
     private static boolean captureWanted() {
-        return PostFXTargetPool.currentFrame() - requestFrame <= 1;
+        return requestFrame >= PostFXTargetPool.currentFrame() - 1;
     }
 
     /** Copy the clean scene if a preview wants it; drop the captures once none does. */

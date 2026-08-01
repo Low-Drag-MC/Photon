@@ -54,7 +54,7 @@ public class TileParticleRenderer {
     private void renderParticle(@Nonnull VertexConsumer buffer, TileParticle particle, Camera camera, float partialTicks) {
         var vec3 = camera.position();
 
-        var localPos = particle.getLocalPos(partialTicks).mulPosition(particle.getSpaceTransform());
+        var localPos = particle.getSimPos(partialTicks).mulPosition(particle.getSpaceTransform());
         var x = (float) (localPos.x - vec3.x);
         var y = (float) (localPos.y - vec3.y);
         var z = (float) (localPos.z - vec3.z);
@@ -195,7 +195,7 @@ public class TileParticleRenderer {
         for (var p : particles) {
             if (!(p instanceof TileParticle particle) || particle.getDelay() > 0) continue;
             count++;
-            var localPos = particle.getLocalPos(partialTicks).mulPosition(particle.getSpaceTransform());
+            var localPos = particle.getSimPos(partialTicks).mulPosition(particle.getSpaceTransform());
             var color = particle.getRealColor(partialTicks);
             var rotation = particle.getRealRotation(partialTicks);
             var size = particle.getRealSize(partialTicks);
@@ -316,7 +316,7 @@ public class TileParticleRenderer {
         for (var p : particles) {
             if (!(p instanceof TileParticle particle) || particle.getDelay() > 0) continue;
             count++;
-            var localPos = particle.getLocalPos(partialTicks).mulPosition(particle.getSpaceTransform());
+            var localPos = particle.getSimPos(partialTicks).mulPosition(particle.getSpaceTransform());
             var x = (float) (localPos.x - vec3.x);
             var y = (float) (localPos.y - vec3.y);
             var z = (float) (localPos.z - vec3.z);

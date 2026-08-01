@@ -6,7 +6,8 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.SearchComponentConfigurator;
+import com.lowdragmc.lowdraglib2.gui.ui.utils.UIElementProvider;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
@@ -26,6 +27,7 @@ import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.IntTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.resources.Identifier;
 import org.joml.Quaternionf;
@@ -33,6 +35,7 @@ import org.joml.Quaternionf;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -207,15 +210,31 @@ public class SubEmittersSetting extends ToggleGroup {
 
         @Override
         public void buildConfigurator(ConfiguratorGroup father) {
-            List<String> candidates = new ArrayList<>();
-            candidates.add("");
-            Minecraft.getInstance().getResourceManager()
-                    .listResources("fx", arg -> arg.getPath().endsWith(".fx"))
-                    .keySet().forEach(fx -> candidates.add(fx.toString().replace(":fx/", ":").replace(".fx", "")));
-            father.addConfigurators(new SelectorConfigurator<>("fx",
+            // The candidates are re-listed per query rather than snapshotted at build time, so an .fx
+            // saved while this panel is open shows up without reopening it. That is affordable only
+            // because the search runs off-thread and is interrupted when the query moves on — hence the
+            // bail before listResources (the pack-stack walk, not the filter, is the expensive part).
+            father.addConfigurators(new SearchComponentConfigurator<>("fx",
                     () -> fxLocation == null ? "" : fxLocation.toString(),
-                    v -> fxLocation = v.isEmpty() ? null : Identifier.parse(v),
-                    "", true, candidates, s -> s)
+                    v -> fxLocation = (v == null || v.isEmpty()) ? null : Identifier.parse(v),
+                    "", true,
+                    (word, handler) -> {
+                        if (Thread.currentThread().isInterrupted()) return;
+                        var search = word.toLowerCase(Locale.ROOT);
+                        List<String> candidates = new ArrayList<>();
+                        candidates.add("");
+                        Minecraft.getInstance().getResourceManager()
+                                .listResources("fx", arg -> arg.getPath().endsWith(".fx"))
+                                .keySet().forEach(fx -> candidates.add(fx.toString().replace(":fx/", ":").replace(".fx", "")));
+                        for (var candidate : candidates) {
+                            if (Thread.currentThread().isInterrupted()) return;
+                            if (candidate.toLowerCase(Locale.ROOT).contains(search)) {
+                                handler.accept(candidate);
+                            }
+                        }
+                    },
+                    s -> s,
+                    UIElementProvider.text(s -> Component.literal(s == null || s.isEmpty() ? "---" : s)))
                     .setTips("photon.emitter.config.sub_emitters.emitter.name"));
             IConfigurable.super.buildConfigurator(father);
         }

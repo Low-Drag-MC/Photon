@@ -14,7 +14,28 @@ Under the following terms:
 
 3. **ShareAlike** — If you remix, transform, or build upon the material, you must distribute your contributions under the same license as the original.
 
-4. **No additional restrictions** — You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.
+4. **No Additional Restrictions** — You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.
+
+---
+
+## Restrictions on Photon 2 Ports:
+
+The porting or adaptation of this software to versions other than Minecraft 1.21.x (hereinafter "Photon 2 Ports") is subject to the following additional restrictions:
+
+1. **Prior Consent Requirement** — Any Photon 2 Port intended for public distribution or release must first obtain explicit written consent from the original author (KilaBash) prior to publication.
+
+2. **Open Source Requirement** — All Photon 2 Ports must be distributed under the same Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License, with full source code publicly available.
+
+3. **Prohibition of Commercial Activity** — Photon 2 Ports are strictly prohibited from engaging in any form of commercial activity, including but not limited to:
+   - Direct or indirect monetization (fees, paid downloads, paid subscriptions)
+   - Sponsorships, donations, or crowdfunding campaigns
+   - Commercial services or support contracts
+   - Integration into commercial products or services
+   - Any form of commercial redistribution or licensing
+
+4. **Attribution and Accountability** — All Photon 2 Ports must clearly indicate their derivative status and provide attribution to the original Photon project and author.
+
+Violation of these restrictions may result in legal action to protect the intellectual property and licensing rights of the original work.
 
 ---
 
@@ -47,7 +68,11 @@ However, direct modifications or forks of this mod must continue to comply with 
 
 ---
 
-Full license text: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode  
-Human-readable summary: https://creativecommons.org/licenses/by-nc-sa/4.0/
+Full License Text: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+Human-Readable Summary: https://creativecommons.org/licenses/by-nc-sa/4.0/
 
-For commercial licensing inquiries, contact: yefancy@foxmail.com
+---
+
+## Licensing Inquiries:
+
+For inquiries regarding commercial licensing, Photon 2 Port permissions, or other licensing arrangements, please contact the original author @KilaBash at: yefancy@foxmail.com

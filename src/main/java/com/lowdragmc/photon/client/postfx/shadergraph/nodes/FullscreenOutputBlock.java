@@ -11,7 +11,6 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.UseWithContext;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandles;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IPortDefinitionContext;
 import com.lowdragmc.photon.client.postfx.shadergraph.FullscreenShaderGraph;
-import net.minecraft.network.chat.Component;
 
 /**
  * The single fullscreen output: the pass's color (rgb) + alpha (default 1 — post targets are opaque
@@ -24,11 +23,6 @@ import net.minecraft.network.chat.Component;
 public class FullscreenOutputBlock extends ShaderBlockNode implements IFragmentOutputBlock {
 
     @Override
-    protected Component getNodeTooltip() {
-        return Component.translatable("photon.node.fullscreen_output.tooltip");
-    }
-
-    @Override
     public void onDefinePorts(IPortDefinitionContext context) {
         super.onDefinePorts(context);
         context.addInputPort("color", RenderTypeGraphTypes.VEC3);
@@ -39,5 +33,10 @@ public class FullscreenOutputBlock extends ShaderBlockNode implements IFragmentO
     public void emitFragment(ShaderCompileContext ctx, FragmentOutputs out) {
         out.baseColor = ctx.input("color");
         out.alpha = ctx.input("alpha");
+    }
+
+    @Override
+    public String glslExample() {
+        return "fragColor = vec4(color, alpha);";
     }
 }

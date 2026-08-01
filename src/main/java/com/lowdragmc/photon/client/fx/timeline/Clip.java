@@ -28,6 +28,10 @@ public class Clip {
     /** Random seed applied to the bound object when a control clip restarts it. */
     private long seed;
 
+    /** Stable per-clip lerp source for Random* sampling functions (re-rolls with the clip seed). */
+    private transient float lerpValue = Float.NaN;
+    private transient long lerpSeed;
+
     public Clip() {
         this(0.0, 1.0, 1.0f);
     }
@@ -36,6 +40,24 @@ public class Clip {
         this.start = start;
         this.duration = duration;
         this.speed = speed;
+    }
+
+    /**
+     * Normalized progress through this clip (0..1) for a clip-local time — the sampling point every
+     * clip-owned {@code NumberFunction} envelope (post-process weight, audio volume/pitch) is read at.
+     */
+    protected float progress(double localTime) {
+        var total = duration();
+        return total > 0 ? (float) Math.clamp(localTime / total, 0, 1) : 0f;
+    }
+
+    /** @see #lerpValue */
+    protected float lerpValue() {
+        if (Float.isNaN(lerpValue) || lerpSeed != seed()) {
+            lerpSeed = seed();
+            lerpValue = new java.util.Random(lerpSeed).nextFloat();
+        }
+        return lerpValue;
     }
 
     @Nullable

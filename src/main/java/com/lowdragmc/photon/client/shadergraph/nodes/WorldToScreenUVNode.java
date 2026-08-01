@@ -14,7 +14,6 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IPortDefi
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderFunctionGraph;
 import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
-import net.minecraft.network.chat.Component;
 
 import java.util.List;
 
@@ -39,16 +38,9 @@ public class WorldToScreenUVNode extends ShaderNode {
     private static final List<String> SPACES = List.of("absolute", "camera_relative");
 
     @Override
-    protected Component getNodeTooltip() {
-        return Component.translatable("photon.node.world_to_screen_uv.tooltip");
-    }
-
-    @Override
     public void onDefineOptions(IOptionDefinitionContext context) {
         context.addOption("space", TypeHandles.STRING).withDefaultValue("absolute")
-                .withTooltips(Tooltips.of(
-                        "photon.node.world_to_screen_uv.option.space.tooltip.absolute",
-                        "photon.node.world_to_screen_uv.option.space.tooltip.camera_relative"))
+                .withTooltips(Tooltips.of("kg.node.photon_world_to_screen_uv.option.space.tooltip"))
                 .withConfigurable((vc, t) -> ChoiceConfigurator.build(vc, SPACES, WorldToScreenUVNode::label)).build();
     }
 
@@ -86,6 +78,23 @@ public class WorldToScreenUVNode extends ShaderNode {
     @Override
     protected String previewOutputPortId() {
         return "uv";
+    }
+
+    @Override
+    public List<String> optionChoices(String optionId) {
+        return "space".equals(optionId) ? SPACES : List.of();
+    }
+
+    @Override
+    public String glslExample() {
+        return """
+                // absolute space
+                vec3 p = position - cameraWorldPos;
+                vec4 clip = ProjMat * ModelViewMat
+                          * vec4(p, 1.0);
+                vec2 ndc = clip.xy / clip.w * 0.5 + 0.5;
+                uv = (U_ViewPort.xy + ndc * U_ViewPort.zw)
+                   / ScreenSize;""";
     }
 
     private static String label(String space) {

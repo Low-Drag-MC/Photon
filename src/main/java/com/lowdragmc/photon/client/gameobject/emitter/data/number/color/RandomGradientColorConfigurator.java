@@ -131,7 +131,7 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
     protected void onDropObject(@NotNull Object object) {
         if (object instanceof GradientResource.Gradients gradients) {
             if (gradients.gradient1 == null || value == null) return;
-            onValueUpdatePassively(Pair.of(gradients.gradient0, gradients.gradient1));
+            onValueUpdatePassively(Pair.of(gradients.gradient0.copy(), gradients.gradient1.copy()));
             updateValue();
         } else {
             super.onDropObject(object);

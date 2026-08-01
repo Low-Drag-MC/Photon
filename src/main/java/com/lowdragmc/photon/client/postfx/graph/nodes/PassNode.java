@@ -4,7 +4,6 @@ import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Tooltips;
-import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.NodeAttribute;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandles;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IOptionDefinitionContext;
@@ -40,7 +39,7 @@ import java.util.Arrays;
  * not exposed as a port.</p>
  */
 @NodeAttribute(name = "photon_pass", group = "photon_render_graph", graphTypes = RenderGraph.class)
-public class PassNode extends Node {
+public class PassNode extends RenderGraphNode {
 
     public static final String OPTION_SOURCE = "source";
     public static final String OPTION_SIZE = "size";
@@ -64,18 +63,18 @@ public class PassNode extends Node {
                 .withDisplayName(Component.empty())
                 .withDefaultValue(PassSource.DEFAULT)
                 .withCodec(PassSource.CODEC)
-                .withTooltips(Tooltips.of("photon.node.pass.option.graph.tooltip"))
+                .withTooltips(Tooltips.of("kg.node.photon_pass.option.source.tooltip"))
                 .build();
         context.addOption(OPTION_SIZE, RenderGraphTypes.SIZE)
                 .withDisplayName(Component.empty())
                 .withDefaultValue(PassSize.DEFAULT)
                 .withCodec(PassSize.CODEC)
-                .withTooltips(Tooltips.of("photon.node.pass.option.size_mode.tooltip"))
+                .withTooltips(Tooltips.of("kg.node.photon_pass.option.size.tooltip"))
                 .showInInspectorOnly()
                 .build();
         context.addOption(OPTION_FORMAT, TypeHandles.STRING)
                 .withDefaultValue(TargetFormat.RGBA16F.name())
-                .withTooltips(Tooltips.of("photon.node.pass.option.format.tooltip"))
+                .withTooltips(Tooltips.of("kg.node.photon_pass.option.format.tooltip"))
                 .withConfigurable((vc, type) -> IConfigurable.create(
                         group -> group.addConfigurator(new SelectorConfigurator<>(
                                 "photon.pass.format",
@@ -195,5 +194,12 @@ public class PassNode extends Node {
         if (getNodeModel() == null) return null; // library display instance, options not attached
         var option = getNodeOptionById(id);
         return option == null ? null : option.tryGetValue(Object.class).result().orElse(null);
+    }
+
+    @Override
+    public java.util.List<String> optionChoices(String optionId) {
+        return OPTION_FORMAT.equals(optionId)
+                ? Arrays.stream(TargetFormat.values()).map(Enum::name).toList()
+                : java.util.List.of();
     }
 }

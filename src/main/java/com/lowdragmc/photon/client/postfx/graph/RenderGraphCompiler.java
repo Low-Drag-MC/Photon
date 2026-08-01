@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.postfx.graph;
 
+import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle;
@@ -18,10 +19,12 @@ import com.lowdragmc.photon.client.postfx.graph.nodes.OutputNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.PassNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.SceneColorInputNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.SceneDepthInputNode;
+import com.lowdragmc.photon.client.postfx.graph.nodes.TextureInputNode;
 import com.lowdragmc.photon.client.postfx.runtime.CompiledEffect;
 import com.lowdragmc.photon.client.postfx.runtime.CompiledEffect.ResourceRef;
 import com.lowdragmc.photon.client.postfx.runtime.CompiledEffect.ValueBinding;
 import com.lowdragmc.photon.client.postfx.runtime.CustomShaderPass;
+import com.lowdragmc.photon.client.postfx.shadergraph.FullscreenShaderGraph;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
 import org.jetbrains.annotations.Nullable;
 
@@ -77,12 +80,19 @@ public final class RenderGraphCompiler {
         if (outputRef.source() == ResourceRef.Source.SCENE_DEPTH
                 || outputRef.source() == ResourceRef.Source.CUSTOM_MASK
                 || outputRef.source() == ResourceRef.Source.CUSTOM_DEPTH) {
-            throw new CompileError("the effect output must be a color source (a Pass or scene color)");
+            throw new CompileError("the effect output must be a color source (a Pass, scene color, or a texture)");
         }
         if (outputRef.source() == ResourceRef.Source.SCENE_COLOR) {
             // scene color wired straight through (the fresh-graph starter): a valid no-op effect
             return new Result(new CompiledEffect(source, outputNode.priority(), outputNode.autoBlend(),
                     buildSchema(graph), List.of(), List.of(), -1), state.passEntries);
+        }
+        if (outputRef.source() == ResourceRef.Source.ASSET
+                || outputRef.source() == ResourceRef.Source.PARAM) {
+            // a texture wired straight to the output — per OutputNode's contract the texture becomes the
+            // scene color, so display it through an implicit passthrough pass
+            return new Result(buildTexturePassthrough(source, graph, outputNode, outputRef, state),
+                    state.passEntries);
         }
 
         // resource lifetimes: written at its own pass, alive until its last consumer
@@ -118,16 +128,54 @@ public final class RenderGraphCompiler {
         return new Result(effect, state.passEntries);
     }
 
-    /** The blendable parameter schema: every INPUT blackboard variable. */
+    /** The blendable parameter schema: every INPUT blackboard variable, plus every PARAMETER-mode
+     *  Texture Input node as a non-lerpable sampler parameter (samplers can't be blackboard variables
+     *  here). Names are de-duplicated (first wins). */
     private static List<CompiledEffect.ParamSpec> buildSchema(RenderGraph graph) {
         var schema = new ArrayList<CompiledEffect.ParamSpec>();
+        var names = new HashSet<String>();
         for (var declaration : graph.graphModel.getGraphVariableModels()) {
             if (declaration == null || declaration.getVariableKind() == VariableKind.OUTPUT) continue;
+            if (!names.add(declaration.getName())) continue;
             var defaultValue = declaration.tryGetDefaultValue(declaration.getDataType()).result().orElse(null);
             schema.add(new CompiledEffect.ParamSpec(declaration.getName(), defaultValue,
                     LERPABLE_TYPES.contains(declaration.getDataTypeHandle())));
         }
+        for (var model : graph.graphModel.getNodeModels()) {
+            if (model instanceof ICustomNodeModel custom
+                    && custom.getNode() instanceof TextureInputNode texInput
+                    && texInput.mode() == TextureInputNode.Mode.PARAMETER) {
+                var name = texInput.paramName();
+                if (name.isBlank() || !names.add(name)) continue;
+                schema.add(new CompiledEffect.ParamSpec(name, texInput.textureValue(), false));
+            }
+        }
         return List.copyOf(schema);
+    }
+
+    /** A texture wired straight to the effect output: display it by sampling it through one implicit
+     *  passthrough pass (the builtin passthrough fullscreen graph reused as the pass shader), so the
+     *  texture becomes the scene color exactly as {@link OutputNode} documents. */
+    private static CompiledEffect buildTexturePassthrough(@Nullable IResourcePath source, RenderGraph graph,
+                                                          OutputNode outputNode, ResourceRef textureRef,
+                                                          State state) {
+        var passthroughPath = BuiltinResourceProvider.TYPE.createFullPath("passthrough");
+        var entry = FullscreenGraphRuntime.get(passthroughPath);
+        if (entry == null || !entry.isValid() || entry.getCompiled() == null) {
+            throw new CompileError("the passthrough shader is unavailable");
+        }
+        var samplerName = entry.getCompiled().variableSamplers().get(FullscreenShaderGraph.DEFAULT_INPUT);
+        if (samplerName == null) {
+            throw new CompileError("the passthrough shader has no input sampler");
+        }
+        state.passEntries.put(passthroughPath, entry);
+        var textures = new LinkedHashMap<String, ResourceRef>();
+        textures.put(samplerName, textureRef);
+        var pass = new CompiledEffect.CompiledPass(passthroughPath, null, textures, new LinkedHashMap<>(), 0);
+        var resource = new CompiledEffect.ResourceDesc(SizeSpec.screen(1f), TargetFormat.RGBA16F, 0, 0,
+                "texture_output");
+        return new CompiledEffect(source, outputNode.priority(), outputNode.autoBlend(),
+                buildSchema(graph), List.of(resource), List.of(pass), 0);
     }
 
     /** Mutable walk state: memoized pass visits + the topo-ordered pass builds. */
@@ -148,6 +196,16 @@ public final class RenderGraphCompiler {
             if (sourceNode instanceof SceneDepthInputNode) return ResourceRef.SCENE_DEPTH_REF;
             if (sourceNode instanceof CustomMaskInputNode) return ResourceRef.CUSTOM_MASK_REF;
             if (sourceNode instanceof CustomDepthInputNode) return ResourceRef.CUSTOM_DEPTH_REF;
+            if (sourceNode instanceof TextureInputNode texInput) {
+                if (texInput.mode() == TextureInputNode.Mode.PARAMETER) {
+                    var name = texInput.paramName();
+                    if (name.isBlank()) {
+                        throw new CompileError("a Texture Input (Parameter) node has no parameter name");
+                    }
+                    return ResourceRef.param(name);
+                }
+                return ResourceRef.asset(texInput.textureValue());
+            }
             if (sourceNode instanceof PassNode pass) return ResourceRef.of(visitPass(sourceModel, pass));
             throw new CompileError("texture input '%s' has an unsupported source".formatted(inputPort.getName()));
         }

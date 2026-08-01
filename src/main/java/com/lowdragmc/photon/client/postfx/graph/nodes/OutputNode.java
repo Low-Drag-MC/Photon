@@ -1,7 +1,5 @@
 package com.lowdragmc.photon.client.postfx.graph.nodes;
 
-import com.lowdragmc.kilagraph.rendertype.compiler.NodeDisplayNames;
-import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.NodeAttribute;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandles;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IOptionDefinitionContext;
@@ -10,7 +8,6 @@ import com.lowdragmc.lowdraglib2.gui.ui.data.Tooltips;
 import com.lowdragmc.photon.client.postfx.graph.RenderGraph;
 import com.lowdragmc.photon.client.postfx.graph.RenderGraphTypes;
 import com.lowdragmc.photon.client.postfx.runtime.CompiledEffect;
-import net.minecraft.network.chat.Component;
 
 /**
  * The effect's fixed output: whatever texture feeds {@code color} becomes the new scene color.
@@ -19,27 +16,22 @@ import net.minecraft.network.chat.Component;
  * (the automatic {@code mix(scene, effect, Weight)} fade). Created by the graph, non-deletable.
  */
 @NodeAttribute(name = "photon_effect_output", group = "photon_render_graph", graphTypes = RenderGraph.class)
-public class OutputNode extends Node {
+public class OutputNode extends RenderGraphNode {
 
     public static final String COLOR_PORT = "color";
     public static final String OPTION_PRIORITY = "priority";
     public static final String OPTION_AUTO_BLEND = "autoBlend";
 
     @Override
-    public Component getDisplayName() {
-        return NodeDisplayNames.fromAttribute(this);
-    }
-
-    @Override
     public void onDefineOptions(IOptionDefinitionContext context) {
         context.addOption(OPTION_PRIORITY, TypeHandles.INT)
                 .withDefaultValue(CompiledEffect.DEFAULT_PRIORITY)
-                .withTooltips(Tooltips.of("photon.node.effect_output.option.priority.tooltip"))
+                .withTooltips(Tooltips.of("kg.node.photon_effect_output.option.priority.tooltip"))
                 .showInInspectorOnly()
                 .build();
         context.addOption(OPTION_AUTO_BLEND, TypeHandles.BOOL)
                 .withDefaultValue(true)
-                .withTooltips(Tooltips.of("photon.node.effect_output.option.auto_blend.tooltip"))
+                .withTooltips(Tooltips.of("kg.node.photon_effect_output.option.autoBlend.tooltip"))
                 .showInInspectorOnly()
                 .build();
     }

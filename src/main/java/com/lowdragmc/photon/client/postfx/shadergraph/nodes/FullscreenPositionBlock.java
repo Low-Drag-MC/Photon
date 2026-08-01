@@ -9,7 +9,6 @@ import com.lowdragmc.kilagraph.rendertype.nodes.vertex.VaryingStageNode;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.NodeAttribute;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.UseWithContext;
 import com.lowdragmc.photon.client.postfx.shadergraph.FullscreenShaderGraph;
-import net.minecraft.network.chat.Component;
 
 /**
  * The fixed fullscreen vertex transform: the executor draws a ±1 {@code POSITION} quad, so the
@@ -24,12 +23,12 @@ import net.minecraft.network.chat.Component;
 public class FullscreenPositionBlock extends ShaderBlockNode implements IVertexPositionBlock {
 
     @Override
-    protected Component getNodeTooltip() {
-        return Component.translatable("photon.node.fullscreen_position.tooltip");
+    public ShaderExpr compilePosition(ShaderCompileContext ctx) {
+        return new ShaderExpr("vec4(Position.xy, 0.0, 1.0)", GlslType.VEC4);
     }
 
     @Override
-    public ShaderExpr compilePosition(ShaderCompileContext ctx) {
-        return new ShaderExpr("vec4(Position.xy, 0.0, 1.0)", GlslType.VEC4);
+    public String glslExample() {
+        return "gl_Position = vec4(Position.xy, 0.0, 1.0);";
     }
 }

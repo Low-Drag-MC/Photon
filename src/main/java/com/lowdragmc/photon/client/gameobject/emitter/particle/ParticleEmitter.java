@@ -20,6 +20,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRen
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.forcefield.ForceFieldObject;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
+import com.lowdragmc.photon.client.gameobject.particle.SpawnFrame;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
@@ -349,6 +350,42 @@ public class ParticleEmitter extends Emitter {
             return transform();
         }
         return config.customSpace.getTransform(getScene());
+    }
+
+    /** Cache for {@link #currentSpawnFrame()}, keyed on the matrix instances it was built from. */
+    @Nullable
+    private SpawnFrame cachedSpawnFrame;
+    @Nullable
+    private Matrix4f cachedFrameEmitterToWorld;
+    @Nullable
+    private Matrix4f cachedFrameSimToWorld;
+
+    /**
+     * The {@link SpawnFrame} particles emitted right now should be born into, or {@code null} in Local
+     * simulation space (where the emitter's frame IS simulation space, so no conversion is needed).
+     *
+     * <p>Shared by every particle emitted while the emitter has not moved: {@link Transform} rebuilds
+     * its cached matrices <b>as new instances</b> whenever the transform changes, so comparing the two
+     * source matrices by reference is an exact staleness check — an emitter that moves gets a fresh
+     * frame on its very next particle, exactly as if each particle had read the live matrices itself.
+     */
+    @Nullable
+    public SpawnFrame currentSpawnFrame() {
+        if (config.getSimulationSpace() == ParticleConfig.Space.Local) {
+            return null;
+        }
+        var emitterToWorld = transform().localToWorldMatrix();
+        var simToWorld = getSimToWorld();
+        if (cachedSpawnFrame != null
+                && cachedFrameEmitterToWorld == emitterToWorld
+                && cachedFrameSimToWorld == simToWorld) {
+            return cachedSpawnFrame;
+        }
+        cachedFrameEmitterToWorld = emitterToWorld;
+        cachedFrameSimToWorld = simToWorld;
+        cachedSpawnFrame = new SpawnFrame(emitterToWorld, transform().worldToLocalMatrix(),
+                getWorldToSim(), simToWorld);
+        return cachedSpawnFrame;
     }
 
     @Override

@@ -14,7 +14,6 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IPortDefi
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderFunctionGraph;
 import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
-import net.minecraft.network.chat.Component;
 
 /**
  * Reads one user-defined "custom data" stream ({@link com.lowdragmc.photon.client.gameobject.emitter.data.CustomData})
@@ -34,11 +33,6 @@ public class CustomDataNode extends ShaderNode {
 
     private static final String OPTION = "index";
 
-    @Override
-    protected Component getNodeTooltip() {
-        return Component.translatable("photon.node.custom_data.tooltip");
-    }
-
     /** The selected custom-data stream index (from the option; clamped to non-negative). */
     private int currentIndex() {
         INodeOption opt = getNodeOptionById(OPTION);
@@ -55,7 +49,7 @@ public class CustomDataNode extends ShaderNode {
     public void onDefineOptions(IOptionDefinitionContext context) {
         context.addOption(OPTION, TypeHandles.INT)
                 .withDefaultValue(0)
-                .withTooltips(Tooltips.of("photon.node.custom_data.option.index.tooltip"))
+                .withTooltips(Tooltips.of("kg.node.photon_custom_data.option.index.tooltip"))
                 .build();
     }
 
@@ -84,5 +78,12 @@ public class CustomDataNode extends ShaderNode {
     @Override
     protected String previewOutputPortId() {
         return "out";
+    }
+
+    @Override
+    public String glslExample() {
+        return """
+                // vertex stage, routed through a varying
+                vec4 data = photon_custom_data(0);""";
     }
 }

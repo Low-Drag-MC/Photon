@@ -1,9 +1,11 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
+import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 
 /**
@@ -34,11 +36,18 @@ public class PostProcessTrack extends Track {
                 post.params().forEach((name, override) -> {
                     var overrideTag = new CompoundTag();
                     overrideTag.putString("kind", override.kind().name());
-                    var channels = new ListTag();
-                    for (var fn : override.channels()) {
-                        channels.add(fn.serializeWrapper());
+                    if (override.kind() == PostProcessClip.ParamKind.SAMPLER) {
+                        if (override.sampler() != null) {
+                            RenderTypeGraphTypes.SAMPLER2D_CODEC.encodeStart(NbtOps.INSTANCE, override.sampler())
+                                    .result().ifPresent(tag -> overrideTag.put("sampler", tag));
+                        }
+                    } else {
+                        var channels = new ListTag();
+                        for (var fn : override.channels()) {
+                            channels.add(fn.serializeWrapper());
+                        }
+                        overrideTag.put("fns", channels);
                     }
-                    overrideTag.put("fns", channels);
                     paramsTag.put(name, overrideTag);
                 });
                 clipTag.put("params", paramsTag);
@@ -70,6 +79,15 @@ public class PostProcessTrack extends Track {
                 try {
                     kind = PostProcessClip.ParamKind.valueOf(overrideTag.getStringOr("kind", ""));
                 } catch (IllegalArgumentException e) {
+                    continue;
+                }
+                if (kind == PostProcessClip.ParamKind.SAMPLER) {
+                    var sampler = overrideTag.contains("sampler")
+                            ? RenderTypeGraphTypes.SAMPLER2D_CODEC.parse(NbtOps.INSTANCE, overrideTag.get("sampler"))
+                                    .result().orElse(null)
+                            : null;
+                    post.params().put(name, PostProcessClip.ParamOverride.sampler(
+                            sampler != null ? sampler : RenderTypeGraphTypes.Sampler2DValue.defaultValue()));
                     continue;
                 }
                 var channels = new java.util.ArrayList<NumberFunction>(kind.channelCount());

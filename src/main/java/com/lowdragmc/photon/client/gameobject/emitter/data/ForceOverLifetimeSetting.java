@@ -21,23 +21,15 @@ import lombok.Setter;
 @Getter
 public class ForceOverLifetimeSetting extends ToggleGroup {
 
-    /**
-     * The space the force vector is expressed in. Unlike the particle simulation space this is
-     * restricted to Local/World (Unity parity); constant names must stay stable (persisted by name).
-     */
-    public enum ForceSpace {
-        Local,
-        World
-    }
-
     @Configurable(name = "ForceOverLifetimeSetting.force", tips = "photon.emitter.config.forceOverLifetime.force")
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {-1, 1}, xAxis = "lifetime", yAxis = "force")))
     protected NumberFunction3 force = new NumberFunction3(0, 0, 0);
 
+    /** The space the force vector is expressed in. @see ValueSpace */
     @Setter
     @Getter
     @Configurable(name = "ForceOverLifetimeSetting.simulationSpace", tips = "photon.emitter.config.simulationSpace")
-    protected ForceSpace simulationSpace = ForceSpace.Local;
+    protected ValueSpace simulationSpace = ValueSpace.Local;
 
     public Runtime createRuntime() {
         return new Runtime(this);
@@ -58,7 +50,7 @@ public class ForceOverLifetimeSetting extends ToggleGroup {
             return enable.get();
         }
 
-        public ForceSpace getSimulationSpace() {
+        public ValueSpace getSimulationSpace() {
             return config.simulationSpace;
         }
 

@@ -12,9 +12,11 @@ import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRun
 import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
 import com.lowdragmc.photon.client.render.PhotonSceneCapture;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.AddressMode;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
@@ -185,8 +187,14 @@ public final class RenderGraphExecutor {
 
     /** One texture input resolved to what a pass actually binds. {@code width}/{@code height} feed the
      *  sampler's {@code _TexelSize} companion; 0 means "unknown", leaving it at its default.
-     *  {@code point} = sample it unfiltered (see {@link #samplerFor}). */
-    private record BoundInput(GpuTextureView view, int width, int height, boolean point) {}
+     *  {@code point} = sample it unfiltered (see {@link #samplerFor}). {@code sampler} overrides both,
+     *  and is only set for external textures, whose {@code Sampler2DValue} carries its own filter/wrap. */
+    private record BoundInput(GpuTextureView view, int width, int height, boolean point,
+                              @Nullable GpuSampler sampler) {
+        BoundInput(GpuTextureView view, int width, int height, boolean point) {
+            this(view, width, height, point, null);
+        }
+    }
 
     /**
      * The CustomMask is the one input that must never be filtered: its red channel holds a group
@@ -197,6 +205,9 @@ public final class RenderGraphExecutor {
      * quantities and interpolate meaningfully (a half-res pass genuinely wants the smooth read).
      */
     private static GpuSampler samplerFor(BoundInput input) {
+        if (input.sampler() != null) {
+            return input.sampler();
+        }
         return input.point() ? PhotonSceneCapture.sampler() : linearClamp();
     }
 
@@ -227,7 +238,7 @@ public final class RenderGraphExecutor {
 
         var bound = new LinkedHashMap<String, BoundInput>();
         for (var binding : pass.textures().entrySet()) {
-            var input = resolveInput(binding.getValue(), resources, inputs);
+            var input = resolveInput(binding.getValue(), resources, inputs, params);
             if (input == null) return false;
             bound.put(binding.getKey(), input);
             var texel = texelSize(input);
@@ -238,14 +249,13 @@ public final class RenderGraphExecutor {
         var placeholder = missingView();
 
         var linear = linearClamp();
-        var point = PhotonSceneCapture.sampler();
         PhotonFullscreenPass.draw("photonfx pass", shaderPass.pipeline(), target.view(), renderPass -> {
             // every pipeline-declared sampler must be bound at draw; a sampler the effect wired nothing
             // to (the compiler allows it) gets the missing texture rather than a stale unit
             for (var sampler : shaderPass.info().samplers()) {
                 var input = bound.get(sampler);
                 renderPass.bindTexture(sampler, input != null ? input.view() : placeholder,
-                        input != null && input.point() ? point : linear);
+                        input != null ? samplerFor(input) : linear);
             }
             uniforms.bindTo(renderPass);
         });
@@ -283,7 +293,7 @@ public final class RenderGraphExecutor {
         }
 
         for (var binding : pass.textures().entrySet()) {
-            var input = resolveInput(binding.getValue(), resources, inputs);
+            var input = resolveInput(binding.getValue(), resources, inputs, params);
             if (input == null) return false;
             material.setTextureView(binding.getKey(), input.view(), samplerFor(input));
             // the TexelSize node's companion field, by the same suffix convention it compiles under
@@ -305,10 +315,11 @@ public final class RenderGraphExecutor {
 
     // ---- input resolution -----------------------------------------------------------------------
 
-    /** Null = this pass cannot run (a required input does not exist this frame). */
+    /** Null = this pass cannot run (a required input does not exist this frame). {@code params} is the
+     *  request's, for PARAM-sourced texture inputs. */
     @Nullable
     private static BoundInput resolveInput(CompiledEffect.ResourceRef ref, Resources resources,
-                                           FrameInputs inputs) {
+                                           FrameInputs inputs, Map<String, Object> params) {
         return switch (ref.source()) {
             case SCENE_COLOR -> new BoundInput(inputs.sceneColor(), inputs.width(), inputs.height(), false);
             // an absent scene depth / mask must not fall through to a placeholder: the pass would read
@@ -327,7 +338,42 @@ public final class RenderGraphExecutor {
                         : new BoundInput(target.view(), resources.widths()[ref.resource()],
                                 resources.heights()[ref.resource()], false);
             }
+            // Texture Input node: a fixed image baked into the effect (ASSET), or an effect sampler
+            // parameter supplied per request (PARAM). Both the stack's blend and the editor preview emit
+            // the FULL schema, whose default for such a param is the node's own texture — so the lookup
+            // only misses on a caller that skipped the schema, where the placeholder is the right answer.
+            case ASSET -> externalTexture(ref.asset());
+            case PARAM -> {
+                var value = params.get(ref.param());
+                yield externalTexture(value instanceof RenderTypeGraphTypes.Sampler2DValue s ? s : null);
+            }
         };
+    }
+
+    /**
+     * An external texture ({@link RenderTypeGraphTypes.Sampler2DValue}) resolved to a bound view plus the
+     * sampler the author chose on the node — 26.1 binds samplers explicitly, so the picker's
+     * filter/address/mipmap actually take effect here rather than being ignored as in 1.21.
+     *
+     * <p>A missing or malformed location falls back to the SAMPLER2D default rather than failing the pass:
+     * an effect referencing a texture the pack removed should still render, just with the placeholder.
+     * Dimensions stay 0 — the manager does not expose them here, so the {@code _TexelSize} companion
+     * zeroes out (LUT/noise passes rarely need it).
+     */
+    private static BoundInput externalTexture(@Nullable RenderTypeGraphTypes.Sampler2DValue sampler) {
+        var value = sampler;
+        if (value == null || !LDLib2.isValidResourceLocation(value.location())) {
+            value = RenderTypeGraphTypes.Sampler2DValue.defaultValue();
+        }
+        var view = Minecraft.getInstance().getTextureManager()
+                .getTexture(Identifier.parse(value.location())).getTextureView();
+        var address = value.address() == RenderTypeGraphTypes.SamplerAddress.REPEAT
+                ? AddressMode.REPEAT : AddressMode.CLAMP_TO_EDGE;
+        var filter = value.filter() == RenderTypeGraphTypes.SamplerFilter.LINEAR
+                ? FilterMode.LINEAR : FilterMode.NEAREST;
+        var gpuSampler = RenderSystem.getSamplerCache()
+                .getSampler(address, address, filter, filter, value.mipmap());
+        return new BoundInput(view, 0, 0, false, gpuSampler);
     }
 
     // ---- value marshalling ----------------------------------------------------------------------

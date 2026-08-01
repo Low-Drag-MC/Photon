@@ -271,14 +271,17 @@ public class TimelinePlayer {
                     var soundEvent = BuiltInRegistries.SOUND_EVENT.get(clip.sound()).map(net.minecraft.core.Holder::value).orElse(null);
                     if (soundEvent != null) {
                         var supplier = attenuatedSupplier(audioTrack, clip);
-                        var newInstance = new TimelineSoundInstance(soundEvent, clip.category(), clip.volume(),
-                                clip.pitch(), supplier != null, supplier);
+                        // volume/pitch are envelopes over the clip — sample them at clip-local time
+                        var local = time - clip.start();
+                        var newInstance = new TimelineSoundInstance(soundEvent, clip.category(),
+                                clip.volumeAt(local), clip.pitchAt(local), supplier != null, supplier);
                         soundManager.queueTickingSound(newInstance);
                         audioInstances.put(audioTrack, newInstance);
                     }
                 }
             } else if (instance != null && clip != null) {
-                instance.update(clip.volume(), clip.pitch(), attenuatedSupplier(audioTrack, clip));
+                var local = time - clip.start();
+                instance.update(clip.volumeAt(local), clip.pitchAt(local), attenuatedSupplier(audioTrack, clip));
             }
         }
         // stop instances whose track was removed / muted since last evaluation

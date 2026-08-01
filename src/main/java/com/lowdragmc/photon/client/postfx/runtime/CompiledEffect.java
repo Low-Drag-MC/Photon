@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.postfx.runtime;
 
+import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.kilagraph.rendertype.compiler.GlslType;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.client.postfx.graph.SizeSpec;
@@ -98,19 +99,32 @@ public record CompiledEffect(
     public record ResourceDesc(SizeSpec size, TargetFormat format, int firstUsePass, int lastUsePass,
                                String debugName) {}
 
-    /** What a pass's texture input binds to. */
-    public record ResourceRef(Source source, int resource) {
-        public enum Source { SCENE_COLOR, SCENE_DEPTH, CUSTOM_MASK, CUSTOM_DEPTH, RESOURCE }
+    /** What a pass's texture input binds to. {@code asset} carries a baked image (ASSET); {@code param}
+     *  names an effect sampler parameter resolved from the request at execution (PARAM). Both come from
+     *  the render graph's {@code TextureInputNode}. */
+    public record ResourceRef(Source source, int resource,
+                              @Nullable RenderTypeGraphTypes.Sampler2DValue asset, @Nullable String param) {
+        public enum Source { SCENE_COLOR, SCENE_DEPTH, CUSTOM_MASK, CUSTOM_DEPTH, RESOURCE, ASSET, PARAM }
 
-        public static final ResourceRef SCENE_COLOR_REF = new ResourceRef(Source.SCENE_COLOR, -1);
-        public static final ResourceRef SCENE_DEPTH_REF = new ResourceRef(Source.SCENE_DEPTH, -1);
+        public static final ResourceRef SCENE_COLOR_REF = new ResourceRef(Source.SCENE_COLOR, -1, null, null);
+        public static final ResourceRef SCENE_DEPTH_REF = new ResourceRef(Source.SCENE_DEPTH, -1, null, null);
         /** The pipeline's CustomMask target (flat mask ids of flagged FX passes; -1 when none). */
-        public static final ResourceRef CUSTOM_MASK_REF = new ResourceRef(Source.CUSTOM_MASK, -1);
+        public static final ResourceRef CUSTOM_MASK_REF = new ResourceRef(Source.CUSTOM_MASK, -1, null, null);
         /** The mask target's own depth (= the flagged passes' custom depth). */
-        public static final ResourceRef CUSTOM_DEPTH_REF = new ResourceRef(Source.CUSTOM_DEPTH, -1);
+        public static final ResourceRef CUSTOM_DEPTH_REF = new ResourceRef(Source.CUSTOM_DEPTH, -1, null, null);
 
         public static ResourceRef of(int resource) {
-            return new ResourceRef(Source.RESOURCE, resource);
+            return new ResourceRef(Source.RESOURCE, resource, null, null);
+        }
+
+        /** A fixed image baked into the effect (Texture Input node, Asset mode). */
+        public static ResourceRef asset(RenderTypeGraphTypes.Sampler2DValue texture) {
+            return new ResourceRef(Source.ASSET, -1, texture, null);
+        }
+
+        /** An effect sampler parameter supplied per request (Texture Input node, Parameter mode). */
+        public static ResourceRef param(String name) {
+            return new ResourceRef(Source.PARAM, -1, null, name);
         }
     }
 

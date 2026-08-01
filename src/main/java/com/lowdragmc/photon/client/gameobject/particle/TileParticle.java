@@ -4,7 +4,7 @@ import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
-import com.lowdragmc.photon.client.gameobject.emitter.data.ForceOverLifetimeSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.ValueSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
@@ -21,6 +21,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.*;
 
+import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.lang.Math;
 import java.util.List;
@@ -39,6 +40,9 @@ public class TileParticle implements IParticle {
      */
     protected float localX, localY, localZ; // position in simulation space (see IParticleEmitter#getSimToWorld)
     protected float localXo, localYo, localZo;
+    /** The frame this particle was born into; {@code null} == identity. @see SpawnFrame */
+    @Nullable
+    protected SpawnFrame spawnFrame;
     protected float rotationX = 180, rotationY = 180, rotationZ = 180; // rotation
     protected float rotationXo = 180, rotationYo = 180, rotationZo = 180;
     protected float sizeX = 1, sizeY = 1, sizeZ = 1; // size
@@ -121,9 +125,14 @@ public class TileParticle implements IParticle {
             var emitterToWorld = emitter.transform().localToWorldMatrix();
             var worldToSim = emitter.getWorldToSim();
             var pos = new Vector3f(localX, localY, localZ).mulPosition(emitterToWorld).mulPosition(worldToSim);
-            setLocalPos(pos, true);
+            setSimPos(pos, true);
             var vel = worldToSim.transformDirection(emitterToWorld.transformDirection(new Vector3f(velocityX, velocityY, velocityZ)));
             setInternalVelocity(vel);
+            // the frame we are born into, shared with every particle emitted at this emitter pose
+            this.spawnFrame = emitter instanceof ParticleEmitter particleEmitter
+                    ? particleEmitter.currentSpawnFrame()
+                    : new SpawnFrame(emitterToWorld, emitter.transform().worldToLocalMatrix(),
+                            worldToSim, emitter.getSimToWorld());
         }
         if (runtime.inheritVelocity.isEnable() && runtime.inheritVelocity.getMode() == InheritVelocitySetting.Mode.INITIAL) {
             addInternalVelocity(getSpaceTransformInverse().transformDirection(runtime.inheritVelocity.getVelocity(emitter)));
@@ -174,7 +183,7 @@ public class TileParticle implements IParticle {
         return value;
     }
 
-    public void setLocalPos(float x, float y, float z, boolean setOrigin) {
+    public void setSimPos(float x, float y, float z, boolean setOrigin) {
         this.localX = x;
         this.localY = y;
         this.localZ = z;
@@ -185,8 +194,8 @@ public class TileParticle implements IParticle {
         }
     }
 
-    public void setLocalPos(Vector3f realPos, boolean origin) {
-        setLocalPos(realPos.x, realPos.y, realPos.z, origin);
+    public void setSimPos(Vector3f realPos, boolean origin) {
+        setSimPos(realPos.x, realPos.y, realPos.z, origin);
     }
 
     public void setInternalVelocity(Vector3f vec) {
@@ -256,12 +265,54 @@ public class TileParticle implements IParticle {
                 Mth.lerp(partialTicks, sizeZo, sizeZ));
     }
 
-    public Vector3f getLocalPos() {
-        return getLocalPos(0);
+    public Vector3f getSimPos() {
+        return getSimPos(0);
     }
 
-    public Vector3f getLocalPos(float partialTicks) {
-        var pos = getLocalPoseWithoutNoise(partialTicks);
+    /**
+     * This particle's offset from the emitter that spawned it, still in simulation-space axes — what
+     * "emitter-relative" means for every simulation space alike. Identical to {@link #getSimPos()} in
+     * Local space. @see SpawnFrame
+     */
+    public Vector3f getEmitterRelativePos() {
+        return getEmitterRelativePos(0);
+    }
+
+    /** @see #getEmitterRelativePos() */
+    public Vector3f getEmitterRelativePos(float partialTicks) {
+        var pos = getSimPos(partialTicks);
+        return spawnFrame == null ? pos
+                : pos.sub(spawnFrame.originX(), spawnFrame.originY(), spawnFrame.originZ());
+    }
+
+    /** Rotate a direction from the spawn frame's axes into simulation space (in place). */
+    public Vector3f emitterDirToSim(Vector3f direction) {
+        return spawnFrame == null ? direction : spawnFrame.emitterDirToSim(direction);
+    }
+
+    /** Rotate a direction from simulation space into the spawn frame's axes (in place). */
+    public Vector3f simDirToEmitter(Vector3f direction) {
+        return spawnFrame == null ? direction : spawnFrame.simDirToEmitter(direction);
+    }
+
+    /** Rotate a direction from world axes into simulation space (in place). Live, not frozen — world
+     *  axes are absolute, so only the CURRENT simulation space matters. Skipped entirely in World
+     *  simulation space, where the two are the same axes and the matrix is the identity. */
+    public Vector3f worldDirToSim(Vector3f direction) {
+        return isWorldSimulationSpace() ? direction : getSpaceTransformInverse().transformDirection(direction);
+    }
+
+    /** Rotate a direction from simulation space into world axes (in place). @see #worldDirToSim */
+    public Vector3f simDirToWorld(Vector3f direction) {
+        return isWorldSimulationSpace() ? direction : getSpaceTransform().transformDirection(direction);
+    }
+
+    private boolean isWorldSimulationSpace() {
+        return config.getSimulationSpace() == ParticleConfig.Space.World;
+    }
+
+    public Vector3f getSimPos(float partialTicks) {
+        var pos = getSimPosWithoutNoise(partialTicks);
 
         if (runtime.noise.isEnable()) {
             pos.add(runtime.noise.getPosition(this, partialTicks));
@@ -270,11 +321,11 @@ public class TileParticle implements IParticle {
         return pos;
     }
 
-    public Vector3f getLocalPoseWithoutNoise() {
-        return getLocalPoseWithoutNoise(0);
+    public Vector3f getSimPosWithoutNoise() {
+        return getSimPosWithoutNoise(0);
     }
 
-    public Vector3f getLocalPoseWithoutNoise(float partialTicks) {
+    public Vector3f getSimPosWithoutNoise(float partialTicks) {
         if (isRemoved) {
             return new Vector3f(localX, localY, localZ);
         }
@@ -310,7 +361,7 @@ public class TileParticle implements IParticle {
     }
 
     public Vector3f getWorldPos(float partialTicks) {
-        var localPosition = getLocalPos(partialTicks);
+        var localPosition = getSimPos(partialTicks);
         return new Vector3f(localPosition).mulPosition(getSpaceTransform());
     }
 
@@ -472,7 +523,7 @@ public class TileParticle implements IParticle {
         // update bounding box and position
         if (moveX != 0.0 || moveY != 0.0 || moveZ != 0.0) {
             var moveLocal = getSpaceTransformInverse().transformDirection(new Vector3f(moveX, moveY, moveZ));
-            setLocalPos(localX + moveLocal.x, localY + moveLocal.y, localZ + moveLocal.z, false);
+            setSimPos(localX + moveLocal.x, localY + moveLocal.y, localZ + moveLocal.z, false);
         }
 
         // external force fields: fold into the stored velocity once per tick (direction/gravity/vortex
@@ -578,7 +629,7 @@ public class TileParticle implements IParticle {
      * The total world-space velocity. Composition order:
      * <ol>
      *     <li>{@code simToWorld * (stored velocity + velocityOverLifetime addition)}</li>
-     *     <li>{@code + forceOverLifetime} (Local: rotated by the live emitter matrix, World: as-is)</li>
+     *     <li>{@code + forceOverLifetime} (Local: the spawn frame's axes, World: as-is)</li>
      *     <li>{@code + inheritVelocity} (CURRENT mode)</li>
      *     <li>{@code * velocityOverLifetime speed modifier}</li>
      * </ol>
@@ -588,8 +639,11 @@ public class TileParticle implements IParticle {
         var velocity = getSpaceTransform().transformDirection(getInternalVelocity());
         if (runtime.forceOverLifetime.isEnable()) {
             var force = runtime.forceOverLifetime.getForce(this);
-            if (runtime.forceOverLifetime.getSimulationSpace() == ForceOverLifetimeSetting.ForceSpace.Local) {
-                emitter.transform().localToWorldMatrix().transformDirection(force);
+            if (runtime.forceOverLifetime.getSimulationSpace() == ValueSpace.Local) {
+                // the SPAWN frame's axes, not the emitter's live matrix — same rule as
+                // velocityOverLifetime, so the two "Local" dropdowns cannot mean different things.
+                // Reading it live would swing the force on particles the emitter already left behind.
+                simDirToWorld(emitterDirToSim(force));
             }
             velocity.add(force);
         }
