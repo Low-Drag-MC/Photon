@@ -91,26 +91,41 @@ public final class PhotonPostFX {
         // has not run, so the main target does not hold the frame yet and anything we did here would
         // be re-exposed and re-tonemapped by the pack. onLevelRenderComplete() takes over.
         if (IrisCompat.isUsingShaderPack()) return;
+        // Same reasoning for a parked FXCompositeMode.LATE layer: the FX are not in the frame yet, so
+        // effects run here would simply not see them. onLevelRenderComplete() takes over.
+        if (RenderPassPipeline.isLateLayerPending()) return;
         runChainOverMainTarget();
     }
 
     /**
-     * The shader-pack slot for the custom effect chain: after Iris' {@code finalizeLevelRendering()}
-     * (composite + final passes) and before its colour-space conversion, so the main render target
-     * holds the pack's finished frame.
+     * The slot for compositing a deferred FX layer, and for the custom effect chain whenever one was
+     * deferred with it. Sits after {@code LevelRenderer.renderLevel} has returned — i.e. after the
+     * clouds and weather, after Fabulous' transparency chain, and (under a pack) after Iris'
+     * {@code finalizeLevelRendering()} but before its colour-space conversion. Either way the main
+     * render target holds a finished frame.
      *
-     * <p>Effects therefore operate on a real, finished image instead of on whichever gbuffer the
-     * pack happened to leave bound during the particle pass — which is what made them useless (and
-     * off by default) under packs before.
+     * <p>Two kinds of layer are parked for here, and both want the same treatment: composite first,
+     * effects second, so effects operate on an image that contains the FX.
+     *
+     * <ul>
+     *   <li>{@code IrisCompositeMode.AFTER_PACK} — packs whose particle program writes encoded
+     *       gbuffer data rather than colour.</li>
+     *   <li>{@code FXCompositeMode.LATE} — the plain path, where waiting until here is what keeps the
+     *       clouds from painting over the FX.</li>
+     * </ul>
      *
      * @see com.lowdragmc.photon.core.mixins.GameRendererMixin
      */
     public static void onLevelRenderComplete() {
-        if (!IrisCompat.isUsingShaderPack()) return;
-        // Packs whose particle program writes encoded gbuffer data park their FX layer for here —
-        // composite it before the effect chain so effects operate on a frame that contains the FX.
-        RenderPassPipeline.compositePendingAfterPackLayer();
-        if (!PhotonConfig.INSTANCE.enableCustomEffectsWithShaderPack.get()) return;
+        boolean shaderPack = IrisCompat.isUsingShaderPack();
+        boolean hadPendingLayer = RenderPassPipeline.isLateLayerPending();
+        RenderPassPipeline.compositePendingLateLayer();
+        if (shaderPack) {
+            if (!PhotonConfig.INSTANCE.enableCustomEffectsWithShaderPack.get()) return;
+        } else if (!hadPendingLayer) {
+            // nothing was deferred, so the chain already ran at AFTER_PARTICLES
+            return;
+        }
         runChainOverMainTarget();
     }
 

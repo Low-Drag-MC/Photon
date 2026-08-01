@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.FXCompositeMode;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexSorting;
@@ -72,6 +73,13 @@ public class RendererSetting {
     @Configurable(name = "photon.emitter.config.renderer.vertexSortingMode", tips = "photon.emitter.config.renderer.vertexSortingMode.tips")
     @EqualsAndHashCode.Include
     protected SortMode vertexSortingMode = SortMode.NONE;
+
+    /** When this emitter's FX are merged into the frame — see {@link FXCompositeMode}. INHERIT (the
+     *  default) follows {@code PhotonConfig.fxCompositeMode}. Part of the batching key: passes with
+     *  different modes accumulate into different targets and must never merge into one draw. */
+    @Configurable(name = "photon.emitter.config.renderer.compositeMode", tips = "photon.emitter.config.renderer.compositeMode.tips")
+    @EqualsAndHashCode.Include
+    protected FXCompositeMode compositeMode = FXCompositeMode.INHERIT;
 
     /** CustomMask (Unreal CustomDepth/Stencil-style): when enabled, this emitter's passes redraw a
      *  flat mask id into the pipeline's mask target, which post effects read via the Custom
@@ -197,6 +205,7 @@ public class RendererSetting {
         public final RuntimeValue<Cull> cull;
         public final RuntimeValue<Integer> orderInLayer;
         public final RuntimeValue<SortMode> vertexSortingMode;
+        public final RuntimeValue<FXCompositeMode> compositeMode;
         public final RuntimeValue<Boolean> writeCustomMask;
         public final RuntimeValue<String> maskGroup;
         public final RuntimeValue<Float> maskAlphaCutoff;
@@ -208,6 +217,7 @@ public class RendererSetting {
             this.cull = new RuntimeValue<>(config::getCull);
             this.orderInLayer = new RuntimeValue<>(config::getOrderInLayer);
             this.vertexSortingMode = new RuntimeValue<>(config::getVertexSortingMode);
+            this.compositeMode = new RuntimeValue<>(config::getCompositeMode);
             this.writeCustomMask = new RuntimeValue<>(config::isWriteCustomMask);
             this.maskGroup = new RuntimeValue<>(config::getMaskGroup);
             this.maskAlphaCutoff = new RuntimeValue<>(config::getMaskAlphaCutoff);
@@ -218,6 +228,7 @@ public class RendererSetting {
         public Cull getCull() { return cull.get(); }
         public int getOrderInLayer() { return orderInLayer.get(); }
         public SortMode getVertexSortingMode() { return vertexSortingMode.get(); }
+        public FXCompositeMode getCompositeMode() { return compositeMode.get(); }
         public boolean isWriteCustomMask() { return writeCustomMask.get(); }
         public String getMaskGroup() { return maskGroup.get(); }
         public float getMaskAlphaCutoff() { return maskAlphaCutoff.get(); }
@@ -231,6 +242,7 @@ public class RendererSetting {
         public boolean hasOverride() {
             return materials.isOverridden() || layer.isOverridden()
                     || orderInLayer.isOverridden() || vertexSortingMode.isOverridden()
+                    || compositeMode.isOverridden()
                     || writeCustomMask.isOverridden() || maskGroup.isOverridden()
                     || maskAlphaCutoff.isOverridden();
         }
@@ -242,6 +254,7 @@ public class RendererSetting {
             cull.clear();
             orderInLayer.clear();
             vertexSortingMode.clear();
+            compositeMode.clear();
             writeCustomMask.clear();
             maskGroup.clear();
             maskAlphaCutoff.clear();
@@ -257,6 +270,7 @@ public class RendererSetting {
                     && getLayer() == o.getLayer()
                     && getOrderInLayer() == o.getOrderInLayer()
                     && getVertexSortingMode() == o.getVertexSortingMode()
+                    && getCompositeMode() == o.getCompositeMode()
                     && isWriteCustomMask() == o.isWriteCustomMask()
                     && Objects.equals(getMaskGroup(), o.getMaskGroup())
                     && getMaskAlphaCutoff() == o.getMaskAlphaCutoff();
@@ -264,7 +278,7 @@ public class RendererSetting {
 
         public int effectiveHashCode() {
             return Objects.hash(getMaterials(), getLayer(), getOrderInLayer(), getVertexSortingMode(),
-                    isWriteCustomMask(), getMaskGroup(), getMaskAlphaCutoff());
+                    getCompositeMode(), isWriteCustomMask(), getMaskGroup(), getMaskAlphaCutoff());
         }
     }
 

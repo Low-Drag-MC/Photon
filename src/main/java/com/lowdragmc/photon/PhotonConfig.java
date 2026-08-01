@@ -1,6 +1,7 @@
 package com.lowdragmc.photon;
 
 import com.lowdragmc.photon.client.compat.iris.IrisCompositeMode;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.FXCompositeMode;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -34,6 +35,10 @@ public class PhotonConfig {
      *  program instead of {@code gbuffers_particles}. Off by default: on NeoForge 1.21.1 Iris does not
      *  split the vanilla particle pass at all, so that program is not what the engine itself uses. */
     public final ModConfigSpec.ConfigValue<Boolean> irisUseTranslucentParticleProgram;
+    /** Default merge strategy for translucent FX — see {@code FXCompositeMode}. {@code LATE} keeps
+     *  clouds from painting over FX and water from slicing them; {@code VANILLA} is the pre-2.2.2
+     *  behaviour, kept as an escape hatch. Individual emitters may override it. */
+    public final ModConfigSpec.ConfigValue<FXCompositeMode> fxCompositeMode;
     /** Master switch for the custom post-processing chain (requests are dropped when off). */
     public final ModConfigSpec.ConfigValue<Boolean> enableCustomEffects;
     /** The custom effect chain under a shader pack. Deliberately a NEW key rather than a new default
@@ -59,6 +64,10 @@ public class PhotonConfig {
         irisCompositeMode = builder.defineEnum("iris_composite_mode", IrisCompositeMode.AUTO,
                 IrisCompositeMode.values());
         irisUseTranslucentParticleProgram = builder.define("iris_use_translucent_particle_program", false);
+
+        // INHERIT is deliberately not an acceptable value here: it only means something per emitter.
+        fxCompositeMode = builder.defineEnum("fx_composite_mode", FXCompositeMode.LATE,
+                FXCompositeMode.VANILLA, FXCompositeMode.LATE);
 
         enableCustomEffects = builder.define("enable_custom_effects", true);
         enableCustomEffectsWithShaderPack = builder.define("enable_custom_effects_with_shader_pack", true);

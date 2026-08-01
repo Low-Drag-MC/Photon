@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * The slot for Photon's custom post-effect chain when a shader pack is active.
+ * The slot for compositing Photon's deferred FX layer, and for its custom post-effect chain.
  *
  * <p>Injecting <b>after the {@code LevelRenderer.renderLevel} call</b> rather than at either
  * method's RETURN/TAIL is deliberate: Iris runs its composite and final passes from a RETURN inject
@@ -17,8 +17,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * the call site puts us squarely between the two with no dependence on mixin priority — a
  * RETURN/TAIL inject of our own would be racing Iris by priority number instead.
  *
+ * <p>The same point is what {@code FXCompositeMode.LATE} needs on the plain path: it is past the
+ * clouds and the weather in Fast/Fancy, and past {@code transparencyChain.process()} in Fabulous.
+ *
  * <p>{@code RenderLevelStageEvent.AFTER_LEVEL} would not do: it fires inside {@code renderLevel},
- * before the pack's composites have run.
+ * before the pack's composites have run — and, in Fabulous, before the transparency chain has
+ * resolved the five layer targets into the main one.
  */
 @Mixin(GameRenderer.class)
 public class GameRendererMixin {

@@ -83,10 +83,12 @@ public final class SceneBlit {
     /**
      * Composite Photon's premultiplied FX accumulator into whatever framebuffer the caller bound.
      *
-     * <p>This is the shader-pack counterpart of {@link #writeBack}: there, Photon owns a complete
-     * picture and must replace the destination; here it owns only the FX <i>layer</i>, and the pack
-     * owns the picture. Blending {@code ONE / ONE_MINUS_SRC_ALPHA} is exactly what a pack's own
-     * translucent program does, so the pack composites our FX the same way it composites water.
+     * <p>This is the deferred counterpart of {@link #writeBack}: there, Photon owns a complete
+     * picture and must replace the destination; here it owns only the FX <i>layer</i>, and something
+     * else owns the picture — a shader pack's translucent target, or (on the {@code
+     * FXCompositeMode.LATE} path) MC's main target once the clouds and weather are already on it.
+     * Blending {@code ONE / ONE_MINUS_SRC_ALPHA} is exactly what a pack's own translucent program
+     * does, so the FX are composited the same way water is.
      *
      * <p>The caller must bind a framebuffer with a single colour attachment. Binding the pack's own
      * gbuffer framebuffer instead would leave its other draw buffers undefined across the whole

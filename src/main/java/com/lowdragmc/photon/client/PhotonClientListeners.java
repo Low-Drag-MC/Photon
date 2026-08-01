@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client;
 
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.compat.iris.IrisOverlay;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.OpaqueDepthCapture;
 import com.lowdragmc.photon.client.postfx.PhotonPostFX;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
@@ -31,11 +32,22 @@ public class PhotonClientListeners {
         PhotonPostFX.onFrameEnd();
     }
 
-    /** Standalone post-effect consumption for frames without Photon particles (the particle
-     *  pipeline seam never runs then). */
+    /**
+     * Two seams in the level render:
+     *
+     * <ul>
+     *   <li><b>AFTER_BLOCK_ENTITIES</b> — the last stage before {@code RenderType.translucent()} goes
+     *       down. Snapshot the opaque-only depth {@code FXCompositeMode.LATE} depth-tests against, so
+     *       a water surface cannot slice an effect in half.</li>
+     *   <li><b>AFTER_PARTICLES</b> — standalone post-effect consumption for frames without Photon
+     *       particles (the particle pipeline seam never runs then).</li>
+     * </ul>
+     */
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) {
+            OpaqueDepthCapture.capture();
+        } else if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
             PhotonPostFX.onLevelStageAfterParticles();
         }
     }

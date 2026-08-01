@@ -4,8 +4,8 @@ import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
-import com.lowdragmc.photon.client.compat.iris.IrisBlendPlan;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlendMode;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PremultipliedBlendPlan;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
@@ -50,9 +50,10 @@ public class MaterialSetting implements IConfigurable, IPersistedSerializable {
     /**
      * Apply this material's GL state.
      *
-     * <p>The blend half is asked of the pipeline rather than passed in: under a shader pack Photon
-     * draws into a transparent premultiplied accumulator, where the alpha channel has to carry
-     * coverage instead of whatever the author wrote (see {@link IrisBlendPlan}). Reading it from
+     * <p>The blend half is asked of the pipeline rather than passed in: under a shader pack — and on
+     * the {@code FXCompositeMode.LATE} path — Photon draws into a transparent premultiplied
+     * accumulator, where the alpha channel has to carry coverage instead of whatever the author
+     * wrote (see {@link PremultipliedBlendPlan}). Reading it from
      * {@link RenderPassPipeline#getCurrent()} — the same seam materials already use for scene
      * samplers — means a new renderer cannot forget to opt in and silently punch a hole in the
      * pack's translucent layer.
@@ -60,7 +61,7 @@ public class MaterialSetting implements IConfigurable, IPersistedSerializable {
     public void pre() {
         var pipeline = RenderPassPipeline.getCurrent();
         if (pipeline != null && pipeline.isPremultipliedAccumulation()) {
-            IrisBlendPlan.applyPremultiplied(blendMode);
+            PremultipliedBlendPlan.applyPremultiplied(blendMode);
         } else {
             blendMode.apply();
         }

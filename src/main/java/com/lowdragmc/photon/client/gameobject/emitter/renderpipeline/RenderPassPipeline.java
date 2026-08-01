@@ -69,20 +69,49 @@ public class RenderPassPipeline extends BufferBuilder {
     private static int attachedDepthTexture = -1;
     private static int attachedDepthVersion = -1;
     private static int attachedDepthFramebuffer = -1;
-    /** AFTER_PACK: the accumulated FX layer waiting to be composited onto the finished frame
-     *  ({@code null} = nothing pending). Both queues accumulate into it before it is consumed. */
+    /** The accumulated FX layer waiting to be composited onto the finished frame ({@code null} =
+     *  nothing pending) — used by both deferred paths, Iris {@link IrisCompositeMode#AFTER_PACK} and
+     *  the plain {@link FXCompositeMode#LATE}. Both queues accumulate into it before it is consumed. */
     @Nullable
-    private static RenderTarget pendingAfterPackLayer = null;
-    private static boolean pendingAfterPackBloom = false;
-    private static boolean afterPackLayerStarted = false;
+    private static RenderTarget pendingLateLayer = null;
+    private static boolean pendingLateBloom = false;
+    private static boolean lateLayerStarted = false;
     private final Map<PhotonFXRenderPass, Queue<IParticle>> particles = Maps.newTreeMap(makeRenderPassComparator());
+    /** The subset of {@link #particles} the current sub-pass draws. Equal to {@code particles} unless
+     *  the plain path split this build into an in-place group and a late-composited one. */
+    private Map<PhotonFXRenderPass, Queue<IParticle>> activeGroup = particles;
+    /** The passes routed to {@link FXCompositeMode#LATE} this build, {@code null} when none are. */
+    @Nullable
+    private Map<PhotonFXRenderPass, Queue<IParticle>> lateGroup;
+    /** True while the group being drawn accumulates into the standalone late layer. */
+    private boolean lateLayer = false;
     @Getter
     private Camera camera;
     @Getter
     private float partialTicks;
+    /** Whichever of {@link #INLINE_TARGET} / {@link #LATE_TARGET} the group currently drawing uses. */
     @Getter
     private static HDRTarget DRAW_TARGET;
-    private static boolean IS_DRAW_TARGET_DIRTY = true;
+    /** In-place accumulator: a working copy of the frame on the plain path, the pack's premultiplied
+     *  accumulator under Iris. */
+    @Nullable
+    private static HDRTarget INLINE_TARGET;
+    /**
+     * The standalone {@link FXCompositeMode#LATE} layer — deliberately a SEPARATE target from
+     * {@link #INLINE_TARGET}, not a reuse of it.
+     *
+     * <p>Vanilla's Fabulous branch renders every particle type in ONE
+     * {@code particleEngine.render(..., type -> true)} call, and {@code
+     * ClientHooks.makeParticleRenderTypeComparator} orders modded types by
+     * {@code System.identityHashCode} — so Photon's opaque queue can build <b>after</b> its
+     * translucent one, arbitrarily, per JVM run. Sharing one target meant that opaque build's
+     * {@code copyColorFrom(mainTarget)} overwrote the already-parked late layer with a copy of the
+     * whole frame, which was then blended back over the frame at composite time.
+     */
+    @Nullable
+    private static HDRTarget LATE_TARGET;
+    private static boolean IS_INLINE_TARGET_DIRTY = true;
+    private static boolean IS_LATE_TARGET_DIRTY = true;
     @Nullable
     private static HDRTarget SCENE_SAMPLER;
     private static boolean IS_SCENE_SAMPLER_DIRTY = true;
@@ -107,13 +136,14 @@ public class RenderPassPipeline extends BufferBuilder {
 
     /**
      * Whether the draws in this build go into a transparent premultiplied accumulator rather than
-     * straight onto the scene — true exactly on the shader-pack path, and never during the mask
-     * sub-pass (that one writes flat ids into its own R8 target, where coverage is meaningless).
+     * straight onto the scene — true on the shader-pack path and on the {@link FXCompositeMode#LATE}
+     * path, and never during the mask sub-pass (that one writes flat ids into its own R8 target,
+     * where coverage is meaningless).
      *
-     * @see com.lowdragmc.photon.client.compat.iris.IrisBlendPlan
+     * @see PremultipliedBlendPlan
      */
     public boolean isPremultipliedAccumulation() {
-        return irisTarget != null && !maskSubPass;
+        return (irisTarget != null || lateLayer) && !maskSubPass;
     }
 
     @Override
@@ -135,19 +165,143 @@ public class RenderPassPipeline extends BufferBuilder {
             irisTarget = null;
             return null;
         }
-        if (irisTarget != null) {
-            // only the pack path hands the framebuffer back; capturing this on the plain path would
-            // cost a synchronous glGet and three allocations per build for nothing
+        current = this;
+        var mode = PhotonParticleManager.getDrawMode();
+        drawMode = mode == null ? SceneView.DrawMode.DRAW : mode;
+
+        var inlineGroup = routePasses();
+        if (irisTarget != null || lateGroup != null) {
+            // Only the deferring paths hand the framebuffer back; capturing this when the write-back
+            // is going to bind MC's main target anyway would cost a synchronous glGet and three
+            // allocations per build for nothing.
             entryFramebuffer = GlStateManager.getBoundFramebuffer();
             entryViewport = PositionedRect.of(GlStateManager.Viewport.x(), GlStateManager.Viewport.y(),
                     GlStateManager.Viewport.width(), GlStateManager.Viewport.height());
         }
+        // A throwing pass must not latch the pipeline into a half-built state: `lateLayer` stuck true
+        // would send the NEXT build down the layer path with a stale depth attachment, a stuck
+        // `current` would keep every material reading a dead pipeline, and — worst of the three — our
+        // own framebuffer would still be bound, so the whole rest of the level render would land in
+        // it. (That is exactly what the missing-water bug looked like.) The frame is lost either way;
+        // the point is that the frame after it is not.
+        boolean completed = false;
+        try {
+            if (!inlineGroup.isEmpty()) {
+                renderGroup(inlineGroup, false, lateGroup == null);
+            }
+            if (lateGroup != null) {
+                renderGroup(lateGroup, true, true);
+            }
+            completed = true;
+        } finally {
+            if (!completed) {
+                Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
+            }
+            clearRenderingState();
+            current = null;
+        }
+        return null;
+    }
+
+    /**
+     * Split this build's passes between the in-place path and the late-composited layer, returning
+     * the in-place group and stashing the other in {@link #lateGroup}.
+     *
+     * <p>Both maps are views onto {@link #particles}, which stays the union — the mask sub-pass is a
+     * per-emitter concept and has to see every pass at once. The common cases (all late, or all
+     * in-place) reuse {@code particles} directly rather than allocating.
+     */
+    private Map<PhotonFXRenderPass, Queue<IParticle>> routePasses() {
+        lateGroup = null;
+        // Under a shader pack there is nothing to split TO: every pass already accumulates into one
+        // layer, and unreproducible blends are approximated rather than rerouted.
+        if (irisTarget != null || !isLateCapablePipeline()) return particles;
+
+        boolean anyInline = false;
+        boolean anyLate = false;
+        for (var entry : particles.entrySet()) {
+            // an empty queue draws nothing; letting it vote would allocate and composite a blank
+            // layer, and would keep the depth snapshot armed, for a pass with no particles in it
+            if (entry.getValue().isEmpty()) continue;
+            if (isLatePass(entry.getKey())) anyLate = true; else anyInline = true;
+            if (anyInline && anyLate) break;
+        }
+        if (!anyLate) return particles;
+        // Something wants the layer, so keep the snapshot coming even when the global default is
+        // VANILLA. Recorded BEFORE the availability check on purpose: that is what arms the capture
+        // for an emitter-level override, which would otherwise never get a snapshot to route into.
+        OpaqueDepthCapture.demand();
+        // No snapshot this frame means no depth to test against — anything drawn into the layer
+        // would float in front of the terrain. Fall back rather than render something visibly broken.
+        if (!OpaqueDepthCapture.hasCaptureThisFrame()) return particles;
+        if (!anyInline) {
+            lateGroup = particles;
+            return Map.of();
+        }
+        var inline = new TreeMap<PhotonFXRenderPass, Queue<IParticle>>(makeRenderPassComparator());
+        var late = new TreeMap<PhotonFXRenderPass, Queue<IParticle>>(makeRenderPassComparator());
+        for (var entry : particles.entrySet()) {
+            (isLatePass(entry.getKey()) ? late : inline).put(entry.getKey(), entry.getValue());
+        }
+        lateGroup = late;
+        return inline;
+    }
+
+    /**
+     * Whether an FX layer is still owed a composite this frame — queued for this very build, or
+     * already parked by an earlier one. The post-effect chain has to wait for it either way.
+     */
+    private boolean deferChainToComposite() {
+        return lateGroup != null || isLateLayerPending();
+    }
+
+    /** Whether a late layer is structurally possible for this pipeline (ignoring whether a snapshot
+     *  actually exists this frame — {@link #routePasses()} checks that after recording demand). */
+    private boolean isLateCapablePipeline() {
+        // The editor scene draws into a sub-viewport of a screen: it has no clouds and no water to
+        // be wrecked by, and no after-renderLevel seam to composite from, so the layer would simply
+        // never land. Keep it on the path it has always used.
+        if (PhotonParticleManager.getRenderingManager() != null) return false;
+        // Opaque-layer FX render in the "solid particles" slot, BEFORE the translucent chunk layer
+        // (NeoForge moved them there for MC-161917), so their ordering against water is already
+        // right and they write depth like vanilla's opaque particle sheets do.
+        return this == ParticleQueueRenderType.TRANSLUCENT_QUEUE.pipeline;
+    }
+
+    /**
+     * Whether {@code pass} may join the late layer: it has to ask for it, and every one of its
+     * materials has to survive premultiplied accumulation exactly. A pass that blends against the
+     * destination colour (multiply, min/max) cannot — its backdrop would be transparent black — so
+     * it keeps drawing in place, with the vanilla artefacts, rather than being silently approximated.
+     */
+    private static boolean isLatePass(PhotonFXRenderPass pass) {
+        return pass.renderer.getCompositeMode().resolve() == FXCompositeMode.LATE
+                && PremultipliedBlendPlan.areLayerSafe(pass.renderer.getMaterials());
+    }
+
+    /**
+     * Draw one routing group start to finish: prepare its target, run the shaded/wireframe
+     * sub-passes, and hand the result on (write-back, pack composite, or park).
+     *
+     * @param lastGroup whether the mask sub-pass — which covers ALL of this build's passes, not just
+     *                  this group — should run here. It has to happen before {@link #afterRendering}
+     *                  consumes the draw target, and under a shader pack before the composite
+     *                  releases Iris' depth/colour lock.
+     */
+    private void renderGroup(Map<PhotonFXRenderPass, Queue<IParticle>> group, boolean late, boolean lastGroup) {
+        activeGroup = group;
+        lateLayer = late;
         beforeRendering();
         RenderSystem.setShader(GameRenderer::getParticleShader);
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        // the draw target was freshly copied from the scene in beforeRendering -> stale sampler
-        // (no-op under a shader pack, where the samplers point at Iris' textures directly)
-        markSceneSamplerDirty();
+        // the draw target was freshly prepared -> stale sampler. The late path has to set the flag
+        // directly: markSceneSamplerDirty() deliberately swallows it there (see its javadoc), but
+        // the first sample of a build still needs a fresh copy of the frame.
+        if (late) {
+            IS_SCENE_SAMPLER_DIRTY = true;
+        } else {
+            markSceneSamplerDirty();
+        }
 
         // shaded sub-pass (DRAW and BOTH)
         if (drawMode != SceneView.DrawMode.WIREFRAME) {
@@ -168,11 +322,13 @@ public class RenderPassPipeline extends BufferBuilder {
             wireframeSubPass = false;
         }
 
-        renderMaskSubPass();
+        if (lastGroup) {
+            activeGroup = particles;
+            renderMaskSubPass();
+            activeGroup = group;
+        }
 
-        clearRenderingState();
         afterRendering();
-        return null;
     }
 
     /**
@@ -209,6 +365,9 @@ public class RenderPassPipeline extends BufferBuilder {
         }
         MASK_TARGET.setClearColor(0f, 0f, 0f, 0f);
         MASK_TARGET.clear(Minecraft.ON_OSX);
+        // Whatever depth the FX themselves were clipped against — the live scene depth in place, the
+        // opaque-only snapshot on the late path — so the mask lines up with what is on screen instead
+        // of being cut by a water surface the effect is allowed to draw through.
         MASK_TARGET.copyDepthFrom(DRAW_TARGET);
         MASK_TARGET.bindWrite(false);
         RenderSystem.viewport(viewportX, viewportY, viewportWidth, viewportHeight);
@@ -225,16 +384,19 @@ public class RenderPassPipeline extends BufferBuilder {
     public static void clearFrameMask() {
         maskColorTexture = -1;
         maskDepthTexture = -1;
-        // a frame that produced an AFTER_PACK layer but never reached the composite hook (screenshot
+        // a frame that produced a deferred layer but never reached the composite hook (screenshot
         // paths, a cancelled level render) must not leak it into the next frame
-        pendingAfterPackLayer = null;
-        afterPackLayerStarted = false;
+        pendingLateLayer = null;
+        lateLayerStarted = false;
+        // likewise the opaque depth snapshot: a frame that never reached AFTER_BLOCK_ENTITIES must
+        // not depth-test this frame's FX against last frame's geometry
+        OpaqueDepthCapture.endFrame();
     }
 
-    /** Draw all queued render passes once for the current sub-pass. The queues are iterated (not
-     * drained), so this can safely run twice for {@link SceneView.DrawMode#BOTH}. */
+    /** Draw the active group's render passes once for the current sub-pass. The queues are iterated
+     * (not drained), so this can safely run twice for {@link SceneView.DrawMode#BOTH}. */
     private void renderQueuedPasses() {
-        for (var entry : particles.entrySet()) {
+        for (var entry : activeGroup.entrySet()) {
             var renderPass = entry.getKey();
             var particleQueue = entry.getValue();
             if (!particleQueue.isEmpty()) {
@@ -269,9 +431,6 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     private void beforeRendering() {
-        current = this;
-        var mode = PhotonParticleManager.getDrawMode();
-        drawMode = mode == null ? SceneView.DrawMode.DRAW : mode;
         // Size the accumulator to whatever we will composite ONTO, because the composite is a
         // texelFetch at matching resolution:
         //  - into the pack's own target -> the pack's buffer size. Render scale (TAAU) and
@@ -324,12 +483,21 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     public static void markDrawTargetDirty() {
-        IS_DRAW_TARGET_DIRTY = true;
+        IS_INLINE_TARGET_DIRTY = true;
+        IS_LATE_TARGET_DIRTY = true;
     }
 
     private void prepareTarget(int width, int height) {
-        DRAW_TARGET = resize(DRAW_TARGET, width, height, true, IS_DRAW_TARGET_DIRTY);
-        IS_DRAW_TARGET_DIRTY = false;
+        if (lateLayer) {
+            LATE_TARGET = resize(LATE_TARGET, width, height, true, IS_LATE_TARGET_DIRTY);
+            IS_LATE_TARGET_DIRTY = false;
+            DRAW_TARGET = LATE_TARGET;
+            prepareLateAccumulator();
+            return;
+        }
+        INLINE_TARGET = resize(INLINE_TARGET, width, height, true, IS_INLINE_TARGET_DIRTY);
+        IS_INLINE_TARGET_DIRTY = false;
+        DRAW_TARGET = INLINE_TARGET;
         if (irisTarget != null) {
             prepareIrisAccumulator();
             return;
@@ -343,6 +511,44 @@ public class RenderPassPipeline extends BufferBuilder {
         // this path owns the attachment now; the pack path must re-attach when it takes over again
         attachedDepthTexture = -1;
         DRAW_TARGET.bindWrite(false);
+    }
+
+    /**
+     * Set {@link #DRAW_TARGET} up as a <b>standalone premultiplied FX layer</b> for
+     * {@link FXCompositeMode#LATE} — the plain-path twin of {@link #prepareIrisAccumulator()}.
+     *
+     * <p>Two departures from the in-place path, and both are the whole point:
+     *
+     * <ul>
+     *   <li><b>Not seeded from the frame.</b> The layer is composited with
+     *       {@code ONE / ONE_MINUS_SRC_ALPHA} long after the clouds and weather have been drawn; a
+     *       working copy of the frame would replace them instead of blending over them. What Photon
+     *       owns here is the FX layer, not the picture.</li>
+     *   <li><b>Depth comes from {@link OpaqueDepthCapture}</b>, not the live buffer, so the
+     *       translucent chunk layer cannot reject fragments behind it. Depth <i>writes</i> then land
+     *       in that throwaway snapshot, which is why a material may keep {@code depthMask} on for
+     *       FX-vs-FX occlusion without leaking into the clouds and hand drawn after us.</li>
+     * </ul>
+     */
+    private void prepareLateAccumulator() {
+        int depthTexture = OpaqueDepthCapture.depthTexture();
+        // A resize resets HDRTarget's own attachedDepthTexture to -1 in createBuffers, so this also
+        // covers "the target was rebuilt and silently went back to its own depth buffer". The Iris
+        // attachment statics are deliberately NOT touched: they track INLINE_TARGET, which this path
+        // never binds.
+        if (depthTexture != 0 && (!DRAW_TARGET.hasOtherAttachedDepthTexture()
+                || DRAW_TARGET.getAttachedDepthTexture() != depthTexture)) {
+            DRAW_TARGET.attachDepthBuffer(depthTexture);
+        }
+        DRAW_TARGET.bindWrite(false);
+        // Colour only — RenderTarget.clear would wipe the depth attachment, i.e. the opaque snapshot
+        // we are about to test against. One clear per frame: both queues share the pending layer.
+        if (!lateLayerStarted) {
+            GlStateManager._colorMask(true, true, true, true);
+            GlStateManager._clearColor(0f, 0f, 0f, 0f);
+            GlStateManager._clear(GL11.GL_COLOR_BUFFER_BIT, Minecraft.ON_OSX);
+        }
+        lateLayerStarted = true;
     }
 
     /**
@@ -379,17 +585,21 @@ public class RenderPassPipeline extends BufferBuilder {
         // AFTER_PACK keeps one layer for the whole frame (both queues accumulate into it before it
         // is composited), so it must be cleared once per frame, not once per build.
         boolean deferred = irisTarget.compositeMode() == IrisCompositeMode.AFTER_PACK;
-        if (!deferred || !afterPackLayerStarted) {
+        if (!deferred || !lateLayerStarted) {
             GlStateManager._colorMask(true, true, true, true);
             GlStateManager._clearColor(0f, 0f, 0f, 0f);
             GlStateManager._clear(GL11.GL_COLOR_BUFFER_BIT, Minecraft.ON_OSX);
         }
-        if (deferred) afterPackLayerStarted = true;
+        if (deferred) lateLayerStarted = true;
     }
 
     private void afterRendering() {
         if (irisTarget != null) {
             compositeToShaderPack();
+            return;
+        }
+        if (lateLayer) {
+            parkLateLayer();
             return;
         }
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
@@ -417,7 +627,10 @@ public class RenderPassPipeline extends BufferBuilder {
         //
         // Treating both the same is what broke this: whichever queue built first consumed the frame,
         // so a single opaque particle could take the bloom away from every translucent one.
-        RenderTarget outputTarget = isLastBuildThisFrame()
+        //
+        // A late layer moves the chain again: it is composited after renderLevel returns, so
+        // consuming here would post-process a frame that does not contain those FX yet.
+        RenderTarget outputTarget = isLastBuildThisFrame() && !deferChainToComposite()
                 ? PostEffectStack.currentSink().consumeAndExecute(DRAW_TARGET, doBloom)
                 : (doBloom ? PhotonPostProcessing.postTarget(DRAW_TARGET) : DRAW_TARGET);
 
@@ -446,7 +659,24 @@ public class RenderPassPipeline extends BufferBuilder {
         }
 
         RenderSystem.setShader(GameRenderer::getParticleShader);
-        current = null;
+    }
+
+    /**
+     * Park the finished {@link FXCompositeMode#LATE} layer for
+     * {@link #compositePendingLateLayer()}. Nothing is written to the frame here — that is the
+     * entire point of the mode, the layer has to wait until the clouds and weather are down.
+     *
+     * <p>Restoring the entry binding is not optional: {@code DRAW_TARGET.bindWrite} left our own
+     * framebuffer active, and everything vanilla draws after the particle pass (clouds, weather, the
+     * world border, later the hand and HUD) would otherwise land in the FX layer. It goes back to the
+     * framebuffer we were <i>handed</i> rather than to MC's main target, because in Fabulous the
+     * particle pass runs with {@code particlesTarget} bound — vanilla particles queued behind ours
+     * still have to land there.
+     */
+    private void parkLateLayer() {
+        pendingLateLayer = DRAW_TARGET;
+        pendingLateBloom = wantsBloom();
+        restoreEntryState();
     }
 
     /**
@@ -479,8 +709,8 @@ public class RenderPassPipeline extends BufferBuilder {
             // Nothing to write yet: the pack's particle target is packed material data. Park the
             // layer and let PhotonPostFX composite it once the pack's own passes are done. Bloom is
             // applied there, once, on the finished layer — not per build.
-            pendingAfterPackLayer = DRAW_TARGET;
-            pendingAfterPackBloom = wantsBloom();
+            pendingLateLayer = DRAW_TARGET;
+            pendingLateBloom = wantsBloom();
             restoreEntryState();
             irisTarget = null;
             current = null;
@@ -541,18 +771,36 @@ public class RenderPassPipeline extends BufferBuilder {
     }
 
     /**
-     * Composite the parked AFTER_PACK layer onto the finished frame. Called once, after the pack's
-     * composite and final passes have run, from {@link
-     * com.lowdragmc.photon.client.postfx.PhotonPostFX#onLevelRenderComplete()} — before the custom
-     * effect chain, so effects see the FX.
+     * Whether a build has parked an FX layer that still has to be composited this frame.
+     *
+     * <p>Deliberately NOT {@code lateLayerStarted}: that flag lives until the frame boundary
+     * (RenderFrameEvent.Post), i.e. past the GUI, so an editor screen opened over a world with late
+     * FX would see it still set and defer its own effect chain to a composite that already happened.
      */
-    public static void compositePendingAfterPackLayer() {
-        var layer = pendingAfterPackLayer;
+    public static boolean isLateLayerPending() {
+        return pendingLateLayer != null;
+    }
+
+    /**
+     * Composite the parked FX layer onto the finished frame. Called once from {@link
+     * com.lowdragmc.photon.client.postfx.PhotonPostFX#onLevelRenderComplete()} — after
+     * {@code LevelRenderer.renderLevel} has returned, and before the custom effect chain so effects
+     * see the FX.
+     *
+     * <p>That seam is what buys {@link FXCompositeMode#LATE} its two fixes at once: it sits after the
+     * clouds and weather in Fast/Fancy, and after {@code transparencyChain.process()} in Fabulous —
+     * where the five layer targets have already been resolved into the main one. Photon never
+     * participated in that chain (its FX went into the main/opaque target and were then painted over
+     * by water, clouds and weather alike), so Fabulous is fixed by the same code path rather than by
+     * a mode of its own.
+     */
+    public static void compositePendingLateLayer() {
+        var layer = pendingLateLayer;
         if (layer == null) return;
-        pendingAfterPackLayer = null;
-        // The pack will never see these pixels, so its bloom cannot reach them — ours is the only
-        // one they can get. It runs here, once, on the layer both queues finished accumulating.
-        int colorTexture = bloomedColorOf(layer, pendingAfterPackBloom);
+        pendingLateLayer = null;
+        // Nothing else will ever see these pixels, so no other bloom can reach them — ours is the
+        // only one they can get. It runs here, once, on the layer both queues finished accumulating.
+        int colorTexture = bloomedColorOf(layer, pendingLateBloom);
         // bindWrite(true) also restores the full-frame viewport that the bloom chain left mip-sized
         Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
         SceneBlit.compositePremultipliedToBound(colorTexture, layer.getColorTextureId(), false);
@@ -571,6 +819,9 @@ public class RenderPassPipeline extends BufferBuilder {
 
     private void clearRenderingState() {
         particles.clear();
+        activeGroup = particles;
+        lateGroup = null;
+        lateLayer = false;
         camera = null;
     }
 
@@ -607,8 +858,32 @@ public class RenderPassPipeline extends BufferBuilder {
                     + "colortex0 (lit, pre-tonemap, pack colour space) instead of the finished frame");
             return new SceneSamplers(irisTarget.sceneColorTexture(), irisTarget.sceneDepthTexture());
         }
+        if (lateLayer) {
+            // DRAW_TARGET is a transparent accumulator here, so the usual "copy what we are drawing
+            // onto" would hand every sampling material a black frame. Sample the real frame instead.
+            //
+            // The depth handed out is the LIVE one (water included), NOT the opaque snapshot the
+            // layer depth-tests against — deliberately. Hardware rejection against the snapshot is
+            // what stops a water surface slicing the effect in half; a DepthFade against the live
+            // depth is what makes the part that does reach the water fade out softly instead of
+            // ending on a hard line.
+            var sampler = getLateSceneSampler();
+            return new SceneSamplers(sampler.getColorTextureId(), sampler.getDepthTextureId());
+        }
         var sampler = getSceneSampler();
         return new SceneSamplers(sampler.getColorTextureId(), sampler.getDepthTextureId());
+    }
+
+    /** The frame as it stands at the particle pass — colour and live depth straight off MC's main
+     *  target, since the late layer itself holds neither. */
+    private HDRTarget getLateSceneSampler() {
+        if (SCENE_SAMPLER != null && !IS_SCENE_SAMPLER_DIRTY) return SCENE_SAMPLER;
+        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        SCENE_SAMPLER = resize(SCENE_SAMPLER, DRAW_TARGET.width, DRAW_TARGET.height, true);
+        SCENE_SAMPLER.copyDepthAndColorFrom(mainTarget);
+        IS_SCENE_SAMPLER_DIRTY = false;
+        DRAW_TARGET.bindWrite(false);
+        return SCENE_SAMPLER;
     }
 
     public @Nonnull HDRTarget getSceneSampler() {
@@ -622,6 +897,10 @@ public class RenderPassPipeline extends BufferBuilder {
         // On the pack path there is nothing to refresh: samplers point straight at Iris' textures,
         // so this also skips a full-screen copy per drawing pass.
         if (irisTarget != null) return;
+        // Nor on the late path: what it samples is MC's main target, which no draw of ours touches
+        // until the composite. Re-copying it per pass would be a full-screen blit for an image that
+        // cannot have changed. The one copy a build does need is forced in renderGroup().
+        if (lateLayer) return;
         IS_SCENE_SAMPLER_DIRTY = true;
     }
 
