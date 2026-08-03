@@ -1,11 +1,14 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -14,19 +17,28 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
+import com.lowdragmc.photon.client.render.MaterialPreviewRenderer;
 import com.lowdragmc.photon.client.render.PhotonCustomUniforms;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonRenderTypes;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.serialization.MapCodec;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.EndTag;
+import net.minecraft.nbt.FloatTag;
+import net.minecraft.nbt.IntArrayTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.NotNull;
@@ -34,6 +46,13 @@ import org.jetbrains.annotations.NotNull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 /**
  * User custom-shader material — the 1.21 {@code LDShaderHolder} contract rebuilt on 26.1:
@@ -100,19 +119,19 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     // layout is {curves|gradients: [...]} — rewrite legacy keys in place before the field pass
     @Override
     public void deserialize(net.minecraft.world.level.storage.@NotNull ValueInput input) {
-        var raw = input.read(com.mojang.serialization.MapCodec.assumeMapUnsafe(CompoundTag.CODEC)).orElse(null);
-        if (raw != null && (raw.get("curveTexture") instanceof net.minecraft.nbt.ListTag
-                || raw.get("gradientTexture") instanceof net.minecraft.nbt.ListTag)) {
+        var raw = input.read(MapCodec.assumeMapUnsafe(CompoundTag.CODEC)).orElse(null);
+        if (raw != null && (raw.get("curveTexture") instanceof ListTag
+                || raw.get("gradientTexture") instanceof ListTag)) {
             wrapLegacyList(raw, "curveTexture", "curves");
             wrapLegacyList(raw, "gradientTexture", "gradients");
-            com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(raw, this, Platform.getFrozenRegistry());
+            PersistedParser.deserializeNBT(raw, this, Platform.getFrozenRegistry());
             return;
         }
-        com.lowdragmc.lowdraglib2.utils.PersistedParser.deserialize(this, input);
+        PersistedParser.deserialize(this, input);
     }
 
     private static void wrapLegacyList(CompoundTag tag, String key, String innerKey) {
-        if (tag.get(key) instanceof net.minecraft.nbt.ListTag list) {
+        if (tag.get(key) instanceof ListTag list) {
             var wrapped = new CompoundTag();
             wrapped.put(innerKey, list);
             tag.put(key, wrapped);
@@ -159,7 +178,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     // ---- 26.1 runtime: dynamic uniforms in the PhotonCustomMaterial UBO ------------------------------
 
     /** Uniform names owned by the engine in the 1.21 shader JSONs — never material values. */
-    private static final java.util.Set<String> BUILTIN_UNIFORMS = java.util.Set.of(
+    private static final Set<String> BUILTIN_UNIFORMS = Set.of(
             "ModelViewMat", "ProjMat", "IViewRotMat", "ColorModulator", "FogStart", "FogEnd",
             "FogColor", "FogShape", "GameTime", "ScreenSize", "LineWidth");
 
@@ -175,11 +194,11 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
      */
     private static final class ShaderState implements AutoCloseable {
         final PhotonCustomUniforms uniforms;
-        final java.util.Map<PhotonPipelines.CustomShaderKey, RenderType> renderTypes =
-                new java.util.concurrent.ConcurrentHashMap<>();
+        final Map<PhotonPipelines.CustomShaderKey, RenderType> renderTypes =
+                new ConcurrentHashMap<>();
         private boolean closed;
 
-        ShaderState(java.util.List<PhotonCustomUniforms.Field> layout) {
+        ShaderState(List<PhotonCustomUniforms.Field> layout) {
             this.uniforms = new PhotonCustomUniforms(layout);
         }
 
@@ -208,9 +227,9 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
      *  block layout. Layout source of truth = the JSON {@code uniforms} list (1.21 parity); the
      *  converter emits the same set into BOTH stages' GLSL block, so vsh/fsh/Java always agree. */
     private record ShaderMeta(Identifier vertex, Identifier fragment,
-                              java.util.List<String> samplerNames,
-                              java.util.List<String> sceneSamplers,
-                              java.util.List<PhotonCustomUniforms.Field> layout) {
+                              List<String> samplerNames,
+                              List<String> sceneSamplers,
+                              List<PhotonCustomUniforms.Field> layout) {
     }
 
     @Nullable
@@ -238,9 +257,9 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         var vertex = new Identifier[]{Photon.id("core/particle")};
         var fragment = new Identifier[]{Identifier.fromNamespaceAndPath(
                 shaderLocation.getNamespace(), "core/" + shaderLocation.getPath())};
-        var samplerNames = new java.util.TreeSet<String>();
-        var sceneSamplers = new java.util.TreeSet<String>();
-        var layout = new java.util.TreeMap<String, PhotonCustomUniforms.Field>();
+        var samplerNames = new TreeSet<String>();
+        var sceneSamplers = new TreeSet<String>();
+        var layout = new TreeMap<String, PhotonCustomUniforms.Field>();
         readShaderJson(json -> {
             if (json.has("vertex")) vertex[0] = mapProgram(json.get("vertex").getAsString());
             if (json.has("fragment")) fragment[0] = mapProgram(json.get("fragment").getAsString());
@@ -268,8 +287,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             }
         });
         return new ShaderMeta(vertex[0], fragment[0],
-                java.util.List.copyOf(samplerNames), java.util.List.copyOf(sceneSamplers),
-                java.util.List.copyOf(layout.values()));
+                List.copyOf(samplerNames), List.copyOf(sceneSamplers),
+                List.copyOf(layout.values()));
     }
 
     /** 1.21 shader-JSON uniform type/count → the std140 block member type (the block skips
@@ -305,7 +324,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     private ShaderState state() {
         if (state == null) {
             state = new ShaderState(meta().layout());
-            com.lowdragmc.photon.client.AutoCloseCleaner.registerRenderThread(this, state);
+            AutoCloseCleaner.registerRenderThread(this, state);
             valuesDirty = true;
         }
         if (valuesDirty) {
@@ -318,18 +337,18 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     // ---- live sampler bindings (per material; drain reads them live, no RenderType churn) --------
 
     @Nullable
-    private transient java.util.Map<String, Identifier> liveSamplers;
+    private transient Map<String, Identifier> liveSamplers;
 
     /** The material's OWN mutable sampler-binding map — {@code Sampler0} (the unused base, missing)
      *  plus every custom sampler → its bound texture (saved blob, else missing). Referenced live by
      *  {@link PhotonRenderTypes.PhotonDrawInfo}: swapping a texture
      *  mutates it in place, so no new RenderType/pipeline is created. Scene samplers are NOT here —
      *  the drain binds those from the scene capture. */
-    private java.util.Map<String, Identifier> liveSamplers() {
+    private Map<String, Identifier> liveSamplers() {
         if (liveSamplers == null) {
-            liveSamplers = new java.util.concurrent.ConcurrentHashMap<>();
+            liveSamplers = new ConcurrentHashMap<>();
         }
-        var missing = net.minecraft.client.renderer.texture.MissingTextureAtlasSprite.getLocation();
+        var missing = MissingTextureAtlasSprite.getLocation();
         liveSamplers.put("Sampler0", missing);
         var saved = pendingShaderData.getCompoundOrEmpty("samplers");
         for (var name : meta().samplerNames()) {
@@ -349,7 +368,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     /** Override a JSON-declared sampler with one of this material's own live textures (curve/gradient
      *  samplers were {@code addDynamicSampler} calls in 1.21). No-op when the shader doesn't declare it. */
-    private void bindOwnSampler(String name, @javax.annotation.Nullable Identifier id) {
+    private void bindOwnSampler(String name, @Nullable Identifier id) {
         if (id != null && liveSamplers != null && liveSamplers.containsKey(name)) {
             liveSamplers.put(name, id);
         }
@@ -375,14 +394,14 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         for (var name : uniforms.keySet()) {
             if (BUILTIN_UNIFORMS.contains(name) || name.startsWith("U_")) continue;
             switch (uniforms.get(name)) {
-                case net.minecraft.nbt.ListTag list when !list.isEmpty() -> {
+                case ListTag list when !list.isEmpty() -> {
                     var components = new float[list.size()];
                     for (int i = 0; i < components.length; i++) {
                         components[i] = list.getFloatOr(i, 0f);
                     }
                     target.set(name, components);
                 }
-                case net.minecraft.nbt.IntArrayTag ints when !ints.isEmpty() -> {
+                case IntArrayTag ints when !ints.isEmpty() -> {
                     var array = ints.getAsIntArray();
                     var components = new float[array.length];
                     for (int i = 0; i < components.length; i++) {
@@ -399,9 +418,9 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
      *  the live buffer dirty (a few-byte re-upload — no recompilation). */
     public void setUniformValue(String name, float... components) {
         var uniforms = pendingShaderData.getCompoundOrEmpty("uniforms");
-        var list = new net.minecraft.nbt.ListTag();
+        var list = new ListTag();
         for (var component : components) {
-            list.add(net.minecraft.nbt.FloatTag.valueOf(component));
+            list.add(FloatTag.valueOf(component));
         }
         uniforms.put(name, list);
         pendingShaderData.put("uniforms", uniforms);
@@ -424,7 +443,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                 }
             }
         });
-        if (pendingShaderData.getCompoundOrEmpty("uniforms").get(name) instanceof net.minecraft.nbt.ListTag list) {
+        if (pendingShaderData.getCompoundOrEmpty("uniforms").get(name) instanceof ListTag list) {
             for (int i = 0; i < count && i < list.size(); i++) {
                 result[i] = list.getFloatOr(i, 0f);
             }
@@ -433,12 +452,12 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     }
 
     /** Parse this shader's JSON manifest (kept from 1.21 as the configurator/layout metadata). */
-    private void readShaderJson(java.util.function.Consumer<com.google.gson.JsonObject> consumer) {
+    private void readShaderJson(Consumer<JsonObject> consumer) {
         var jsonId = Identifier.fromNamespaceAndPath(shaderLocation.getNamespace(),
                 "shaders/core/" + shaderLocation.getPath() + ".json");
-        net.minecraft.client.Minecraft.getInstance().getResourceManager().getResource(jsonId).ifPresent(resource -> {
+        Minecraft.getInstance().getResourceManager().getResource(jsonId).ifPresent(resource -> {
             try (var reader = resource.openAsReader()) {
-                consumer.accept(com.google.gson.JsonParser.parseReader(reader).getAsJsonObject());
+                consumer.accept(JsonParser.parseReader(reader).getAsJsonObject());
             } catch (Exception e) {
                 compiledErrorMessage = "bad shader json: " + e.getMessage();
             }
@@ -446,7 +465,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     }
 
     /** Engine-owned sampler names — bound by the pipeline itself, never per-material. */
-    private static final java.util.Set<String> BUILTIN_SAMPLERS = java.util.Set.of(
+    private static final Set<String> BUILTIN_SAMPLERS = Set.of(
             "Sampler0", "Sampler1", "Sampler2");
 
     /** {@code SamplerScene*} names are scene-capture samplers (the 1.21 contract: SamplerSceneColor
@@ -473,7 +492,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         var s = state();
         var m = meta();
         var key = new PhotonPipelines.CustomShaderKey(
-                m.vertex(), m.fragment(), java.util.Map.of(),
+                m.vertex(), m.fragment(), Map.of(),
                 m.samplerNames(), m.sceneSamplers(), setting.pipelineKey(mode));
         // this material OWNS its RenderTypes, one per draw variant (blend/mode/state); build + register
         // on first use of each variant, freed together when the material is released
@@ -493,7 +512,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         }
         // visibly broken rather than invisible — same policy as MissingMaterial
         return MaterialRenderTypes.hdrParticle(
-                net.minecraft.client.renderer.texture.MissingTextureAtlasSprite.getLocation(),
+                MissingTextureAtlasSprite.getLocation(),
                 setting.pipelineKey(mode));
     }
 
@@ -501,14 +520,14 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public IGuiTexture preview() {
         return DynamicTexture.of(() -> isCompiledError() ?
                 new TextTexture(compiledErrorMessage.isEmpty() ? "error" : compiledErrorMessage, 0xffff0000) :
-                com.lowdragmc.photon.client.render.MaterialPreviewRenderer.previewOf(this));
+                MaterialPreviewRenderer.previewOf(this));
     }
 
     @Override
     public IGuiTexture previewLive() {
         return DynamicTexture.of(() -> isCompiledError() ?
                 new TextTexture(compiledErrorMessage.isEmpty() ? "error" : compiledErrorMessage, 0xffff0000) :
-                com.lowdragmc.photon.client.render.MaterialPreviewRenderer.livePreviewOf(this));
+                MaterialPreviewRenderer.livePreviewOf(this));
     }
 
     @Override
@@ -571,7 +590,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             var row = new Configurator(name);
             for (int i = 0; i < count; i++) {
                 var component = i;
-                row.inlineContainer.addChildren(new com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator("",
+                row.inlineContainer.addChildren(new NumberConfigurator("",
                         () -> getUniformValue(name, count)[component],
                         value -> {
                             var components = getUniformValue(name, count);

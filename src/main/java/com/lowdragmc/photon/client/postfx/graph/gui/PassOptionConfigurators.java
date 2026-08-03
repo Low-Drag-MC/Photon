@@ -7,6 +7,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.IFieldValueConfigurable;
 import com.lowdragmc.photon.client.postfx.graph.PassSize;
 import com.lowdragmc.photon.client.postfx.graph.PassSource;
@@ -131,7 +132,7 @@ public final class PassOptionConfigurators {
      *  transient selection listener. */
     private static Configurator graphRow(IFieldValueConfigurable vc) {
         var row = new Configurator("photon.pass.source_graph");
-        var button = new com.lowdragmc.lowdraglib2.gui.ui.elements.Button();
+        var button = new Button();
         button.setText(graphDisplayName(source(vc).graph()));
         button.setOnClick(event -> {
             var mui = event.currentElement.getModularUI();

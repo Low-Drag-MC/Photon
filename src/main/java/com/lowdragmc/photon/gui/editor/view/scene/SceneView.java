@@ -1,5 +1,7 @@
 package com.lowdragmc.photon.gui.editor.view.scene;
 
+import com.lowdragmc.lowdraglib2.client.scene.SceneRenderContext;
+import com.lowdragmc.lowdraglib2.client.scene.WorldSceneRenderer;
 import com.lowdragmc.lowdraglib2.client.utils.RenderBufferUtils;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.SceneEditor;
@@ -24,6 +26,7 @@ import dev.vfyjxf.taffy.style.FlexDirection;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.Blocks;
@@ -113,7 +116,7 @@ public class SceneView extends View {
         // RGB only — glow straddling the void/content boundary composites differently on each
         // side and visibly tears. An opaque backdrop makes alpha 1 everywhere, so translucency,
         // bloom and the PIP blit all resolve against one consistent background.
-        var renderer = sceneEditor.scene.<com.lowdragmc.lowdraglib2.client.scene.WorldSceneRenderer>getRenderer();
+        var renderer = sceneEditor.scene.<WorldSceneRenderer>getRenderer();
         if (renderer != null) {
             renderer.setBeforeWorldRender(r -> {
                 var target = RenderSystem.outputColorTextureOverride;
@@ -273,7 +276,7 @@ public class SceneView extends View {
         // 26.1: renderAfterWorld takes the SceneRenderContext; immediate line draws route through
         // its buffer source (blend/depth owned by the lines pipeline, width per-vertex).
         @Override
-        protected void renderAfterWorld(com.lowdragmc.lowdraglib2.client.scene.SceneRenderContext ctx) {
+        protected void renderAfterWorld(SceneRenderContext ctx) {
             var partialTicks = ctx.partialTicks();
             var bufferSource = ctx.bufferSource();
             if (fxObjectInfoView.getInspected() != null) {
@@ -281,7 +284,7 @@ public class SceneView extends View {
                 if (isCullBoxVisible && fxObjectInfoView.getInspected() instanceof FXObject fxObject) {
                     var cullBox = fxObject.getRenderBoundingBox(partialTicks);
                     if (cullBox != AABB.INFINITE) {
-                        var buffer = bufferSource.getBuffer(net.minecraft.client.renderer.rendertype.RenderTypes.lines());
+                        var buffer = bufferSource.getBuffer(RenderTypes.lines());
                         RenderBufferUtils.drawCubeFrame(new PoseStack(), buffer,
                                 (float) cullBox.minX, (float) cullBox.minY, (float) cullBox.minZ,
                                 (float) cullBox.maxX, (float) cullBox.maxY, (float) cullBox.maxZ,

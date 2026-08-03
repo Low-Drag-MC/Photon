@@ -1,8 +1,12 @@
 package com.lowdragmc.photon.client;
 
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.compat.iris.IrisOverlay;
 import com.lowdragmc.photon.client.postfx.PhotonPostFX;
+import com.lowdragmc.photon.client.postfx.runtime.PostFXPreview;
 import com.lowdragmc.photon.client.render.IPhotonFXCollector;
+import com.lowdragmc.photon.client.render.MaterialPreviewRenderer;
+import com.lowdragmc.photon.client.render.OpaqueDepthCapture;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
 import com.lowdragmc.photon.client.render.PhotonStage;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
@@ -15,6 +19,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.FrameGraphSetupEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Vector3f;
 
@@ -34,8 +39,8 @@ public class PhotonClientListeners {
      *  before opening its own pass (see {@code MaterialPreviewRenderer.renderInto}). */
     @SubscribeEvent
     public static void onRenderFramePre(RenderFrameEvent.Pre event) {
-        com.lowdragmc.photon.client.render.MaterialPreviewRenderer.processPending();
-        com.lowdragmc.photon.client.postfx.runtime.PostFXPreview.processPending();
+        MaterialPreviewRenderer.processPending();
+        PostFXPreview.processPending();
     }
 
     /** Fires once per render frame (in-world and in the editor screen alike) — the post-effect
@@ -62,6 +67,12 @@ public class PhotonClientListeners {
     @SubscribeEvent
     public static void onRenderLevelStageAfterOpaque(RenderLevelStageEvent.AfterOpaqueFeatures event) {
         worldCollector().drain(PhotonStage.AFTER_OPAQUE_FEATURES);
+        // Snapshot the opaque-only depth FXCompositeMode.LATE tests against, INCLUDING the opaque FX
+        // just drawn (they are as solid as the terrain). 26.1 has no AfterBlockEntities event and this
+        // is the last seam before the translucent chunk layer, so it is both the correct content and
+        // the correct moment — taken here rather than in its own subscriber because the order relative
+        // to the drain above matters and same-event subscriber order is not guaranteed.
+        OpaqueDepthCapture.capture();
     }
 
     /** Photon's translucent draw slot (the 1.21 semantics: after vanilla translucent particles,
@@ -84,5 +95,29 @@ public class PhotonClientListeners {
                 camera.projectionMatrix, camera.viewRotationMatrix,
                 new Vector3f((float) camera.pos.x, (float) camera.pos.y, (float) camera.pos.z),
                 target.width, target.height);
+    }
+
+    /**
+     * Past the whole level render — the clouds, the weather and (in Fabulous) the transparency chain are
+     * already on the frame, and under a shader pack Iris has run its composite and final passes from
+     * inside {@code LevelRenderer.renderLevel}. 26.1 fires this event from {@code GameRenderer} AFTER
+     * that call returns, which is exactly the seam 1.21 had to hand-write a mixin for.
+     *
+     * <p>Draw the deferred FX here, then let {@code PhotonPostFX} merge the layer and run any effect
+     * chain that was held back with it — composite first, effects second, so effects see the FX.
+     */
+    @SubscribeEvent
+    public static void onRenderLevelStageAfterLevel(RenderLevelStageEvent.AfterLevel event) {
+        // Composite only — NOTHING is drawn here. The deferred layer's geometry was rendered back at
+        // the translucent seam, inside the level pass where the camera state is valid; all that waits
+        // for this point is the fullscreen blend (past the clouds and the weather) and the effect chain
+        // that had to wait for it.
+        PhotonPostFX.onLevelRenderComplete();
+    }
+
+    /** Opt-in shader-pack layout readout (/photon_iris overlay). */
+    @SubscribeEvent
+    public static void onRenderGui(RenderGuiEvent.Post event) {
+        IrisOverlay.render(event.getGuiGraphics());
     }
 }

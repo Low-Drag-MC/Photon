@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.fx.timeline;
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.postfx.runtime.CompiledEffect;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -165,11 +166,11 @@ public class PostProcessClip extends Clip {
         float t = progress(localTime);
         var result = new LinkedHashMap<String, Object>();
         if (maskCulling) {
-            result.put(com.lowdragmc.photon.client.postfx.runtime.CompiledEffect.MASK_FILTER_PARAM,
+            result.put(CompiledEffect.MASK_FILTER_PARAM,
                     maskGroup);
         }
         if (independent) {
-            result.put(com.lowdragmc.photon.client.postfx.runtime.CompiledEffect.INDEPENDENT_PARAM,
+            result.put(CompiledEffect.INDEPENDENT_PARAM,
                     Boolean.TRUE);
         }
         params.forEach((name, override) -> result.put(name, switch (override.kind()) {

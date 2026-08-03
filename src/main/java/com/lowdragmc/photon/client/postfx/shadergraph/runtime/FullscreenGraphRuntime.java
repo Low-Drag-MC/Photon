@@ -8,20 +8,19 @@ import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.Graph;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphResource;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.IGraphReferenceResolver;
+import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.postfx.shadergraph.FullscreenShaderGraph;
-import com.lowdragmc.photon.client.postfx.shadergraph.PhotonFullscreenCompiler;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * The shared compile cache for {@link FullscreenShaderGraph} resources — the fullscreen twin of
@@ -160,7 +159,7 @@ public final class FullscreenGraphRuntime {
             if (fnTag != null) {
                 var fn = PhotonShaderFunctionGraphResource.INSTANCE.createGraph();
                 fn.graphModel.setReferenceResolver(this);
-                com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(fnTag, fn.graphModel, Platform.getFrozenRegistry());
+                PersistedParser.deserializeNBT(fnTag, fn.graphModel, Platform.getFrozenRegistry());
                 fn.graphModel.setReferenceResolver(this);
                 return fn;
             }

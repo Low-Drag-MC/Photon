@@ -13,6 +13,7 @@ import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import net.minecraft.network.chat.Component;
 
 import javax.annotation.Nullable;
+import java.util.UUID;
 
 /**
  * Client-side, type-specific UI + behavior for a kind of {@link Track}, registered under
@@ -133,7 +134,7 @@ public abstract class TrackEditor {
 
     /** Called before a track's target id changes (rebind), with the id being unbound. Lets e.g. an
      *  animation track restore the old target's authored pose. */
-    public void onTargetWillChange(TimelineContext ctx, Track track, @Nullable java.util.UUID oldTargetId) {
+    public void onTargetWillChange(TimelineContext ctx, Track track, @Nullable UUID oldTargetId) {
     }
 
     /** A header "target object" slot (click to pick, drag an fx object to bind). Shared by activator

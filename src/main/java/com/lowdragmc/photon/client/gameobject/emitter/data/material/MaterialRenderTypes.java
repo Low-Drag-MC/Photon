@@ -9,6 +9,7 @@ import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -63,7 +64,7 @@ public final class MaterialRenderTypes {
                     new PhotonRenderTypes.PhotonDrawInfo.Programs(
                             PhotonPipelines.hdrParticle(key.fragmentShader(), key.pipelineKey())),
                     new PhotonRenderTypes.PhotonDrawInfo.Bindings(
-                            Map.of("Sampler0", key.texture()), java.util.List.of(), null, null),
+                            Map.of("Sampler0", key.texture()), List.of(), null, null),
                     new PhotonRenderTypes.PhotonDrawInfo.InstancedRecipe(
                             key.pipelineKey(), key.fragmentShader(), null)));
             return renderType;

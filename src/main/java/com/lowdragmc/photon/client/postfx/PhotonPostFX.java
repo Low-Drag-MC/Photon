@@ -3,11 +3,22 @@ package com.lowdragmc.photon.client.postfx;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.PhotonConfig;
+import com.lowdragmc.photon.client.compat.iris.IrisCompat;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
+import com.lowdragmc.photon.client.postfx.runtime.PostFXPreview;
 import com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool;
+import com.lowdragmc.photon.client.postfx.runtime.RenderGraphExecutor;
+import com.lowdragmc.photon.client.postfx.runtime.SceneBlit;
+import com.lowdragmc.photon.client.render.PhotonDeferredLayer;
+import com.lowdragmc.photon.client.render.PhotonMaskTarget;
+import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
+import com.lowdragmc.photon.gui.editor.resource.RenderGraphResource;
 import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -48,13 +59,13 @@ public final class PhotonPostFX {
 
     /** Every requestable effect path (render graphs + bare fullscreen graphs), exactly as
      *  {@code /photonfx test} accepts them — the {@code /photonfx list} backing. */
-    public static java.util.List<String> listEffectPaths() {
-        var result = new java.util.ArrayList<String>();
-        for (var entry : com.lowdragmc.photon.gui.editor.resource.RenderGraphResource.INSTANCE
+    public static List<String> listEffectPaths() {
+        var result = new ArrayList<String>();
+        for (var entry : RenderGraphResource.INSTANCE
                 .getResourceInstance().listAllResources()) {
             result.add(entry.getKey().getPathWithType());
         }
-        for (var entry : com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource.INSTANCE
+        for (var entry : FullscreenShaderGraphResource.INSTANCE
                 .getResourceInstance().listAllResources()) {
             result.add(entry.getKey().getPathWithType() + " (fullscreen)");
         }
@@ -81,12 +92,91 @@ public final class PhotonPostFX {
      * or the HDR target unavailable).
      */
     public static void onLevelStageAfterParticles() {
+        // Under a shader pack this stage is far too early: the pack's deferred/composite/final chain
+        // has not run, so the main target does not hold the frame yet and anything we did here would
+        // be re-exposed and re-tonemapped by the pack. onLevelRenderComplete() takes over.
+        if (IrisCompat.isUsingShaderPack()) return;
+        // Same reasoning for a parked FXCompositeMode.LATE layer: the FX are not in the frame yet, so
+        // effects run here would simply not see them. onLevelRenderComplete() takes over.
+        if (PhotonDeferredLayer.isPending()) return;
+        runChainOverMainTarget();
+    }
+
+    /**
+     * The slot for compositing a deferred FX layer, and for the custom effect chain whenever one was
+     * deferred with it. Sits after {@code LevelRenderer.renderLevel} has returned — i.e. after the
+     * clouds and weather, after Fabulous' transparency chain, and (under a pack) after Iris'
+     * {@code finalizeLevelRendering()} but before its colour-space conversion. Either way the main
+     * render target holds a finished frame.
+     *
+     * <p>Two kinds of layer are parked for here, and both want the same treatment: composite first,
+     * effects second, so effects operate on an image that contains the FX.
+     *
+     * <ul>
+     *   <li>{@code IrisCompositeMode.AFTER_PACK} — packs whose particle program writes encoded
+     *       gbuffer data rather than colour.</li>
+     *   <li>{@code FXCompositeMode.LATE} — the plain path, where waiting until here is what keeps the
+     *       clouds from painting over the FX.</li>
+     * </ul>
+     *
+     * @see com.lowdragmc.photon.client.PhotonClientListeners#onRenderLevelStageAfterLevel
+     */
+    public static void onLevelRenderComplete() {
+        boolean shaderPack = IrisCompat.isUsingShaderPack();
+        boolean hadPendingLayer = PhotonDeferredLayer.isPending();
+        PhotonDeferredLayer.compositePending();
+        if (shaderPack) {
+            if (!PhotonConfig.INSTANCE.enableCustomEffectsWithShaderPack.get()) return;
+        } else if (!hadPendingLayer) {
+            // nothing was deferred, so the chain already ran at AFTER_PARTICLES
+            return;
+        }
+        runChainOverMainTarget();
+    }
+
+    /**
+     * Run the effect chain over MC's main target.
+     *
+     * <p>Normally the chain runs inside the drain of {@link com.lowdragmc.photon.client.render.PhotonStage#LAST},
+     * over Photon's HDR target — that is cheaper and higher precision, and it is why 26.1 dropped the
+     * standalone path this method used to be. It comes back for exactly one case: a deferred layer is
+     * merged AFTER that drain, so a chain that already ran would not contain the deferred FX. The drain
+     * therefore steps aside when it can see deferred jobs still queued
+     * ({@code PhotonWorldRenderState.drain}), and the chain runs here instead, over a frame that now has
+     * them in it.
+     *
+     * <p>Precision note: at this point the picture lives in the engine's RGBA8 target, so anything the
+     * FX pushed above 1.0 is already clamped. That is inherent to compositing late and is the same
+     * bargain 1.21 made.
+     */
+    private static void runChainOverMainTarget() {
         var stack = PostEffectStack.GLOBAL;
+        var main = Minecraft.getInstance().getMainRenderTarget();
+        var color = main.getColorTextureView();
+        var depth = main.getDepthTextureView();
         if (!stack.isConsumedThisFrame()) {
             // no chain ran this frame — the main target IS the clean scene
-            var main = Minecraft.getInstance().getMainRenderTarget();
-            com.lowdragmc.photon.client.postfx.runtime.PostFXPreview.captureIfRequested(
-                    main.getColorTextureView(), main.getDepthTextureView());
+            PostFXPreview.captureIfRequested(color, depth);
+        }
+        // isConsumedThisFrame is the load-bearing half: under a shader pack the LAST drain already ran
+        // the chain (nothing defers there), and consumeAndExecute would no-op anyway — this just says so.
+        if (color == null || stack.isConsumedThisFrame() || !stack.wantsExecution()) return;
+        var inputs = RenderGraphExecutor.FrameInputs
+                .of(color, depth)
+                .withSampleableDepth();
+        // The CustomMask this frame's drains already wrote. Without it a mask-reading effect (the
+        // outline pass, anything with a MaskFilter) resolves to "no mask" and silently does nothing —
+        // the drain-side chain passes it, so this path has to as well.
+        var mask = PhotonMaskTarget.writtenThisFrame(
+                color.getWidth(0), color.getHeight(0));
+        if (mask != null) {
+            inputs = inputs.withMask(mask.colorView(), mask.depthView());
+        }
+        // no bloom step: bloom is an HDR operation and already ran on the layer, where the overbright
+        // still existed. Passing it here would bloom an image that has been clamped to 1.
+        var output = stack.consumeAndExecute(inputs, null);
+        if (output != null) {
+            SceneBlit.writeBack(output, color);
         }
     }
 

@@ -1,10 +1,10 @@
 package com.lowdragmc.photon.gui.editor.view;
 
-import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.configurator.EditAction;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.TextTexture;
@@ -12,31 +12,32 @@ import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.ScrollDisplay;
 import com.lowdragmc.lowdraglib2.gui.ui.data.ScrollerMode;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Scroller;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.ScrollerView;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.SplitView;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.event.CommandEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
-import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
-import com.lowdragmc.photon.client.fx.timeline.property.ColorAnimatedProperty;
-import com.lowdragmc.photon.client.fx.timeline.property.ConfigAnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.Marker;
 import com.lowdragmc.photon.client.fx.timeline.SignalTrack;
 import com.lowdragmc.photon.client.fx.timeline.Timeline;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.fx.timeline.TrackGroup;
+import com.lowdragmc.photon.client.fx.timeline.property.ColorAnimatedProperty;
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigAnimatedProperty;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
@@ -47,15 +48,20 @@ import com.lowdragmc.photon.gui.editor.view.timeline.TrackEditor;
 import com.lowdragmc.photon.gui.editor.view.timeline.TrackUIState;
 import dev.vfyjxf.taffy.style.AlignItems;
 import dev.vfyjxf.taffy.style.FlexDirection;
-import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -134,11 +140,11 @@ public class FXTimelineView extends View implements TimelineContext {
     @Nullable
     private Track selectedClipTrack;
     /** Full multi-selection of clips (primary = {@link #selectedClip}). */
-    private final java.util.LinkedHashSet<Clip> selectedClips = new java.util.LinkedHashSet<>();
+    private final LinkedHashSet<Clip> selectedClips = new LinkedHashSet<>();
     @Nullable
     private Track selectedTrack;
     /** Full multi-selection of tracks (primary = {@link #selectedTrack}); for copy/paste/delete/move. */
-    private final java.util.LinkedHashSet<Track> selectedTracks = new java.util.LinkedHashSet<>();
+    private final LinkedHashSet<Track> selectedTracks = new LinkedHashSet<>();
     /** Currently-selected marker on the pinned strip, or null. */
     @Nullable
     private Marker selectedMarker;
@@ -150,7 +156,7 @@ public class FXTimelineView extends View implements TimelineContext {
     private double dragMarkerOrigin;
     private double dragMarkerGrabOffset;
     /** Lane element per track (recorded each rebuild) so a screen-Y maps to a destination row. */
-    private final Map<Track, UIElement> laneViews = new java.util.LinkedHashMap<>();
+    private final Map<Track, UIElement> laneViews = new LinkedHashMap<>();
 
     // playback mode (editor preview preference; not serialized)
     private enum EndMode { ALL_FINISHED, TIMELINE_END }
@@ -237,7 +243,7 @@ public class FXTimelineView extends View implements TimelineContext {
     @Override @Nullable public Clip selectedClip() { return selectedClip; }
     @Override @Nullable public Track selectedClipTrack() { return selectedClipTrack; }
     @Override public boolean isClipSelected(Clip clip) { return selectedClips.contains(clip); }
-    @Override public java.util.Set<Clip> selectedClips() { return selectedClips; }
+    @Override public Set<Clip> selectedClips() { return selectedClips; }
     @Override public void registerLaneItem(UIElement element, Runnable reposition) { laneItems.add(new TimelineContext.LaneItem(element, reposition)); }
     @Override public void refreshLaneLayout() { repositionLaneItems(); }
     @Override public void registerClipView(Track track, Clip clip, UIElement element) {
@@ -1217,7 +1223,7 @@ public class FXTimelineView extends View implements TimelineContext {
         editor.buildTrackMenu(menu, this, track);
         // copy the whole multi-selection when this track is part of it, else just this track
         var toCopy = selectedTracks.size() > 1 && selectedTracks.contains(track)
-                ? new ArrayList<>(selectedTracks) : java.util.List.of(track);
+                ? new ArrayList<>(selectedTracks) : List.of(track);
         menu.leaf("ldlib.gui.editor.menu.copy", () -> copyTracksToClipboard(toCopy));
         menu.leaf("photon.gui.editor.timeline.duplicate", () -> addTrack(track.copy(), tracks.indexOf(track) + 1));
         if (!clipboardTracks.isEmpty()) {
@@ -1227,7 +1233,7 @@ public class FXTimelineView extends View implements TimelineContext {
         fxEditor.openMenu(x, y, menu);
     }
 
-    private void copyTracksToClipboard(java.util.Collection<Track> tracks) {
+    private void copyTracksToClipboard(Collection<Track> tracks) {
         clipboardTracks.clear();
         for (var t : tracks) clipboardTracks.add(t.copy());
         clipboardKind = 2;
@@ -1308,7 +1314,7 @@ public class FXTimelineView extends View implements TimelineContext {
     }
 
     @Override
-    public double snapKeyTick(double tick, boolean ctrl, @Nullable java.util.Set<?> excludeSubClips) {
+    public double snapKeyTick(double tick, boolean ctrl, @Nullable Set<?> excludeSubClips) {
         if (ctrl) return tick;
         var runtime = fxEditor.runtime;
         if (runtime == null) return tick;
@@ -1454,7 +1460,7 @@ public class FXTimelineView extends View implements TimelineContext {
                     refreshPreview();
                 },
                 () -> {
-                    removals.stream().sorted(java.util.Comparator.comparingInt(Removal::index))
+                    removals.stream().sorted(Comparator.comparingInt(Removal::index))
                             .forEach(r -> r.list().add(Math.min(r.index(), r.list().size()), r.track()));
                     rebuild();
                     refreshPreview();
@@ -1462,7 +1468,7 @@ public class FXTimelineView extends View implements TimelineContext {
     }
 
     /** Move several selected tracks to the drop target in one undo, preserving their display order. */
-    private void reorderTracks(java.util.Collection<Track> dragged, Track target, boolean below, boolean into) {
+    private void reorderTracks(Collection<Track> dragged, Track target, boolean below, boolean into) {
         if (fxEditor.runtime == null) return;
         var timeline = fxEditor.runtime.fxData.timeline();
         var moving = topMost(new ArrayList<>(dragged));
@@ -1473,7 +1479,7 @@ public class FXTimelineView extends View implements TimelineContext {
         var toList = into2 ? ((TrackGroup) target).children() : timeline.parentListOf(target);
         if (toList == null) return;
         var order = visibleRows();
-        moving.sort(java.util.Comparator.comparingInt(order::indexOf));
+        moving.sort(Comparator.comparingInt(order::indexOf));
         record Origin(Track track, List<Track> list, int index) {}
         var origins = new ArrayList<Origin>();
         for (var t : moving) {
@@ -1492,7 +1498,7 @@ public class FXTimelineView extends View implements TimelineContext {
                 },
                 () -> {
                     for (var t : moving) { var l = timeline.parentListOf(t); if (l != null) l.remove(t); }
-                    origins.stream().sorted(java.util.Comparator.comparingInt(Origin::index))
+                    origins.stream().sorted(Comparator.comparingInt(Origin::index))
                             .forEach(o -> o.list().add(Math.min(o.index(), o.list().size()), o.track()));
                     rebuild();
                     refreshPreview();
@@ -1741,7 +1747,7 @@ public class FXTimelineView extends View implements TimelineContext {
             clipboardKind = 3;
             return;
         }
-        copyTracksToClipboard(selectedTracks.isEmpty() ? java.util.List.of(track) : new ArrayList<>(selectedTracks));
+        copyTracksToClipboard(selectedTracks.isEmpty() ? List.of(track) : new ArrayList<>(selectedTracks));
     }
 
     private void pasteClipboard() {
@@ -1777,7 +1783,7 @@ public class FXTimelineView extends View implements TimelineContext {
 
     private void clearFxObjectSelection() {
         fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
-        fxEditor.hierarchyView.treeList.setSelected(java.util.Collections.emptySet(), false);
+        fxEditor.hierarchyView.treeList.setSelected(Collections.emptySet(), false);
         fxEditor.sceneView.fxObjectInfoView.clear();
     }
 
@@ -1800,7 +1806,7 @@ public class FXTimelineView extends View implements TimelineContext {
     }
 
     @Override
-    public void selectClips(java.util.Collection<Clip> clips, boolean additive) {
+    public void selectClips(Collection<Clip> clips, boolean additive) {
         selectedMarker = null;
         selectedTracks.clear();
         if (!additive) selectedClips.clear();
@@ -1830,7 +1836,7 @@ public class FXTimelineView extends View implements TimelineContext {
 
     @Override
     public void toggleClipSelection(Track track, Clip clip) {
-        var set = new java.util.LinkedHashSet<>(selectedClips);
+        var set = new LinkedHashSet<>(selectedClips);
         if (!set.remove(clip)) set.add(clip);
         selectClips(set, false);
     }

@@ -1,10 +1,12 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
+import com.lowdragmc.lowdraglib2.Platform;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
-import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
+import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
@@ -26,13 +28,12 @@ import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
 import com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.ExtraCodecs;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector4f;
 
-import java.util.HashMap;
 
 /**
  * @author KilaBash
@@ -231,20 +232,20 @@ public class TrailsSetting extends ToggleGroup {
     @Override
     public void serialize(net.minecraft.world.level.storage.@NotNull ValueOutput output) {
         super.serialize(output);
-        output.store("config", net.minecraft.util.ExtraCodecs.NBT,
-                com.lowdragmc.lowdraglib2.utils.PersistedParser.serializeNBT(config, com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry()));
-        output.store("araConfig", net.minecraft.util.ExtraCodecs.NBT,
-                com.lowdragmc.lowdraglib2.utils.PersistedParser.serializeNBT(araConfig, com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry()));
+        output.store("config", ExtraCodecs.NBT,
+                PersistedParser.serializeNBT(config, Platform.getFrozenRegistry()));
+        output.store("araConfig", ExtraCodecs.NBT,
+                PersistedParser.serializeNBT(araConfig, Platform.getFrozenRegistry()));
     }
 
     @Override
     public void deserialize(net.minecraft.world.level.storage.@NotNull ValueInput input) {
         super.deserialize(input);
-        if (input.read("config", net.minecraft.util.ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
-            com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(tag, config, com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry());
+        if (input.read("config", ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
+            PersistedParser.deserializeNBT(tag, config, Platform.getFrozenRegistry());
         }
-        if (input.read("araConfig", net.minecraft.util.ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
-            com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(tag, araConfig, com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry());
+        if (input.read("araConfig", ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
+            PersistedParser.deserializeNBT(tag, araConfig, Platform.getFrozenRegistry());
         }
     }
 

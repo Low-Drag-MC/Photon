@@ -6,7 +6,8 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.Tag;
+
+import java.util.ArrayList;
 
 /**
  * A target-less track whose clips are post-processing windows ({@link PostProcessClip}): the
@@ -90,7 +91,7 @@ public class PostProcessTrack extends Track {
                             sampler != null ? sampler : RenderTypeGraphTypes.Sampler2DValue.defaultValue()));
                     continue;
                 }
-                var channels = new java.util.ArrayList<NumberFunction>(kind.channelCount());
+                var channels = new ArrayList<NumberFunction>(kind.channelCount());
                 var channelsTag = overrideTag.getListOrEmpty("fns");
                 for (int i = 0; i < channelsTag.size(); i++) {
                     channels.add(NumberFunction.deserializeWrapper(channelsTag.getCompoundOrEmpty(i)));

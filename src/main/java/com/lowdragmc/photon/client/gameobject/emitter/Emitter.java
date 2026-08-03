@@ -2,21 +2,26 @@ package com.lowdragmc.photon.client.gameobject.emitter;
 
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.AdditionalGPUDataSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
-import com.lowdragmc.photon.client.render.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialRenderTypes;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.ShaderGraphMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.UIResourceMaterial;
+import com.lowdragmc.photon.client.render.*;
+import com.lowdragmc.photon.client.render.PremultipliedBlendPlan;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import lombok.Getter;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -24,12 +29,15 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.AABB;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 import org.joml.Vector4f;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.system.MemoryUtil;
-import lombok.Getter;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -331,7 +339,12 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         if (settings.shaded()) {
             // the renderer's Layer picks the frame slot Photon opens its own pass at; every
             // material of the group shares it (1.21: the emitter went into one queue as a whole)
-            var stage = renderer.getLayer().stage;
+            var stage = renderer.effectiveStage();
+        // Deferred groups accumulate into a transparent layer, which changes what every material's
+        // blend must do to the alpha channel. Set around the geometry this group generates, so a
+        // group drawn in place in the same bake is unaffected.
+        PremultipliedBlendPlan.setAccumulating(
+                PremultipliedBlendPlan.isLayerStage(stage));
             for (var materialSetting : renderer.getMaterials()) {
                 var renderType = materialSetting.getRenderType(mode);
                 if (renderType == null) {
@@ -392,7 +405,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     private PhotonInstanceRing ringFor(PhotonInstanceRing[] rings, int slot) {
         if (rings[slot] == null) {
             rings[slot] = new PhotonInstanceRing();
-            com.lowdragmc.photon.client.AutoCloseCleaner.registerRenderThread(this, rings[slot]);
+            AutoCloseCleaner.registerRenderThread(this, rings[slot]);
         }
         return rings[slot];
     }
@@ -407,11 +420,11 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     private static FloatBuffer dataStaging;
     private static FloatBuffer customStaging;
     @Nullable
-    private static java.nio.ByteBuffer quadStaging;
+    private static ByteBuffer quadStaging;
 
     private static FloatBuffer staging(@Nullable FloatBuffer current, int floats) {
         if (current == null || current.capacity() < floats) {
-            current = org.lwjgl.BufferUtils.createFloatBuffer(Math.max(floats,
+            current = BufferUtils.createFloatBuffer(Math.max(floats,
                     current == null ? 10000 : current.capacity() * 2));
         }
         current.clear();
@@ -419,10 +432,10 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     }
 
     /** Direct scratch for {@link #sortQuads}'s permutation (direct so it can be memCopy'd). */
-    private static java.nio.ByteBuffer quadScratch(int bytes) {
+    private static ByteBuffer quadScratch(int bytes) {
         var current = quadStaging;
         if (current == null || current.capacity() < bytes) {
-            current = org.lwjgl.BufferUtils.createByteBuffer(Math.max(bytes,
+            current = BufferUtils.createByteBuffer(Math.max(bytes,
                     current == null ? 64 * 1024 : current.capacity() * 2));
             quadStaging = current;
         }
@@ -618,7 +631,12 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         }
         var eye = PhotonCameraUtils.facingEye(camera);
         var distanceSq = transform.position().distanceSquared(eye);
-        var stage = renderer.getLayer().stage;
+        var stage = renderer.effectiveStage();
+        // Deferred groups accumulate into a transparent layer, which changes what every material's
+        // blend must do to the alpha channel. Set around the geometry this group generates, so a
+        // group drawn in place in the same bake is unaffected.
+        PremultipliedBlendPlan.setAccumulating(
+                PremultipliedBlendPlan.isLayerStage(stage));
         if (shaded) {
             for (int m = 0; m < infos.size(); m++) {
                 var info = infos.get(m);
@@ -628,7 +646,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                         info.bindings().textures().get("Sampler0"));
                 var recipe = info.instanced();
                 var key = recipe.key();
-                com.mojang.blaze3d.pipeline.RenderPipeline pipeline;
+                RenderPipeline pipeline;
                 if (info.bindings().graph() != null) {
                     // shader graphs compile the same generated GLSL against the instanced format + define
                     var graph = info.bindings().graph();
@@ -664,7 +682,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                             null, null, // the overlay's own shader reads no additional data
                             layout),
                     new PhotonWorldRenderState.DrawBindings(
-                            Map.of("Sampler0", com.lowdragmc.photon.Photon.id("textures/particle/white.png")),
+                            Map.of("Sampler0", Photon.id("textures/particle/white.png")),
                             PhotonMaterialUniforms.sliceFor(
                                     new PhotonMaterialUniforms.Values(0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0)),
                             null, List.of(),
@@ -681,7 +699,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                          VertexFormat.Mode mode,
                          Camera camera, float partialTicks,
                          PhotonStage stage, int orderInLayer,
-                         @Nullable org.joml.Vector3fc sortOrigin,
+                         @Nullable Vector3fc sortOrigin,
                          GeometryBaker baker,
                          @Nullable PhotonWorldRenderState.MaskWrite mask) {
         var buffer = new ByteBufferBuilder(64 * 1024);
@@ -715,7 +733,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
      * back — measured 5–9x faster than the per-byte {@code ByteBuffer} loop it replaces, and it drops a
      * {@code byte[quads * quadBytes]} allocation per job per frame (2.5MB at 20k quads).
      */
-    private static void sortQuads(com.mojang.blaze3d.vertex.MeshData mesh, org.joml.Vector3fc sortOrigin) {
+    private static void sortQuads(MeshData mesh, Vector3fc sortOrigin) {
         var drawState = mesh.drawState();
         if (drawState.mode() != VertexFormat.Mode.QUADS) {
             return;

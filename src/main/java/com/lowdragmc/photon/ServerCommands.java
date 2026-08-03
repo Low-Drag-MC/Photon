@@ -16,7 +16,7 @@ public class ServerCommands {
     public static List<LiteralArgumentBuilder<CommandSourceStack>> createServerCommands() {
         return List.of(
                 Commands.literal("photon")
-                        .then(Commands.literal("fx").requires(net.minecraft.commands.Commands.hasPermission(net.minecraft.commands.Commands.LEVEL_GAMEMASTERS))
+                        .then(Commands.literal("fx").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                                 .then(Commands.argument("location", new FxLocationArgument())
                                         .then(BlockEffectCommand.createServerCommand())
                                         .then(EntityEffectCommand.createServerCommand())

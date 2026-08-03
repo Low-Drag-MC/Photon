@@ -14,7 +14,10 @@ import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import net.minecraft.client.Camera;
+import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
@@ -23,13 +26,15 @@ import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.system.MemoryUtil;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntList;
+
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Supplier;
+
 import static com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle.EPSILON;
 
 /**
@@ -80,11 +85,11 @@ public class AraTrailParticleRenderer {
     // ---- instanced-collection scratch (active during fillInstances; render thread only) ----
     private final Matrix4f collectMatrix = new Matrix4f();
     private final Vector3f collectTmp = new Vector3f();
-    @javax.annotation.Nullable
+    @Nullable
     private FloatBuffer collectPointBuffer;
-    @javax.annotation.Nullable
+    @Nullable
     private FloatBuffer collectDataBuffer;
-    @javax.annotation.Nullable
+    @Nullable
     private FloatBuffer collectCustomBuffer;
     private boolean collectTube;
     private int collectPointCount;
@@ -392,7 +397,7 @@ public class AraTrailParticleRenderer {
         buffer.addVertex(pos.x, pos.y, pos.z)
                 .setUv(uv.x, uv.y)
                 .setColor(color.x, color.y, color.z, color.w)
-                .setLight(net.minecraft.util.LightCoordsUtil.FULL_BRIGHT)
+                .setLight(LightCoordsUtil.FULL_BRIGHT)
                 .setNormal(normal.x, normal.y, normal.z);
     }
 
@@ -469,10 +474,10 @@ public class AraTrailParticleRenderer {
             var colorOverSegmentTime = runtime.colorOverSegmentTime.get();
             var thicknessOverSegmentTime = runtime.thicknessOverSegmentTime.get();
             var thicknessOverLength = runtime.thicknessOverLength.get();
-            java.util.function.Supplier<Float> lengthColorRandom = () -> particle.getMemRandom("trails-colorOverLength");
-            java.util.function.Supplier<Float> segmentColorRandom = () -> particle.getMemRandom("trails-colorOverSegmentTime");
-            java.util.function.Supplier<Float> segmentThicknessRandom = () -> particle.getMemRandom("trails-thicknessOverSegmentTime");
-            java.util.function.Supplier<Float> lengthThicknessRandom = () -> particle.getMemRandom("trails-thicknessOverLength");
+            Supplier<Float> lengthColorRandom = () -> particle.getMemRandom("trails-colorOverLength");
+            Supplier<Float> segmentColorRandom = () -> particle.getMemRandom("trails-colorOverSegmentTime");
+            Supplier<Float> segmentThicknessRandom = () -> particle.getMemRandom("trails-thicknessOverSegmentTime");
+            Supplier<Float> lengthThicknessRandom = () -> particle.getMemRandom("trails-thicknessOverLength");
             // colorOverTime / thicknessOverTime sample the (per-trail constant) emitter T
             var timeColor = runtime.colorOverTime.get().get(normalizedLife, () -> particle.getMemRandom("trails-colorOverTime")).intValue();
             float timeColorR = ColorUtils.red(timeColor);
@@ -810,8 +815,8 @@ public class AraTrailParticleRenderer {
 
         if (spanPointT.length <= collectSpanCount) {
             var capacity = Math.max(collectSpanCount + 1, Math.max(spanPointT.length * 2, 64));
-            spanPointT = java.util.Arrays.copyOf(spanPointT, capacity);
-            spanPointLife = java.util.Arrays.copyOf(spanPointLife, capacity);
+            spanPointT = Arrays.copyOf(spanPointT, capacity);
+            spanPointLife = Arrays.copyOf(spanPointLife, capacity);
         }
         spanPointT[collectSpanCount] = 1 - walkNormalizedLength; // head = 1, tail = 0 (arc length)
         spanPointLife[collectSpanCount] = walkNormalizedSegmentLife;
@@ -823,7 +828,7 @@ public class AraTrailParticleRenderer {
 
     @Nullable
     private Emitter.BaseMesh tubeMesh;
-    private Vector2f[] tubeSection = new org.joml.Vector2f[0];
+    private Vector2f[] tubeSection = new Vector2f[0];
     private float tubeUvWidthFactor;
 
     /**
@@ -849,7 +854,7 @@ public class AraTrailParticleRenderer {
         var section = config.section;
         var vertices = section.vertices;
         var segments = section.getSegments();
-        tubeSection = new org.joml.Vector2f[vertices == null ? 0 : vertices.size()];
+        tubeSection = new Vector2f[vertices == null ? 0 : vertices.size()];
         for (int i = 0; i < tubeSection.length; i++) {
             tubeSection[i] = new Vector2f(vertices.get(i));
         }

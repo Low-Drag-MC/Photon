@@ -1,21 +1,26 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigList;
-import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
+import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
+import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
+import com.lowdragmc.photon.client.render.FXCompositeMode;
 import com.lowdragmc.photon.client.render.PhotonStage;
+import com.lowdragmc.photon.client.render.PremultipliedBlendPlan;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector3fc;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -63,7 +68,7 @@ public class RendererSetting {
          *            that is zero in-world and the scene eye in the editor, whose camera sits at origin)
          */
         @Nullable
-        public org.joml.Vector3fc sortOrigin(org.joml.Vector3fc eye) {
+        public Vector3fc sortOrigin(Vector3fc eye) {
             return this == DISTANCE ? eye : null;
         }
     }
@@ -88,6 +93,13 @@ public class RendererSetting {
     @Configurable(name = "photon.emitter.config.renderer.vertexSortingMode", tips = "photon.emitter.config.renderer.vertexSortingMode.tips")
     @EqualsAndHashCode.Include
     protected SortMode vertexSortingMode = SortMode.NONE;
+
+    /** When this emitter's FX are merged into the frame — see {@link FXCompositeMode}. INHERIT (the
+     *  default) follows {@code PhotonConfig.fxCompositeMode}. Part of the batching key: passes with
+     *  different modes accumulate into different targets and must never merge into one draw. */
+    @Configurable(name = "photon.emitter.config.renderer.compositeMode", tips = "photon.emitter.config.renderer.compositeMode.tips")
+    @EqualsAndHashCode.Include
+    protected FXCompositeMode compositeMode = FXCompositeMode.INHERIT;
 
     /** CustomMask (Unreal CustomDepth/Stencil-style): when enabled, this emitter's passes redraw a
      *  flat mask id into the pipeline's mask target, which post effects read via the Custom
@@ -213,6 +225,7 @@ public class RendererSetting {
         public final RuntimeValue<Cull> cull;
         public final RuntimeValue<Integer> orderInLayer;
         public final RuntimeValue<SortMode> vertexSortingMode;
+        public final RuntimeValue<FXCompositeMode> compositeMode;
         public final RuntimeValue<Boolean> writeCustomMask;
         public final RuntimeValue<String> maskGroup;
         public final RuntimeValue<Float> maskAlphaCutoff;
@@ -224,6 +237,7 @@ public class RendererSetting {
             this.cull = new RuntimeValue<>(config::getCull);
             this.orderInLayer = new RuntimeValue<>(config::getOrderInLayer);
             this.vertexSortingMode = new RuntimeValue<>(config::getVertexSortingMode);
+            this.compositeMode = new RuntimeValue<>(config::getCompositeMode);
             this.writeCustomMask = new RuntimeValue<>(config::isWriteCustomMask);
             this.maskGroup = new RuntimeValue<>(config::getMaskGroup);
             this.maskAlphaCutoff = new RuntimeValue<>(config::getMaskAlphaCutoff);
@@ -234,7 +248,42 @@ public class RendererSetting {
         public Cull getCull() { return cull.get(); }
         public int getOrderInLayer() { return orderInLayer.get(); }
         public SortMode getVertexSortingMode() { return vertexSortingMode.get(); }
+        public FXCompositeMode getCompositeMode() { return compositeMode.get(); }
         public boolean isWriteCustomMask() { return writeCustomMask.get(); }
+
+        /**
+         * The frame slot this emitter's geometry is baked into: normally its {@link Layer}'s, but
+         * {@link PhotonStage#AFTER_LEVEL} when the effect asked to be composited late AND every one of
+         * its materials survives the translation into a premultiplied layer.
+         *
+         * <p>The layer-safety test is what keeps LATE honest on the plain path: a blend that reads the
+         * destination colour (multiply, min/max) has no equivalent against a transparent backdrop, so
+         * rather than silently changing how it looks, that emitter keeps drawing in place and keeps the
+         * vanilla cloud/water artefacts. A shader pack has no such choice — there is no in-place path
+         * under Iris — which is why {@code PremultipliedBlendPlan} still approximates there.
+         *
+         * <p>Opaque effects are never deferred: they write depth and are meant to be occluded by the
+         * world, which is exactly what compositing after everything would break.
+         */
+        public PhotonStage effectiveStage() {
+            var layer = getLayer();
+            // An editor scene has no clouds and no weather for LATE to dodge, and no post-level seam to
+            // composite at — its drain ends with the scene. Deferring there would simply drop the FX.
+            if (PhotonParticleManager.isEditorSceneRendering()) {
+                return layer.stage;
+            }
+            if (layer != Layer.Translucent
+                    || getCompositeMode().resolve() != FXCompositeMode.LATE) {
+                return layer.stage;
+            }
+            for (var material : getMaterials()) {
+                if (!PremultipliedBlendPlan
+                        .isLayerSafe(material.pipelineKey(VertexFormat.Mode.QUADS))) {
+                    return layer.stage;
+                }
+            }
+            return PhotonStage.DEFERRED;
+        }
         public String getMaskGroup() { return maskGroup.get(); }
         public float getMaskAlphaCutoff() { return maskAlphaCutoff.get(); }
 
@@ -247,6 +296,7 @@ public class RendererSetting {
         public boolean hasOverride() {
             return materials.isOverridden() || layer.isOverridden()
                     || orderInLayer.isOverridden() || vertexSortingMode.isOverridden()
+                    || compositeMode.isOverridden()
                     || writeCustomMask.isOverridden() || maskGroup.isOverridden()
                     || maskAlphaCutoff.isOverridden();
         }
@@ -258,6 +308,7 @@ public class RendererSetting {
             cull.clear();
             orderInLayer.clear();
             vertexSortingMode.clear();
+            compositeMode.clear();
             writeCustomMask.clear();
             maskGroup.clear();
             maskAlphaCutoff.clear();
@@ -273,6 +324,7 @@ public class RendererSetting {
                     && getLayer() == o.getLayer()
                     && getOrderInLayer() == o.getOrderInLayer()
                     && getVertexSortingMode() == o.getVertexSortingMode()
+                    && getCompositeMode() == o.getCompositeMode()
                     && isWriteCustomMask() == o.isWriteCustomMask()
                     && Objects.equals(getMaskGroup(), o.getMaskGroup())
                     && getMaskAlphaCutoff() == o.getMaskAlphaCutoff();
@@ -280,7 +332,7 @@ public class RendererSetting {
 
         public int effectiveHashCode() {
             return Objects.hash(getMaterials(), getLayer(), getOrderInLayer(), getVertexSortingMode(),
-                    isWriteCustomMask(), getMaskGroup(), getMaskAlphaCutoff());
+                    getCompositeMode(), isWriteCustomMask(), getMaskGroup(), getMaskAlphaCutoff());
         }
     }
 

@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.Graph;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphResource;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.IGraphReferenceResolver;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.SubgraphRegistry;
+import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.Photon;
 import net.minecraft.nbt.CompoundTag;
 import org.jetbrains.annotations.Nullable;
@@ -88,7 +89,7 @@ public final class FullscreenGraphLibrary {
             if (fnTag != null) {
                 var fn = PhotonShaderFunctionGraphResource.INSTANCE.createGraph();
                 fn.graphModel.setReferenceResolver(this);
-                com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(fnTag, fn.graphModel, Platform.getFrozenRegistry());
+                PersistedParser.deserializeNBT(fnTag, fn.graphModel, Platform.getFrozenRegistry());
                 fn.graphModel.setReferenceResolver(this);
                 return fn;
             }

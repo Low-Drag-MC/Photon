@@ -14,9 +14,18 @@ import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
+import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle;
+import com.lowdragmc.photon.client.gameobject.particle.renderer.AraTrailParticleRenderer;
+import com.lowdragmc.photon.client.render.PhotonPipelines;
+import com.lowdragmc.photon.client.render.PhotonViewSettings;
+import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import net.minecraft.client.Camera;
 import net.minecraft.world.phys.AABB;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -214,22 +223,22 @@ public class AraTrailEmitter extends Emitter {
 
     /** Lazily built CPU ribbon renderer. Transient: render-only state, never persisted or copied. */
     @Nullable
-    private transient com.lowdragmc.photon.client.gameobject.particle.renderer.AraTrailParticleRenderer extractRenderer;
+    private transient AraTrailParticleRenderer extractRenderer;
 
     @Override
-    public com.mojang.blaze3d.vertex.VertexFormat.Mode geometryMode() {
-        return com.mojang.blaze3d.vertex.VertexFormat.Mode.TRIANGLES; // 1.21 AraTrailConfig.RenderPass
+    public VertexFormat.Mode geometryMode() {
+        return VertexFormat.Mode.TRIANGLES; // 1.21 AraTrailConfig.RenderPass
     }
 
     @Override
-    public com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting.Runtime rendererRuntime() {
+    public RendererSetting.Runtime rendererRuntime() {
         return runtime().renderer;
     }
 
     @Override
-    protected void bakeBatches(com.lowdragmc.photon.client.render.PhotonViewSettings settings,
-                               java.util.List<com.lowdragmc.photon.client.render.PhotonWorldRenderState.DrawJob> out,
-                               net.minecraft.client.Camera camera, float partialTicks) {
+    protected void bakeBatches(PhotonViewSettings settings,
+                               List<PhotonWorldRenderState.DrawJob> out,
+                               Camera camera, float partialTicks) {
         var setting = config.additionalGPUDataSetting;
         // 1.21's gate: the tube instances too; only high-quality corners on a non-Local FLAT ribbon
         // stay on the CPU (they emit a data-dependent fan topology no fixed base mesh can express).
@@ -237,17 +246,17 @@ public class AraTrailEmitter extends Emitter {
         if (runtime().renderer.isUseGPUInstance()
                 && (tube || !(config.highQualityCorners && config.alignment != AraTrailConfig.TrailAlignment.Local))) {
             if (extractRenderer == null) {
-                extractRenderer = new com.lowdragmc.photon.client.gameobject.particle.renderer.AraTrailParticleRenderer(config);
+                extractRenderer = new AraTrailParticleRenderer(config);
             }
             var pointCapacity = trailParticle.getPoints().size() * Math.max(1, config.smoothness) + 2;
             var mesh = tube ? extractRenderer.tubeMesh()
-                    : BaseMesh.quads(com.lowdragmc.photon.client.render.PhotonWorldRenderState.araQuad(), 6);
+                    : BaseMesh.quads(PhotonWorldRenderState.araQuad(), 6);
             if (mesh != null && bakeInstancedGroup(settings, out, camera, rendererRuntime(), setting,
-                    tube ? com.lowdragmc.photon.client.render.PhotonPipelines.InstancedVariant.ARA_TUBE
-                            : com.lowdragmc.photon.client.render.PhotonPipelines.InstancedVariant.ARA,
+                    tube ? PhotonPipelines.InstancedVariant.ARA_TUBE
+                            : PhotonPipelines.InstancedVariant.ARA,
                     mesh,
                     pointCapacity * (tube ? 1 : 3), pointCapacity * 16,
-                    new org.joml.Vector3f(),
+                    new Vector3f(),
                     (instances, points, data, custom) -> extractRenderer.fillInstances(
                             Collections.singleton(trailParticle), camera, partialTicks, tube, instances, points,
                             data, custom))) {
@@ -258,10 +267,10 @@ public class AraTrailEmitter extends Emitter {
     }
 
     @Override
-    protected void bakeGeometry(com.mojang.blaze3d.vertex.VertexConsumer geometry,
-                                net.minecraft.client.Camera camera, float partialTicks) {
+    protected void bakeGeometry(VertexConsumer geometry,
+                                Camera camera, float partialTicks) {
         if (extractRenderer == null) {
-            extractRenderer = new com.lowdragmc.photon.client.gameobject.particle.renderer.AraTrailParticleRenderer(config);
+            extractRenderer = new AraTrailParticleRenderer(config);
         }
         extractRenderer.renderQueue(geometry, Collections.singleton(trailParticle), camera, partialTicks);
     }

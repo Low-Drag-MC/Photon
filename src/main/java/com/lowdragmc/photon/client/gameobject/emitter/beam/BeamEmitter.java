@@ -1,8 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.emitter.beam;
 
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
@@ -14,15 +14,24 @@ import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
+import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.particle.BeamParticle;
+import com.lowdragmc.photon.client.gameobject.particle.renderer.BeamParticleRenderer;
+import com.lowdragmc.photon.client.render.PhotonCameraUtils;
+import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonViewSettings;
+import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import lombok.Getter;
+import net.minecraft.client.Camera;
 import net.minecraft.world.phys.AABB;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.*;
+import java.util.List;
 
 /**
  * @author KilaBash
@@ -233,27 +242,27 @@ public class BeamEmitter extends Emitter {
 
     /** Lazily built CPU beam renderer. Transient: render-only state, never persisted or copied. */
     @Nullable
-    private transient com.lowdragmc.photon.client.gameobject.particle.renderer.BeamParticleRenderer extractRenderer;
+    private transient BeamParticleRenderer extractRenderer;
 
     @Override
-    public com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting.Runtime rendererRuntime() {
+    public RendererSetting.Runtime rendererRuntime() {
         return runtime().renderer;
     }
 
     @Override
     protected void bakeBatches(PhotonViewSettings settings,
-                               java.util.List<com.lowdragmc.photon.client.render.PhotonWorldRenderState.DrawJob> out,
-                               net.minecraft.client.Camera camera, float partialTicks) {
+                               List<PhotonWorldRenderState.DrawJob> out,
+                               Camera camera, float partialTicks) {
         var setting = config.additionalGPUDataSetting;
         if (runtime().renderer.isUseGPUInstance()) {
             if (extractRenderer == null) {
-                extractRenderer = new com.lowdragmc.photon.client.gameobject.particle.renderer.BeamParticleRenderer();
+                extractRenderer = new BeamParticleRenderer();
             }
             if (bakeInstancedGroup(settings, out, camera, rendererRuntime(), setting,
-                    com.lowdragmc.photon.client.render.PhotonPipelines.InstancedVariant.BEAM,
-                    BaseMesh.quads(com.lowdragmc.photon.client.render.PhotonWorldRenderState.beamQuad(), 6),
+                    PhotonPipelines.InstancedVariant.BEAM,
+                    BaseMesh.quads(PhotonWorldRenderState.beamQuad(), 6),
                     16, 0,
-                    new org.joml.Vector3f(com.lowdragmc.photon.client.render.PhotonCameraUtils.facingEye(camera)).sub(com.lowdragmc.photon.client.render.PhotonCameraUtils.renderOrigin(camera)),
+                    new Vector3f(PhotonCameraUtils.facingEye(camera)).sub(PhotonCameraUtils.renderOrigin(camera)),
                     (instances, points, data, custom) -> extractRenderer.fillInstances(
                             Collections.singleton(beamParticle), camera, partialTicks, instances,
                             setting, data, custom))) {
@@ -264,10 +273,10 @@ public class BeamEmitter extends Emitter {
     }
 
     @Override
-    protected void bakeGeometry(com.mojang.blaze3d.vertex.VertexConsumer geometry,
-                                net.minecraft.client.Camera camera, float partialTicks) {
+    protected void bakeGeometry(VertexConsumer geometry,
+                                Camera camera, float partialTicks) {
         if (extractRenderer == null) {
-            extractRenderer = new com.lowdragmc.photon.client.gameobject.particle.renderer.BeamParticleRenderer();
+            extractRenderer = new BeamParticleRenderer();
         }
         extractRenderer.renderQueue(geometry, Collections.singleton(beamParticle), camera, partialTicks);
     }

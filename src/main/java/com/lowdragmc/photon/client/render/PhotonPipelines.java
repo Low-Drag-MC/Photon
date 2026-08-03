@@ -1,6 +1,12 @@
 package com.lowdragmc.photon.client.render;
 
+import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
+import com.lowdragmc.kilagraph.rendertype.compiler.MaterialUniformLayout;
+import com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler;
+import com.lowdragmc.kilagraph.rendertype.runtime.DynamicShaderSourceRegistry;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
+import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
@@ -10,7 +16,7 @@ import com.mojang.blaze3d.platform.PolygonMode;
 import com.mojang.blaze3d.shaders.UniformType;
 import com.mojang.blaze3d.textures.TextureFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
+import com.mojang.blaze3d.vertex.VertexFormatElement;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
@@ -18,6 +24,7 @@ import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -67,11 +74,11 @@ public final class PhotonPipelines {
      * Element order/types mirror {@code VertexFormatPresets.BLOCK} on the KilaGraph side — keep in lockstep.
      */
     public static final VertexFormat PARTICLE_FORMAT = VertexFormat.builder()
-            .add("Position", com.mojang.blaze3d.vertex.VertexFormatElement.POSITION)
-            .add("Color", com.mojang.blaze3d.vertex.VertexFormatElement.COLOR)
-            .add("UV0", com.mojang.blaze3d.vertex.VertexFormatElement.UV0)
-            .add("UV2", com.mojang.blaze3d.vertex.VertexFormatElement.UV2)
-            .add("Normal", com.mojang.blaze3d.vertex.VertexFormatElement.NORMAL)
+            .add("Position", VertexFormatElement.POSITION)
+            .add("Color", VertexFormatElement.COLOR)
+            .add("UV0", VertexFormatElement.UV0)
+            .add("UV2", VertexFormatElement.UV2)
+            .add("Normal", VertexFormatElement.NORMAL)
             .padding(1) // MC requires the vertex size to be a multiple of 4 (31 -> 32)
             .build();
 
@@ -91,7 +98,7 @@ public final class PhotonPipelines {
 
     /** Wireframe pipelines sample the scene capture (the 1.21 inverse shader) — the drain must
      *  capture before drawing them and bind {@code SamplerScene}. */
-    private static final java.util.Set<RenderPipeline> WIREFRAME_PIPELINES = ConcurrentHashMap.newKeySet();
+    private static final Set<RenderPipeline> WIREFRAME_PIPELINES = ConcurrentHashMap.newKeySet();
 
     public static boolean isWireframe(RenderPipeline pipeline) {
         return WIREFRAME_PIPELINES.contains(pipeline);
@@ -171,7 +178,7 @@ public final class PhotonPipelines {
                 PhotonGpuChannels.Kind.BEAM, PhotonInstancedDrawState.BEAM);
 
         final String define;
-        final com.mojang.blaze3d.vertex.VertexFormat format;
+        final VertexFormat format;
         public final boolean usesPoints;
         /** Whether {@code particle.glsl} declares {@code PhotonCustomData} for this define — per-particle
          *  kinds only; trail/ara/beam instances aren't particles, so {@code photon_custom_data()} reads 0. */
@@ -190,7 +197,7 @@ public final class PhotonPipelines {
         public final PhotonGpuChannels.Kind kind;
         public final PhotonInstancedDrawState.Layout layout;
 
-        InstancedVariant(String define, com.mojang.blaze3d.vertex.VertexFormat format, boolean usesPoints,
+        InstancedVariant(String define, VertexFormat format, boolean usesPoints,
                          boolean usesCustomData, boolean positionAtRecordHead, PhotonGpuChannels.Kind kind,
                          PhotonInstancedDrawState.Layout layout) {
             this.define = define;
@@ -204,7 +211,7 @@ public final class PhotonPipelines {
     }
 
     private static VertexFormat instancedFormat(String name) {
-        return VertexFormat.builder().add(name, com.mojang.blaze3d.vertex.VertexFormatElement.POSITION).build();
+        return VertexFormat.builder().add(name, VertexFormatElement.POSITION).build();
     }
 
     private record InstancedKey(InstancedVariant variant, Identifier fragmentShader, ParticlePipelineKey key) {
@@ -348,16 +355,16 @@ public final class PhotonPipelines {
      * a function of its {@code contentHash}, so they need no place in the cache key) and decide whether the
      * additional-data texel buffers are declared.
      */
-    public static RenderPipeline graphShader(com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph compiled,
+    public static RenderPipeline graphShader(CompiledShaderGraph compiled,
                                              @Nullable InstancedVariant variant, ParticlePipelineKey key,
                                              long usedChannelMask, boolean usesCustomData) {
         return GRAPH_VARIANTS.computeIfAbsent(new GraphKey(compiled.contentHash(), variant, key), gk -> {
             var k = gk.key();
             var builder = RenderPipeline.builder()
                     .withLocation(Photon.id("pipeline/graph_" + VARIANT_ID.getAndIncrement()))
-                    .withVertexShader(com.lowdragmc.kilagraph.rendertype.runtime.DynamicShaderSourceRegistry
+                    .withVertexShader(DynamicShaderSourceRegistry
                             .shaderId(compiled.contentHash()))
-                    .withFragmentShader(com.lowdragmc.kilagraph.rendertype.runtime.DynamicShaderSourceRegistry
+                    .withFragmentShader(DynamicShaderSourceRegistry
                             .shaderId(compiled.contentHash()))
                     // CPU geometry keeps the emitter's primitive mode (trails are strips, ara-trails
                     // triangles); the instanced variants always expand a quad-indexed base mesh
@@ -373,7 +380,7 @@ public final class PhotonPipelines {
                 builder.withUniform(ubo, UniformType.UNIFORM_BUFFER);
             }
             if (!compiled.layout().isEmpty()) {
-                builder.withUniform(com.lowdragmc.kilagraph.rendertype.compiler.MaterialUniformLayout.UBO_NAME,
+                builder.withUniform(MaterialUniformLayout.UBO_NAME,
                         UniformType.UNIFORM_BUFFER);
             }
             for (var block : compiled.uniformBlocks()) {
@@ -385,10 +392,10 @@ public final class PhotonPipelines {
             // Photon-named scene captures (PhotonShaderCompiler renames them off KilaGraph's own for
             // non-preview compiles) — bound by the drain from its pre-fx capture
             if (compiled.usesSceneColor()) {
-                builder.withSampler(com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler.SCENE_COLOR);
+                builder.withSampler(PhotonShaderCompiler.SCENE_COLOR);
             }
             if (compiled.usesSceneDepth()) {
-                builder.withSampler(com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler.SCENE_DEPTH);
+                builder.withSampler(PhotonShaderCompiler.SCENE_DEPTH);
             }
             if (variant != null) {
                 builder.withShaderDefine(variant.define);
@@ -419,9 +426,9 @@ public final class PhotonPipelines {
      * attachment, so every draw would warn.
      */
     public static RenderPipeline fullscreenGraph(
-            com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph compiled) {
+            CompiledShaderGraph compiled) {
         return FULLSCREEN_GRAPHS.computeIfAbsent(compiled.contentHash(), hash -> {
-            var shaderId = com.lowdragmc.kilagraph.rendertype.runtime.DynamicShaderSourceRegistry.shaderId(hash);
+            var shaderId = DynamicShaderSourceRegistry.shaderId(hash);
             var builder = PhotonFullscreenPass.builder()
                     .withLocation(Photon.id("pipeline/postfx_graph_" + VARIANT_ID.getAndIncrement()))
                     .withVertexShader(shaderId)
@@ -431,7 +438,7 @@ public final class PhotonPipelines {
                 builder.withUniform(ubo, UniformType.UNIFORM_BUFFER);
             }
             if (!compiled.layout().isEmpty()) {
-                builder.withUniform(com.lowdragmc.kilagraph.rendertype.compiler.MaterialUniformLayout.UBO_NAME,
+                builder.withUniform(MaterialUniformLayout.UBO_NAME,
                         UniformType.UNIFORM_BUFFER);
             }
             for (var block : compiled.uniformBlocks()) {
@@ -443,10 +450,10 @@ public final class PhotonPipelines {
             // a fullscreen graph keeps KilaGraph's own scene-sampler names (PhotonShaderCompiler's
             // rename is particle-side only), so KilaGraph's bindCustomUniforms binds them for us
             if (compiled.usesSceneColor()) {
-                builder.withSampler(com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler.SCENE_COLOR_SAMPLER);
+                builder.withSampler(ShaderGraphCompiler.SCENE_COLOR_SAMPLER);
             }
             if (compiled.usesSceneDepth()) {
-                builder.withSampler(com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler.SCENE_DEPTH_SAMPLER);
+                builder.withSampler(ShaderGraphCompiler.SCENE_DEPTH_SAMPLER);
             }
             return builder.build();
         });

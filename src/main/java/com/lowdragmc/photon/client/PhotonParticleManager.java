@@ -1,20 +1,30 @@
 package com.lowdragmc.photon.client;
 
+import com.lowdragmc.kilagraph.rendertype.runtime.KGEngineUniforms;
 import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
+import com.lowdragmc.lowdraglib2.client.scene.SceneCameraContext;
+import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
+import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.render.IPhotonFXCollector;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
 import com.lowdragmc.photon.client.render.PhotonStage;
+import com.lowdragmc.photon.client.render.PhotonTime;
 import com.lowdragmc.photon.client.render.PhotonViewSettings;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.SubmitNodeStorage;
+import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 
 import java.util.Arrays;
+import java.util.Map;
 
 public class PhotonParticleManager extends ParticleManager implements ParticleTickHost {
     public final SceneView sceneView;
@@ -23,6 +33,21 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     private long tickCounter = 0;
     /** {@link ParticleTickHost} wipe generation, bumped in {@link #clear()}. */
     private int generation = 0;
+    /**
+     * True while an editor scene is the thing being rendered, rather than the world.
+     * <p>
+     * The shader-pack path is a world-only concern: a pack's colortex layout has nothing to do with the
+     * editor's picture-in-picture target, and resolving one there would composite the scene's FX into
+     * the world's gbuffer. {@code IrisTargetResolver} asks this to stand down. Deliberately a plain
+     * static rather than something derived from the collector — the resolver runs deep inside a draw
+     * and needs the answer without a reference to anything.
+     */
+    private static boolean editorSceneRendering = false;
+
+    public static boolean isEditorSceneRendering() {
+        return editorSceneRendering;
+    }
+
     /**
      * True while a timeline seek replays ticks that will never be rendered: particles may skip
      * pure per-tick visual recomputes (color/rotation/light — see TileParticle.updateChanges).
@@ -83,10 +108,10 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
      * </ul>
      */
     @Override
-    public void render(net.minecraft.client.renderer.SubmitNodeStorage storage,
-                       net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState,
-                       net.minecraft.client.Camera camera,
-                       net.minecraft.client.renderer.culling.Frustum frustum,
+    public void render(SubmitNodeStorage storage,
+                       CameraRenderState cameraRenderState,
+                       Camera camera,
+                       Frustum frustum,
                        float partialTicks) {
         var frameStart = System.nanoTime();
         collector = storage instanceof IPhotonFXCollector fx ? fx : null;
@@ -97,16 +122,16 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
                             sceneView.isBloomEnabled(),
                             // the editor's own request stack: a timeline post-process clip previewed
                             // here must not tint the world, nor the world's effects this panel
-                            com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE,
+                            PostEffectStack.EDITOR_SCENE,
                             sceneView.isEffectsEnabled()));
             if (sceneView != null && sceneView.isMaskViewEnabled()) {
                 // top-bar debug toggle: show the CustomMask contents instead of the scene this frame.
                 // Submitting it like any other request is what makes the mask sub-pass run at all —
                 // the sub-pass is demand-driven on there being a pending mask consumer.
-                com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE.submit(
-                        com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider.TYPE
+                PostEffectStack.EDITOR_SCENE.submit(
+                        BuiltinResourceProvider.TYPE
                                 .createFullPath("show_mask"),
-                        java.util.Map.of(), 1f);
+                        Map.of(), 1f);
             }
         }
         // The size of the target this scene draws into — the PIP texture (sized to the widget's rect x
@@ -118,7 +143,7 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
         var targetWidth = sceneTarget != null ? sceneTarget.getWidth(0) : mainTarget.width;
         var targetHeight = sceneTarget != null ? sceneTarget.getHeight(0) : mainTarget.height;
-        com.lowdragmc.kilagraph.rendertype.runtime.KGEngineUniforms
+        KGEngineUniforms
                 .setScreenSizeOverride(targetWidth, targetHeight);
         // This scene's shaders run on the TIMELINE's clock, not the world's — the 1.21
         // setShaderGameTime(getRealTime(), isPlaying ? partial : 0) semantics, which is what makes a
@@ -127,8 +152,8 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         // which PhotonGlobals substitutes for Photon's own draws, and KilaGraph's KG_Globals, which its
         // Time / Game Time nodes read and only KilaGraph can rewrite.
         var sceneTime = getRealTime(partialTicks);
-        com.lowdragmc.photon.client.render.PhotonTime.setOverride(sceneTime);
-        com.lowdragmc.kilagraph.rendertype.runtime.KGEngineUniforms.setTimeOverride(sceneTime);
+        PhotonTime.setOverride(sceneTime);
+        KGEngineUniforms.setTimeOverride(sceneTime);
         var eye = cameraRenderState != null
                 ? new Vector3f((float) cameraRenderState.pos.x,
                         (float) cameraRenderState.pos.y, (float) cameraRenderState.pos.z)
@@ -137,14 +162,14 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
             PhotonEngineUniforms.update(
                     cameraRenderState.projectionMatrix, cameraRenderState.viewRotationMatrix,
                     eye, targetWidth, targetHeight);
-        } else if (com.lowdragmc.lowdraglib2.client.scene.SceneCameraContext.isActive()) {
+        } else if (SceneCameraContext.isActive()) {
             // LDLib2's buildCameraRenderState() fills only pos/blockPos, so `initialized` is false and it
             // carries no matrices. The scene publishes its real ones here instead (LDLib2 26.1.2.30 widened
             // that scope to cover submit + afterRender for exactly this) — without them U_Inverse*Matrix
             // stayed on the WORLD camera, so depth->world reconstruction (scan's ring) was wrong in scenes.
             PhotonEngineUniforms.update(
-                    com.lowdragmc.lowdraglib2.client.scene.SceneCameraContext.projection(),
-                    com.lowdragmc.lowdraglib2.client.scene.SceneCameraContext.viewRotation(),
+                    SceneCameraContext.projection(),
+                    SceneCameraContext.viewRotation(),
                     eye, targetWidth, targetHeight);
         } else {
             // No camera to publish, but the viewport is knowable regardless — and it must be right, or
@@ -152,9 +177,12 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
             // used to hold the world frame's 3840x2054 while the PIP texture was 2340x1308).
             PhotonEngineUniforms.updateViewport(targetWidth, targetHeight);
         }
+        editorSceneRendering = true;
         try {
             super.render(storage, cameraRenderState, camera, frustum, isPlaying ? partialTicks : 0);
         } finally {
+            // NOT cleared here: the bake and the drain both happen in afterRender(), and they are what
+            // the Iris resolver and effectiveStage() need to see as "this is a scene, not the world".
             // extraction is the editor scene's CPU-side render cost — keep the F3-style stat fed
             lastFrameTimes[frameIndex] = System.nanoTime() - frameStart;
             frameIndex = (frameIndex + 1) % lastFrameTimes.length;
@@ -192,15 +220,19 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
      */
     @Override
     public void afterRender() {
-        if (collector != null) {
-            collector.drain(PhotonStage.AFTER_OPAQUE_FEATURES);
-            collector.drain(PhotonStage.AFTER_TRANSLUCENT_PARTICLES);
-            collector = null;
+        try {
+            if (collector != null) {
+                collector.drain(PhotonStage.AFTER_OPAQUE_FEATURES);
+                collector.drain(PhotonStage.AFTER_TRANSLUCENT_PARTICLES);
+                collector = null;
+            }
+        } finally {
+            editorSceneRendering = false;
         }
         // the scene's target and clock are gone — anything drawn after this is the world's again
-        com.lowdragmc.kilagraph.rendertype.runtime.KGEngineUniforms.clearScreenSizeOverride();
-        com.lowdragmc.kilagraph.rendertype.runtime.KGEngineUniforms.clearTimeOverride();
-        com.lowdragmc.photon.client.render.PhotonTime.clearOverride();
+        KGEngineUniforms.clearScreenSizeOverride();
+        KGEngineUniforms.clearTimeOverride();
+        PhotonTime.clearOverride();
         super.afterRender();
     }
 

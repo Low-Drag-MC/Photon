@@ -4,6 +4,7 @@ import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.buffers.Std140Builder;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryUtil;
 
@@ -13,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The live {@code PhotonCustomMaterial} std140 block for ONE custom-shader material instance —
@@ -161,22 +163,22 @@ public final class PhotonCustomUniforms implements AutoCloseable {
 
     // ---- RenderType association (vanilla-phase draws bind via RenderTypeMixin) -------------------
 
-    private static final Map<net.minecraft.client.renderer.rendertype.RenderType, PhotonCustomUniforms>
-            BY_RENDER_TYPE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<RenderType, PhotonCustomUniforms>
+            BY_RENDER_TYPE = new ConcurrentHashMap<>();
 
-    public static void register(net.minecraft.client.renderer.rendertype.RenderType renderType,
+    public static void register(RenderType renderType,
                                 PhotonCustomUniforms uniforms) {
         BY_RENDER_TYPE.put(renderType, uniforms);
     }
 
     /** Drop a dead RenderType's association (shader invalidation — prevents registry leaks). */
-    public static void unregister(net.minecraft.client.renderer.rendertype.RenderType renderType) {
+    public static void unregister(RenderType renderType) {
         BY_RENDER_TYPE.remove(renderType);
     }
 
     /** The slice to bind as {@code PhotonCustomMaterial} for this RenderType's draw, or null. */
     @Nullable
-    public static GpuBufferSlice sliceFor(net.minecraft.client.renderer.rendertype.RenderType renderType) {
+    public static GpuBufferSlice sliceFor(RenderType renderType) {
         var uniforms = BY_RENDER_TYPE.get(renderType);
         return uniforms == null ? null : uniforms.slice();
     }

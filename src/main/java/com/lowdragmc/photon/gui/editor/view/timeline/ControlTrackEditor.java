@@ -14,6 +14,8 @@ import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.Random;
 
 /** Editor for {@code control} tracks: a name header + per-clip object-bound clips with seeds. */
 public class ControlTrackEditor extends ClipTrackEditor {
@@ -77,7 +79,7 @@ public class ControlTrackEditor extends ClipTrackEditor {
     @Override
     public boolean clipsConflict(Clip a, Clip b) {
         // control clips only conflict when they drive the same target
-        return java.util.Objects.equals(a.targetId(), b.targetId()) && super.clipsConflict(a, b);
+        return Objects.equals(a.targetId(), b.targetId()) && super.clipsConflict(a, b);
     }
 
     @Override
@@ -112,7 +114,7 @@ public class ControlTrackEditor extends ClipTrackEditor {
         menu.leaf(Component.translatable("photon.gui.editor.timeline.reseed"), () -> {
             var oldSeed = clip.seed();
             var oldRandom = clip.randomSeed();
-            var newSeed = new java.util.Random().nextLong();
+            var newSeed = new Random().nextLong();
             ctx.pushEdit("photon.gui.editor.timeline.edit_clip",
                     () -> { clip.seed(newSeed).randomSeed(false); ctx.refreshPreview(); },
                     () -> { clip.seed(oldSeed).randomSeed(oldRandom); ctx.refreshPreview(); });

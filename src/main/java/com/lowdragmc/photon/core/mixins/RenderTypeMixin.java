@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.core.mixins;
 
 import com.llamalad7.mixinextras.sugar.Local;
+import com.lowdragmc.photon.client.render.PhotonCustomUniforms;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
 import com.lowdragmc.photon.client.render.PhotonMaterialUniforms;
 import com.mojang.blaze3d.systems.RenderPass;
@@ -38,7 +39,7 @@ public class RenderTypeMixin {
         if (engineSlice != null) {
             renderPass.setUniform("PhotonEngine", engineSlice);
         }
-        var customSlice = com.lowdragmc.photon.client.render.PhotonCustomUniforms.sliceFor((RenderType) (Object) this);
+        var customSlice = PhotonCustomUniforms.sliceFor((RenderType) (Object) this);
         if (customSlice != null) {
             renderPass.setUniform("PhotonCustomMaterial", customSlice);
         }

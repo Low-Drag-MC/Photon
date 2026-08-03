@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.postfx.runtime;
 
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.postfx.graph.TargetFormat;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
 import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
@@ -18,6 +19,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -53,7 +55,7 @@ public final class PostEffectStack {
      *  names — the COVERAGE UNION of the effect's requests (any unmasked request wins fullscreen;
      *  several groups bake an exact union mask at execution). */
     private record Invocation(CompiledEffect effect, float weight, Map<String, Object> params,
-                              @Nullable java.util.Set<String> maskGroups, String sortKey) {}
+                              @Nullable Set<String> maskGroups, String sortKey) {}
 
     /** Effect priority, then a stable name — the ordering the builtin bloom slots into at 0. The name is
      *  resolved once per invocation, not inside the comparator, where it would allocate per comparison. */
@@ -64,15 +66,15 @@ public final class PostEffectStack {
     /** The mask coverage a request asks for: null = fullscreen, empty = any group, else groups.
      *  Accepts the string form (group name, blank = any) and the legacy numeric form. */
     @Nullable
-    private static java.util.Set<String> requestMaskGroups(Request request) {
+    private static Set<String> requestMaskGroups(Request request) {
         var value = request.params().get(CompiledEffect.MASK_FILTER_PARAM);
         if (value instanceof String groupName) {
-            return groupName.isBlank() ? java.util.Set.of() : java.util.Set.of(groupName);
+            return groupName.isBlank() ? Set.of() : Set.of(groupName);
         }
         if (value instanceof Number legacy) {
             if (legacy.floatValue() < 0) return null;
             int id = Math.round(legacy.floatValue());
-            return id == 0 ? java.util.Set.of() : java.util.Set.of(String.valueOf(id));
+            return id == 0 ? Set.of() : Set.of(String.valueOf(id));
         }
         return null;
     }
@@ -98,7 +100,7 @@ public final class PostEffectStack {
     /** Whether the global config lets effects run at all. The PER-VIEW toggle is
      *  {@code PhotonViewSettings.effects} — a stack is shared, a view's preference is not. */
     private static boolean effectsAllowed() {
-        return com.lowdragmc.photon.PhotonConfig.INSTANCE.enableCustomEffects.get();
+        return PhotonConfig.INSTANCE.enableCustomEffects.get();
     }
 
     /** Whether there is work the config would actually let run — what a view checks before paying
@@ -240,7 +242,7 @@ public final class PostEffectStack {
     private static PostFXTargetPool.Target mix(Invocation invocation, GpuTextureView chain,
                                                PostFXTargetPool.Target output,
                                                RenderGraphExecutor.FrameInputs inputs,
-                                               @Nullable java.util.Set<String> cullGroups) {
+                                               @Nullable Set<String> cullGroups) {
         var shader = CustomShaderPass.get(cullGroups != null ? WEIGHT_MASK_MIX_SHADER : WEIGHT_MIX_SHADER);
         var mixed = PostFXTargetPool.acquire(inputs.width(), inputs.height());
         if (shader == null || mixed == null) {
@@ -295,7 +297,7 @@ public final class PostEffectStack {
     /** Bake "mask id ∈ groups" into a pooled binary mask (R=1 where matched; R8 — one channel is all a
      *  binary mask needs). Null when the shader or the target is unavailable. */
     @Nullable
-    private static PostFXTargetPool.Target buildUnionMask(java.util.Set<String> groups,
+    private static PostFXTargetPool.Target buildUnionMask(Set<String> groups,
                                                           RenderGraphExecutor.FrameInputs inputs) {
         var shader = CustomShaderPass.get(MASK_UNION_SHADER);
         var target = PostFXTargetPool.acquire(inputs.width(), inputs.height(), TargetFormat.R8);
@@ -375,8 +377,8 @@ public final class PostEffectStack {
             // COVERAGE UNION across the same effect's requests (one execution per effect per frame):
             // any fullscreen request already covers every mask -> fullscreen; an "any group" request
             // covers every group; several named groups keep the exact set (baked to a union mask)
-            java.util.Set<String> maskGroups = !sawMasked || sawUnmasked ? null
-                    : (anyGroup ? java.util.Set.of() : union);
+            Set<String> maskGroups = !sawMasked || sawUnmasked ? null
+                    : (anyGroup ? Set.of() : union);
             if (weight < MIN_WEIGHT) return;
             invocations.add(new Invocation(effect, weight, blendParams(effect, group), maskGroups,
                     String.valueOf(effect.source())));

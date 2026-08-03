@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client;
 import com.lowdragmc.photon.Photon;
 import com.mojang.blaze3d.systems.RenderSystem;
 import lombok.experimental.UtilityClass;
+import net.minecraft.client.Minecraft;
 
 import java.lang.ref.Cleaner;
 import java.util.Objects;
@@ -23,7 +24,7 @@ public final class AutoCloseCleaner {
         Objects.requireNonNull(resource, "resource cannot be null");
         return cleaner.register(owner, () -> {
             if (requireRenderThread && !RenderSystem.isOnRenderThread()) {
-                net.minecraft.client.Minecraft.getInstance().execute(() -> closeResource(resource));
+                Minecraft.getInstance().execute(() -> closeResource(resource));
             } else {
                 closeResource(resource);
             }

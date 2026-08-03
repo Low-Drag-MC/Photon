@@ -6,13 +6,16 @@ import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
+import com.lowdragmc.photon.client.render.PhotonParticleRenderTypes;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -202,7 +205,7 @@ public abstract class FXObject extends Particle implements IFXObject {
         var pos = transform.position();
         BlockPos blockPos = BlockPos.containing(pos.x, pos.y, pos.z);
         return this.realLevel.hasChunkAt(blockPos)
-                ? net.minecraft.client.renderer.LevelRenderer.getLightCoords(this.realLevel, blockPos) : 0;
+                ? LevelRenderer.getLightCoords(this.realLevel, blockPos) : 0;
     }
 
     /**
@@ -297,13 +300,13 @@ public abstract class FXObject extends Particle implements IFXObject {
     @Override
     @Nonnull
     public ParticleRenderType getGroup() {
-        return com.lowdragmc.photon.client.render.PhotonParticleRenderTypes.FX;
+        return PhotonParticleRenderTypes.FX;
     }
 
     /** 26.1: no Particle render-bounding-box hook — kept as Photon API; the M1 extraction and the
      *  editor cull-box gizmo read it (emitters override with their live cull box). */
     @Nonnull
-    public net.minecraft.world.phys.AABB getRenderBoundingBox(float partialTicks) {
-        return net.minecraft.world.phys.AABB.INFINITE;
+    public AABB getRenderBoundingBox(float partialTicks) {
+        return AABB.INFINITE;
     }
 }

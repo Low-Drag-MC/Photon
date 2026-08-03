@@ -1,21 +1,24 @@
 package com.lowdragmc.photon.gui.editor.view.timeline;
 
-import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
+import com.lowdragmc.lowdraglib2.gui.sync.bindings.impl.SupplierDataSource;
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
-import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.TaffyPosition;
-import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
+import net.minecraft.network.chat.Component;
 
 import javax.annotation.Nullable;
 
@@ -70,7 +73,7 @@ public abstract class ClipTrackEditor extends TrackEditor {
     }
 
     /** Extra clip inspector configurators (e.g. control seed/randomSeed). */
-    protected void buildClipConfigurator(com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup group,
+    protected void buildClipConfigurator(ConfiguratorGroup group,
                                          TimelineContext ctx, Track track, Clip clip) {
     }
 
@@ -173,10 +176,10 @@ public abstract class ClipTrackEditor extends TrackEditor {
         if (clipLabel(ctx, track, clip) != null) {
             // bind to a live data source so the label follows the latest value (e.g. a changed sound)
             // without needing a rebuild; a supplier that returns null keeps the last shown text
-            var labelEl = new com.lowdragmc.lowdraglib2.gui.ui.elements.Label().bindDataSource(
-                    com.lowdragmc.lowdraglib2.gui.sync.bindings.impl.SupplierDataSource.of(() -> {
+            var labelEl = new Label().bindDataSource(
+                    SupplierDataSource.of(() -> {
                         var text = clipLabel(ctx, track, clip);
-                        return net.minecraft.network.chat.Component.literal(text == null ? "" : text);
+                        return Component.literal(text == null ? "" : text);
                     }));
             TimelineContext.styleLabel(labelEl);
             labelEl.layout(layout -> layout.flex(1).heightPercent(100));
@@ -316,7 +319,7 @@ public abstract class ClipTrackEditor extends TrackEditor {
     }
 
     /** Extra track configurators above mute/lock (e.g. the control track name). */
-    protected void buildHeaderConfigurator(com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup group,
+    protected void buildHeaderConfigurator(ConfiguratorGroup group,
                                            TimelineContext ctx, Track track) {
     }
 

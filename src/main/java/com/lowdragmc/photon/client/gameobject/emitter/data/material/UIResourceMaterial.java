@@ -5,7 +5,10 @@ import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import net.minecraft.client.renderer.rendertype.RenderType;
 
 import java.util.Objects;
 
@@ -50,9 +53,9 @@ public final class UIResourceMaterial implements IMaterial {
     }
 
     @Override
-    public net.minecraft.client.renderer.rendertype.RenderType getRenderType(
-            com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting setting,
-            com.mojang.blaze3d.vertex.VertexFormat.Mode mode) {
+    public RenderType getRenderType(
+            MaterialSetting setting,
+            VertexFormat.Mode mode) {
         return getRawMaterial().getRenderType(setting, mode);
     }
 

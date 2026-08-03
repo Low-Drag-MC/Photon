@@ -1,17 +1,19 @@
 package com.lowdragmc.photon.client.fx.timeline.property;
 
+import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
+import com.lowdragmc.photon.client.fx.timeline.GradientClip;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.utils.ValueIONbt;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
 
 import javax.annotation.Nullable;
 
@@ -154,7 +156,7 @@ public class ColorPropertyType implements AnimatedPropertyType {
                 t.putDouble("start", clip.start());
                 t.putDouble("duration", clip.duration());
                 if (clip.gradient() != null) {
-                    t.put("gradient", com.lowdragmc.photon.utils.ValueIONbt.toTag(clip.gradient(), provider));
+                    t.put("gradient", ValueIONbt.toTag(clip.gradient(), provider));
                 }
                 clips.add(t);
             }
@@ -174,11 +176,11 @@ public class ColorPropertyType implements AnimatedPropertyType {
         var clips = tag.getListOrEmpty("gradientClips");
         for (int i = 0; i < clips.size(); i++) {
             var t = clips.getCompoundOrEmpty(i);
-            var gc = new com.lowdragmc.lowdraglib2.math.GradientColor();
+            var gc = new GradientColor();
             if (t.contains("gradient")) {
-                com.lowdragmc.photon.utils.ValueIONbt.fromTag(gc, provider, t.getCompoundOrEmpty("gradient"));
+                ValueIONbt.fromTag(gc, provider, t.getCompoundOrEmpty("gradient"));
             }
-            property.gradientClips().add(new com.lowdragmc.photon.client.fx.timeline.GradientClip(
+            property.gradientClips().add(new GradientClip(
                     t.getDoubleOr("start", 0.0D), t.getDoubleOr("duration", 0.0D), gc));
         }
         return property;

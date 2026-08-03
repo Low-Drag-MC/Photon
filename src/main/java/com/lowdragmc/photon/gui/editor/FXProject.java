@@ -13,27 +13,31 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.syncdata.ISubscription;
-import dev.vfyjxf.taffy.style.AlignItems;
-import dev.vfyjxf.taffy.style.FlexDirection;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.client.fx.fxpack.FXPackExporter;
 import com.lowdragmc.photon.client.fx.fxpack.FXPacks;
 import com.lowdragmc.photon.client.gameobject.emitter.data.fixer.PhotonFXProjectDataFixer;
-import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
-import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
-import com.lowdragmc.photon.gui.editor.resource.RenderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.CurveResource;
+import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.GradientResource;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
+import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
+import com.lowdragmc.photon.gui.editor.resource.RenderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
+import dev.vfyjxf.taffy.style.AlignItems;
+import dev.vfyjxf.taffy.style.FlexDirection;
 import lombok.Getter;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.ExtraCodecs;
+import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -79,32 +83,32 @@ public class FXProject implements IProject {
     // 26.1: IProject moved to the ValueIO seam ({meta, data} shape unchanged); the .fx payload stays
     // the same "fx" compound produced by FX's Tag methods.
     @Override
-    public void serializeProject(@NotNull net.minecraft.world.level.storage.ValueOutput output) {
-        output.store("fx", net.minecraft.util.ExtraCodecs.NBT, fx.serializeNBT(Platform.getFrozenRegistry()));
+    public void serializeProject(@NotNull ValueOutput output) {
+        output.store("fx", ExtraCodecs.NBT, fx.serializeNBT(Platform.getFrozenRegistry()));
     }
 
     @Override
-    public void deserializeProject(@NotNull net.minecraft.world.level.storage.ValueInput input) {
-        if (input.read("fx", net.minecraft.util.ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
+    public void deserializeProject(@NotNull ValueInput input) {
+        if (input.read("fx", ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
             fx.deserializeNBT(Platform.getFrozenRegistry(), tag);
         }
     }
 
     @Override
-    public void serializeMetadata(net.minecraft.world.level.storage.ValueOutput output) {
+    public void serializeMetadata(ValueOutput output) {
         IProject.super.serializeMetadata(output);
         output.putInt("version_num", VERSION);
     }
 
     @Override
-    public void deserialize(@NotNull net.minecraft.world.level.storage.ValueInput input) {
+    public void deserialize(@NotNull ValueInput input) {
         // apply data fix for cross-version
         var version = Math.max(1, input.child("meta").map(meta -> meta.getIntOr("version_num", 0)).orElse(0));
-        var data = input.read("data", net.minecraft.util.ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag
+        var data = input.read("data", ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag
                 ? tag : new CompoundTag();
         var fixedData = PhotonFXProjectDataFixer.INSTANCE.applyFixes(version, VERSION, data);
-        try (var reporter = new net.minecraft.util.ProblemReporter.ScopedCollector(com.lowdragmc.photon.Photon.LOGGER)) {
-            deserializeProject(net.minecraft.world.level.storage.TagValueInput.create(
+        try (var reporter = new ProblemReporter.ScopedCollector(Photon.LOGGER)) {
+            deserializeProject(TagValueInput.create(
                     reporter, Platform.getFrozenRegistry(), fixedData));
         }
     }

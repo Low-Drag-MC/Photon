@@ -5,6 +5,7 @@ import com.lowdragmc.photon.client.fx.timeline.ActivatorTrack;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
 import com.lowdragmc.photon.client.fx.timeline.AudioTrack;
 import com.lowdragmc.photon.client.fx.timeline.ControlTrack;
+import com.lowdragmc.photon.client.fx.timeline.PostProcessTrack;
 import com.lowdragmc.photon.client.fx.timeline.SignalTrack;
 import com.lowdragmc.photon.client.fx.timeline.SpeedTrack;
 import com.lowdragmc.photon.client.fx.timeline.TrackGroup;
@@ -40,7 +41,7 @@ public class PhotonTrackTypes {
 
     @LDLRegisterClient(name = "post_process", registry = "photon:timeline_track")
     public static final TrackType POST_PROCESS = new TrackType(
-            com.lowdragmc.photon.client.fx.timeline.PostProcessTrack.class,
-            com.lowdragmc.photon.client.fx.timeline.PostProcessTrack::new,
+            PostProcessTrack.class,
+            PostProcessTrack::new,
             new PostProcessTrackEditor());
 }

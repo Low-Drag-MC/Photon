@@ -4,6 +4,7 @@ import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import org.joml.Vector3f;
 
@@ -268,7 +269,7 @@ public class TimelinePlayer {
                 }
                 audioClips.put(audioTrack, clip);
                 if (clip != null && clip.sound() != null) {
-                    var soundEvent = BuiltInRegistries.SOUND_EVENT.get(clip.sound()).map(net.minecraft.core.Holder::value).orElse(null);
+                    var soundEvent = BuiltInRegistries.SOUND_EVENT.get(clip.sound()).map(Holder::value).orElse(null);
                     if (soundEvent != null) {
                         var supplier = attenuatedSupplier(audioTrack, clip);
                         // volume/pitch are envelopes over the clip — sample them at clip-local time
@@ -327,7 +328,7 @@ public class TimelinePlayer {
      * {@code timeScale()}). Runs before the objects' own {@code tick()} consume the scale; objects that
      * stop being speed-controlled (track removed/muted/rebound) revert to 1.
      */
-    private void applySpeed(java.util.List<Track> leaves, double time) {
+    private void applySpeed(List<Track> leaves, double time) {
         var controlled = new HashSet<UUID>();
         for (var track : leaves) {
             if (track.mute() || !(track instanceof SpeedTrack speed)) continue;
@@ -351,7 +352,7 @@ public class TimelinePlayer {
      * live playback by {@link #setSignalDispatch}; the monotonic window + {@link #begin} reset prevent
      * any double-fire (the {@code evaluate(0)} repeat, or a replay seek).
      */
-    private void dispatchSignals(java.util.List<Track> leaves, double time) {
+    private void dispatchSignals(List<Track> leaves, double time) {
         if (!dispatchSignals || time <= lastSignalTick) return;
         for (var track : leaves) {
             if (track.mute() || !(track instanceof SignalTrack signalTrack)) continue;

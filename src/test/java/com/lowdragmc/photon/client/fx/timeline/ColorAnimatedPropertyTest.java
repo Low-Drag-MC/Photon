@@ -68,8 +68,8 @@ class ColorAnimatedPropertyTest {
     @Test
     void gradientClipIsActiveInsideItsWindowEarliestWins() {
         var p = new ColorAnimatedProperty(null);
-        var a = new com.lowdragmc.photon.client.fx.timeline.GradientClip(0, 10, null);
-        var b = new com.lowdragmc.photon.client.fx.timeline.GradientClip(5, 10, null);
+        var a = new GradientClip(0, 10, null);
+        var b = new GradientClip(5, 10, null);
         p.gradientClips().add(a);
         p.gradientClips().add(b);
         assertSame(a, p.activeGradientClip(2), "only a contains 2");

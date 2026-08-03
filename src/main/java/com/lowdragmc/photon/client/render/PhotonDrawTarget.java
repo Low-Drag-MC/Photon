@@ -7,6 +7,7 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 
 import javax.annotation.Nullable;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -43,7 +44,7 @@ public final class PhotonDrawTarget implements AutoCloseable {
 
     private static final Map<Long, PhotonDrawTarget> INSTANCES = new ConcurrentHashMap<>();
     /** Sizes whose allocation failed — keeps the warning to once per size instead of once per frame. */
-    private static final java.util.Set<Long> FAILED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final Set<Long> FAILED = ConcurrentHashMap.newKeySet();
     private static long frameCounter;
 
     /**

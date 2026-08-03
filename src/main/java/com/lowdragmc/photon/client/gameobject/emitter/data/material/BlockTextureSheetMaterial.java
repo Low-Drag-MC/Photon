@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
+import net.minecraft.client.renderer.texture.TextureAtlas;
 
 import javax.annotation.Nonnull;
 
@@ -10,7 +11,7 @@ public final class BlockTextureSheetMaterial extends TextureMaterial {
     public static final BlockTextureSheetMaterial INSTANCE = new BlockTextureSheetMaterial();
 
     private BlockTextureSheetMaterial() {
-        super(net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS);
+        super(TextureAtlas.LOCATION_BLOCKS);
     }
 
     @Override

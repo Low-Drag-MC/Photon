@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.fx.compat;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -180,7 +181,7 @@ public class ShaderFormatConverterTest {
                 uniform float shieldPulse;
                 void main() { gl_Position = ModelViewMat * vec4(shieldPulse, 0.0, 0.0, 1.0); }
                 """;
-        var defaults = new java.util.LinkedHashMap<String, float[]>();
+        var defaults = new LinkedHashMap<String, float[]>();
         for (var engine : List.of("ModelViewMat", "ProjMat", "FogShape", "GameTime")) {
             defaults.put(engine, new float[1]);
         }
@@ -218,7 +219,7 @@ public class ShaderFormatConverterTest {
 
     @Test
     public void bothStagesEmitTheSameCustomBlock() {
-        var defaults = new java.util.LinkedHashMap<String, float[]>();
+        var defaults = new LinkedHashMap<String, float[]>();
         defaults.put("power", new float[1]);
         defaults.put("HDRColor", new float[4]);
         defaults.put("alphaMultiplier", new float[1]);
@@ -244,7 +245,7 @@ public class ShaderFormatConverterTest {
     public void stageThatUsesNoCustomUniformDeclaresNoBlock() {
         // a block is only required to agree where BOTH stages declare one — a vertex stage that just
         // transforms positions should not carry a block it never reads
-        var defaults = new java.util.LinkedHashMap<String, float[]>();
+        var defaults = new LinkedHashMap<String, float[]>();
         defaults.put("power", new float[1]);
         var vertex = ShaderFormatConverter.convertVertex("""
                 #version 330 core

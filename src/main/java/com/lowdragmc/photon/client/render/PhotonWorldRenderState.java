@@ -1,6 +1,11 @@
 package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.photon.PhotonConfig;
+import com.lowdragmc.photon.client.compat.iris.IrisCompat;
+import com.lowdragmc.photon.client.compat.iris.IrisCompositeMode;
+import com.lowdragmc.photon.client.compat.iris.IrisFrameTarget;
+import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
+import com.lowdragmc.photon.client.postfx.runtime.MaskGroups;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.postfx.runtime.RenderGraphExecutor;
 import com.lowdragmc.photon.client.postfx.runtime.SceneBlit;
@@ -17,10 +22,12 @@ import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.resources.Identifier;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+import org.lwjgl.opengl.GL14;
 import org.lwjgl.system.MemoryUtil;
 
 import javax.annotation.Nullable;
@@ -32,10 +39,12 @@ import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Queue;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Frame-scoped draw jobs for Photon's own draw slots. Every job carries the {@link PhotonStage} its
@@ -57,10 +66,18 @@ import java.util.Set;
  * {@code RenderType.draw} branch is the safety net for a type registered without, which then keeps its
  * own draw-time hooks but takes no part in batching or bloom.
  * <p>
- * Target: every draw lands in Photon's own RGBA16F {@link PhotonDrawTarget}, not the engine's RGBA8
- * output — HDR fx colors above 1.0 would otherwise clamp before bloom ever sees them. The drain seeds
- * that target from the output, draws into it against the ENGINE's depth view, and composites it back
- * at the end; the single clamp happens there.
+ * Target: every draw lands in RGBA16F storage of Photon's own, not the engine's RGBA8 output — HDR fx
+ * colors above 1.0 would otherwise clamp before bloom ever sees them. Which storage depends on how the
+ * result has to be merged, and a drain may use both:
+ * <ul>
+ *   <li><b>{@link PhotonDrawTarget}</b> — seeded from the output, drawn into against the ENGINE's depth
+ *       view, and composited straight back at the end. The single clamp happens there.</li>
+ *   <li><b>{@link PhotonFXLayer}</b> — cleared to transparent black instead of seeded, because the merge
+ *       is a premultiplied blend somewhere else: onto the frame after the clouds
+ *       ({@link FXCompositeMode#LATE}), or into a shader pack's own colortex. Every stage of a frame
+ *       accumulates into ONE layer, merged once at {@link PhotonStage#LAST} — under a pack that has to
+ *       happen inside the level render, before Iris consumes the buffer.</li>
+ * </ul>
  * <p>
  * Bloom reads that same target — the draws are not repeated for it. What glows is decided by the luma
  * threshold, the 1.21 "everything participates by brightness" semantics, and occlusion comes free
@@ -93,14 +110,14 @@ public final class PhotonWorldRenderState {
 
         /** The mask a flagged emitter writes; null when it isn't flagged. */
         @Nullable
-        public static MaskWrite of(com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting.Runtime renderer,
+        public static MaskWrite of(RendererSetting.Runtime renderer,
                                    @Nullable Identifier clipTexture) {
             if (!renderer.isWriteCustomMask()) {
                 return null;
             }
             var cutoff = clipTexture == null ? 0f : renderer.getMaskAlphaCutoff();
             return new MaskWrite(
-                    com.lowdragmc.photon.client.postfx.runtime.MaskGroups.idOf(renderer.getMaskGroup()) / 255f,
+                    MaskGroups.idOf(renderer.getMaskGroup()) / 255f,
                     cutoff, clipTexture);
         }
     }
@@ -145,7 +162,7 @@ public final class PhotonWorldRenderState {
     public record DrawBindings(Map<String, Identifier> textures,
                                GpuBufferSlice materialSlice,
                                @Nullable GpuBufferSlice customSlice,
-                               java.util.List<String> sceneSamplers,
+                               List<String> sceneSamplers,
                                @Nullable PhotonRenderTypes.GraphSource graph) {
     }
 
@@ -166,11 +183,11 @@ public final class PhotonWorldRenderState {
             draw.run();
             return;
         }
-        org.lwjgl.opengl.GL14.glBlendEquation(equation);
+        GL14.glBlendEquation(equation);
         try {
             draw.run();
         } finally {
-            org.lwjgl.opengl.GL14.glBlendEquation(org.lwjgl.opengl.GL14.GL_FUNC_ADD);
+            GL14.glBlendEquation(GL14.GL_FUNC_ADD);
         }
     }
 
@@ -304,19 +321,62 @@ public final class PhotonWorldRenderState {
         if (!tasks.isEmpty()) {
             // first drain of the frame for this view: generate every stage's geometry once, with
             // this view's settings in hand — which is the whole reason baking is deferred here
-            for (var task : tasks) {
-                task.bake(settings, baked);
+            try {
+                for (var task : tasks) {
+                    task.bake(settings, baked);
+                }
+            } finally {
+                // a bake that threw must not leave every later pipeline premultiplied
+                PremultipliedBlendPlan.setAccumulating(false);
             }
             tasks.clear();
-        }
-        var jobs = new ArrayList<DrawJob>();
-        baked.removeIf(job -> {
-            if (job.stage() != stage) {
-                return false;
+            // Ask for the opaque-depth snapshot here, at the FIRST drain of the frame: the capture is
+            // taken right after the opaque drain, well before the translucent one that actually owns
+            // the deferred layer. Demanding from that later drain would always land one frame late, and
+            // the first frame of every effect would test against the live depth and be sliced by water.
+            // Not under a shader pack: there the layer is merged mid-frame and tests against the live
+            // depth, so the snapshot would be a full-screen blit nobody reads.
+            if (!IrisCompat.isUsingShaderPack()) {
+                for (var job : baked) {
+                    if (job.stage() == PhotonStage.DEFERRED) {
+                        OpaqueDepthCapture.demand();
+                        break;
+                    }
+                }
             }
-            jobs.add(job);
-            return true;
+        }
+        // Both buckets are collected — and DRAWN — at the translucent seam. The deferred one only
+        // differs in where it lands (its own layer) and when it is merged (after the level render).
+        // Drawing it later would put the geometry outside the level pass, where the modelview stack has
+        // been unwound and the camera uniforms no longer describe the view. 1.21 made the same split
+        // inside one build (inlineGroup / lateGroup) for the same reason.
+        var inlineJobs = new ArrayList<DrawJob>();
+        var layerJobs = new ArrayList<DrawJob>();
+        var deferredBelongsHere = stage == PhotonStage.AFTER_TRANSLUCENT_PARTICLES;
+        baked.removeIf(job -> {
+            if (job.stage() == stage) {
+                inlineJobs.add(job);
+                return true;
+            }
+            if (deferredBelongsHere && job.stage() == PhotonStage.DEFERRED) {
+                layerJobs.add(job);
+                return true;
+            }
+            return false;
         });
+
+        // Under a shader pack there is no in-place path at all: the frame belongs to the pack, so every
+        // translucent draw becomes a layer that is merged into the pack's own target.
+        var packLayer = deferredBelongsHere && PremultipliedBlendPlan.isLayerStage(stage);
+        if (packLayer) {
+            layerJobs.addAll(inlineJobs);
+            inlineJobs.clear();
+        }
+        // The chain must see a frame that contains the FX, and a layer is merged after this drain — so
+        // whenever one exists the chain is handed to PhotonPostFX to run after the composite instead.
+        // It must never run over the layer itself: that holds the FX alone, not the picture.
+        var runChainHere = stage == PhotonStage.LAST && layerJobs.isEmpty();
+
         // The post-effect chain runs on this view's LAST stage, so it sees everything the view drew —
         // and runs even with no jobs at all, because an effect is a property of the frame, not of
         // Photon having rendered something (a screen-wide colour grade must not blink off the moment
@@ -329,8 +389,18 @@ public final class PhotonWorldRenderState {
         // change. Nothing is substituted for the world, where the engine's own block is already right.
         var substituted = PhotonGlobals.substitute();
         try {
-            drain(jobs, PhotonConfig.INSTANCE.enableBloom.get() && settings.bloom(),
-                    settings.effects() ? settings.postEffects() : null, stage == PhotonStage.LAST);
+            var bloom = PhotonConfig.INSTANCE.enableBloom.get() && settings.bloom();
+            var stack2 = settings.effects() ? settings.postEffects() : null;
+            drain(inlineJobs, bloom, stack2, runChainHere, false, false);
+            // the layer never runs the chain (it is FX-only) and only takes the opaque snapshot on the
+            // plain path — under a pack it is merged mid-frame and must test against the live depth
+            drain(layerJobs, bloom, stack2, false, true, !packLayer);
+            if (stage == PhotonStage.LAST) {
+                // Every Photon stage of this frame has now drawn into the shared layer, so this is the
+                // moment to merge it — and it must be inside the level render, because under a pack Iris
+                // consumes its colortex at the end of renderLevel.
+                finishLayer(outputSize());
+            }
         } finally {
             if (substituted) {
                 PhotonGlobals.restore(); // leaving ours bound would freeze the rest of the frame
@@ -339,7 +409,8 @@ public final class PhotonWorldRenderState {
     }
 
     private static void drain(List<DrawJob> jobs, boolean bloomEnabled,
-                              @Nullable PostEffectStack stack, boolean lastStage) {
+                              @Nullable PostEffectStack stack, boolean lastStage, boolean layerMode,
+                              boolean opaqueDepth) {
         // the chain runs on the view's last stage only; the MASK is written on every stage
         var runChain = lastStage && stack != null && stack.wantsExecution();
         if (jobs.isEmpty() && !runChain) {
@@ -370,19 +441,46 @@ public final class PhotonWorldRenderState {
         var mainTarget = Minecraft.getInstance().getMainRenderTarget();
         var outputColor = RenderSystem.outputColorTextureOverride != null
                 ? RenderSystem.outputColorTextureOverride : mainTarget.getColorTextureView();
-        var depthTexture = RenderSystem.outputDepthTextureOverride != null
+        GpuTextureView depthTexture = RenderSystem.outputDepthTextureOverride != null
                 ? RenderSystem.outputDepthTextureOverride : mainTarget.getDepthTextureView();
 
         // Every draw below goes into Photon's own HDR target rather than the engine's RGBA8 output:
         // seed it with the scene (blended fx need the real background), draw, then composite back at
         // the end of the drain. Depth stays the engine's, so occlusion is unaffected.
-        var drawTarget = PhotonDrawTarget.acquire(outputColor.getWidth(0), outputColor.getHeight(0));
-        if (drawTarget == null) {
-            release(jobs); // nothing to draw into — free the meshes rather than leak them
-            return;
+        //
+        // The deferred stage is the exception on both counts: its layer starts EMPTY (the composite
+        // blends it on later, so seeding it with the scene would draw the scene twice) and it tests
+        // against the opaque-only depth snapshot (so a water surface cannot slice an effect in half).
+        PhotonDrawTarget drawTarget = null;
+        PhotonFXLayer layer = null;
+        GpuTextureView colorTexture;
+        if (layerMode) {
+            layer = PhotonFXLayer.acquire(outputColor.getWidth(0), outputColor.getHeight(0));
+            if (layer == null) {
+                release(jobs);
+                return;
+            }
+            layer.beginFrame();
+            colorTexture = layer.view();
+            if (opaqueDepth) {
+                // LATE only. Under a shader pack the layer is merged at the translucent stage, still in
+                // the middle of the frame, so its FX must test against the LIVE depth exactly as an
+                // in-place draw would — substituting the opaque snapshot there would put them in front
+                // of water nobody asked to see through.
+                var snapshot = OpaqueDepthCapture.view();
+                if (snapshot != null) {
+                    depthTexture = snapshot;
+                }
+            }
+        } else {
+            drawTarget = PhotonDrawTarget.acquire(outputColor.getWidth(0), outputColor.getHeight(0));
+            if (drawTarget == null) {
+                release(jobs); // nothing to draw into — free the meshes rather than leak them
+                return;
+            }
+            drawTarget.copyFrom(outputColor);
+            colorTexture = drawTarget.view();
         }
-        drawTarget.copyFrom(outputColor);
-        var colorTexture = drawTarget.view();
 
         // pre-fx scene captures (the 1.21 "scene texture"): taken BEFORE any fx draws, consumed
         // by wireframe-inverse pipelines and SamplerScene* custom-shader samplers
@@ -408,7 +506,11 @@ public final class PhotonWorldRenderState {
                 else needColor = true;
             }
         }
-        if (needColor) sceneColor = PhotonSceneCapture.captureColor(colorTexture);
+        // Captured from the OUTPUT, not from colorTexture: in layer mode colorTexture is the empty
+        // layer, and an effect sampling SamplerSceneColor would read transparent black instead of the
+        // scene. In the in-place mode the two hold the same pixels (the target was just seeded from the
+        // output), so this is the same capture it always was.
+        if (needColor) sceneColor = PhotonSceneCapture.captureColor(outputColor);
         if (needDepth) sceneDepth = PhotonSceneCapture.captureDepth(depthTexture);
 
         // main draws in sorted order; adjacent fast jobs with the same RenderType merge into one
@@ -437,7 +539,7 @@ public final class PhotonWorldRenderState {
                         || next.renderType() != job.renderType()
                         // the mask sub-pass redraws a whole run with ONE group id, so jobs that write
                         // different masks must stay separate draws even when they share everything else
-                        || !java.util.Objects.equals(next.mask(), job.mask())
+                        || !Objects.equals(next.mask(), job.mask())
                         || PhotonRenderTypes.drawInfo(next.renderType()) == null) {
                     break;
                 }
@@ -460,7 +562,7 @@ public final class PhotonWorldRenderState {
         // makes occlusion free (it is already resolved in there) and matches 1.21, whose bloom ran over the
         // whole DRAW_TARGET: what participates is decided by the luma threshold, not by who drew it.
         var drewSomething = !runs.isEmpty() || !instancedJobs.isEmpty();
-        java.util.function.Consumer<GpuTextureView> bloomStep = !bloomEnabled || !drewSomething ? null : target -> {
+        Consumer<GpuTextureView> bloomStep = !bloomEnabled || !drewSomething ? null : target -> {
             var bloom = PhotonBloom.acquire(target.getWidth(0), target.getHeight(0));
             if (bloom != null) {
                 bloom.run(target);
@@ -487,7 +589,82 @@ public final class PhotonWorldRenderState {
             bloomStep.accept(colorTexture);
         }
 
-        drawTarget.compositeTo(outputColor);
+        if (layer == null) {
+            drawTarget.compositeTo(outputColor);
+        }
+        // A layer is NOT merged here: every stage of the frame accumulates into the same one, so the
+        // merge belongs to the frame's last stage. finishLayer() does it.
+    }
+
+    /** The frame's output size, which is what the shared layer is pooled by. */
+    private static long outputSize() {
+        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var output = RenderSystem.outputColorTextureOverride != null
+                ? RenderSystem.outputColorTextureOverride : mainTarget.getColorTextureView();
+        return ((long) output.getWidth(0) << 32) | (output.getHeight(0) & 0xFFFFFFFFL);
+    }
+
+    /**
+     * Merge the frame's FX layer, if anything drew into one.
+     *
+     * <p>Under a pack that means the colortex its particle program writes — which is what lets the
+     * pack's own bloom/DOF/fog reach Photon's FX. A pack whose particle target holds encoded gbuffer
+     * data instead ({@code AFTER_PACK}) has no colour buffer to write, so its layer is held back and
+     * merged onto the finished frame at the post-level seam; so is {@link FXCompositeMode#LATE} on the
+     * plain path, for its own reason.
+     */
+    private static void finishLayer(long size) {
+        var layer = PhotonFXLayer.inUse((int) (size >>> 32), (int) size);
+        if (layer == null) {
+            return; // this view never layered anything — the editor scene, or a frame with no fx
+        }
+        var frame = IrisCompat.isUsingShaderPack() ? IrisCompat.resolveFrameTarget(true) : null;
+        if (frame != null && frame.compositeMode() == IrisCompositeMode.DISABLED) {
+            // The one mode that means "show nothing": a layout we refuse to write to, or the user's own
+            // /photon_iris mode disabled. Dropping the layer is the whole point — parking it would put
+            // the FX back on screen and make the switch look broken.
+            return;
+        }
+        var packTarget = frame == null ? null : irisCompositeTarget(frame);
+        if (packTarget != null) {
+            // its alpha IS the coverage the pack blends with, unless the target is the scene colour
+            layer.compositeTo(packTarget.view(), packTarget.writeAlpha());
+        } else {
+            // no pack, an unresolvable layout, or AFTER_PACK — merge onto the finished frame instead
+            PhotonDeferredLayer.park(layer);
+        }
+    }
+
+    /** Where a shader pack wants this frame's FX layer merged <i>now</i>. */
+    private record PackTarget(GpuTextureView view, boolean writeAlpha) {}
+
+    /**
+     * The pack target to merge into during this drain, or null to hold the layer back for the
+     * post-level seam.
+     *
+     * <p><b>The composite mode decides, not merely "is there a texture".</b> Only
+     * {@link IrisCompositeMode#PREMULTIPLIED_ACCUM} and {@link IrisCompositeMode#SCENE_REPLACE} name a
+     * buffer that means COLOUR. {@link IrisCompositeMode#AFTER_PACK} is the resolver saying the
+     * opposite — the pack's particle program writes packed gbuffer data there and decodes it later
+     * (Kappa, iterationRP, Photon/SixthSurge: {@code blend = off} on a non-float, non-scene target) —
+     * so writing the FX into it puts them somewhere the pack is about to overwrite or misinterpret,
+     * and they vanish. Those hold back and are merged onto the finished frame instead, which is the
+     * honest trade the mode documents.
+     *
+     * <p>Reading {@code canComposite()} here was exactly that mistake: it answers "can these FX be
+     * shown at all", which is true for AFTER_PACK too — the showing just happens somewhere else.
+     */
+    @Nullable
+    private static PackTarget irisCompositeTarget(IrisFrameTarget frame) {
+        if (!frame.canComposite()) return null;
+        var mode = frame.compositeMode();
+        if (mode != IrisCompositeMode.PREMULTIPLIED_ACCUM && mode != IrisCompositeMode.SCENE_REPLACE) {
+            return null; // AFTER_PACK (and anything new that is not a colour target): merge after the pack
+        }
+        var view = IrisCompat.compositeTarget(frame);
+        // The pack's scene colour owns its alpha channel; a separate translucent accumulator does not —
+        // there the alpha is the coverage the pack's own blend pass reads back, so it must be written.
+        return view == null ? null : new PackTarget(view, !frame.primaryIsSceneColor());
     }
 
     /**
@@ -635,7 +812,7 @@ public final class PhotonWorldRenderState {
      *  the missing texture when the pass has none (the shader then never samples it: cutoff is 0). */
     private static BoundTexture resolveMaskClip(MaskWrite mask) {
         var id = mask.clipTexture() != null ? mask.clipTexture()
-                : net.minecraft.client.renderer.texture.MissingTextureAtlasSprite.getLocation();
+                : MissingTextureAtlasSprite.getLocation();
         var texture = Minecraft.getInstance().getTextureManager().getTexture(id);
         return new BoundTexture("Sampler0", texture.getTextureView(), texture.getSampler());
     }
@@ -844,6 +1021,10 @@ public final class PhotonWorldRenderState {
         }
         TRACKED_COLLECTORS.clear();
         PhotonBloom.endFrame();
+        PhotonFXLayer.endFrame();
+        // a frame that ended without reaching AfterLevel (screenshot, crash mid-frame) must not carry
+        // its layer into the next one, where it would be composited a second time
+        PhotonDeferredLayer.discardPending();
         PhotonDrawTarget.endFrame();
         PhotonMaskTarget.endFrame();
     }

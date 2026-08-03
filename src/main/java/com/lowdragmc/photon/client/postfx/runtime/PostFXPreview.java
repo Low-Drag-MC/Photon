@@ -10,6 +10,7 @@ import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.textures.TextureFormat;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
@@ -164,7 +165,7 @@ public final class PostFXPreview {
             float aspect = (float) current.width() / current.height();
             float drawWidth = Math.min(width, height * aspect);
             float drawHeight = drawWidth / aspect;
-            context.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, current.id(),
+            context.blit(RenderPipelines.GUI_TEXTURED, current.id(),
                     x + (width - drawWidth) / 2f, y + (height - drawHeight) / 2f, drawWidth, drawHeight,
                     0f, 1f, 1f, 0f, -1);
         });

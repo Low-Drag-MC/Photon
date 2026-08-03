@@ -5,11 +5,12 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
-import org.joml.Vector3f;
 import lombok.Getter;
 import lombok.Setter;
+import org.joml.Vector3f;
 import oshi.util.tuples.Pair;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @LDLRegisterClient(name = "box", registry = "photon:shape")
@@ -63,7 +64,7 @@ public class Box implements IShape {
     @Override
     public List<Pair<Vector3f, Vector3f>> getGuideLines(IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         scale = new Vector3f(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z)).mul(0.5f);
-        var lines = new java.util.ArrayList<Pair<Vector3f, Vector3f>>();
+        var lines = new ArrayList<Pair<Vector3f, Vector3f>>();
         // calculate 8 corners
         Vector3f[] corners = new Vector3f[8];
         corners[0] = Vector3fHelper.rotateYXY(new Vector3f(-scale.x, -scale.y, -scale.z), rotation).add(position);

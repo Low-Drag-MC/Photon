@@ -5,6 +5,7 @@ import expr.Parser;
 import expr.SyntaxException;
 
 import javax.annotation.Nullable;
+import java.util.Objects;
 
 /**
  * An <b>expression clip</b> on a single {@link AnimatedProperty} channel's curve lane: a time window
@@ -80,7 +81,7 @@ public class ExprClip implements SubClip {
      *  the compiled expression, or {@code null} when the source is empty or fails to parse. */
     @Nullable
     public Expr compiled() {
-        if (!java.util.Objects.equals(parsedInput, expression)) {
+        if (!Objects.equals(parsedInput, expression)) {
             parsedInput = expression;
             if (expression.isBlank()) {
                 compiled = null;

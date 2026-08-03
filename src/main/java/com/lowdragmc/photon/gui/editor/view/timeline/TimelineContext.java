@@ -1,17 +1,22 @@
 package com.lowdragmc.photon.gui.editor.view.timeline;
 
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.TextWrap;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.TextElement;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
+import com.lowdragmc.photon.client.fx.timeline.TrackGroup;
 import com.lowdragmc.photon.gui.editor.FXEditor;
-import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 
 import javax.annotation.Nullable;
+import java.util.Collection;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -81,7 +86,7 @@ public interface TimelineContext {
 
     /** Inspect a sub-selection's configurable (e.g. a property's interp mode) without selecting the
      *  whole track. */
-    void inspectProperty(Track track, com.lowdragmc.lowdraglib2.configurator.IConfigurable configurable);
+    void inspectProperty(Track track, IConfigurable configurable);
 
     boolean isTrackSelected(Track track);
 
@@ -102,10 +107,10 @@ public interface TimelineContext {
     boolean isClipSelected(Clip clip);
 
     /** The full multi-selection set of clips (read-only view). */
-    java.util.Set<Clip> selectedClips();
+    Set<Clip> selectedClips();
 
     /** Replace (or add to, when {@code additive}) the multi-selection with {@code clips}. */
-    void selectClips(java.util.Collection<Clip> clips, boolean additive);
+    void selectClips(Collection<Clip> clips, boolean additive);
 
     /** Toggle one clip's membership in the multi-selection (Ctrl/Shift-click). */
     void toggleClipSelection(Track track, Clip clip);
@@ -123,11 +128,11 @@ public interface TimelineContext {
     // ---- lane sub-item helpers ----
     /** A registered lane sub-element and how to re-lay-it-out when the tick/value mapping changes
      *  (zoom/scroll/range). Registered elements are cleared on {@code rebuild()}. */
-    record LaneItem(com.lowdragmc.lowdraglib2.gui.ui.UIElement element, Runnable reposition) {}
+    record LaneItem(UIElement element, Runnable reposition) {}
 
     /** Register any lane sub-element (clip / keyframe / stop) with its reposition callback so scroll/zoom
      *  re-lays-it-out without a full rebuild. */
-    void registerLaneItem(com.lowdragmc.lowdraglib2.gui.ui.UIElement element, Runnable reposition);
+    void registerLaneItem(UIElement element, Runnable reposition);
 
     /** Re-run every registered {@link LaneItem}'s reposition from the current model — call this after a drag
      *  mutates a clip/stop tick so its element follows live (the same path scroll/zoom uses). */
@@ -135,7 +140,7 @@ public interface TimelineContext {
 
     // ---- clip helpers (shared by clip-based tracks) ----
     /** Register a clip's element (and its track) so scroll/zoom + marquee + group-drag can find it. */
-    void registerClipView(Track track, Clip clip, com.lowdragmc.lowdraglib2.gui.ui.UIElement element);
+    void registerClipView(Track track, Clip clip, UIElement element);
 
     double snapTick(double tick, @Nullable Clip exclude, boolean ctrl);
 
@@ -147,7 +152,7 @@ public interface TimelineContext {
 
     /** Like {@link #snapKeyTick(double, boolean)} but excludes the given animation sub-clips (the ones being
      *  dragged) so a clip doesn't snap to its own moving edges. */
-    double snapKeyTick(double tick, boolean ctrl, @Nullable java.util.Set<?> excludeSubClips);
+    double snapKeyTick(double tick, boolean ctrl, @Nullable Set<?> excludeSubClips);
 
     /** Set/clear the cross-track snap guide lines drawn over all lanes while dragging a clip. */
     void setDragGuide(@Nullable Clip clip);
@@ -164,7 +169,7 @@ public interface TimelineContext {
     void removeClip(Track track, Clip clip);
 
     /** Add {@code child} as a new track inside {@code group} (undoable). */
-    void addChildTrack(com.lowdragmc.photon.client.fx.timeline.TrackGroup group, Track child);
+    void addChildTrack(TrackGroup group, Track child);
 
     void bind(Track track, @Nullable UUID targetId);
 

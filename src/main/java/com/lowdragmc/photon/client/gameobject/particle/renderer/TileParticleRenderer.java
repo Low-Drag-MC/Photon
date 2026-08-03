@@ -6,6 +6,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
+import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
 import org.jetbrains.annotations.Nullable;
@@ -14,6 +16,8 @@ import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+import org.lwjgl.system.MemoryUtil;
+
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.nio.FloatBuffer;
@@ -226,13 +230,13 @@ public class TileParticleRenderer {
      *  {@code PhotonInstancedDrawState.MODEL}. Sequential-quad indexed (1.21's EBO pattern).
      *  Rebuilt when the mesh hot-reloads (identity compare). */
     @Nullable
-    private com.mojang.blaze3d.buffers.GpuBuffer modelVertexBuffer;
+    private GpuBuffer modelVertexBuffer;
     @Nullable
-    private com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh modelBuiltMesh;
+    private PhotonMesh modelBuiltMesh;
     private int modelIndexCount;
 
     @Nullable
-    public com.mojang.blaze3d.buffers.GpuBuffer modelMeshBuffer() {
+    public GpuBuffer modelMeshBuffer() {
         var source = renderer.getModelSource();
         var mesh = source == null ? null : source.getMesh();
         if (mesh == null) {
@@ -250,7 +254,7 @@ public class TileParticleRenderer {
             var vertices = mesh.vertices();
             var bounds = mesh.spriteBounds();
             // pos 3, uv 2, normal 3, brightness 1 — the 1.21 layout
-            var bytes = org.lwjgl.system.MemoryUtil.memAlloc(quadCount * 4 * 9 * Float.BYTES);
+            var bytes = MemoryUtil.memAlloc(quadCount * 4 * 9 * Float.BYTES);
             try {
                 for (int quad = 0; quad < quadCount; quad++) {
                     var brightness = shade ? mesh.shadeBrightness(quad) : 1f;
@@ -262,7 +266,7 @@ public class TileParticleRenderer {
                         vh = bounds[quad * 4 + 3] - v0;
                     }
                     for (int corner = 0; corner < 4; corner++) {
-                        int off = com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh.vertexOffset(quad, corner);
+                        int off = PhotonMesh.vertexOffset(quad, corner);
                         var u = vertices[off + 3];
                         var v = vertices[off + 4];
                         if (remapUV) {
@@ -282,10 +286,10 @@ public class TileParticleRenderer {
                     modelIndexCount = 0;
                     return null;
                 }
-                modelVertexBuffer = com.mojang.blaze3d.systems.RenderSystem.getDevice().createBuffer(
-                        () -> "Photon model mesh", com.mojang.blaze3d.buffers.GpuBuffer.USAGE_VERTEX, bytes);
+                modelVertexBuffer = RenderSystem.getDevice().createBuffer(
+                        () -> "Photon model mesh", GpuBuffer.USAGE_VERTEX, bytes);
             } finally {
-                org.lwjgl.system.MemoryUtil.memFree(bytes);
+                MemoryUtil.memFree(bytes);
             }
             modelIndexCount = quadCount * 6;
             modelBuiltMesh = mesh;

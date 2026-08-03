@@ -2,6 +2,7 @@ package com.lowdragmc.photon.gui.editor.view.timeline;
 
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.lowdraglib2.configurator.IToggleConfigurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
@@ -36,6 +37,8 @@ import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -96,7 +99,7 @@ public class PostProcessTrackEditor extends ClipTrackEditor {
         weightRow.setTips("photon.gui.editor.timeline.post_process.weight.tip");
         group.addConfigurator(weightRow);
         group.addConfigurator(maskFilterGroup(post, ctx));
-        group.addConfigurator(new com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator(
+        group.addConfigurator(new BooleanConfigurator(
                 "photon.gui.editor.timeline.post_process.independent",
                 post::independent,
                 value -> {
@@ -364,9 +367,9 @@ public class PostProcessTrackEditor extends ClipTrackEditor {
 
     /** Fresh override functions seeded from the schema default (one per channel for vectors).
      *  MUTABLE list — the channel editors write back in place. */
-    private static java.util.List<NumberFunction> defaultChannels(PostProcessClip.ParamKind kind,
+    private static List<NumberFunction> defaultChannels(PostProcessClip.ParamKind kind,
                                                                   @Nullable Object defaultValue) {
-        var channels = new java.util.ArrayList<NumberFunction>(kind.channelCount());
+        var channels = new ArrayList<NumberFunction>(kind.channelCount());
         switch (kind) {
             case COLOR -> channels.add(NumberFunction.color(defaultValue instanceof Integer argb ? argb : -1));
             case BOOL -> channels.add(NumberFunction.constant(defaultValue == Boolean.TRUE ? 1 : 0));

@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.fx.timeline;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -71,7 +72,7 @@ class ClipTest {
 
     @Test
     void copyIsIndependentValueCopy() {
-        var id = new java.util.UUID(7, 9);
+        var id = new UUID(7, 9);
         var clip = new Clip(1.0, 2.0, 0.5f).targetId(id).seed(1234L).randomSeed(true);
         var copy = clip.copy();
         assertNotSame(clip, copy);

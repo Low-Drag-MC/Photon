@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.gui.ui.utils.UIElementProvider;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
@@ -18,16 +19,17 @@ import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.configurator.NumberFunctionConfigurator;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.configurator.NumberFunctionConfigurator;
 import net.minecraft.client.Minecraft;
-import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.resources.sounds.SoundInstance;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -160,8 +162,8 @@ public class AudioTrackEditor extends ClipTrackEditor {
     }
 
     /** Resolve a stored sound id to its SoundEvent, falling back to a always-present vanilla sound. */
-    private static SoundEvent resolveSound(net.minecraft.resources.Identifier id) {
-        var sound = BuiltInRegistries.SOUND_EVENT.get(id).map(net.minecraft.core.Holder::value).orElse(null);
+    private static SoundEvent resolveSound(Identifier id) {
+        var sound = BuiltInRegistries.SOUND_EVENT.get(id).map(Holder::value).orElse(null);
         return sound != null ? sound : SoundEvents.UI_BUTTON_CLICK.value();
     }
 }

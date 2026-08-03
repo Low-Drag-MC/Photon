@@ -1,26 +1,24 @@
 package com.lowdragmc.photon.gui.editor.view.timeline;
 
-import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.TagConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.client.fx.timeline.Signal;
 import com.lowdragmc.photon.client.fx.timeline.SignalTrack;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import net.minecraft.client.Minecraft;
-import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -189,7 +187,7 @@ public class SignalTrackEditor extends TrackEditor {
 
     private void drawSignals(TimelineContext ctx, GUIContext graphics, SignalTrack track, SignalTrackUIState st,
                              float x, float y, float width, float height) {
-        var ctrl = com.lowdragmc.lowdraglib2.gui.ui.UIElement.isControlDown();
+        var ctrl = UIElement.isControlDown();
         var cy = y + height / 2f;
         var signals = track.signals();
         for (int i = 0; i < signals.size(); i++) {

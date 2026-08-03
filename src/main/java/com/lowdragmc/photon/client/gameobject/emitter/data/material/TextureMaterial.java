@@ -3,20 +3,24 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigHDR;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
+import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
-import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
-import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
+import com.lowdragmc.photon.client.render.MaterialPreviewRenderer;
+import com.lowdragmc.photon.client.render.PhotonMaterialUniforms;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector4f;
@@ -73,14 +77,14 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     }
 
     @Override
-    public net.minecraft.client.renderer.rendertype.RenderType getRenderType(
-            com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting setting,
-            com.mojang.blaze3d.vertex.VertexFormat.Mode mode) {
+    public RenderType getRenderType(
+            MaterialSetting setting,
+            VertexFormat.Mode mode) {
         // 1.21 selected the pixel program only when pixel-art was on; the plain program has no Bits use
         var fragment = pixelArt.isEnable() ? Photon.id("core/pixel_hdr_particle") : Photon.id("core/hdr_particle");
         return MaterialRenderTypes.hdrParticle(texture, fragment,
                 setting.pipelineKey(mode),
-                com.lowdragmc.photon.client.render.PhotonMaterialUniforms.Values.of(
+                PhotonMaterialUniforms.Values.of(
                         hdr, discardThreshold, hdrMode.mode, pixelArt.isEnable() ? Math.max(pixelArt.bits, 1) : 0));
     }
 
@@ -88,7 +92,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     // live off-screen preview: renders the material's actual RenderType (HDR/discard/pixel-art applied)
     @Override
     public IGuiTexture preview() {
-        return com.lowdragmc.photon.client.render.MaterialPreviewRenderer.previewOf(this);
+        return MaterialPreviewRenderer.previewOf(this);
     }
 
     @Override

@@ -2,16 +2,17 @@ package com.lowdragmc.photon;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.registry.AutoRegistry;
+import com.lowdragmc.lowdraglib2.registry.ILDLRegisterClient;
 import com.lowdragmc.lowdraglib2.registry.LDLRegistry;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.utils.ReflectionUtils;
+import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlockTextureSheetMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.IModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.IShape;
-import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.gui.editor.view.timeline.TrackType;
 
 import java.util.function.Supplier;
@@ -85,7 +86,7 @@ public class PhotonRegistries {
         /** Server-dist replacement for {@code LDLibRegisterClient.autoRegister()} (which is client-gated
          *  upstream): register every {@code @LDLRegisterClient}-annotated class targeting the registry. */
         @SuppressWarnings({"unchecked", "rawtypes"})
-        private static <T extends com.lowdragmc.lowdraglib2.registry.ILDLRegisterClient> void registerAnnotatedClasses(
+        private static <T extends ILDLRegisterClient> void registerAnnotatedClasses(
                 AutoRegistry.LDLibRegisterClient<T, Supplier<T>> registry, Class<T> baseType) {
             if (LDLib2.isClient()) return; // client dist already auto-scanned on creation
             var registryId = registry.getRegistryName().toString();

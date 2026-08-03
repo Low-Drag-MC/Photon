@@ -6,8 +6,9 @@ import com.lowdragmc.lowdraglib2.syncdata.AccessorRegistries;
 import com.lowdragmc.lowdraglib2.syncdata.accessor.direct.CustomDirectAccessor;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.IModelSource;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.IShape;
 import net.minecraft.network.codec.ByteBufCodecs;
 
@@ -37,10 +38,10 @@ public class PhotonLDLibPlugin implements ILDLibPlugin {
         // 1.21 relied on the INBTSerializable accessor for ECBCurves fields; the interface is gone
         // in 26.1, so the legacy 8-float ListTag layout is kept alive through this codec instead
         AccessorRegistries.registerAccessor(CustomDirectAccessor.builder(
-                        com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves.class)
-                .codec(com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves.CODEC)
+                        ECBCurves.class)
+                .codec(ECBCurves.CODEC)
                 .streamCodec(ByteBufCodecs.fromCodec(
-                        com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves.CODEC))
+                        ECBCurves.CODEC))
                 .codecMark()
                 .build());
         AccessorRegistries.registerAccessor(CustomDirectAccessor.builder(IShape.class)

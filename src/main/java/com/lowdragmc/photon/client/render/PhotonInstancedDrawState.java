@@ -8,9 +8,13 @@ import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL33;
+import org.lwjgl.opengl.GL;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The 1.21 divisor-attribute transport on 26.1 (approved plan C1): the engine's vertex system has no
@@ -53,7 +57,7 @@ public final class PhotonInstancedDrawState {
             if (tail.isEmpty()) {
                 return this;
             }
-            var all = new java.util.ArrayList<>(attribs);
+            var all = new ArrayList<>(attribs);
             all.addAll(tail);
             return new Layout(strideFloats + tailFloats, List.copyOf(all), baseAttribs, baseStride);
         }
@@ -153,7 +157,7 @@ public final class PhotonInstancedDrawState {
         if (cached != null) {
             return cached;
         }
-        var supported = org.lwjgl.opengl.GL.getCapabilities().GL_ARB_vertex_attrib_binding;
+        var supported = GL.getCapabilities().GL_ARB_vertex_attrib_binding;
         var enabled = true;
         try {
             var field = Class.forName("com.mojang.blaze3d.opengl.GlDevice")
@@ -174,7 +178,7 @@ public final class PhotonInstancedDrawState {
      * with the OTHER layout's offsets, i.e. fetching past its shorter stride. So each apply disables the
      * locations it no longer uses. Only ever disables locations Photon itself enabled.
      */
-    private static final java.util.Map<Integer, Integer> ENABLED_BY_VAO = new java.util.HashMap<>();
+    private static final Map<Integer, Integer> ENABLED_BY_VAO = new HashMap<>();
 
     /** Called by {@code VertexArrayCacheMixin} after the engine bound our dedicated VAO. */
     public static void apply() {

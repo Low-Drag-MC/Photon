@@ -1,26 +1,26 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
-import net.minecraft.client.renderer.RenderPipelines;
-import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
+import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.rendering.RegisteredGuiTextureRenderer;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.math.noise.PerlinNoise;
+import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
-import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.util.Mth;
+import org.joml.Vector3f;
 
 
 /**
@@ -223,10 +223,10 @@ public class NoiseSetting extends ToggleGroup {
      * {@link IGuiTexture}s through {@code GuiTextureRendererRegistry} rather than a method on the
      * interface, so the 1.21-shaped {@code draw} override was never called.
      */
-    @com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient(
+    @LDLRegisterClient(
             name = "photon_noise_preview", registry = "ldlib2:gui_texture_renderer")
     public static final class Renderer implements
-            com.lowdragmc.lowdraglib2.gui.texture.rendering.RegisteredGuiTextureRenderer<NoisePreview, Renderer> {
+            RegisteredGuiTextureRenderer<NoisePreview, Renderer> {
         @Override
         public Class<NoisePreview> type() {
             return NoisePreview.class;

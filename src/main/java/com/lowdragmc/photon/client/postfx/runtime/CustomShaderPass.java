@@ -1,10 +1,13 @@
 package com.lowdragmc.photon.client.postfx.runtime;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.postfx.shadergraph.PhotonFullscreenCompiler;
 import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.shaders.UniformType;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.GsonHelper;
@@ -17,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The hand-written pass source: a core shader pair (json + fsh) played as an effect pass. The pass
@@ -91,8 +95,8 @@ public final class CustomShaderPass {
 
     private static final Map<String, InfoEntry> INFOS = new HashMap<>();
     private static final Map<String, Pass> PASSES = new HashMap<>();
-    private static final java.util.concurrent.atomic.AtomicInteger PIPELINE_ID =
-            new java.util.concurrent.atomic.AtomicInteger();
+    private static final AtomicInteger PIPELINE_ID =
+            new AtomicInteger();
 
     private CustomShaderPass() {}
 
@@ -115,15 +119,15 @@ public final class CustomShaderPass {
         var rl = Identifier.parse(location);
         var builder = PhotonFullscreenPass.builder(
                         Identifier.fromNamespaceAndPath(rl.getNamespace(), "core/" + rl.getPath()))
-                .withLocation(com.lowdragmc.photon.Photon.id("pipeline/postfx_" + PIPELINE_ID.getAndIncrement()));
+                .withLocation(Photon.id("pipeline/postfx_" + PIPELINE_ID.getAndIncrement()));
         info.samplers().forEach(builder::withSampler);
         if (!info.layout().isEmpty()) {
-            builder.withUniform(PassUniforms.BLOCK_NAME, com.mojang.blaze3d.shaders.UniformType.UNIFORM_BUFFER);
+            builder.withUniform(PassUniforms.BLOCK_NAME, UniformType.UNIFORM_BUFFER);
         }
         var pipeline = builder.build();
         // validate here rather than at setPipeline: a broken shader inside an open pass throws and takes
         // the frame with it, whereas a null Pass just skips the effect (chain passthrough, logged once)
-        if (!com.mojang.blaze3d.systems.RenderSystem.getDevice().precompilePipeline(pipeline).isValid()) {
+        if (!RenderSystem.getDevice().precompilePipeline(pipeline).isValid()) {
             Photon.LOGGER.warn("post-effect pass shader '{}' failed to compile (must be 26.1-format GLSL: "
                     + "values in a std140 PhotonPass block)", location);
             INFOS.put(location, new InfoEntry(null)); // stop re-resolving it every frame
@@ -162,13 +166,13 @@ public final class CustomShaderPass {
 
     static Info parse(JsonObject json) {
         var samplers = new ArrayList<String>();
-        for (var element : GsonHelper.getAsJsonArray(json, "samplers", new com.google.gson.JsonArray())) {
+        for (var element : GsonHelper.getAsJsonArray(json, "samplers", new JsonArray())) {
             var name = GsonHelper.getAsString(element.getAsJsonObject(), "name");
             samplers.add(name);
         }
         var layout = new ArrayList<UniformSpec>();
         var ports = new ArrayList<UniformSpec>();
-        for (var element : GsonHelper.getAsJsonArray(json, "uniforms", new com.google.gson.JsonArray())) {
+        for (var element : GsonHelper.getAsJsonArray(json, "uniforms", new JsonArray())) {
             var uniform = element.getAsJsonObject();
             var name = GsonHelper.getAsString(uniform, "name");
             // only the std140 scalar/vector subset can live in the PhotonPass block; anything else
@@ -177,7 +181,7 @@ public final class CustomShaderPass {
             int count = GsonHelper.getAsInt(uniform, "count", 1);
             if (count < 1 || count > 4) continue;
             var defaults = new float[count];
-            var values = GsonHelper.getAsJsonArray(uniform, "values", new com.google.gson.JsonArray());
+            var values = GsonHelper.getAsJsonArray(uniform, "values", new JsonArray());
             for (int i = 0; i < count && i < values.size(); i++) {
                 defaults[i] = values.get(i).getAsFloat();
             }

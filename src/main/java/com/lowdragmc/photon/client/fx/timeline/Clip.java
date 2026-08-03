@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.fx.timeline;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 
 /**
@@ -55,7 +56,7 @@ public class Clip {
     protected float lerpValue() {
         if (Float.isNaN(lerpValue) || lerpSeed != seed()) {
             lerpSeed = seed();
-            lerpValue = new java.util.Random(lerpSeed).nextFloat();
+            lerpValue = new Random(lerpSeed).nextFloat();
         }
         return lerpValue;
     }

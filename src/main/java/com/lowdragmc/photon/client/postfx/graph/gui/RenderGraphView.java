@@ -1,10 +1,13 @@
 package com.lowdragmc.photon.client.postfx.graph.gui;
 
 import com.lowdragmc.kilagraph.graph.util.KGGraphView;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphEditorView;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphResourceProviderContainer;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.DockSlot;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.GraphPanel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.GraphView;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.command.NodeCommands;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.itemlibrary.NodeModelLibraryItem;
@@ -19,6 +22,8 @@ import com.lowdragmc.photon.client.postfx.shadergraph.gui.FullscreenGraphView;
 import com.lowdragmc.photon.gui.editor.resource.FullscreenGraphLibrary;
 import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
 import org.joml.Vector2f;
+
+import java.util.Optional;
 
 /**
  * The effect render graph editor view. On top of the stock {@link GraphView} (canvas, item
@@ -38,11 +43,11 @@ public class RenderGraphView extends KGGraphView {
 
         // live effect preview over a clean world-frame capture (mirrors the shader preview dock)
         var previewTool = new PostFXPreviewTool(this);
-        var previewPanel = new com.lowdragmc.lowdraglib2.nodegraphtookit.gui.GraphPanel(this, previewTool);
+        var previewPanel = new GraphPanel(this, previewTool);
         getPanelLayer().addChild(previewPanel);
-        dockManager.register(previewPanel, com.lowdragmc.lowdraglib2.nodegraphtookit.gui.DockSlot.BOTTOM_RIGHT);
-        java.util.Optional.ofNullable(dockManager.getCornerPanel(
-                        com.lowdragmc.lowdraglib2.nodegraphtookit.gui.DockSlot.BOTTOM_RIGHT))
+        dockManager.register(previewPanel, DockSlot.BOTTOM_RIGHT);
+        Optional.ofNullable(dockManager.getCornerPanel(
+                        DockSlot.BOTTOM_RIGHT))
                 .ifPresent(panel -> panel.selectTool(previewTool));
     }
 
@@ -81,7 +86,7 @@ public class RenderGraphView extends KGGraphView {
     private void showReadOnlyNotification() {
         var mui = getModularUI();
         if (mui != null) {
-            com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog.showNotification(
+            Dialog.showNotification(
                     "photon.render_graph.dive", "photon.render_graph.dive.read_only", null).show(mui);
         }
     }

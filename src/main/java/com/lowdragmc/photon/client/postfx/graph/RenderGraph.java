@@ -1,12 +1,14 @@
 package com.lowdragmc.photon.client.postfx.graph;
 
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
+import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.Graph;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.GraphLogger;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.GraphNodeRegistry;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandles;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.SubgraphRegistry;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.command.GraphCommands;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.command.IGraphCommand;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.itemlibrary.GraphNodeCreationData;
@@ -15,11 +17,11 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.model.SpawnFlags;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.graph.CustomGraphModelImpl;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.ICustomNodeModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.NodeModel;
-import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.SubgraphRegistry;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.postfx.graph.nodes.OutputNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.PassNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.SceneColorInputNode;
+import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
 import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
@@ -96,8 +98,8 @@ public class RenderGraph extends Graph {
     }
 
     /** Re-define every pass node running {@code savedPath} so its ports mirror the fresh save. */
-    private void refreshPassNodesReferencing(com.lowdragmc.lowdraglib2.editor.resource.IResourcePath savedPath) {
-        var entry = com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime.get(savedPath);
+    private void refreshPassNodesReferencing(IResourcePath savedPath) {
+        var entry = FullscreenGraphRuntime.get(savedPath);
         if (entry != null && !entry.isValid()) {
             Photon.LOGGER.warn("[postfx] fullscreen graph '{}' was saved but no longer compiles: {} "
                             + "(pass nodes keep their previous ports until it compiles again)",

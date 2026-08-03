@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.curve;
 
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
@@ -8,6 +9,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.BindableUIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Menu;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib2.math.curve.ExplicitCubicBezierCurve2;
@@ -15,10 +17,10 @@ import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.TaffyPosition;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
-import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
+import org.joml.Vector2fc;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -89,8 +91,8 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
             layout.heightPercent(100);
             layout.flex(1);
         }).style(style -> style
-                        .backgroundTexture(com.lowdragmc.lowdraglib2.gui.texture.GuiTexture.of((ctx, gx, gy, gw, gh) -> drawGraph(ctx, ctx.mouseX, ctx.mouseY, gx, gy, gw, gh, ctx.partialTick)))
-                        .overlayTexture(com.lowdragmc.lowdraglib2.gui.texture.GuiTexture.of((ctx, gx, gy, gw, gh) -> drawGraphOverlay(ctx, ctx.mouseX, ctx.mouseY, gx, gy, gw, gh, ctx.partialTick))))
+                        .backgroundTexture(GuiTexture.of((ctx, gx, gy, gw, gh) -> drawGraph(ctx, ctx.mouseX, ctx.mouseY, gx, gy, gw, gh, ctx.partialTick)))
+                        .overlayTexture(GuiTexture.of((ctx, gx, gy, gw, gh) -> drawGraphOverlay(ctx, ctx.mouseX, ctx.mouseY, gx, gy, gw, gh, ctx.partialTick))))
                 .addEventListener(UIEvents.MOUSE_DOWN, this::onGraphMouseDown)
                 .addEventListener(UIEvents.DOUBLE_CLICK, this::onGraphDoubleClick)
                 .addEventListener(UIEvents.DRAG_SOURCE_UPDATE, e -> {
@@ -189,7 +191,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
     }
 
     /** The point at {@code index} of a series: point 0 is the first segment's p0, point i is segment i-1's p1. */
-    protected org.joml.Vector2fc pointCoord(ECBCurves curves, int index) {
+    protected Vector2fc pointCoord(ECBCurves curves, int index) {
         var segments = curves.getSegments();
         return index == 0 ? segments.getFirst().p0 : segments.get(index - 1).p1;
     }
@@ -202,7 +204,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
             layout.height(POINT_HIT_SIZE);
             layout.marginLeft(-POINT_HIT_SIZE / 2);
             layout.marginTop(-POINT_HIT_SIZE / 2);
-        }).style(style -> style.overlayTexture(com.lowdragmc.lowdraglib2.gui.texture.GuiTexture.of((graphics, x, y, w, h) -> {
+        }).style(style -> style.overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
             float mx = graphics.mouseX, my = graphics.mouseY, pt = graphics.partialTick;
             var selected = selectedPoints.contains(encodePoint(series, index));
             // only the element that would actually receive the click (or the current drag anchor) reacts
@@ -261,7 +263,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
             layout.height(POINT_HIT_SIZE);
             layout.marginLeft(-POINT_HIT_SIZE / 2);
             layout.marginTop(-POINT_HIT_SIZE / 2);
-        }).setDisplay(false).style(style -> style.overlayTexture(com.lowdragmc.lowdraglib2.gui.texture.GuiTexture.of((graphics, x, y, w, h) -> {
+        }).setDisplay(false).style(style -> style.overlayTexture(GuiTexture.of((graphics, x, y, w, h) -> {
             float mx = graphics.mouseX, my = graphics.mouseY, pt = graphics.partialTick;
             var active = dragKind < 0 ? el.isHover() : dragKind == kind;
             drawMarker(graphics, x + w / 2, y + h / 2, 3, ColorPattern.GREEN.color, active, mx, my, pt);
@@ -326,7 +328,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
     /** The selected point's tangent handle coordinate ({@code kind}: 1 = in, 2 = out), or null if hidden
      *  (no / multiple selection: handles only apply to a single selected point). */
     @Nullable
-    protected org.joml.Vector2fc handleCoord(int kind) {
+    protected Vector2fc handleCoord(int kind) {
         var curvesList = allCurves();
         if (selectedPoints.size() > 1) return null;
         if (selectedSeries < 0 || selectedSeries >= curvesList.size()) return null;
@@ -336,7 +338,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
         return selectedPoint < segments.size() ? segments.get(selectedPoint).c0 : null;
     }
 
-    private void positionHandle(UIElement el, @Nullable org.joml.Vector2fc pos) {
+    private void positionHandle(UIElement el, @Nullable Vector2fc pos) {
         if (pos == null) {
             el.setDisplay(false);
             return;
@@ -697,7 +699,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
 
     // ------------------------------------------------------------------ drawing
 
-    protected Vector2f toScreen(org.joml.Vector2fc coord, float x, float y, float width, float height) {
+    protected Vector2f toScreen(Vector2fc coord, float x, float y, float width, float height) {
         return new Vector2f(x + width * coord.x(), y + height * (1 - coord.y()));
     }
 
@@ -777,7 +779,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
     }
 
     @Nullable
-    private org.joml.Vector2fc readoutCoord() {
+    private Vector2fc readoutCoord() {
         var curvesList = allCurves();
         // an active drag always shows its target's live coordinate
         if (dragKind >= 0 && dragSeries >= 0 && dragSeries < curvesList.size()) {

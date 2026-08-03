@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.fx.fxpack;
 
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
 import com.lowdragmc.lowdraglib2.editor.resource.FilePath;
@@ -7,9 +8,11 @@ import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.editor.resource.ResourceInstance;
 import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.gui.editor.FXProject;
+import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
 import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
+import com.lowdragmc.photon.gui.editor.resource.RenderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.HolderLookup;
@@ -28,6 +31,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -132,7 +136,7 @@ public final class FXPackExporter {
         return new Result(fxId, exporter.files.size() + 1, List.copyOf(exporter.warnings));
     }
 
-    private static void writeEntry(java.nio.file.Path path, byte[] bytes) throws IOException {
+    private static void writeEntry(Path path, byte[] bytes) throws IOException {
         if (path.getParent() != null) {
             Files.createDirectories(path.getParent());
         }
@@ -228,11 +232,11 @@ public final class FXPackExporter {
         var path = IResourcePath.parse(clipTag.getStringOr("effect", ""));
         if (path == null || path instanceof BuiltinPath) return;
         String rewritten = null;
-        var renderGraphs = com.lowdragmc.photon.gui.editor.resource.RenderGraphResource.INSTANCE.getResourceInstance();
+        var renderGraphs = RenderGraphResource.INSTANCE.getResourceInstance();
         if (renderGraphs.getResource(path) != null) {
             rewritten = packLibraryResource(renderGraphs, path);
         } else {
-            var fullscreenGraphs = com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource.INSTANCE
+            var fullscreenGraphs = FullscreenShaderGraphResource.INSTANCE
                     .getResourceInstance();
             if (fullscreenGraphs.getResource(path) != null) {
                 rewritten = packLibraryResource(fullscreenGraphs, path);
@@ -251,7 +255,7 @@ public final class FXPackExporter {
     private void rewriteFullscreenGraphRef(CompoundTag sourceTag) {
         var path = IResourcePath.parse(sourceTag.getStringOr("graph", ""));
         if (path == null || path instanceof BuiltinPath) return;
-        var instance = com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource.INSTANCE
+        var instance = FullscreenShaderGraphResource.INSTANCE
                 .getResourceInstance();
         if (instance.getResource(path) == null) return;
         var rewritten = packLibraryResource(instance, path);
@@ -359,7 +363,7 @@ public final class FXPackExporter {
     }
 
     /** Pack one program stage file when it is itself an author-local asset. */
-    private void packProgramStage(com.google.gson.JsonObject json, String jsonKey, String extension) {
+    private void packProgramStage(JsonObject json, String jsonKey, String extension) {
         if (!json.has(jsonKey)) return;
         var programId = Identifier.tryParse(json.get(jsonKey).getAsString());
         if (programId == null) return;

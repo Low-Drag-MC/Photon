@@ -3,15 +3,21 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeFactory;
 import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeGraphMaterial;
+import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
+import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.TextTexture;
+import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Tooltips;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
+import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.IFieldValueConfigurable;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
@@ -26,6 +32,7 @@ import com.lowdragmc.photon.client.shadergraph.runtime.ShaderGraphRuntime;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import dev.vfyjxf.taffy.style.AlignItems;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.ByteTag;
 import net.minecraft.nbt.CompoundTag;
@@ -33,7 +40,6 @@ import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtOps;
-import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.NotNull;
@@ -46,6 +52,7 @@ import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A material driven by a {@link com.lowdragmc.photon.client.shadergraph.ShaderGraph} resource. The
@@ -359,8 +366,8 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
     @Override
     public IMaterial copy() {
         var copied = new ShaderGraphMaterial(getGraphPath());
-        copied.deserializeAdditionalNBT(serializeAdditionalNBT(com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry()),
-                com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry());
+        copied.deserializeAdditionalNBT(serializeAdditionalNBT(Platform.getFrozenRegistry()),
+                Platform.getFrozenRegistry());
         return copied;
     }
 
@@ -375,7 +382,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
 
     private CompoundTag overridesTag() {
         if (cachedOverridesTag == null) {
-            cachedOverridesTag = (CompoundTag) serializeAdditionalNBT(com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry());
+            cachedOverridesTag = (CompoundTag) serializeAdditionalNBT(Platform.getFrozenRegistry());
             cachedOverridesHash = cachedOverridesTag.hashCode();
         }
         return cachedOverridesTag;
@@ -469,7 +476,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
      * cancel restores the previous graph. The path arrives via {@link ShaderGraphResource}'s selection
      * listener — the stock dialog only reports values.
      */
-    private void showGraphSelector(@Nullable com.lowdragmc.lowdraglib2.gui.ui.ModularUI mui,
+    private void showGraphSelector(@Nullable ModularUI mui,
                                    float x, float y, Runnable onChanged) {
         if (mui == null) return;
         var previous = getGraphPath();
@@ -495,7 +502,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             var message = entry == null || entry.getErrorMessage().isEmpty() ? "missing shader graph"
                     : entry.getErrorMessage();
             group.addConfigurators(new Configurator().addInlineChild(
-                    new com.lowdragmc.lowdraglib2.gui.ui.UIElement()
+                    new UIElement()
                             .layout(layout -> layout.height(14))
                             .style(style -> style.backgroundTexture(new TextTexture(message, 0xffff5555)))));
             return;
@@ -523,7 +530,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
      *  shown while the variable is overridden (orange title); clicking drops the override and
      *  rebuilds the live value store from the graph defaults. */
     private void attachOverrideReset(ConfiguratorGroup sub, ConfiguratorGroup variablesGroup, String name) {
-        var reset = new com.lowdragmc.lowdraglib2.gui.ui.elements.Button().noText().setOnClick(event -> {
+        var reset = new Button().noText().setOnClick(event -> {
             if (overrides.remove(name) == null) return;
             invalidateOverridesCache();
             entry = null; // force a value-store rebuild (defaults + remaining overrides) on next use
@@ -532,26 +539,26 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         reset.layout(layout -> {
             layout.height(14);
             layout.width(14);
-        }).addChild(new com.lowdragmc.lowdraglib2.gui.ui.UIElement()
+        }).addChild(new UIElement()
                 .layout(layout -> {
                     layout.height(10);
                     layout.width(10);
                 })
-                .style(style -> style.backgroundTexture(com.lowdragmc.lowdraglib2.gui.texture.Icons.REPLAY)
+                .style(style -> style.backgroundTexture(Icons.REPLAY)
                         .tooltips("photon.shader_graph.variable_reset")));
         sub.lineContainer.addChildAt(reset, sub.tip.getSiblingIndex());
-        var mark = new java.util.concurrent.atomic.AtomicBoolean(false);
+        var mark = new AtomicBoolean(false);
         Runnable sync = () -> {
             boolean overridden = overrides.containsKey(name);
             if (overridden == mark.get()) return;
             mark.set(overridden);
             reset.setDisplay(overridden);
             sub.label.setText(sub.label.getText().copy().withStyle(style -> style.withColor(
-                    overridden ? com.lowdragmc.lowdraglib2.gui.ColorPattern.ORANGE.color : -1)));
+                    overridden ? ColorPattern.ORANGE.color : -1)));
         };
         mark.set(!overrides.containsKey(name)); // force the initial apply
         sync.run();
-        sub.addEventListener(com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents.TICK, event -> sync.run());
+        sub.addEventListener(UIEvents.TICK, event -> sync.run());
     }
 
     /** Deep-copy mutable values so editors never alias the graph's default instances. */

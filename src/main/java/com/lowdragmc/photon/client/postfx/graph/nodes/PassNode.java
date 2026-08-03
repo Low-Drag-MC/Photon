@@ -1,10 +1,12 @@
 package com.lowdragmc.photon.client.postfx.graph.nodes;
 
+import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Tooltips;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.NodeAttribute;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandles;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IOptionDefinitionContext;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IPortDefinitionContext;
@@ -13,17 +15,18 @@ import com.lowdragmc.photon.client.postfx.graph.PassSource;
 import com.lowdragmc.photon.client.postfx.graph.RenderGraph;
 import com.lowdragmc.photon.client.postfx.graph.RenderGraphTypes;
 import com.lowdragmc.photon.client.postfx.graph.TargetFormat;
-import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.photon.client.postfx.graph.gui.PassOptionConfigurators;
 import com.lowdragmc.photon.client.postfx.runtime.CustomShaderPass;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * One fullscreen dispatch in the effect graph. Its {@link PassSource} picks what it runs (a
@@ -90,7 +93,7 @@ public class PassNode extends RenderGraphNode {
     }
 
     /** One remembered input port — replayed when the source graph is transiently broken. */
-    private record CachedPort(String name, com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle type,
+    private record CachedPort(String name, TypeHandle type,
                               boolean texture, @Nullable Object defaultValue) {}
 
     /**
@@ -99,7 +102,7 @@ public class PassNode extends RenderGraphNode {
      * over a transient failure. Replaying the cached set keeps wires alive until the graph
      * resolves again (the render-graph compiler still reports the broken pass).
      */
-    private final java.util.List<CachedPort> lastGoodPorts = new java.util.ArrayList<>();
+    private final List<CachedPort> lastGoodPorts = new ArrayList<>();
 
     @Override
     public void onDefinePorts(IPortDefinitionContext context) {
@@ -197,9 +200,9 @@ public class PassNode extends RenderGraphNode {
     }
 
     @Override
-    public java.util.List<String> optionChoices(String optionId) {
+    public List<String> optionChoices(String optionId) {
         return OPTION_FORMAT.equals(optionId)
                 ? Arrays.stream(TargetFormat.values()).map(Enum::name).toList()
-                : java.util.List.of();
+                : List.of();
     }
 }

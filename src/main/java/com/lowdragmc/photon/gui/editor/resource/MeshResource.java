@@ -17,6 +17,8 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.function.Consumer;
+
 
 public class MeshResource extends Resource<MeshData> {
     public static final MeshResource INSTANCE = new MeshResource();
@@ -28,9 +30,9 @@ public class MeshResource extends Resource<MeshData> {
      * dialog callback only reports the value), cleared on close. Mirrors {@code MaterialResource}.
      */
     @Nullable
-    private java.util.function.Consumer<IResourcePath> pathSelectListener;
+    private Consumer<IResourcePath> pathSelectListener;
 
-    public void setPathSelectListener(@Nullable java.util.function.Consumer<IResourcePath> listener) {
+    public void setPathSelectListener(@Nullable Consumer<IResourcePath> listener) {
         this.pathSelectListener = listener;
     }
 

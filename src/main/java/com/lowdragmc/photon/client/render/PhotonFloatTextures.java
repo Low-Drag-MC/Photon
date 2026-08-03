@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.render;
 
+import com.lowdragmc.photon.Photon;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -9,6 +10,7 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
 import javax.annotation.Nullable;
+import java.util.Locale;
 
 /**
  * True float render targets on the GL backend. 26.1's {@link TextureFormat} has no float color
@@ -30,7 +32,7 @@ public final class PhotonFloatTextures {
 
     public static boolean isSupported() {
         // GlDevice itself is package-private — identify the backend by name ("OpenGL" today)
-        return RenderSystem.getDevice().getBackendName().toLowerCase(java.util.Locale.ROOT).contains("opengl");
+        return RenderSystem.getDevice().getBackendName().toLowerCase(Locale.ROOT).contains("opengl");
     }
 
     /** An RGBA16F texture usable as render attachment + sampler, or null when unsupported/failed. */
@@ -64,7 +66,7 @@ public final class PhotonFloatTextures {
         int error = GlStateManager._getError();
         if (error != 0) {
             GlStateManager._deleteTexture(id);
-            com.lowdragmc.photon.Photon.LOGGER.warn("half-float texture allocation failed (GL error {}), "
+            Photon.LOGGER.warn("half-float texture allocation failed (GL error {}), "
                     + "falling back", error);
             return null;
         }

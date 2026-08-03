@@ -3,6 +3,10 @@ package com.lowdragmc.photon.test.gametest;
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.gui.editor.FXProject;
+import net.minecraft.core.Holder;
+import net.minecraft.gametest.framework.TestEnvironmentDefinition;
+import net.minecraft.network.chat.Component;
+import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 
 /**
  * Loads every {@code .fxproj} under the local LDLib2 assets dir through the real editor load path
@@ -38,7 +42,7 @@ public final class FXProjectImportGameTest {
             }
             Photon.LOGGER.info("[fxproj-survey] done: {} ok, {} failed (of {})", ok, failed, files.length);
             if (failed > 0) {
-                helper.fail(net.minecraft.network.chat.Component.literal(
+                helper.fail(Component.literal(
                         failed + " of " + files.length + " local .fxproj files failed to load — see [fxproj-survey] in the log"));
             } else {
                 helper.succeed();
@@ -46,8 +50,8 @@ public final class FXProjectImportGameTest {
         });
     }
 
-    public static void register(net.neoforged.neoforge.event.RegisterGameTestsEvent event,
-                                net.minecraft.core.Holder<net.minecraft.gametest.framework.TestEnvironmentDefinition<?>> environment) {
+    public static void register(RegisterGameTestsEvent event,
+                                Holder<TestEnvironmentDefinition<?>> environment) {
         PhotonGameTests.registerFunctionTest(event, LOCAL_PROJECT_SURVEY, PhotonGameTests.defaultTestData(environment));
     }
 }

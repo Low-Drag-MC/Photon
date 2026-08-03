@@ -1,20 +1,23 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.Platform;
-import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigList;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
+import com.lowdragmc.lowdraglib2.utils.PersistedParser;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfigurator;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.ARGB;
 import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.storage.ValueInput;
@@ -25,6 +28,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -66,7 +70,7 @@ public class CurveTexture implements AutoCloseable, IConfigurable, ValueIOSerial
     public void close() {
         if (registeredId != null) {
             // release() drops the registration AND closes the texture
-            net.minecraft.client.Minecraft.getInstance().getTextureManager().release(registeredId);
+            Minecraft.getInstance().getTextureManager().release(registeredId);
             registeredId = null;
             curveTexture = null;
             return;
@@ -80,9 +84,9 @@ public class CurveTexture implements AutoCloseable, IConfigurable, ValueIOSerial
     /** Registration id, so the drain (which resolves samplers by {@link net.minecraft.resources.Identifier} before opening its
      *  pass) can bind this live texture. Allocated on first use; released with the texture. */
     @Nullable
-    private net.minecraft.resources.Identifier registeredId;
-    private static final java.util.concurrent.atomic.AtomicInteger ID_SEQ =
-            new java.util.concurrent.atomic.AtomicInteger();
+    private Identifier registeredId;
+    private static final AtomicInteger ID_SEQ =
+            new AtomicInteger();
 
     /**
      * Upload if dirty, then hand back the {@link net.minecraft.resources.Identifier} this sampler is registered under. 1.21 bound
@@ -91,14 +95,14 @@ public class CurveTexture implements AutoCloseable, IConfigurable, ValueIOSerial
      * pass opens, so the texture has to live in the registry. Render thread only.
      */
     @Nullable
-    public net.minecraft.resources.Identifier textureId() {
+    public Identifier textureId() {
         var texture = getCurveTexture();
         if (texture == null) {
             return null;
         }
         if (registeredId == null) {
-            registeredId = com.lowdragmc.photon.Photon.id("dynamic/curve/" + ID_SEQ.getAndIncrement());
-            net.minecraft.client.Minecraft.getInstance().getTextureManager().register(registeredId, texture);
+            registeredId = Photon.id("dynamic/curve/" + ID_SEQ.getAndIncrement());
+            Minecraft.getInstance().getTextureManager().register(registeredId, texture);
         }
         return registeredId;
     }
@@ -122,7 +126,7 @@ public class CurveTexture implements AutoCloseable, IConfigurable, ValueIOSerial
             for (int w = 0; w < width; w++) {
                 var y = curve.getCurves().getCurveY(w / (width - 1f));
                 var r = Mth.clamp((int) (y * 255), 0, 255);
-                pixels.setPixel(w, h, net.minecraft.util.ARGB.color(255, r, 0, 0));
+                pixels.setPixel(w, h, ARGB.color(255, r, 0, 0));
             }
         }
         this.curveTexture.upload();

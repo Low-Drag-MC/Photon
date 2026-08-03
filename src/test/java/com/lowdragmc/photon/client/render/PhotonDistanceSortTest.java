@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.Arrays;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -76,7 +77,7 @@ public class PhotonDistanceSortTest {
     @DisplayName("all distances equal: order is the identity")
     public void allEqual(int count) {
         var keys = new float[count];
-        java.util.Arrays.fill(keys, 7.25f);
+        Arrays.fill(keys, 7.25f);
         assertMatchesReference(keys);
         var identity = new int[count];
         for (int i = 0; i < count; i++) {

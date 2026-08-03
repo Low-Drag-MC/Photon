@@ -2,9 +2,9 @@ package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
 import com.google.common.collect.Queues;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.math.Transform;
-import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
+import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
@@ -15,15 +15,16 @@ import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
-import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
-import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
+import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.forcefield.ForceFieldObject;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.SpawnFrame;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
-import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
 import com.lowdragmc.photon.client.gameobject.particle.aratrail.AraTrailParticle;
 import com.lowdragmc.photon.client.gameobject.particle.renderer.AraTrailParticleRenderer;
 import com.lowdragmc.photon.client.gameobject.particle.renderer.TileParticleRenderer;
@@ -33,11 +34,12 @@ import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonViewSettings;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
+import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import net.minecraft.client.Camera;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.phys.AABB;
 import org.joml.Matrix4f;
@@ -47,7 +49,9 @@ import org.joml.Vector3f;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Consumer;
 
 /**
  * @author KilaBash
@@ -616,13 +620,13 @@ public class ParticleEmitter extends Emitter {
     private transient AraTrailParticleRenderer araTrailExtractRenderer;
 
     @Override
-    public com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting.Runtime rendererRuntime() {
+    public RendererSetting.Runtime rendererRuntime() {
         return runtime().renderer;
     }
 
     @Override
     protected void bakeBatches(PhotonViewSettings settings,
-                               java.util.List<PhotonWorldRenderState.DrawJob> out,
+                               List<PhotonWorldRenderState.DrawJob> out,
                                Camera camera, float partialTicks) {
         // GPU-instanced tile quads when the config qualifies; CPU baking otherwise
         if (!(canInstanceTiles() && extractInstancedTiles(settings, out, camera, partialTicks))) {
@@ -735,8 +739,8 @@ public class ParticleEmitter extends Emitter {
     }
 
     /** Extract the tiles as instanced draws (billboard quad or baked model mesh). */
-    private boolean extractInstancedTiles(com.lowdragmc.photon.client.render.PhotonViewSettings settings,
-                                          java.util.List<PhotonWorldRenderState.DrawJob> out,
+    private boolean extractInstancedTiles(PhotonViewSettings settings,
+                                          List<PhotonWorldRenderState.DrawJob> out,
                                           Camera camera, float partialTicks) {
         if (extractRenderer == null) {
             extractRenderer = new TileParticleRenderer(runtime().renderer);
@@ -748,7 +752,7 @@ public class ParticleEmitter extends Emitter {
             }
         }
         var model = runtime().renderer.getRenderMode() == ParticleRendererSetting.Mode.Model;
-        com.mojang.blaze3d.buffers.GpuBuffer vertices;
+        GpuBuffer vertices;
         int indexCount;
         if (model) {
             vertices = extractRenderer.modelMeshBuffer();
@@ -763,7 +767,7 @@ public class ParticleEmitter extends Emitter {
         var floats = model ? TileParticleRenderer.MODEL_INSTANCE_FLOATS : TileParticleRenderer.INSTANCE_FLOATS;
         return bakeInstancedGroup(settings, out, camera, runtime().renderer, config.additionalGPUDataSetting,
                 model ? PhotonPipelines.InstancedVariant.MODEL : PhotonPipelines.InstancedVariant.TILE,
-                BaseMesh.quads(vertices, indexCount), tileCount * floats, 0, new org.joml.Vector3f(),
+                BaseMesh.quads(vertices, indexCount), tileCount * floats, 0, new Vector3f(),
                 (instances, points, data, custom) -> {
                     var count = 0;
                     var setting = config.additionalGPUDataSetting;
@@ -789,7 +793,7 @@ public class ParticleEmitter extends Emitter {
         return false;
     }
 
-    private void renderQueuesOf(Class<?> type, java.util.function.Consumer<Queue<IParticle>> render) {
+    private void renderQueuesOf(Class<?> type, Consumer<Queue<IParticle>> render) {
         for (var queue : particles.values()) {
             if (type.isInstance(queue.peek())) {
                 render.accept(queue);

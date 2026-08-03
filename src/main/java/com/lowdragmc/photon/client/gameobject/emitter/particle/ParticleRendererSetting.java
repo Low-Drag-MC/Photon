@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
+import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.accessors.Vector3fAccessor;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
@@ -7,8 +8,8 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorSelectorConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.NumberConfigurator;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
@@ -23,9 +24,9 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Camera;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.ExtraCodecs;
 import org.apache.commons.lang3.function.TriFunction;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -33,6 +34,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.Objects;
 
 @Getter
@@ -222,7 +224,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
 				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.velocityScale"));
         }
         if (mode == Mode.Billboard) {
-            var modeNames = java.util.Arrays.stream(FacingMode.values()).map(Enum::name).toList();
+            var modeNames = Arrays.stream(FacingMode.values()).map(Enum::name).toList();
             group.addConfigurators(
                     new ConfiguratorSelectorConfigurator<>(
                             "ParticleRendererSetting.facingMode",
@@ -344,7 +346,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
             facingMode = FacingMode.DEFAULT;
         }
         if (renderMode == Mode.Model
-                && input.read("model", net.minecraft.util.ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
+                && input.read("model", ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
             // MeshData's deserializer tolerates legacy payloads (bare modelLocation / source wrapper)
             model = new MeshData(tag);
         }
@@ -354,8 +356,8 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     public void serialize(net.minecraft.world.level.storage.@NotNull ValueOutput output) {
         IPersistedSerializable.super.serialize(output);
         if (renderMode == Mode.Model && model != null) {
-            output.store("model", net.minecraft.util.ExtraCodecs.NBT,
-                    model.serializeNBT(com.lowdragmc.lowdraglib2.Platform.getFrozenRegistry()));
+            output.store("model", ExtraCodecs.NBT,
+                    model.serializeNBT(Platform.getFrozenRegistry()));
         }
     }
 }

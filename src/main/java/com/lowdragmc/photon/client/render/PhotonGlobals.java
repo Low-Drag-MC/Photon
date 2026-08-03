@@ -9,6 +9,7 @@ import net.minecraft.world.phys.Vec3;
 import org.lwjgl.system.MemoryUtil;
 
 import javax.annotation.Nullable;
+import java.nio.ByteBuffer;
 
 /**
  * Photon's own copy of Minecraft's {@code Globals} uniform block, substituted for the engine's while
@@ -43,7 +44,7 @@ public final class PhotonGlobals {
     @Nullable
     private static GpuBuffer buffer;
     @Nullable
-    private static java.nio.ByteBuffer staging;
+    private static ByteBuffer staging;
     /** The engine's buffer, held while ours is bound. */
     @Nullable
     private static GpuBuffer displaced;

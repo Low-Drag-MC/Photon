@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.gui.editor;
 
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
+import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.util.RandomSource;
@@ -29,7 +30,7 @@ public class FXProjectEffectExecutor implements IEffectExecutor {
 
     /** Editor previews feed the isolated scene stack — never the world's post-effect chain. */
     @Override
-    public com.lowdragmc.photon.client.postfx.runtime.PostEffectStack postEffectSink() {
-        return com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE;
+    public PostEffectStack postEffectSink() {
+        return PostEffectStack.EDITOR_SCENE;
     }
 }

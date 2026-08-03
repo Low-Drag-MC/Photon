@@ -9,18 +9,15 @@ import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
-import net.minecraft.util.Mth;
 import org.joml.Vector3f;
-import net.minecraft.nbt.CompoundTag;
-import org.lwjgl.opengl.GL11;
 import oshi.util.tuples.Pair;
 
 import java.util.List;
@@ -51,7 +48,7 @@ public interface IShape extends IConfigurable, IPersistedSerializable, ILDLRegis
     default void drawGuideLines(PoseStack poseStack, MultiBufferSource bufferSource, float partialTicks, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         var edges = getGuideLines(emitter, position, rotation, scale);
         if (edges.isEmpty()) return;
-        var buffer = bufferSource.getBuffer(net.minecraft.client.renderer.rendertype.RenderTypes.lines());
+        var buffer = bufferSource.getBuffer(RenderTypes.lines());
         RenderBufferUtils.drawEdges(poseStack, buffer, edges, ColorPattern.YELLOW.color, 5);
     }
 

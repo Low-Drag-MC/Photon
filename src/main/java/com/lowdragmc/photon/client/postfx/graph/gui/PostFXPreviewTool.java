@@ -2,8 +2,10 @@ package com.lowdragmc.photon.client.postfx.graph.gui;
 
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.gui.texture.TextTexture;
-import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
+import com.lowdragmc.lowdraglib2.gui.ui.Style;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.IGUIContext;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.IGraphTool;
 import com.lowdragmc.photon.client.postfx.graph.RenderGraph;
 import com.lowdragmc.photon.client.postfx.graph.RenderGraphCompiler;
@@ -40,7 +42,7 @@ public class PostFXPreviewTool extends UIElement implements IGraphTool {
     public PostFXPreviewTool(RenderGraphView view) {
         this.view = view;
         // fill whatever the dock panel gives us; drawTarget letterboxes inside (aspect preserved)
-        com.lowdragmc.lowdraglib2.gui.ui.Style.defaultPipeline(getLayout(),
+        Style.defaultPipeline(getLayout(),
                 layout -> layout.widthPercent(100).heightPercent(100));
     }
 
@@ -50,7 +52,7 @@ public class PostFXPreviewTool extends UIElement implements IGraphTool {
     }
 
     @Override
-    public void drawBackgroundAdditional(com.lowdragmc.lowdraglib2.gui.ui.rendering.IGUIContext rawContext) {
+    public void drawBackgroundAdditional(IGUIContext rawContext) {
         super.drawBackgroundAdditional(rawContext);
         if (!(rawContext instanceof GUIContext guiContext)) return;
         if (!(view.getGraph() instanceof RenderGraph renderGraph)) return;

@@ -3,7 +3,8 @@ package com.lowdragmc.photon;
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.client.PhotonClientProxy;
-import net.irisshaders.iris.api.v0.IrisApi;
+import com.lowdragmc.photon.client.compat.iris.IrisCompat;
+import com.lowdragmc.photon.test.gametest.PhotonGameTests;
 import net.minecraft.resources.Identifier;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -26,7 +27,7 @@ public class Photon {
 
     public Photon(IEventBus eventBus, ModContainer modContainer) {
         Photon.init();
-        com.lowdragmc.photon.test.gametest.PhotonGameTests.init(eventBus);
+        PhotonGameTests.init(eventBus);
         if (FMLEnvironment.getDist() == Dist.CLIENT) {
             modContainer.registerConfig(ModConfig.Type.CLIENT, PhotonConfig.CONFIG_SPEC);
             modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
@@ -47,15 +48,9 @@ public class Photon {
         return Identifier.fromNamespaceAndPath(MOD_ID, path);
     }
 
-    public static boolean isShaderModInstalled() {
-        return LDLib2.isModLoaded("iris") || LDLib2.isModLoaded("oculus");
-    }
-
+    /** @see com.lowdragmc.photon.client.compat.iris.IrisCompat */
     public static boolean isUsingShaderPack() {
-        if (isShaderModInstalled()) {
-            return IrisApi.getInstance().isShaderPackInUse();
-        }
-        return false;
+        return FMLEnvironment.getDist() == Dist.CLIENT && IrisCompat.isUsingShaderPack();
     }
 }
 

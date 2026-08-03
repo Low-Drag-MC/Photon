@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.photon.client.gameobject.IFXObject;
+import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
@@ -55,7 +56,7 @@ public interface IEffectExecutor {
 
     /** The post-effect request sink this execution context feeds — timeline PostProcess clips
      *  submit here every frame. The editor executor overrides to its isolated scene stack. */
-    default com.lowdragmc.photon.client.postfx.runtime.PostEffectStack postEffectSink() {
-        return com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.GLOBAL;
+    default PostEffectStack postEffectSink() {
+        return PostEffectStack.GLOBAL;
     }
 }

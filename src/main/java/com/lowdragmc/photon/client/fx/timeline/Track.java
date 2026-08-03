@@ -2,9 +2,9 @@ package com.lowdragmc.photon.client.fx.timeline;
 
 import com.lowdragmc.photon.gui.editor.view.timeline.TrackType;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -154,7 +154,7 @@ public abstract class Track {
     public CompoundTag writeData(HolderLookup.Provider provider) {
         var tag = new CompoundTag();
         if (targetId != null) {
-            tag.store("target", net.minecraft.core.UUIDUtil.CODEC, targetId);
+            tag.store("target", UUIDUtil.CODEC, targetId);
         }
         tag.putString("name", displayName);
         tag.putBoolean("mute", mute);
@@ -166,7 +166,7 @@ public abstract class Track {
             c.putDouble("duration", clip.duration());
             c.putFloat("speed", clip.speed());
             if (clip.targetId() != null) {
-                c.store("clipTarget", net.minecraft.core.UUIDUtil.CODEC, clip.targetId());
+                c.store("clipTarget", UUIDUtil.CODEC, clip.targetId());
             }
             c.putLong("seed", clip.seed());
             c.putBoolean("randomSeed", clip.randomSeed());
@@ -179,7 +179,7 @@ public abstract class Track {
     }
 
     public void readData(HolderLookup.Provider provider, CompoundTag tag) {
-        targetId = tag.read("target", net.minecraft.core.UUIDUtil.CODEC).isPresent() ? tag.read("target", net.minecraft.core.UUIDUtil.CODEC).orElseThrow() : null;
+        targetId = tag.read("target", UUIDUtil.CODEC).isPresent() ? tag.read("target", UUIDUtil.CODEC).orElseThrow() : null;
         displayName = tag.getStringOr("name", "");
         mute = tag.getBooleanOr("mute", false);
         lock = tag.getBooleanOr("lock", false);
@@ -187,8 +187,8 @@ public abstract class Track {
         for (var t : tag.getListOrEmpty("clips")) {
             if (t instanceof CompoundTag c) {
                 var clip = createClip(c.getDoubleOr("start", 0.0D), c.getDoubleOr("duration", 0.0D), c.getFloatOr("speed", 0.0F));
-                if (c.read("clipTarget", net.minecraft.core.UUIDUtil.CODEC).isPresent()) {
-                    clip.targetId(c.read("clipTarget", net.minecraft.core.UUIDUtil.CODEC).orElseThrow());
+                if (c.read("clipTarget", UUIDUtil.CODEC).isPresent()) {
+                    clip.targetId(c.read("clipTarget", UUIDUtil.CODEC).orElseThrow());
                 }
                 clip.seed(c.getLongOr("seed", 0L)).randomSeed(c.getBooleanOr("randomSeed", false));
                 readClipExtra(clip, c, provider);

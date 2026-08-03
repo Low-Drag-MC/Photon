@@ -5,8 +5,9 @@ import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
-import com.lowdragmc.lowdraglib2.gui.texture.Icons;
+import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.*;
@@ -14,6 +15,8 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.function.Consumer;
 
 public class MaterialResource extends Resource<IMaterial> {
     public static final MaterialResource INSTANCE = new MaterialResource();
@@ -70,9 +73,9 @@ public class MaterialResource extends Resource<IMaterial> {
      * chosen <em>path</em> (the stock selector callback only reports the value), cleared on close.
      */
     @Nullable
-    private java.util.function.Consumer<IResourcePath> pathSelectListener;
+    private Consumer<IResourcePath> pathSelectListener;
 
-    public void setPathSelectListener(@Nullable java.util.function.Consumer<IResourcePath> listener) {
+    public void setPathSelectListener(@Nullable Consumer<IResourcePath> listener) {
         this.pathSelectListener = listener;
     }
 
@@ -97,7 +100,7 @@ public class MaterialResource extends Resource<IMaterial> {
                     layout.widthPercent(100);
                     layout.heightPercent(100);
                 }).style(style -> style.backgroundTexture(
-                        com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture.of(() -> {
+                        DynamicTexture.of(() -> {
                             var material = getResourceInstance().getResource(path);
                             return material == null ? IGuiTexture.MISSING_TEXTURE : material.preview();
                         }))));

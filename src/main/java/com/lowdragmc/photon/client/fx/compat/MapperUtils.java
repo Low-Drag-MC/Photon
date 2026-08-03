@@ -1,10 +1,15 @@
 package com.lowdragmc.photon.client.fx.compat;
 
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.*;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.world.phys.Vec2;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TreeSet;
+import java.util.UUID;
+import java.util.function.BiFunction;
 
 public class MapperUtils {
 
@@ -149,7 +154,7 @@ public class MapperUtils {
         }
 
         // Helper method to interpolate value at t
-        java.util.function.BiFunction<List<Vec2>, Float, Float> get = (data, t) -> {
+        BiFunction<List<Vec2>, Float, Float> get = (data, t) -> {
             if (data.isEmpty()) return 1f;
             var value = data.get(0).y;
             var found = t < data.get(0).x;
@@ -175,7 +180,7 @@ public class MapperUtils {
         ListTag newRGB = new ListTag();
 
         // Collect all unique t values from r, g, b channels
-        var tValues = new java.util.TreeSet<Float>();
+        var tValues = new TreeSet<Float>();
         for (var point : rP) tValues.add(point.x);
         for (var point : gP) tValues.add(point.x);
         for (var point : bP) tValues.add(point.x);
@@ -377,8 +382,8 @@ public class MapperUtils {
     public static CompoundTag mapTransformTag(CompoundTag transformTag){
         CompoundTag newTransformTag = new CompoundTag();
         newTransformTag.put("_childrenId", new ListTag());
-        newTransformTag.putString("_parentId", net.minecraft.core.UUIDUtil.CODEC.parse(net.minecraft.nbt.NbtOps.INSTANCE, transformTag.get("_parentId")).result().map(java.util.UUID::toString).orElse(""));
-        newTransformTag.putString("id", net.minecraft.core.UUIDUtil.CODEC.parse(net.minecraft.nbt.NbtOps.INSTANCE, transformTag.get("id")).result().map(java.util.UUID::toString).orElse(""));
+        newTransformTag.putString("_parentId", UUIDUtil.CODEC.parse(NbtOps.INSTANCE, transformTag.get("_parentId")).result().map(UUID::toString).orElse(""));
+        newTransformTag.putString("id", UUIDUtil.CODEC.parse(NbtOps.INSTANCE, transformTag.get("id")).result().map(UUID::toString).orElse(""));
         newTransformTag.put("localRotation", MapperUtils.mapCoords(transformTag.get("localRotation")));
         newTransformTag.put("localScale", MapperUtils.mapCoords(transformTag.get("localScale")));
         newTransformTag.put("localPosition",  MapperUtils.mapCoords(transformTag.get("localPosition")));

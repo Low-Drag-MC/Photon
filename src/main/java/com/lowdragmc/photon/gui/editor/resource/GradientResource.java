@@ -8,13 +8,14 @@ import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
-import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.GradientColorSelector;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.GradientColorTexture;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGradientColorTexture;
+import com.lowdragmc.photon.utils.ValueIONbt;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -109,20 +110,20 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
 
         public CompoundTag serializeNBT(@Nonnull HolderLookup.Provider provider) {
             var tag = new CompoundTag();
-            tag.put("a", com.lowdragmc.photon.utils.ValueIONbt.toTag(gradient0, provider));
+            tag.put("a", ValueIONbt.toTag(gradient0, provider));
             if (gradient1 != null) {
-                tag.put("b", com.lowdragmc.photon.utils.ValueIONbt.toTag(gradient1, provider));
+                tag.put("b", ValueIONbt.toTag(gradient1, provider));
             }
             return tag;
         }
 
         public void deserializeNBT(@Nonnull HolderLookup.Provider provider, CompoundTag nbt) {
             if (nbt.get("a") instanceof CompoundTag tag) {
-                com.lowdragmc.photon.utils.ValueIONbt.fromTag(gradient0, provider, tag);
+                ValueIONbt.fromTag(gradient0, provider, tag);
             }
             if (gradient1 != null) {
                 if (nbt.get("b") instanceof CompoundTag tag) {
-                    com.lowdragmc.photon.utils.ValueIONbt.fromTag(gradient1, provider, tag);
+                    ValueIONbt.fromTag(gradient1, provider, tag);
                 }
             }
         }
@@ -136,14 +137,14 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
             var container = new Configurator();
             container.addInlineChild(
                     new GradientColorSelector().setValue(gradient0.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
-                        com.lowdragmc.photon.utils.ValueIONbt.fromTag(gradient0, Platform.getFrozenRegistry(), com.lowdragmc.photon.utils.ValueIONbt.toTag(gradientColor, Platform.getFrozenRegistry()));
+                        ValueIONbt.fromTag(gradient0, Platform.getFrozenRegistry(), ValueIONbt.toTag(gradientColor, Platform.getFrozenRegistry()));
                         container.notifyChanges();
                     }).layout(layout -> layout.widthPercent(100))
             );
             if (gradient1 != null) {
                 container.addInlineChild(
                         new GradientColorSelector().setValue(gradient1.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
-                            com.lowdragmc.photon.utils.ValueIONbt.fromTag(gradient1, Platform.getFrozenRegistry(), com.lowdragmc.photon.utils.ValueIONbt.toTag(gradientColor, Platform.getFrozenRegistry()));
+                            ValueIONbt.fromTag(gradient1, Platform.getFrozenRegistry(), ValueIONbt.toTag(gradientColor, Platform.getFrozenRegistry()));
                             container.notifyChanges();
                         }).layout(layout -> layout.widthPercent(100))
                 );

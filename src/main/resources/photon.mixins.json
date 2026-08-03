@@ -11,7 +11,12 @@
     "RenderTypeMixin",
     "SubmitNodeStorageMixin",
     "VertexArrayCacheMixin",
-    "accessor.ParticleEngineAccessor"
+    "accessor.ParticleEngineAccessor",
+    "iris.BlendOverrideAccessors$BlendModeOverrideAccessor",
+    "iris.BlendOverrideAccessors$BufferBlendOverrideAccessor",
+    "iris.ExtendedShaderAccessor",
+    "iris.FallbackShaderAccessor",
+    "iris.IrisRenderingPipelineAccessor"
   ],
   "mixins": [
   ],

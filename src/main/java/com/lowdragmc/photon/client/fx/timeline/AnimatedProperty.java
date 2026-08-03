@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
+import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.math.curve.ExplicitCubicBezierCurve2;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonRegistries;
@@ -12,8 +13,8 @@ import net.minecraft.nbt.DoubleTag;
 import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
-import net.minecraft.nbt.Tag;
 import org.joml.Vector2f;
+import org.joml.Vector2fc;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -243,7 +244,7 @@ public class AnimatedProperty {
     }
 
     // 26.1: curve points are read-only Vector2fc — shift by replacing the point instead of mutating
-    private static org.joml.Vector2fc shiftPoint(org.joml.Vector2fc p, double atTick, double delta) {
+    private static Vector2fc shiftPoint(Vector2fc p, double atTick, double delta) {
         return p.x() >= atTick ? new Vector2f(p.x() + (float) delta, p.y()) : p;
     }
 
@@ -468,7 +469,7 @@ public class AnimatedProperty {
 
     /** Build a configurator for this property's inspector (e.g. rotation interp mode), or {@code null}. */
     @Nullable
-    public com.lowdragmc.lowdraglib2.configurator.IConfigurable inspect(Runnable onChanged) {
+    public IConfigurable inspect(Runnable onChanged) {
         return type.inspect(this, onChanged);
     }
 

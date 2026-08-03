@@ -3,11 +3,13 @@ package com.lowdragmc.photon.client.render;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
 import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.DestFactor;
 import com.mojang.blaze3d.platform.SourceFactor;
+import com.mojang.blaze3d.shaders.UniformType;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTexture;
@@ -16,8 +18,12 @@ import org.lwjgl.opengl.GL14;
 import org.lwjgl.system.MemoryUtil;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -41,7 +47,7 @@ public final class PhotonBloom implements AutoCloseable {
 
     private static final Map<Long, PhotonBloom> INSTANCES = new ConcurrentHashMap<>();
     /** Sizes whose chain could not be allocated — keeps the warning to once per size. */
-    private static final java.util.Set<Long> FAILED = ConcurrentHashMap.newKeySet();
+    private static final Set<Long> FAILED = ConcurrentHashMap.newKeySet();
     private static long frameCounter;
 
     /** The chain for a target of this size, or null when it could not be allocated (skip bloom). */
@@ -69,10 +75,10 @@ public final class PhotonBloom implements AutoCloseable {
     /** Allocate the whole chain up front, so a partly-built instance can never escape. */
     @Nullable
     private static PhotonBloom create(int width, int height) {
-        var allocated = new java.util.ArrayList<GpuTexture>();
+        var allocated = new ArrayList<GpuTexture>();
         var source = chainTexture("Photon bloom source", Math.max(1, width), Math.max(1, height), allocated);
         var levels = Math.clamp(PhotonConfig.INSTANCE.bloomMipLevel.get(), 1, 10);
-        var mips = new java.util.ArrayList<GpuTexture>();
+        var mips = new ArrayList<GpuTexture>();
         var w = Math.max(1, width / 2);
         var h = Math.max(1, height / 2);
         for (int i = 0; i < levels && w >= 8 && h >= 8; i++) {
@@ -92,7 +98,7 @@ public final class PhotonBloom implements AutoCloseable {
 
     @Nullable
     private static GpuTexture chainTexture(String label, int width, int height,
-                                           java.util.List<GpuTexture> allocated) {
+                                           List<GpuTexture> allocated) {
         var texture = PhotonFloatTextures.createRgba16f(label, TEXTURE_USAGE, width, height);
         if (texture != null) {
             allocated.add(texture);
@@ -119,7 +125,7 @@ public final class PhotonBloom implements AutoCloseable {
      *  premultiplied COVERAGE (transparent background) — additive fullscreen passes writing alpha
      *  turned the whole backdrop opaque black. RGB-only write mask. */
     private static final ColorTargetState ADDITIVE_RGB =
-            new ColorTargetState(java.util.Optional.of(ADDITIVE), ColorTargetState.WRITE_COLOR);
+            new ColorTargetState(Optional.of(ADDITIVE), ColorTargetState.WRITE_COLOR);
 
     private static final Map<Float, RenderPipeline> BRIGHT_VARIANTS = new HashMap<>();
     private static final Map<Float, RenderPipeline> BLIT_VARIANTS = new HashMap<>();
@@ -139,7 +145,7 @@ public final class PhotonBloom implements AutoCloseable {
         return BRIGHT_VARIANTS.computeIfAbsent(outputScale, scale ->
                 fullscreenBuilder("bright_pass")
                         .withLocation(Photon.id("pipeline/bloom_bright_" + BRIGHT_VARIANTS.size()))
-                        .withUniform("PhotonBloom", com.mojang.blaze3d.shaders.UniformType.UNIFORM_BUFFER)
+                        .withUniform("PhotonBloom", UniformType.UNIFORM_BUFFER)
                         .withShaderDefine("OUTPUT_SCALE", scale)
                         .withColorTargetState(scale == 1f
                                 ? ColorTargetState.DEFAULT : ADDITIVE_RGB)
@@ -173,7 +179,7 @@ public final class PhotonBloom implements AutoCloseable {
         if (downPipeline == null) {
             downPipeline = fullscreenBuilder("down_sampling")
                     .withLocation(Photon.id("pipeline/bloom_down"))
-                    .withUniform("PhotonBloom", com.mojang.blaze3d.shaders.UniformType.UNIFORM_BUFFER)
+                    .withUniform("PhotonBloom", UniformType.UNIFORM_BUFFER)
                     .build();
         }
         return downPipeline;
@@ -183,7 +189,7 @@ public final class PhotonBloom implements AutoCloseable {
         if (upPipeline == null) {
             upPipeline = fullscreenBuilder("up_sampling")
                     .withLocation(Photon.id("pipeline/bloom_up"))
-                    .withUniform("PhotonBloom", com.mojang.blaze3d.shaders.UniformType.UNIFORM_BUFFER)
+                    .withUniform("PhotonBloom", UniformType.UNIFORM_BUFFER)
                     .withColorTargetState(new ColorTargetState(ADDITIVE))
                     .build();
         }
@@ -197,12 +203,12 @@ public final class PhotonBloom implements AutoCloseable {
     /** 1.21 set filterRadius to the constant 0.005 for the whole up-sample chain. */
     private static final float FILTER_RADIUS = 0.005f;
 
-    private static final Map<Float, com.mojang.blaze3d.buffers.GpuBufferSlice> BRIGHT_PARAMS = new HashMap<>();
-    private static final Map<Long, com.mojang.blaze3d.buffers.GpuBufferSlice> RESOLUTION_PARAMS = new HashMap<>();
+    private static final Map<Float, GpuBufferSlice> BRIGHT_PARAMS = new HashMap<>();
+    private static final Map<Long, GpuBufferSlice> RESOLUTION_PARAMS = new HashMap<>();
     @Nullable
-    private static com.mojang.blaze3d.buffers.GpuBufferSlice radiusParams;
+    private static GpuBufferSlice radiusParams;
 
-    private static com.mojang.blaze3d.buffers.GpuBufferSlice paramsSlice(String label, float... values) {
+    private static GpuBufferSlice paramsSlice(String label, float... values) {
         var bytes = MemoryUtil.memCalloc(16);
         try {
             for (var value : values) {
@@ -218,18 +224,18 @@ public final class PhotonBloom implements AutoCloseable {
     }
 
     /** bright_pass block: {@code float Knee; float Threshold;} (declaration order). */
-    private static com.mojang.blaze3d.buffers.GpuBufferSlice brightParams(float threshold) {
+    private static GpuBufferSlice brightParams(float threshold) {
         return BRIGHT_PARAMS.computeIfAbsent(threshold, t -> paramsSlice("Photon bloom bright", KNEE, t));
     }
 
     /** down_sampling block: {@code vec2 inputResolution;} — the INPUT texture's size (1.21 set it per step). */
-    private static com.mojang.blaze3d.buffers.GpuBufferSlice resolutionParams(int width, int height) {
+    private static GpuBufferSlice resolutionParams(int width, int height) {
         return RESOLUTION_PARAMS.computeIfAbsent(((long) width << 32) | (height & 0xFFFFFFFFL),
                 key -> paramsSlice("Photon bloom resolution", width, height));
     }
 
     /** up_sampling block: {@code float filterRadius;}. */
-    private static com.mojang.blaze3d.buffers.GpuBufferSlice radiusParams() {
+    private static GpuBufferSlice radiusParams() {
         if (radiusParams == null) {
             radiusParams = paramsSlice("Photon bloom radius", FILTER_RADIUS);
         }
@@ -296,7 +302,7 @@ public final class PhotonBloom implements AutoCloseable {
     }
 
     private static void fullscreenPass(RenderPipeline pipeline, GpuTextureView target, GpuTextureView input,
-                                       @Nullable com.mojang.blaze3d.buffers.GpuBufferSlice params) {
+                                       @Nullable GpuBufferSlice params) {
         PhotonFullscreenPass.draw("Photon bloom", pipeline, target, pass -> {
             pass.bindTexture("inputSampler", input,
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));

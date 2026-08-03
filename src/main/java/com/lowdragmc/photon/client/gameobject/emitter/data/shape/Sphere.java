@@ -1,17 +1,18 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.shape;
 
-import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
+import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
-import org.joml.Vector3f;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.util.Mth;
+import org.joml.Vector3f;
 import oshi.util.tuples.Pair;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @LDLRegisterClient(name = "sphere", registry = "photon:shape")
@@ -62,7 +63,7 @@ public class Sphere implements IShape {
 
     @Override
     public List<Pair<Vector3f, Vector3f>> getGuideLines(IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
-        var lines = new java.util.ArrayList<Pair<Vector3f, Vector3f>>();
+        var lines = new ArrayList<Pair<Vector3f, Vector3f>>();
 
         var outer = radius;
         var inner = (1 - radiusThickness) * radius;

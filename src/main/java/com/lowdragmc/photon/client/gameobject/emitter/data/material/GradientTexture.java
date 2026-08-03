@@ -6,13 +6,13 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.GradientColorConfigurator;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.core.HolderLookup;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.neoforged.neoforge.common.util.ValueIOSerializable;
@@ -21,6 +21,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -62,7 +63,7 @@ public class GradientTexture implements AutoCloseable, IConfigurable, ValueIOSer
     public void close() {
         if (registeredId != null) {
             // release() drops the registration AND closes the texture
-            net.minecraft.client.Minecraft.getInstance().getTextureManager().release(registeredId);
+            Minecraft.getInstance().getTextureManager().release(registeredId);
             registeredId = null;
             gradientTexture = null;
             return;
@@ -76,9 +77,9 @@ public class GradientTexture implements AutoCloseable, IConfigurable, ValueIOSer
     /** Registration id, so the drain (which resolves samplers by {@link net.minecraft.resources.Identifier} before opening its
      *  pass) can bind this live texture. Allocated on first use; released with the texture. */
     @Nullable
-    private net.minecraft.resources.Identifier registeredId;
-    private static final java.util.concurrent.atomic.AtomicInteger ID_SEQ =
-            new java.util.concurrent.atomic.AtomicInteger();
+    private Identifier registeredId;
+    private static final AtomicInteger ID_SEQ =
+            new AtomicInteger();
 
     /**
      * Upload if dirty, then hand back the {@link net.minecraft.resources.Identifier} this sampler is registered under. 1.21 bound
@@ -87,14 +88,14 @@ public class GradientTexture implements AutoCloseable, IConfigurable, ValueIOSer
      * pass opens, so the texture has to live in the registry. Render thread only.
      */
     @Nullable
-    public net.minecraft.resources.Identifier textureId() {
+    public Identifier textureId() {
         var texture = getGradientTexture();
         if (texture == null) {
             return null;
         }
         if (registeredId == null) {
-            registeredId = com.lowdragmc.photon.Photon.id("dynamic/gradient/" + ID_SEQ.getAndIncrement());
-            net.minecraft.client.Minecraft.getInstance().getTextureManager().register(registeredId, texture);
+            registeredId = Photon.id("dynamic/gradient/" + ID_SEQ.getAndIncrement());
+            Minecraft.getInstance().getTextureManager().register(registeredId, texture);
         }
         return registeredId;
     }

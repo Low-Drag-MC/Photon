@@ -1,39 +1,42 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.shape;
 
 import com.lowdragmc.lowdraglib2.Platform;
-import com.lowdragmc.photon.Photon;
+import com.lowdragmc.lowdraglib2.client.scene.WorldSceneRenderer;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorSelectorConfigurator;
-import com.lowdragmc.lowdraglib2.client.scene.WorldSceneRenderer;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Scene;
-import com.lowdragmc.lowdraglib2.math.Size;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
+import com.lowdragmc.lowdraglib2.math.Size;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib2.utils.data.BlockInfo;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.IModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.mojang.blaze3d.vertex.*;
 import dev.vfyjxf.taffy.style.AlignItems;
+import lombok.Getter;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.Mth;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.storage.TagValueInput;
 import net.minecraft.world.level.storage.TagValueOutput;
 import net.minecraft.world.level.storage.ValueInput;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector3f;
-import lombok.Getter;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
-import net.minecraft.resources.Identifier;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -222,7 +225,7 @@ public final class MeshData implements IConfigurable, IPersistedSerializable {
     private static CompoundTag toCompound(ValueInput input) {
         var tag = new CompoundTag();
         for (var key : input.keySet()) {
-            input.read(key, net.minecraft.util.ExtraCodecs.NBT).ifPresent(value -> tag.put(key, value));
+            input.read(key, ExtraCodecs.NBT).ifPresent(value -> tag.put(key, value));
         }
         return tag;
     }
@@ -355,8 +358,8 @@ public final class MeshData implements IConfigurable, IPersistedSerializable {
         if (edges.isEmpty()) return;
         var pose = poseStack.last();
         var mat = pose.pose();
-        var bufferSource = net.minecraft.client.Minecraft.getInstance().renderBuffers().bufferSource();
-        var buffer = bufferSource.getBuffer(net.minecraft.client.renderer.rendertype.RenderTypes.lines());
+        var bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
+        var buffer = bufferSource.getBuffer(RenderTypes.lines());
 
         for (var edge : edges) {
             var a = edge.a;

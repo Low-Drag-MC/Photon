@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -252,7 +253,7 @@ public final class ShaderFormatConverter {
         // different std140 offsets and read every value from the wrong place — and the two stages would
         // disagree, which GLSL rejects outright ("members of uniform block are not the same between
         // shader stages"). A vertex stage that uses one uniform still declares the whole set.
-        var blockMembers = new java.util.TreeMap<>(customValues);
+        var blockMembers = new TreeMap<>(customValues);
         jsonDefaults.forEach((name, values) -> {
             if (ENGINE_UNIFORMS.contains(name) || PHOTON_ENGINE_UNIFORMS.contains(name)
                     || name.startsWith("U_")) {

@@ -1,36 +1,46 @@
 package com.lowdragmc.photon.gui.editor.resource;
 
+import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
-import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphResource;
-import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphResourceProviderContainer;
-import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.GraphView;
-import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.ICustomNodeModel;
-import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.NodeModel;
-import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.PhotonIcons;
-import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandles;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.variable.VariableKind;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphResource;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphResourceProviderContainer;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.IGraphReferenceResolver;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.GraphView;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.ICustomNodeModel;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.NodeModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.variable.VariableDeclarationModelBase;
+import com.lowdragmc.lowdraglib2.utils.PersistedParser;
+import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.PhotonIcons;
+import com.lowdragmc.photon.client.postfx.graph.PassSize;
+import com.lowdragmc.photon.client.postfx.graph.PassSource;
 import com.lowdragmc.photon.client.postfx.graph.RenderGraph;
 import com.lowdragmc.photon.client.postfx.graph.RenderGraphCompiler;
-import com.lowdragmc.photon.client.postfx.runtime.CustomShaderPass;
+import com.lowdragmc.photon.client.postfx.graph.SizeSpec;
 import com.lowdragmc.photon.client.postfx.graph.gui.RenderGraphView;
+import com.lowdragmc.photon.client.postfx.graph.nodes.CustomMaskInputNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.OutputNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.PassNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.SceneColorInputNode;
 import com.lowdragmc.photon.client.postfx.graph.nodes.SceneDepthInputNode;
+import com.lowdragmc.photon.client.postfx.runtime.CustomShaderPass;
 import com.lowdragmc.photon.client.postfx.shadergraph.FullscreenShaderGraph;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
 import net.minecraft.nbt.CompoundTag;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector2f;
+import org.joml.Vector3f;
+import org.joml.Vector4f;
 
+import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -119,14 +129,14 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
 
     public CompoundTag serializeGraph(RenderGraph graph) {
         var root = new CompoundTag();
-        root.put(GRAPH_TAG, com.lowdragmc.lowdraglib2.utils.PersistedParser.serializeNBT(graph.graphModel, Platform.getFrozenRegistry()));
+        root.put(GRAPH_TAG, PersistedParser.serializeNBT(graph.graphModel, Platform.getFrozenRegistry()));
         return root;
     }
 
     public RenderGraph deserializeGraph(CompoundTag tag) {
         var graph = new RenderGraph(false);
         var graphTag = tag.get(GRAPH_TAG) instanceof CompoundTag compound ? compound : tag;
-        com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(graphTag, graph.graphModel, Platform.getFrozenRegistry());
+        PersistedParser.deserializeNBT(graphTag, graph.graphModel, Platform.getFrozenRegistry());
         graph.restoreAfterDeserialize();
         return graph;
     }
@@ -140,11 +150,11 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
 
     @Override
     public RenderGraph deserializeGraphResource(CompoundTag tag,
-            @org.jetbrains.annotations.Nullable com.lowdragmc.lowdraglib2.nodegraphtookit.editor.IGraphReferenceResolver resolver) {
+            @Nullable IGraphReferenceResolver resolver) {
         var graph = new RenderGraph(false);
         graph.graphModel.setReferenceResolver(resolver);
         var graphTag = tag.get(GRAPH_TAG) instanceof CompoundTag compound ? compound : tag;
-        com.lowdragmc.lowdraglib2.utils.PersistedParser.deserializeNBT(graphTag, graph.graphModel, Platform.getFrozenRegistry());
+        PersistedParser.deserializeNBT(graphTag, graph.graphModel, Platform.getFrozenRegistry());
         graph.graphModel.setReferenceResolver(resolver);
         graph.restoreAfterDeserialize();
         return graph;
@@ -178,7 +188,7 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
         var graph = new RenderGraph();
         var sceneColor = findSceneColor(graph);
         var pass = graph.addNode(PassNode.class, 140, -80);
-        RenderGraph.setNodeOption(pass, PassNode.OPTION_SOURCE, com.lowdragmc.photon.client.postfx.graph.PassSource
+        RenderGraph.setNodeOption(pass, PassNode.OPTION_SOURCE, PassSource
                 .ofGraph(BuiltinResourceProvider.TYPE.createFullPath("invert").getPathWithType()));
         // splice the pass into the starter's direct SceneColor -> Output wire
         var colorPort = graph.getOutputNodeModel().getInputsById().get(OutputNode.COLOR_PORT);
@@ -221,7 +231,7 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
         graph.graphModel.createWire(colorPort, vertical.getOutputsById().get(PassNode.OUTPUT_PORT));
         var radius = (VariableDeclarationModelBase) graph.graphModel.createVariable(
                 "Radius", TypeHandles.FLOAT, 2.0f, VariableKind.INPUT);
-        var radiusNode = graph.graphModel.createVariableNode(radius, new org.joml.Vector2f(-40, 40), null, null);
+        var radiusNode = graph.graphModel.createVariableNode(radius, new Vector2f(-40, 40), null, null);
         graph.graphModel.createWire(horizontal.getInputsById().get("Radius"), radiusNode.getOutputPort());
         graph.graphModel.createWire(vertical.getInputsById().get("Radius"), radiusNode.getOutputPort());
         return graph;
@@ -233,8 +243,8 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
         var graph = new RenderGraph();
         var sceneColor = findSceneColor(graph);
         var bright = addShaderPass(graph, "photon:postfx/bright", 40, -80);
-        RenderGraph.setNodeOption(bright, PassNode.OPTION_SIZE, com.lowdragmc.photon.client.postfx.graph.PassSize.DEFAULT
-                .withMode(com.lowdragmc.photon.client.postfx.graph.SizeSpec.Mode.SCREEN_RELATIVE).withScale(0.5f));
+        RenderGraph.setNodeOption(bright, PassNode.OPTION_SIZE, PassSize.DEFAULT
+                .withMode(SizeSpec.Mode.SCREEN_RELATIVE).withScale(0.5f));
         graph.graphModel.createWire(bright.getInputsById().get(MAIN_SAMPLER),
                 sceneColor.getOutputsById().get(SceneColorInputNode.OUTPUT_PORT));
         var blurred = addBlurChain(graph, bright, PassNode.OUTPUT_PORT, 220, -80, 1f);
@@ -275,12 +285,12 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
     /** CustomMaskInput -> show_mask pass -> Output: the mask debug view. */
     private RenderGraph buildShowMask() {
         var graph = new RenderGraph();
-        var mask = graph.addNode(com.lowdragmc.photon.client.postfx.graph.nodes.CustomMaskInputNode.class, -160, 20);
+        var mask = graph.addNode(CustomMaskInputNode.class, -160, 20);
         var pass = addShaderPass(graph, "photon:postfx/show_mask", 140, -80);
         var colorPort = graph.getOutputNodeModel().getInputsById().get(OutputNode.COLOR_PORT);
         graph.graphModel.deleteWires(colorPort.getConnectedWires());
         graph.graphModel.createWire(pass.getInputsById().get("MaskSampler"),
-                mask.getOutputsById().get(com.lowdragmc.photon.client.postfx.graph.nodes.CustomMaskInputNode.OUTPUT_PORT));
+                mask.getOutputsById().get(CustomMaskInputNode.OUTPUT_PORT));
         graph.graphModel.createWire(colorPort, pass.getOutputsById().get(PassNode.OUTPUT_PORT));
         return graph;
     }
@@ -289,7 +299,7 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
      *  (MaskValue/OutlineColor/Thickness promoted, so clips can pick the group and animate color). */
     private RenderGraph buildMaskOutline() {
         var graph = buildShaderEffect("photon:postfx/mask_outline");
-        var mask = graph.addNode(com.lowdragmc.photon.client.postfx.graph.nodes.CustomMaskInputNode.class, -160, 20);
+        var mask = graph.addNode(CustomMaskInputNode.class, -160, 20);
         NodeModel pass = null;
         for (var model : graph.graphModel.getNodeModels()) {
             if (model instanceof NodeModel nm && model instanceof ICustomNodeModel custom
@@ -299,7 +309,7 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
             }
         }
         graph.graphModel.createWire(pass.getInputsById().get("MaskSampler"),
-                mask.getOutputsById().get(com.lowdragmc.photon.client.postfx.graph.nodes.CustomMaskInputNode.OUTPUT_PORT));
+                mask.getOutputsById().get(CustomMaskInputNode.OUTPUT_PORT));
         return graph;
     }
 
@@ -308,12 +318,12 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
     private NodeModel addBlurChain(RenderGraph graph, NodeModel source, String sourcePort,
                                    float x, float y, float firstScale) {
         var horizontal = addShaderPass(graph, "photon:postfx/blur_h", (int) x, (int) y);
-        RenderGraph.setNodeOption(horizontal, PassNode.OPTION_SIZE, com.lowdragmc.photon.client.postfx.graph.PassSize.DEFAULT
-                .withMode(com.lowdragmc.photon.client.postfx.graph.SizeSpec.Mode.INPUT_RELATIVE)
+        RenderGraph.setNodeOption(horizontal, PassNode.OPTION_SIZE, PassSize.DEFAULT
+                .withMode(SizeSpec.Mode.INPUT_RELATIVE)
                 .withScale(firstScale).withInputPort(MAIN_SAMPLER));
         var vertical = addShaderPass(graph, "photon:postfx/blur_v", (int) x + 180, (int) y);
-        RenderGraph.setNodeOption(vertical, PassNode.OPTION_SIZE, com.lowdragmc.photon.client.postfx.graph.PassSize.DEFAULT
-                .withMode(com.lowdragmc.photon.client.postfx.graph.SizeSpec.Mode.INPUT_RELATIVE)
+        RenderGraph.setNodeOption(vertical, PassNode.OPTION_SIZE, PassSize.DEFAULT
+                .withMode(SizeSpec.Mode.INPUT_RELATIVE)
                 .withScale(1f).withInputPort(MAIN_SAMPLER));
         graph.graphModel.createWire(horizontal.getInputsById().get(MAIN_SAMPLER),
                 source.getOutputsById().get(sourcePort));
@@ -321,7 +331,7 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
                 horizontal.getOutputsById().get(PassNode.OUTPUT_PORT));
         var radius = (VariableDeclarationModelBase) graph.graphModel.createVariable(
                 "Radius", TypeHandles.FLOAT, 2.0f, VariableKind.INPUT);
-        var radiusNode = graph.graphModel.createVariableNode(radius, new org.joml.Vector2f(x - 40, y + 100), null, null);
+        var radiusNode = graph.graphModel.createVariableNode(radius, new Vector2f(x - 40, y + 100), null, null);
         graph.graphModel.createWire(horizontal.getInputsById().get("Radius"), radiusNode.getOutputPort());
         graph.graphModel.createWire(vertical.getInputsById().get("Radius"), radiusNode.getOutputPort());
         return vertical;
@@ -351,25 +361,25 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
                 }
                 case 2 -> {
                     type = RenderTypeGraphTypes.VEC2;
-                    defaultValue = new org.joml.Vector2f(defaults[0], defaults[1]);
+                    defaultValue = new Vector2f(defaults[0], defaults[1]);
                 }
                 case 3 -> {
                     type = RenderTypeGraphTypes.VEC3;
-                    defaultValue = new org.joml.Vector3f(defaults[0], defaults[1], defaults[2]);
+                    defaultValue = new Vector3f(defaults[0], defaults[1], defaults[2]);
                 }
                 default -> {
-                    if (uniform.name().toLowerCase(java.util.Locale.ROOT).contains("color")) {
+                    if (uniform.name().toLowerCase(Locale.ROOT).contains("color")) {
                         type = TypeHandles.COLOR;
                         defaultValue = packArgb(defaults);
                     } else {
                         type = RenderTypeGraphTypes.VEC4;
-                        defaultValue = new org.joml.Vector4f(defaults[0], defaults[1], defaults[2], defaults[3]);
+                        defaultValue = new Vector4f(defaults[0], defaults[1], defaults[2], defaults[3]);
                     }
                 }
             }
             var declaration = (VariableDeclarationModelBase) graph.graphModel.createVariable(
                     uniform.name(), type, defaultValue, VariableKind.INPUT);
-            var node = graph.graphModel.createVariableNode(declaration, new org.joml.Vector2f(x, y), null, null);
+            var node = graph.graphModel.createVariableNode(declaration, new Vector2f(x, y), null, null);
             if (graph.graphModel.createWire(port, node.getOutputPort()) == null) {
                 Photon.LOGGER.warn("builtin effect '{}': parameter '{}' ({}) could not wire to its port",
                         shaderLocation, uniform.name(), type);
@@ -390,7 +400,7 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
     /** The outline pass additionally wires scene depth into its DepthSampler. */
     private RenderGraph buildOutline() {
         var graph = buildShaderEffect("photon:postfx/outline");
-        var depth = graph.addNode(com.lowdragmc.photon.client.postfx.graph.nodes.SceneDepthInputNode.class,
+        var depth = graph.addNode(SceneDepthInputNode.class,
                 -160, 20);
         NodeModel pass = null;
         for (var model : graph.graphModel.getNodeModels()) {
@@ -402,7 +412,7 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
         }
         graph.graphModel.createWire(pass.getInputsById().get("DepthSampler"),
                 depth.getOutputsById().get(
-                        com.lowdragmc.photon.client.postfx.graph.nodes.SceneDepthInputNode.OUTPUT_PORT));
+                        SceneDepthInputNode.OUTPUT_PORT));
         return graph;
     }
 
@@ -412,7 +422,7 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
     private static NodeModel addShaderPass(RenderGraph graph, String shaderLocation, int x, int y) {
         var pass = graph.addNode(PassNode.class, x, y);
         RenderGraph.setNodeOption(pass, PassNode.OPTION_SOURCE,
-                com.lowdragmc.photon.client.postfx.graph.PassSource.ofShader(shaderLocation));
+                PassSource.ofShader(shaderLocation));
         return pass;
     }
 

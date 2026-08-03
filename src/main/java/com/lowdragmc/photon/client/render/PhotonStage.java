@@ -20,9 +20,21 @@ public enum PhotonStage {
     /**
      * After vanilla's translucent particles — the 1.21 slot, and where every blended/HDR effect goes.
      */
-    AFTER_TRANSLUCENT_PARTICLES;
+    AFTER_TRANSLUCENT_PARTICLES,
+    /**
+     * {@link FXCompositeMode#LATE}: drawn at the SAME seam as {@link #AFTER_TRANSLUCENT_PARTICLES},
+     * but into a standalone {@link PhotonFXLayer} instead of onto the frame — only the <b>composite</b>
+     * waits until after {@code LevelRenderer.renderLevel} returns, i.e. past the clouds and the weather.
+     * <p>
+     * <b>The draw must stay in the level pass.</b> Geometry drawn after it loses everything ambient that
+     * a Photon draw reads: the modelview stack has been unwound to the identity, and the camera-derived
+     * engine uniforms no longer describe the view — effects come out pinned to the screen. Deferring the
+     * cheap fullscreen composite costs none of that, which is why 1.21 deferred only that too.
+     */
+    DEFERRED;
 
     /** The frame's last Photon draw slot for a view — where the post-effect chain runs, so it sees
-     *  every stage's output. Keep this pointing at the last constant when stages are added. */
+     *  every stage's output. NOT the last constant: {@link #AFTER_LEVEL} is a deferred layer whose
+     *  chain runs after its composite, outside the drain. */
     public static final PhotonStage LAST = AFTER_TRANSLUCENT_PARTICLES;
 }

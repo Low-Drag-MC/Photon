@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.shadergraph;
 
 import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
 import com.lowdragmc.kilagraph.rendertype.compiler.GlslType;
+import com.lowdragmc.kilagraph.rendertype.compiler.ShaderCompileContext;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderExpr;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler;
 import com.lowdragmc.kilagraph.rendertype.format.KGVertexElement;
@@ -46,11 +47,11 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
      * {@code Fog}/{@code Projection}. Declaring it as a MATERIAL uniform instead (the M2 stopgap) put the
      * field in KilaGraph's own value store, which nothing ever wrote — it read as zeros.
      */
-    public static com.lowdragmc.kilagraph.rendertype.compiler.ShaderExpr viewport(
-            com.lowdragmc.kilagraph.rendertype.compiler.ShaderCompileContext ctx) {
+    public static ShaderExpr viewport(
+            ShaderCompileContext ctx) {
         ctx.useMinecraftUniform("PhotonEngine", "photon:engine.glsl");
-        return new com.lowdragmc.kilagraph.rendertype.compiler.ShaderExpr(
-                VIEWPORT, com.lowdragmc.kilagraph.rendertype.compiler.GlslType.VEC4);
+        return new ShaderExpr(
+                VIEWPORT, GlslType.VEC4);
     }
 
     /** The compiler currently running {@link #compile()} (render thread only) — lets nodes without

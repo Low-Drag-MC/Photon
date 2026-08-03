@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.number.curve;
 
 import com.lowdragmc.lowdraglib2.math.curve.ExplicitCubicBezierCurve2;
+import com.mojang.serialization.Codec;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import net.minecraft.core.HolderLookup;
@@ -21,8 +22,8 @@ import java.util.List;
 @EqualsAndHashCode
 public class ECBCurves {
     /** Same layout as the legacy ListTag: one 8-float list per segment (see serialization note below). */
-    public static final com.mojang.serialization.Codec<ECBCurves> CODEC =
-            com.mojang.serialization.Codec.FLOAT.listOf().listOf().xmap(
+    public static final Codec<ECBCurves> CODEC =
+            Codec.FLOAT.listOf().listOf().xmap(
                     lists -> {
                         var curves = new ECBCurves();
                         curves.segments.clear();

@@ -3,8 +3,8 @@ package com.lowdragmc.photon.client.gameobject.forcefield;
 import com.lowdragmc.lowdraglib2.client.utils.RenderBufferUtils;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
-import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
@@ -15,14 +15,12 @@ import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import org.joml.Vector3f;
-import org.lwjgl.opengl.GL11;
+import oshi.util.tuples.Pair;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
@@ -248,11 +246,11 @@ public class ForceFieldObject extends FXObject {
     // 26.1: immediate Tesselator+BufferUploader draws are gone — route through the scene's
     // buffer source with the vanilla lines render type (blend/depth/width owned by the pipeline).
     private static void drawRange(MultiBufferSource bufferSource, PoseStack poseStack,
-                                  List<oshi.util.tuples.Pair<Vector3f, Vector3f>> edges, int color) {
+                                  List<Pair<Vector3f, Vector3f>> edges, int color) {
         if (edges.isEmpty()) {
             return;
         }
-        var buffer = bufferSource.getBuffer(net.minecraft.client.renderer.rendertype.RenderTypes.lines());
+        var buffer = bufferSource.getBuffer(RenderTypes.lines());
         RenderBufferUtils.drawEdges(poseStack, buffer, edges, color, 5);
     }
 }

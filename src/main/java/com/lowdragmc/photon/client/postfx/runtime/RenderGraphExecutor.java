@@ -9,12 +9,15 @@ import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.postfx.shadergraph.PhotonFullscreenCompiler;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
+import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
 import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
 import com.lowdragmc.photon.client.render.PhotonSceneCapture;
+import com.lowdragmc.photon.client.render.PhotonTime;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.AddressMode;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
@@ -22,8 +25,8 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL46;
+import org.lwjgl.opengl.GL;
 
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -90,10 +93,10 @@ public final class RenderGraphExecutor {
          */
         public FrameInputs withSampleableDepth() {
             if (sceneDepth == null
-                    || (sceneDepth.texture().usage() & com.mojang.blaze3d.textures.GpuTexture.USAGE_TEXTURE_BINDING) != 0) {
+                    || (sceneDepth.texture().usage() & GpuTexture.USAGE_TEXTURE_BINDING) != 0) {
                 return this;
             }
-            return withSceneDepth(com.lowdragmc.photon.client.render.PhotonSceneCapture.captureDepth(sceneDepth));
+            return withSceneDepth(PhotonSceneCapture.captureDepth(sceneDepth));
         }
     }
 
@@ -230,11 +233,11 @@ public final class RenderGraphExecutor {
         }
         uniforms.set("ScreenSize", target.width(), target.height());
         // Photon's clock, not the world's: in the editor it is the timeline's and freezes when paused
-        uniforms.set("GameTime", com.lowdragmc.photon.client.render.PhotonTime.dayFraction());
+        uniforms.set("GameTime", PhotonTime.dayFraction());
         // the DRAWING view's planes (an editor scene's, not the world's) — a pass that reasons about
         // distance linearises the depth buffer with these
-        uniforms.set("ZNear", com.lowdragmc.photon.client.render.PhotonEngineUniforms.zNear());
-        uniforms.set("ZFar", com.lowdragmc.photon.client.render.PhotonEngineUniforms.zFar());
+        uniforms.set("ZNear", PhotonEngineUniforms.zNear());
+        uniforms.set("ZFar", PhotonEngineUniforms.zFar());
 
         var bound = new LinkedHashMap<String, BoundInput>();
         for (var binding : pass.textures().entrySet()) {

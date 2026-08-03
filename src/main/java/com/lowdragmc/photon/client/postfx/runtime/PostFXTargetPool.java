@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.postfx.runtime;
 
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.postfx.graph.TargetFormat;
 import com.lowdragmc.photon.client.render.PhotonFloatTextures;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -13,7 +14,9 @@ import org.lwjgl.opengl.GL30;
 
 import java.util.ArrayDeque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The transient render-target pool for post-processing passes. {@link #release} returns a target to its
@@ -76,7 +79,7 @@ public final class PostFXTargetPool {
     /** (width, height, format) -> free targets of that shape, most recently used last. */
     private static final Map<Long, ArrayDeque<Target>> FREE = new HashMap<>();
     /** Shapes whose allocation failed — keeps the warning to once per shape instead of once per frame. */
-    private static final java.util.Set<Long> FAILED = new java.util.HashSet<>();
+    private static final Set<Long> FAILED = new HashSet<>();
     private static long FRAME_ID;
     /** Bytes held by FREE targets, maintained incrementally — the budget check runs every frame and
      *  has no business re-walking every bucket to answer "are we over?". */
@@ -180,7 +183,7 @@ public final class PostFXTargetPool {
      * pool and then searching every bucket for each victim.
      */
     private static void enforceBudget() {
-        var budgetBytes = com.lowdragmc.photon.PhotonConfig.INSTANCE.postFxPoolBudgetMB.get() * 1024L * 1024L;
+        var budgetBytes = PhotonConfig.INSTANCE.postFxPoolBudgetMB.get() * 1024L * 1024L;
         while (freeBytes > budgetBytes) {
             ArrayDeque<Target> oldestBucket = null;
             for (var bucket : FREE.values()) {

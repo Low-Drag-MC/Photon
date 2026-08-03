@@ -1,8 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.emitter.trail;
 
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
@@ -12,11 +12,21 @@ import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
-import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
+import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
+import com.lowdragmc.photon.client.gameobject.particle.renderer.TrailParticleRenderer;
+import com.lowdragmc.photon.client.render.PhotonCameraUtils;
+import com.lowdragmc.photon.client.render.PhotonPipelines;
+import com.lowdragmc.photon.client.render.PhotonViewSettings;
+import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import net.minecraft.client.Camera;
 import net.minecraft.world.phys.AABB;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -219,33 +229,33 @@ public class TrailEmitter extends Emitter {
 
     /** Lazily built CPU ribbon renderer. Transient: render-only state, never persisted or copied. */
     @Nullable
-    private transient com.lowdragmc.photon.client.gameobject.particle.renderer.TrailParticleRenderer extractRenderer;
+    private transient TrailParticleRenderer extractRenderer;
 
     @Override
-    public com.mojang.blaze3d.vertex.VertexFormat.Mode geometryMode() {
-        return com.mojang.blaze3d.vertex.VertexFormat.Mode.TRIANGLE_STRIP; // 1.21 TrailConfig.RenderPass
+    public VertexFormat.Mode geometryMode() {
+        return VertexFormat.Mode.TRIANGLE_STRIP; // 1.21 TrailConfig.RenderPass
     }
 
     @Override
-    public com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting.Runtime rendererRuntime() {
+    public RendererSetting.Runtime rendererRuntime() {
         return runtime().renderer;
     }
 
     @Override
-    protected void bakeBatches(com.lowdragmc.photon.client.render.PhotonViewSettings settings,
-                               java.util.List<com.lowdragmc.photon.client.render.PhotonWorldRenderState.DrawJob> out,
-                               net.minecraft.client.Camera camera, float partialTicks) {
+    protected void bakeBatches(PhotonViewSettings settings,
+                               List<PhotonWorldRenderState.DrawJob> out,
+                               Camera camera, float partialTicks) {
         var setting = config.additionalGPUDataSetting;
         if (runtime().renderer.isUseGPUInstance()) {
             if (extractRenderer == null) {
-                extractRenderer = new com.lowdragmc.photon.client.gameobject.particle.renderer.TrailParticleRenderer();
+                extractRenderer = new TrailParticleRenderer();
             }
             var tails = trailParticle.getTails().size();
             if (bakeInstancedGroup(settings, out, camera, rendererRuntime(), setting,
-                    com.lowdragmc.photon.client.render.PhotonPipelines.InstancedVariant.TRAIL,
-                    BaseMesh.quads(com.lowdragmc.photon.client.render.PhotonWorldRenderState.segmentQuad(), 6),
+                    PhotonPipelines.InstancedVariant.TRAIL,
+                    BaseMesh.quads(PhotonWorldRenderState.segmentQuad(), 6),
                     (tails + 1) * 4, (tails + 4) * 12,
-                    new org.joml.Vector3f(com.lowdragmc.photon.client.render.PhotonCameraUtils.facingEye(camera)).sub(com.lowdragmc.photon.client.render.PhotonCameraUtils.renderOrigin(camera)),
+                    new Vector3f(PhotonCameraUtils.facingEye(camera)).sub(PhotonCameraUtils.renderOrigin(camera)),
                     (instances, points, data, custom) -> extractRenderer.fillInstances(
                             Collections.singleton(trailParticle), camera, partialTicks, instances, points,
                             setting, data, custom))) {
@@ -256,10 +266,10 @@ public class TrailEmitter extends Emitter {
     }
 
     @Override
-    protected void bakeGeometry(com.mojang.blaze3d.vertex.VertexConsumer geometry,
-                                net.minecraft.client.Camera camera, float partialTicks) {
+    protected void bakeGeometry(VertexConsumer geometry,
+                                Camera camera, float partialTicks) {
         if (extractRenderer == null) {
-            extractRenderer = new com.lowdragmc.photon.client.gameobject.particle.renderer.TrailParticleRenderer();
+            extractRenderer = new TrailParticleRenderer();
         }
         extractRenderer.renderQueue(geometry, Collections.singleton(trailParticle), camera, partialTicks);
     }

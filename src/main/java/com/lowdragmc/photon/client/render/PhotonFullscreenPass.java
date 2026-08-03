@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.render;
 
+import com.lowdragmc.photon.Photon;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderPass;
@@ -56,7 +57,7 @@ public final class PhotonFullscreenPass {
     /** A pipeline builder over the fullscreen quad — samplers and state are the caller's. */
     public static RenderPipeline.Builder builder(Identifier fragmentShader) {
         return builder()
-                .withVertexShader(com.lowdragmc.photon.Photon.id(VERTEX_SHADER_PATH))
+                .withVertexShader(Photon.id(VERTEX_SHADER_PATH))
                 .withFragmentShader(fragmentShader);
     }
 

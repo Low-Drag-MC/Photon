@@ -1,11 +1,11 @@
 package com.lowdragmc.photon.gui.editor.view.timeline;
 
-import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ColorConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
+import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
@@ -18,24 +18,23 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.OreSprites;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
+import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.photon.client.PhotonIcons;
-import com.lowdragmc.photon.client.fx.timeline.property.ConfigPropertyType;
-import dev.vfyjxf.taffy.style.TaffyPosition;
-import org.lwjgl.glfw.GLFW;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
-import com.lowdragmc.lowdraglib2.math.GradientColor;
+import com.lowdragmc.photon.client.fx.timeline.CurveClip;
 import com.lowdragmc.photon.client.fx.timeline.ExprClip;
 import com.lowdragmc.photon.client.fx.timeline.GradientClip;
-import com.lowdragmc.photon.client.fx.timeline.CurveClip;
 import com.lowdragmc.photon.client.fx.timeline.SubClip;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.fx.timeline.property.ColorAnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigAnimatedProperty;
+import com.lowdragmc.photon.client.fx.timeline.property.ConfigPropertyType;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -46,18 +45,26 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveCon
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import dev.vfyjxf.taffy.style.FlexDirection;
-import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
+import dev.vfyjxf.taffy.style.TaffyPosition;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import org.joml.Vector2f;
 import org.joml.Vector4f;
+import org.lwjgl.glfw.GLFW;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /** Editor for {@code animation} tracks: a bound-target header (root excluded), a keyframe-dot lane,
  *  and an expandable property list + interactive bezier curve editor. */
@@ -246,11 +253,11 @@ public class AnimationTrackEditor extends TrackEditor {
     }
 
     @Override
-    public void onTargetWillChange(TimelineContext ctx, Track track, @Nullable java.util.UUID oldTargetId) {
+    public void onTargetWillChange(TimelineContext ctx, Track track, @Nullable UUID oldTargetId) {
         restoreBaseOf(ctx, track, oldTargetId);
     }
 
-    private void restoreBaseOf(TimelineContext ctx, Track track, @Nullable java.util.UUID targetId) {
+    private void restoreBaseOf(TimelineContext ctx, Track track, @Nullable UUID targetId) {
         var runtime = ctx.runtime();
         if (track instanceof AnimationTrack animation && targetId != null && runtime != null
                 && runtime.objects.get(targetId) instanceof FXObject target) {
@@ -931,7 +938,7 @@ public class AnimationTrackEditor extends TrackEditor {
 
     /** A node in the add-property menu tree: named sub-branches + leaf properties at this level. */
     private static final class MenuNode {
-        final java.util.LinkedHashMap<String, MenuNode> children = new java.util.LinkedHashMap<>();
+        final LinkedHashMap<String, MenuNode> children = new LinkedHashMap<>();
         final List<AnimatedPropertyType> leaves = new ArrayList<>();
     }
 
@@ -1170,7 +1177,7 @@ public class AnimationTrackEditor extends TrackEditor {
      *  tick, so a near-vertical jump (adjacent keys are clamped ~0.001 ticks apart) renders vertical instead
      *  of slanted across the 2px sampling step. Sorted ascending, de-duplicated. */
     protected List<Float> curvePolylineTicks(AnimatedProperty property, int axis, float startTick, float endTick, float stepTicks) {
-        var set = new java.util.TreeSet<Float>();
+        var set = new TreeSet<Float>();
         for (float t = startTick; t <= endTick; t += stepTicks) set.add(t);
         set.add(endTick);
         var count = property.keyCount(axis);
@@ -1276,7 +1283,7 @@ public class AnimationTrackEditor extends TrackEditor {
         if (hit == null) return;
         var key = property.key(hit[0], hit[1]);
         var text = "(%.0f, %.2f)".formatted(key.x, key.y);
-        var tw = net.minecraft.client.Minecraft.getInstance().font.width(text);
+        var tw = Minecraft.getInstance().font.width(text);
         var tx = mx + 6 + tw > x + width ? mx - 6 - tw : mx + 6;
         var ty = Math.max(y, my - 10);
         DrawerHelperClient.drawSolidRect(graphics, tx - 1, ty - 1, tw + 2, 10, ColorPattern.BLACK.color);
@@ -1605,7 +1612,7 @@ public class AnimationTrackEditor extends TrackEditor {
 
     /** Snap a moving clip's start, preferring whichever of its start/end lands on a snap target closer.
      *  {@code exclude} are the sub-clips being dragged (so they don't snap to their own edges). */
-    private double snapClipStart(TimelineContext ctx, double start, double duration, boolean ctrl, java.util.Set<?> exclude) {
+    private double snapClipStart(TimelineContext ctx, double start, double duration, boolean ctrl, Set<?> exclude) {
         var snapStart = ctx.snapKeyTick(start, ctrl, exclude);
         var snapEnd = ctx.snapKeyTick(start + duration, ctrl, exclude) - duration;
         var leftSnapped = snapStart != start;
@@ -2635,7 +2642,7 @@ public class AnimationTrackEditor extends TrackEditor {
 
     /** Push an undoable paste for a whole-list sub-selection (gradient clips / color stops). */
     private <T> void pushSubEdit(TimelineContext ctx, Runnable restoreBefore,
-                                 java.util.function.Supplier<List<T>> snapshot, java.util.function.Consumer<List<T>> restore, AnimationTrackUIState st) {
+                                 Supplier<List<T>> snapshot, Consumer<List<T>> restore, AnimationTrackUIState st) {
         var after = snapshot.get();
         ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
                 () -> { restore.accept(after); clearGradientClipSelection(st); clearCurveClipSelection(st); st.selectedStop = null; ctx.requestRebuild(); ctx.refreshPreview(); },
@@ -2690,7 +2697,7 @@ public class AnimationTrackEditor extends TrackEditor {
         var byAxis = new HashMap<Integer, List<Integer>>();
         for (var id : st.selectedKeys) byAxis.computeIfAbsent(keyAxis(id), a -> new ArrayList<>()).add(keyIndex(id));
         for (var entry : byAxis.entrySet()) {
-            entry.getValue().sort(java.util.Comparator.reverseOrder());
+            entry.getValue().sort(Comparator.reverseOrder());
             for (var k : entry.getValue()) property.removeKey(entry.getKey(), k);
         }
         var after = property.snapshotChannels();

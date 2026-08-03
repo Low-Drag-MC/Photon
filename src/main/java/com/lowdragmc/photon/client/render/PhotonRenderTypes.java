@@ -1,6 +1,9 @@
 package com.lowdragmc.photon.client.render;
 
+import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
+import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeGraphMaterial;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexFormat;
@@ -10,10 +13,13 @@ import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.resources.Identifier;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The render-layer index the drain reads to draw Photon geometry manually: RenderType →
@@ -44,7 +50,7 @@ public final class PhotonRenderTypes {
          * the material's own custom UBO, and the KilaGraph material that owns a shader graph's values.
          */
         public record Bindings(Map<String, Identifier> textures,
-                               java.util.List<String> sceneSamplers,
+                               List<String> sceneSamplers,
                                @Nullable PhotonCustomUniforms customUniforms,
                                @Nullable GraphSource graph) {
         }
@@ -77,8 +83,8 @@ public final class PhotonRenderTypes {
      * whether the instanced pipeline declares {@code PhotonData}/{@code PhotonCustomData}, and the emitter
      * unions them across the pass's materials to decide what to upload.
      */
-    public record GraphSource(com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph compiled,
-                              com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeGraphMaterial material,
+    public record GraphSource(CompiledShaderGraph compiled,
+                              RenderTypeGraphMaterial material,
                               long usedChannelMask, boolean usesCustomData) {
     }
 
@@ -162,8 +168,8 @@ public final class PhotonRenderTypes {
      * {@link #dropCustomShader}). Empty when the pipeline fails to compile.
      */
     public static Optional<RenderType> createGraphShader(
-            com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph compiled,
-            com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeGraphMaterial material,
+            CompiledShaderGraph compiled,
+            RenderTypeGraphMaterial material,
             PhotonPipelines.ParticlePipelineKey pipelineKey,
             long usedChannelMask, boolean usesCustomData) {
         // the CPU variant reads no additional data (particle.glsl's non-instanced accessors return 0)
@@ -172,12 +178,12 @@ public final class PhotonRenderTypes {
             Photon.LOGGER.warn("shader graph pipeline failed to compile: {}", compiled.contentHash());
             return Optional.empty();
         }
-        var sceneSamplers = new java.util.ArrayList<String>();
+        var sceneSamplers = new ArrayList<String>();
         if (compiled.usesSceneColor()) {
-            sceneSamplers.add(com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler.SCENE_COLOR);
+            sceneSamplers.add(PhotonShaderCompiler.SCENE_COLOR);
         }
         if (compiled.usesSceneDepth()) {
-            sceneSamplers.add(com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler.SCENE_DEPTH);
+            sceneSamplers.add(PhotonShaderCompiler.SCENE_DEPTH);
         }
         // The vanilla-phase RenderSetup only needs placeholders: Photon's drain rebinds everything, and the
         // graph's own samplers/UBOs are bound by the material.
@@ -212,8 +218,8 @@ public final class PhotonRenderTypes {
 
     // ---- resource reload ------------------------------------------------------------------------
 
-    private static final java.util.concurrent.atomic.AtomicInteger RELOAD_GENERATION =
-            new java.util.concurrent.atomic.AtomicInteger();
+    private static final AtomicInteger RELOAD_GENERATION =
+            new AtomicInteger();
 
     /** Bumped on every resource reload; a {@code CustomShaderMaterial} compares against it to drop
      *  stale JSON metadata + GPU state. The GLSL itself is recompiled by the engine on reload, but
