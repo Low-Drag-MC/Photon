@@ -29,7 +29,9 @@ on:
         default: false
 
 env:
-  JAVA_VERSION: '21'
+  # 25 matches build.gradle's toolchain, so nothing has to be provisioned at build time. Same as
+  # LDLib2 and KilaGraph, which run the same Gradle 9.1 on it.
+  JAVA_VERSION: '25'
   JAVA_DISTRIBUTION: 'temurin'
 
 jobs:
@@ -38,6 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      mc-family: ${{ steps.version.outputs.mc-family }}
       should-publish: ${{ steps.check.outputs.should-publish }}
     steps:
       - name: Checkout repository
@@ -74,11 +77,20 @@ jobs:
             fi
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "Project version: $VERSION"
+            # The MC family for the release label, read from gradle.properties rather than typed: this
+            # file used to carry 1.21.1 literals, which would have published 26.1 builds as 1.21.1.
+            MC_FAMILY=$(grep -E "^minecraft_version_vague\s*=" gradle.properties | cut -d'=' -f2 | tr -d ' ')
+            if [ -z "$MC_FAMILY" ]; then
+              echo "❌ Could not find minecraft_version_vague in gradle.properties"
+              exit 1
+            fi
+            echo "mc-family=$MC_FAMILY" >> $GITHUB_OUTPUT
+            echo "Minecraft family: $MC_FAMILY"
           else
-            echo "❌ gradle.properties not found, falling back to Gradle command"
-            VERSION=$(./gradlew -q printVersion)
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "Project version: $VERSION"
+            # No fallback: the game version can only come from here, and publishing with an empty one
+            # would upload the jar against no Minecraft version at all.
+            echo "❌ gradle.properties not found"
+            exit 1
           fi
 
       - name: Check publish conditions
@@ -99,7 +111,7 @@ jobs:
       matrix:
         include:
           - name: "Main Build"
-            gradle-tasks: "build test"
+            gradle-tasks: "build test runGameTestServer"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -222,22 +234,25 @@ jobs:
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
 
           files: |
-            build/libs/!(*-@(all|sources|javadoc|dev-shadow)).jar
-            build/libs/*-@(all|sources|javadoc|dev-shadow).jar
+            build/libs/*-@(all).jar
+            build/libs/!(*-@(all|dev|sources|javadoc|dev-shadow)).jar
+            build/libs/*-@(sources).jar
 
-          name: Photon2-${{ needs.validate.outputs.version }}-neoforge
-          version: mc1.21.1-${{ needs.validate.outputs.version }}-neoforge
+          name: Photon2-${{ needs.validate.outputs.mc-family }}.x-${{ needs.validate.outputs.version }}-neoforge
+          version: mc${{ needs.validate.outputs.mc-family }}.x-${{ needs.validate.outputs.version }}-neoforge
           version-type: ${{ inputs.versionType }}
           changelog-file: CHANGELOG.*
 
           loaders: |
             neoforge
+          # A curated compatibility claim, not a derivable fact — minecraft_version_range is [26.1, 26.1.2],
+          # so both patches are supported. Keep in step with LDLib2/KilaGraph, which list the same.
           game-versions: |
-            ${{ github.ref_name }}
-            1.21.1
+            26.1.1
+            26.1.2
           game-version-filter: none
           java: |
-            21
+            ${{ env.JAVA_VERSION }}
           retry-attempts: 3
           retry-delay: 10000
           fail-mode: fail
