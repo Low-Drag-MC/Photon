@@ -90,6 +90,13 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
         public final GradientColor gradient0;
         @Nullable
         public final GradientColor gradient1;
+        /**
+         * Whether the rgb stops hold premultiplied HDR values (may exceed 1). Purely a tag so the
+         * gradient editors can refuse a mismatched saved gradient — loading an HDR gradient into an LDR
+         * editor would silently clamp it away, and the reverse would read as intensity 1. Absent in
+         * pre-HDR saves, which are all LDR.
+         */
+        public boolean hdr;
 
         public Gradients(@Nonnull GradientColor gradient0, @Nullable GradientColor gradient1) {
             this.gradient0 = gradient0;
@@ -104,6 +111,11 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
             this(new GradientColor(), null);
         }
 
+        public Gradients setHDR(boolean hdr) {
+            this.hdr = hdr;
+            return this;
+        }
+
         public boolean isRandomGradient() {
             return gradient1 != null;
         }
@@ -113,6 +125,9 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
             tag.put("a", gradient0.serializeNBT(provider));
             if (gradient1 != null) {
                 tag.put("b", gradient1.serializeNBT(provider));
+            }
+            if (hdr) {
+                tag.putBoolean("hdr", true);
             }
             return tag;
         }
@@ -127,6 +142,7 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
                     gradient1.deserializeNBT(provider, tag);
                 }
             }
+            hdr = nbt.getBoolean("hdr");
         }
 
         public IGuiTexture preview() {
@@ -137,14 +153,14 @@ public class GradientResource extends Resource<GradientResource.Gradients> {
         public void buildConfigurator(ConfiguratorGroup father) {
             var container = new Configurator();
             container.addInlineChild(
-                    new GradientColorSelector().setValue(gradient0.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
+                    new GradientColorSelector(hdr).setValue(gradient0.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
                         gradient0.deserializeNBT(Platform.getFrozenRegistry(), gradientColor.serializeNBT(Platform.getFrozenRegistry()));
                         container.notifyChanges();
                     }).layout(layout -> layout.widthPercent(100))
             );
             if (gradient1 != null) {
                 container.addInlineChild(
-                        new GradientColorSelector().setValue(gradient1.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
+                        new GradientColorSelector(hdr).setValue(gradient1.copy(), false).setOnColorGradientChangeListener(gradientColor -> {
                             gradient1.deserializeNBT(Platform.getFrozenRegistry(), gradientColor.serializeNBT(Platform.getFrozenRegistry()));
                             container.notifyChanges();
                         }).layout(layout -> layout.widthPercent(100))

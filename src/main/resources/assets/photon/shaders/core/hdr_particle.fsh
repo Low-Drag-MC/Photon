@@ -24,9 +24,9 @@ void main() {
         discard;
     }
     if (HDRMode == 0) {
-        color.rgb += HDR.a * HDR.rgb;
+        color.rgb += HDR.rgb;
     } else {
-        color.rgb *= HDR.a * HDR.rgb;
+        color.rgb *= HDR.rgb;
     }
     fragColor = linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
 }

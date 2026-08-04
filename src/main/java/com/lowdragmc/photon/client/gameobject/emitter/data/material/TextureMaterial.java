@@ -11,6 +11,7 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
+import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonShaders;
@@ -26,7 +27,6 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Vector4f;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
@@ -62,7 +62,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     protected float discardThreshold = 0.1f;
     @Configurable(name = "TextureMaterial.hdr")
     @ConfigHDR
-    protected Vector4f hdr = new Vector4f(0, 0, 0, 1);
+    protected HDRColor hdr = HDRColor.black();
     @Configurable(name = "TextureMaterial.hdrMode")
     protected HDRMode hdrMode = HDRMode.ADDITIVE;
     @Configurable(name = "TextureMaterial.pixelArt", subConfigurable = true)
@@ -82,6 +82,10 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     public IMaterial copy() {
         var mat = new TextureMaterial(texture);
         mat.discardThreshold = discardThreshold;
+        mat.hdr = hdr.copy(); // deep: HDRColor is mutable, copies must not share it
+        mat.hdrMode = hdrMode;
+        mat.pixelArt.setEnable(pixelArt.isEnable());
+        mat.pixelArt.bits = pixelArt.bits;
         return mat;
     }
 
@@ -131,13 +135,10 @@ public class TextureMaterial extends ShaderInstanceMaterial {
         RenderSystem.setShaderTexture(0, texture);
         var shader = getShader(context);
         shader.safeGetUniform("DiscardThreshold").set(discardThreshold);
-        if (context.isRenderingPreview()) {
-            shader.safeGetUniform("HDR").set(hdr.x, hdr.y, hdr.z, 1);
-            shader.safeGetUniform("HDRMode").set(hdrMode.mode);
-        } else {
-            shader.safeGetUniform("HDR").set(hdr.x, hdr.y, hdr.z, hdr.w);
-            shader.safeGetUniform("HDRMode").set(hdrMode.mode);
-        }
+        // the preview thumbnail drops the intensity so a bright emissive material doesn't blow it out
+        var color = context.isRenderingPreview() ? hdr.withIntensity(1f).toVector4fOpaque() : hdr.toVector4fOpaque();
+        shader.safeGetUniform("HDR").set(color.x, color.y, color.z, color.w);
+        shader.safeGetUniform("HDRMode").set(hdrMode.mode);
         if (pixelArt.isEnable()) {
             shader.safeGetUniform("Bits").set(pixelArt.bits * 1f);
         }

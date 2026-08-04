@@ -3,6 +3,8 @@ package com.lowdragmc.photon.gui.editor.view.timeline;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ColorConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.HDRColorConfigurator;
+import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.lowdraglib2.configurator.ui.StringConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -1981,7 +1983,7 @@ public class AnimationTrackEditor extends TrackEditor {
             st.selectedGradientClips.clear();
             st.selectedGradientClips.add(clip);
         }
-        inspectGradientClip(ctx, track, clip);
+        inspectGradientClip(ctx, track, clip, color.isHDR());
         var bx = el.getParent().getContentX();
         beginGradientClipDrag(ctx, st, color, clip, edgeMode(e.x, el), curveXToTick(ctx, e.x, bx));
         el.startDrag(null, null);
@@ -2066,11 +2068,11 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selectedGradientClips.add(clip);
         st.explicitSelection = true;
         ctx.setActiveTrack(track);
-        inspectGradientClip(ctx, track, clip);
+        inspectGradientClip(ctx, track, clip, color.isHDR());
     }
 
     /** Inspect a selected gradient clip: its {@link GradientColor} via the LDLib2 gradient editor. */
-    private void inspectGradientClip(TimelineContext ctx, AnimationTrack track, GradientClip clip) {
+    private void inspectGradientClip(TimelineContext ctx, AnimationTrack track, GradientClip clip, boolean hdr) {
         var before = new GradientColor[]{clip.gradient().copy()};
         var cfg = IConfigurable.create(group -> group.addConfigurator(new GradientColorConfigurator(
                 "photon.gui.editor.timeline.property.color",
@@ -2084,7 +2086,7 @@ public class AnimationTrackEditor extends TrackEditor {
                             () -> { copyGradientInto(clip.gradient(), after); ctx.refreshPreview(); },
                             () -> { copyGradientInto(clip.gradient(), prev); ctx.refreshPreview(); });
                     ctx.refreshPreview();
-                }, clip.gradient().copy(), true)));
+                }, clip.gradient().copy(), true, hdr)));
         ctx.inspectProperty(track, cfg);
     }
 
@@ -2123,8 +2125,7 @@ public class AnimationTrackEditor extends TrackEditor {
 
     private void addGradientClipEdit(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty color,
                                      AnimationTrackUIState st, float tick) {
-        var argb = color.sampleColor(tick);
-        var clip = new GradientClip(tick, DEFAULT_EXPR_CLIP_TICKS, new GradientColor(argb, argb));
+        var clip = new GradientClip(tick, DEFAULT_EXPR_CLIP_TICKS, color.sampledGradient(tick));
         var before = color.snapshotGradientClips();
         color.gradientClips().add(clip);
         var after = color.snapshotGradientClips();
@@ -2247,11 +2248,17 @@ public class AnimationTrackEditor extends TrackEditor {
         st.selectedStop = stop;
         st.explicitSelection = true;
         ctx.setActiveTrack(track);
-        inspectColorStop(ctx, track, stop);
+        inspectColorStop(ctx, track, stop, color.isHDR());
     }
 
-    /** Inspect a selected color stop: an ARGB {@link ColorConfigurator}, undoable per change. */
-    private void inspectColorStop(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty.ColorKey stop) {
+    /** Inspect a selected color stop: an ARGB {@link ColorConfigurator} — or an
+     *  {@link HDRColorConfigurator} when the bound stream is HDR — undoable per change. */
+    private void inspectColorStop(TimelineContext ctx, AnimationTrack track,
+                                  ColorAnimatedProperty.ColorKey stop, boolean hdr) {
+        if (hdr) {
+            inspectHDRColorStop(ctx, track, stop);
+            return;
+        }
         var before = new int[]{stop.argb};
         var cfg = IConfigurable.create(group -> group.addConfigurator(new ColorConfigurator(
                 "photon.gui.editor.timeline.property.color",
@@ -2266,6 +2273,33 @@ public class AnimationTrackEditor extends TrackEditor {
                     ctx.refreshPreview();
                 }, stop.argb, true)));
         ctx.inspectProperty(track, cfg);
+    }
+
+    private void inspectHDRColorStop(TimelineContext ctx, AnimationTrack track, ColorAnimatedProperty.ColorKey stop) {
+        var before = new HDRColor[]{stopColor(stop)};
+        var cfg = IConfigurable.create(group -> group.addConfigurator(new HDRColorConfigurator(
+                "photon.gui.editor.timeline.property.color",
+                () -> stopColor(stop),
+                v -> {
+                    var prev = before[0];
+                    var next = v.copy();
+                    applyStopColor(stop, next);
+                    before[0] = next;
+                    ctx.pushApplied("photon.gui.editor.timeline.edit_curve",
+                            () -> { applyStopColor(stop, next); ctx.refreshPreview(); },
+                            () -> { applyStopColor(stop, prev); ctx.refreshPreview(); });
+                    ctx.refreshPreview();
+                }, stopColor(stop), true)));
+        ctx.inspectProperty(track, cfg);
+    }
+
+    private static HDRColor stopColor(ColorAnimatedProperty.ColorKey stop) {
+        return HDRColor.fromARGB(stop.argb).withIntensity(stop.intensity);
+    }
+
+    private static void applyStopColor(ColorAnimatedProperty.ColorKey stop, HDRColor color) {
+        stop.argb = color.baseARGB();
+        stop.intensity = color.getIntensity();
     }
 
     // ------------------------------------------------------------------ curve clips (config NF / NF3)
@@ -2617,7 +2651,7 @@ public class AnimationTrackEditor extends TrackEditor {
             case STOP -> {
                 if (!(property instanceof ColorAnimatedProperty color) || clipboardStops.isEmpty()) return false;
                 var before = color.snapshotStops();
-                for (var s : clipboardStops) color.addStop((float) Math.max(0, s.tick + delta), s.argb);
+                for (var s : clipboardStops) color.addStop((float) Math.max(0, s.tick + delta), s.argb, s.intensity);
                 pushSubEdit(ctx, () -> color.restoreStops(before), color::snapshotStops, color::restoreStops, st);
                 return true;
             }

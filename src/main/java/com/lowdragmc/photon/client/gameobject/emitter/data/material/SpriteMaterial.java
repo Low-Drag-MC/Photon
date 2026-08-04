@@ -7,6 +7,7 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
+import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
@@ -21,7 +22,6 @@ import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import org.joml.Vector4f;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -41,7 +41,7 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
     protected float discardThreshold = 0.1f;
     @Configurable(name = "TextureMaterial.hdr")
     @ConfigHDR
-    protected Vector4f hdr = new Vector4f(0, 0, 0, 1);
+    protected HDRColor hdr = HDRColor.black();
     @Configurable(name = "TextureMaterial.hdrMode")
     protected TextureMaterial.HDRMode hdrMode = TextureMaterial.HDRMode.ADDITIVE;
     private static final Map<String, ShaderInstance> spriteHDRParticleShaders = new HashMap<>();
@@ -88,13 +88,10 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
             shader.safeGetUniform("U_SpriteUV").set(spriteTexture.getU0(), spriteTexture.getV0(), spriteTexture.getU1(), spriteTexture.getV1());
         }
         shader.safeGetUniform("DiscardThreshold").set(discardThreshold);
-        if (context.isRenderingPreview()) {
-            shader.safeGetUniform("HDR").set(hdr.x, hdr.y, hdr.z, 1);
-            shader.safeGetUniform("HDRMode").set(hdrMode.mode);
-        } else {
-            shader.safeGetUniform("HDR").set(hdr.x, hdr.y, hdr.z, hdr.w);
-            shader.safeGetUniform("HDRMode").set(hdrMode.mode);
-        }
+        // the preview thumbnail drops the intensity so a bright emissive material doesn't blow it out
+        var color = context.isRenderingPreview() ? hdr.withIntensity(1f).toVector4fOpaque() : hdr.toVector4fOpaque();
+        shader.safeGetUniform("HDR").set(color.x, color.y, color.z, color.w);
+        shader.safeGetUniform("HDRMode").set(hdrMode.mode);
     }
 
     @Override

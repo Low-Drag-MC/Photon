@@ -10,10 +10,10 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Color;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Gradient;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomColor;
-import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGradient;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRConstantColor;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRGradient;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRRandomColor;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRRandomGradient;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.configurator.NumberFunctionConfigurator;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
@@ -572,7 +572,9 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
         @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class},
                 curveConfig = @CurveConfig(bound = {-1, 1}))
         private float scalar;
-        @NumberFunctionConfig(types = {Color.class, RandomColor.class, Gradient.class, RandomGradient.class}, defaultValue = -1)
+        // HDR-only: this stream reaches the GPU as raw floats, so there is no reason to clamp it to
+        // 8-bit here. Legacy LDR functions still load and render — CustomData.fromNBT upgrades them.
+        @NumberFunctionConfig(types = {HDRConstantColor.class, HDRRandomColor.class, HDRGradient.class, HDRRandomGradient.class}, defaultValue = -1)
         private int color;
     }
 

@@ -5,6 +5,8 @@ import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.resource.Resource;
+import com.lowdragmc.lowdraglib2.editor.resource.ResourceFileImport;
+import com.lowdragmc.lowdraglib2.editor.resource.ResourceImportContext;
 import com.lowdragmc.lowdraglib2.editor.resource.ResourceProviderType;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -19,21 +21,27 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.ResourceMeshSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 
 
 public class MeshResource extends Resource<MeshData> {
     public static final MeshResource INSTANCE = new MeshResource();
+    private static final String OBJ_EXTENSION = ".obj";
+    private static final String JSON_EXTENSION = ".json";
 
     /**
      * Fired (with the clicked path) whenever a mesh tile is selected in ANY container of this
@@ -79,6 +87,54 @@ public class MeshResource extends Resource<MeshData> {
             return new MeshData(compoundTag);
         }
         return new MeshData();
+    }
+
+    @Override
+    public boolean canImportFile(File file) {
+        if (super.canImportFile(file)) return true;
+        if (!file.isFile()) return false;
+        var name = file.getName().toLowerCase(Locale.ROOT);
+        return name.endsWith(OBJ_EXTENSION) || name.endsWith(JSON_EXTENSION);
+    }
+
+    @Override
+    public void importFile(ResourceImportContext<MeshData> context) {
+        var file = context.getFile();
+        if (super.canImportFile(file)) {
+            super.importFile(context);
+            return;
+        }
+        // Either way the file has to be addressable first, so one from outside the pack gets copied in.
+        if (file.getName().toLowerCase(Locale.ROOT).endsWith(OBJ_EXTENSION)) {
+            // an obj is parsed straight off the pack when the mesh is first drawn — no bakery, no reload.
+            // The location keeps its extension, that is how ObjModelSource opens it.
+            ResourceFileImport.resolveOrImport(context.getOwner(), file, "models", location -> {
+                var source = new ObjModelSource(location);
+                // the path is normally fresh, but re-importing a file already in the pack could hit a
+                // cached failure from an earlier load attempt
+                source.invalidate();
+                context.complete(new MeshData(source));
+            }, context::cancel);
+            return;
+        }
+        // a model json is only usable once it has been baked, and the bakery only learns about it from
+        // onAdditionalModel — which runs during a resource reload, over the resources that exist by
+        // then. So complete first, reload second.
+        ResourceFileImport.resolveOrImport(context.getOwner(), file, "models", location -> {
+            context.complete(new MeshData(new JsonModelSource(modelLocationOf(location))));
+            Minecraft.getInstance().reloadResourcePacks();
+        }, context::cancel);
+    }
+
+    /**
+     * The location the model bakery addresses a model json by: it drops the {@code models/} prefix and
+     * the extension, so {@code models/block/foo.json} becomes {@code block/foo}.
+     */
+    private static ResourceLocation modelLocationOf(ResourceLocation location) {
+        var path = location.getPath();
+        if (path.startsWith("models/")) path = path.substring("models/".length());
+        if (path.endsWith(JSON_EXTENSION)) path = path.substring(0, path.length() - JSON_EXTENSION.length());
+        return ResourceLocation.fromNamespaceAndPath(location.getNamespace(), path);
     }
 
     @Override
