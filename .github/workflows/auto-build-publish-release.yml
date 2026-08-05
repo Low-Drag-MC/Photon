@@ -221,9 +221,13 @@ jobs:
           curseforge-id: 871522
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
 
+          # The FIRST match is the primary file (Modrinth: primary_file; CurseForge: the parent every
+          # later upload attaches to) — so the jarJar'd `-all` jar, which bundles KilaGraph, leads.
+          # The thin jar and the rest follow as additional files.
           files: |
+            build/libs/*-all.jar
             build/libs/!(*-@(all|sources|javadoc|dev-shadow)).jar
-            build/libs/*-@(all|sources|javadoc|dev-shadow).jar
+            build/libs/*-@(sources|javadoc|dev-shadow).jar
 
           name: Photon2-${{ needs.validate.outputs.version }}-neoforge
           version: mc1.21.1-${{ needs.validate.outputs.version }}-neoforge
