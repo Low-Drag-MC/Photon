@@ -1,5 +1,4 @@
 # Changelog
-## v2.2.2
-* Fixed cloud rendering
-* Added more iris compact
-* Added node descriptions
+## v2.2.3
+* Added HDR supports
+* Added more shader nodes
