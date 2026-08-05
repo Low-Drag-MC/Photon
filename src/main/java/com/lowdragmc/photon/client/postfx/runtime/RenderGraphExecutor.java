@@ -157,6 +157,16 @@ public final class RenderGraphExecutor {
                 if (screenSize != null) screenSize.set((float) widths[out], (float) heights[out]);
                 var gameTime = shader.getUniform("GameTime");
                 if (gameTime != null) gameTime.set(RenderSystem.getShaderGameTime());
+                // The Time node's clock must agree with the GameTime node's: KGBuiltinUniforms binds kg_Time
+                // from the WORLD clock, which ignores the editor timeline (play/pause/scrub) that drives
+                // shader game time. Identical value in-world; mirrors ShaderGraphMaterial's override for
+                // particle materials (24000 ticks = 1200 s).
+                var engineTime = shader.getUniform("kg_Time");
+                if (engineTime != null) engineTime.set(RenderSystem.getShaderGameTime() * 1200f);
+                // The frame's camera + the rect it projects into: a blit sets no matrices of its own, and by
+                // the late/composite slot RenderSystem no longer holds the camera at all — see PostFXCamera.
+                PostFXCamera.bind(shader);
+                PostFXCamera.bindViewport(shader, widths[out], heights[out]);
 
                 // texture inputs override the staged sampler defaults; TexelSize rides the same names
                 for (var binding : pass.textures().entrySet()) {

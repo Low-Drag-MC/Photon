@@ -34,9 +34,13 @@ import java.util.Map;
 @OnlyIn(Dist.CLIENT)
 public final class CustomShaderPass {
 
-    /** Uniforms the executor manages — never exposed as pass ports. */
+    /** Uniforms the executor manages — never exposed as pass ports. (The {@code matrix4x4} ones are already
+     *  skipped by the float-only type filter in {@link #parse}; they are listed as documentation.) */
     private static final List<String> ENGINE_UNIFORMS = List.of(
-            "ScreenSize", "GameTime", "ProjMat", "ModelViewMat");
+            "ScreenSize", "GameTime", "ProjMat", "ModelViewMat",
+            // bound per dispatch from the captured render camera / pass target — see PostFXCamera
+            "U_ViewPort", "kg_CameraBlockPos", "kg_CameraOffset", "kg_Time",
+            "kg_ViewMat", "kg_IViewMat", "kg_IModelViewMat", "kg_IProjMat");
 
     /** The shipped pass library (shaders/core/postfx/*) — offered by the pass node's shader
      *  selector; any other core-shader location still works via the free-text row. */

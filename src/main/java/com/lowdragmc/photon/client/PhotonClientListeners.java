@@ -4,6 +4,7 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.compat.iris.IrisOverlay;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.OpaqueDepthCapture;
 import com.lowdragmc.photon.client.postfx.PhotonPostFX;
+import com.lowdragmc.photon.client.postfx.runtime.PostFXCamera;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.neoforged.api.distmarker.Dist;
@@ -45,6 +46,13 @@ public class PhotonClientListeners {
      */
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
+        // The frame's camera, for post-processing passes that reconstruct world space. Captured on every
+        // stage (two matrix copies) because the consumers run at different points in the level render, and
+        // LevelRenderer pops the camera off the model-view stack before the last of them — see PostFXCamera.
+        // Unconditional on purpose: under a shader pack the chain runs from onLevelRenderComplete, which is
+        // outside every stage, and PhotonPostFX's own stage hook early-returns there.
+        PostFXCamera.capture(event.getModelViewMatrix(), event.getProjectionMatrix(),
+                event.getCamera().getPosition());
         if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) {
             OpaqueDepthCapture.capture();
         } else if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {

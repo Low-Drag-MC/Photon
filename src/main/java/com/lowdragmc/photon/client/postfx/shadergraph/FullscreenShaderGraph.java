@@ -25,7 +25,6 @@ import com.lowdragmc.kilagraph.rendertype.nodes.input.vertex.VertexIdNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.lighting.LightUboNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.lighting.MixLightNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.math.vector.FresnelNode;
-import com.lowdragmc.kilagraph.rendertype.nodes.math.vector.TransformNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.scene.GlobalsUboNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.scene.SceneColorNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.scene.SceneDepthNode;
@@ -34,11 +33,8 @@ import com.lowdragmc.kilagraph.rendertype.nodes.scene.ScreenPositionNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.texture.LightMapTextureNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.texture.OverlayTextureNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.texture.SamplerTexture2DNode;
-import com.lowdragmc.kilagraph.rendertype.nodes.transform.CameraNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.transform.DynamicTransformsUboNode;
-import com.lowdragmc.kilagraph.rendertype.nodes.transform.KGTransformsUboNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.transform.ProjectionFromPositionNode;
-import com.lowdragmc.kilagraph.rendertype.nodes.transform.ProjectionUboNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.vertex.VaryingCustomFloatBlock;
 import com.lowdragmc.kilagraph.rendertype.nodes.vertex.VaryingCustomVec2Block;
 import com.lowdragmc.kilagraph.rendertype.nodes.vertex.VaryingCustomVec3Block;
@@ -76,8 +72,10 @@ import java.util.Set;
  *
  * <p><b>Pure-function rule</b>: a fullscreen graph never samples the scene implicitly — KilaGraph's
  * Scene Color/Depth nodes are excluded; scene textures arrive through declared {@code SAMPLER2D} inputs
- * wired by the effect graph. Anything vertex-format/fog/lighting/camera-bound is excluded too: the draw
- * is a bare NDC quad with no matrices, normals or fog state bound.</p>
+ * wired by the effect graph. Anything vertex-format/fog/lighting-bound is excluded too: the draw is a bare
+ * NDC quad with no attributes, normals or fog state. The <b>camera</b> is the exception — the executor
+ * binds the frame's view/projection/position explicitly (see {@code PostFXCamera}), so a pass can turn a
+ * depth input back into a world position.</p>
  */
 public class FullscreenShaderGraph extends RenderTypeGraph {
     /** Photon's fullscreen node registry: nodes annotated with {@code graphTypes = FullscreenShaderGraph.class}. */
@@ -89,9 +87,16 @@ public class FullscreenShaderGraph extends RenderTypeGraph {
 
     /**
      * KilaGraph nodes that don't apply to a bare fullscreen pass: vertex-format-bound inputs (only
-     * {@code Position} exists), model/world/view transforms (no matrices bound at dispatch), fog and
-     * lighting (no such state), overlay/lightmap (vanilla geometry concerns), scene capture (the
-     * pure-function rule), and the particle fragment blocks ({@link FullscreenOutputBlock} replaces them).
+     * {@code Position} exists), fog and lighting (no such state), overlay/lightmap (vanilla geometry
+     * concerns), scene capture (the pure-function rule), and the particle fragment blocks
+     * ({@link FullscreenOutputBlock} replaces them).
+     *
+     * <p>The <b>camera/matrix</b> group is NOT excluded (any more): {@code RenderGraphExecutor} binds the
+     * frame's camera onto every pass shader from {@link com.lowdragmc.photon.client.postfx.runtime.PostFXCamera},
+     * so Transform / Camera / KG Transforms / Projection read the real view + projection and a pass can
+     * reconstruct world space from a depth input (Screen To World). Note what the spaces mean here: there is
+     * no object space in a blit, so Transform's {@code object} is the same camera-relative world its
+     * {@code ModelViewMat} maps to view.</p>
      */
     private static final Set<Class<? extends Node>> EXCLUDED_NODES = Set.of(
             // vertex stage is fixed: no raw attributes, position/normal displacement or custom varyings
@@ -100,11 +105,12 @@ public class FullscreenShaderGraph extends RenderTypeGraph {
             VaryingCustomFloatBlock.class, VaryingCustomVec2Block.class,
             VaryingCustomVec3Block.class, VaryingCustomVec4Block.class,
             VertexIdNode.class, InstanceIdNode.class,
-            // vertex-format-bound inputs (only Position exists on the quad)
+            // vertex-format-bound inputs (only Position exists on the quad) — and Fresnel/ProjectionFromPosition
+            // build on a surface normal / a vertex position, neither of which a blit quad has
             VertexColorNode.class, PositionNode.class, NormalNode.class, ViewDirectionNode.class,
-            // spaces/camera/matrices are unbound in a fullscreen blit draw
-            TransformNode.class, FresnelNode.class, CameraNode.class, DynamicTransformsUboNode.class,
-            KGTransformsUboNode.class, ProjectionFromPositionNode.class, ProjectionUboNode.class,
+            FresnelNode.class, ProjectionFromPositionNode.class,
+            // ColorModulator/TextureMat/LineWidth are not part of a blit's state
+            DynamicTransformsUboNode.class,
             // fog + lighting state doesn't exist here
             ApplyFogNode.class, FogUboNode.class, FogCylindricalDistanceNode.class,
             FogSphericalDistanceNode.class, LinearFogValueNode.class, TotalFogValueNode.class,

@@ -54,6 +54,12 @@ public final class PostEffectStack {
         editorSceneRendering = rendering;
     }
 
+    /** Whether the editor scene is the render context right now — the same switch {@link #currentSink()}
+     *  routes on, for anything else that is per-context (e.g. {@link PostFXCamera}). */
+    public static boolean isEditorSceneRendering() {
+        return editorSceneRendering;
+    }
+
     /** Per-stack gate (the SceneView effects toggle): disabled = drop requests, bloom-only. */
     private boolean effectsEnabled = true;
 

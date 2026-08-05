@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
+import com.lowdragmc.photon.client.postfx.runtime.PostFXCamera;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -14,6 +15,7 @@ import net.minecraft.client.particle.ParticleRenderType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.minecraft.client.Camera;
+import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -114,6 +116,12 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
                     java.util.Map.of(), 1f);
         }
         RenderSystem.setShaderGameTime(getRealTime(), isPlaying ? pPartialTicks : 0);
+        // The scene's own camera for post-effect world reconstruction (the game camera would be wrong here).
+        // LDLib2's ParticleManager multiplies pMatrixStack onto the model-view stack around the draws, so
+        // this is exactly the ModelViewMat the particles — and the scene's effect chain — are rendered with.
+        PostFXCamera.captureSubViewport(
+                new Matrix4f(RenderSystem.getModelViewMatrix()).mul(pMatrixStack.last().pose()),
+                RenderSystem.getProjectionMatrix(), pActiveRenderInfo.getPosition());
 
         var startTime = System.nanoTime();
         GlStateManager._disableScissorTest();

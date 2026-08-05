@@ -11,7 +11,8 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.NodeAttribute;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandles;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IOptionDefinitionContext;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IPortDefinitionContext;
-import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
+import com.lowdragmc.photon.client.postfx.shadergraph.FullscreenShaderGraph;
+import com.lowdragmc.photon.client.shadergraph.PhotonScreenSpace;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderFunctionGraph;
 import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
 
@@ -31,9 +32,13 @@ import java.util.List;
  *   <li><b>camera_relative</b> — already relative to the camera (e.g. {@code ParticleData.Position}),
  *       projected directly.</li>
  * </ul></p>
+ *
+ * <p>Also available to fullscreen post-processing passes (project a world point — a light, an entity — to
+ * the uv a pass samples at): there the executor binds the pass target as the viewport, so the remap is the
+ * identity, and the camera comes from {@code PostFXCamera}. {@link ScreenToWorldNode} is the inverse.</p>
  */
 @NodeAttribute(name = "photon_world_to_screen_uv", group = "photon_scene",
-        graphTypes = {ShaderGraph.class, PhotonShaderFunctionGraph.class})
+        graphTypes = {ShaderGraph.class, PhotonShaderFunctionGraph.class, FullscreenShaderGraph.class})
 public class WorldToScreenUVNode extends ShaderNode {
     private static final List<String> SPACES = List.of("absolute", "camera_relative");
 
@@ -62,15 +67,11 @@ public class WorldToScreenUVNode extends ShaderNode {
         }
         String proj = ctx.useBuiltinUniform("ProjMat", GlslType.MAT4);
         String modelView = ctx.useBuiltinUniform("ModelViewMat", GlslType.MAT4);
-        String viewport = ctx.useBuiltinUniform(PhotonShaderCompiler.VIEWPORT, GlslType.VEC4);
-        String screenSize = ctx.useBuiltinUniform("ScreenSize", GlslType.VEC2);
         // position -> clip -> ndc -> [0,1] over the viewport, then remap through the viewport rect into the
-        // window-sized scene capture so it matches screenUv()'s window-relative convention.
+        // frame-relative space screenUv() (and the scene capture) live in — see PhotonScreenSpace.
         String clip = ctx.temp(GlslType.VEC4, proj + " * " + modelView + " * vec4(" + pos + ", 1.0)").code();
         String vpUv = ctx.temp(GlslType.VEC2, "((" + clip + ".xy / " + clip + ".w) * 0.5 + 0.5)").code();
-        ctx.output("uv", new ShaderExpr(
-                "((" + viewport + ".xy + " + vpUv + " * " + viewport + ".zw) / " + screenSize + ")",
-                GlslType.VEC2));
+        ctx.output("uv", PhotonScreenSpace.toScreenUv(ctx, vpUv));
     }
 
     @Override
