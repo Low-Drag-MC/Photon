@@ -25,7 +25,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
@@ -213,8 +212,12 @@ public class SubEmittersSetting extends ToggleGroup {
 
         @Override
         public void buildConfigurator(ConfiguratorGroup father) {
-            // Snapshot the candidates once instead of re-listing resources on every keystroke; the
-            // configurator is rebuilt whenever the panel is reopened, so this stays fresh enough.
+            // The search runs per keystroke, so it gets a plain list to scan: FXHelper owns the caching
+            // (and drops it on resource reload), and the ids are turned into strings once here rather
+            // than once per search. The leading "" is the entry that clears the selection.
+            var candidates = new ArrayList<String>();
+            candidates.add("");
+            FXHelper.listAllFX().forEach(fx -> candidates.add(fx.toString()));
 
             father.addConfigurators(new SearchComponentConfigurator<>("fx",
                     () -> fxLocation == null ? "" : fxLocation.toString(),
@@ -222,11 +225,6 @@ public class SubEmittersSetting extends ToggleGroup {
                     "", true,
                     (word, handler) -> {
                         var search = word.toLowerCase(Locale.ROOT);
-                        List<String> candidates = new ArrayList<>();
-                        candidates.add("");
-                        Minecraft.getInstance().getResourceManager()
-                                .listResources("fx", arg -> arg.getPath().endsWith(".fx"))
-                                .keySet().forEach(fx -> candidates.add(fx.toString().replace(":fx/", ":").replace(".fx", "")));
                         for (var candidate : candidates) {
                             // the search runs off-thread and is cancelled when the query moves on
                             if (Thread.currentThread().isInterrupted()) return;
