@@ -53,7 +53,7 @@ public class PhotonConfig {
         enableBloom = builder.define("enable_bloom", true);
         bloomMipLevel = builder.defineInRange("bloom_mip_level", 5, 2, 10);
 //        bloomMode = builder.defineEnum("bloom_mode", BloomMode.SCATTER, BloomMode.values());
-        bloomThreshold = builder.defineInRange("bloom_threshold", 1, 0, 10d);
+        bloomThreshold = builder.defineInRange("bloom_threshold", 1.001, 0, 10d);
         bloomIntensity = builder.defineInRange("bloom_intensity", 0.7, 0, 1);
 
         // Only consulted when the FX layer is composited into the pack's own colour target, where
