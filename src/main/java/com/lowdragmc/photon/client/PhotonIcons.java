@@ -21,4 +21,5 @@ public final class PhotonIcons {
     public static final IGuiTexture TIMELINE_END = Icons.icon(Photon.MOD_ID, "timeline_end");
     public static final IGuiTexture MARKER = Icons.icon(Photon.MOD_ID, "marker");
     public static final IGuiTexture RECORDING = Icons.icon(Photon.MOD_ID, "recording");
+    public static final IGuiTexture PHOTON_PROJECT = Icons.icon(Photon.MOD_ID, "photon_project");
 }

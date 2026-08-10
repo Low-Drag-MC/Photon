@@ -13,6 +13,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.syncdata.ISubscription;
+import com.lowdragmc.photon.client.PhotonIcons;
 import dev.vfyjxf.taffy.style.AlignItems;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import com.lowdragmc.photon.Photon;
@@ -42,7 +43,7 @@ import java.util.List;
 
 public class FXProject implements IProject {
     public static int VERSION = 5;
-    public static final ProjectType TYPE = ProjectType.of(IGuiTexture.EMPTY, "fx_project", ".fxproj", FXProject::new);
+    public static final ProjectType TYPE = ProjectType.of(PhotonIcons.PHOTON_PROJECT, "fx_project", ".fxproj", FXProject::new);
 
     @Getter
     private final Resources resources;
