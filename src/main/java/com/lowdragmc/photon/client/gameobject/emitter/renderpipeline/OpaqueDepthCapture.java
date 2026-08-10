@@ -11,6 +11,7 @@ import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.UISurface;
 
 /**
  * A snapshot of the frame's depth buffer taken <b>before</b> the translucent chunk layer, i.e.
@@ -62,7 +63,7 @@ public final class OpaqueDepthCapture {
      */
     public static void capture() {
         if (!isWanted()) return;
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = UISurface.currentTarget();
         if (mainTarget.width <= 0 || mainTarget.height <= 0) return;
         // EVERYTHING below can leave a foreign framebuffer bound, so the save/restore wraps the whole
         // method rather than just the allocation. HDRTarget.copyFromInternal ends on

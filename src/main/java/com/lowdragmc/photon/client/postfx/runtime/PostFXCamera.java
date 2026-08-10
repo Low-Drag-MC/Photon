@@ -9,6 +9,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.UISurface;
 
 /**
  * The render camera a post-processing pass reconstructs world space with — captured while the frame is
@@ -111,7 +112,7 @@ public final class PostFXCamera {
 
         /** The GL viewport as a fraction of the main target (the size the effect chain runs at). */
         void viewportRect() {
-            var target = Minecraft.getInstance().getMainRenderTarget();
+            var target = UISurface.currentTarget();
             float width = target.width, height = target.height;
             int viewportWidth = GlStateManager.Viewport.width(), viewportHeight = GlStateManager.Viewport.height();
             if (width <= 0 || height <= 0 || viewportWidth <= 0 || viewportHeight <= 0) {

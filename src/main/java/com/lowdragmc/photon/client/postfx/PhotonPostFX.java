@@ -14,6 +14,7 @@ import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.UISurface;
 
 /**
  * The public entry point for Photon's custom post-processing effects. Effects are per-frame
@@ -131,13 +132,13 @@ public final class PhotonPostFX {
 
     private static void runChainOverMainTarget() {
         var stack = PostEffectStack.GLOBAL;
-        var previewTarget = Minecraft.getInstance().getMainRenderTarget();
+        var previewTarget = UISurface.currentTarget();
         if (!stack.isConsumedThisFrame()) {
             // no effects ran yet this frame — the main target IS the clean scene
             com.lowdragmc.photon.client.postfx.runtime.PostFXPreview.captureIfRequested(previewTarget);
         }
         if (!stack.hasPending() || stack.isConsumedThisFrame()) return;
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = UISurface.currentTarget();
         var chain = PostFXTargetPool.acquire(mainTarget.width, mainTarget.height);
         chain.copyColorFrom(mainTarget);
         var output = stack.consumeAndExecute(chain, false, mainTarget.getDepthTextureId());

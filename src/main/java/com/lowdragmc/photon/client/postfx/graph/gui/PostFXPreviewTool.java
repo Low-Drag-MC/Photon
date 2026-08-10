@@ -26,6 +26,7 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 
 import java.util.Map;
+import com.lowdragmc.lowdraglib2.client.RenderTargetScope;
 
 /**
  * The render-graph editor's live preview: every frame the panel is visible it requests a clean
@@ -90,14 +91,17 @@ public class PostFXPreviewTool extends UIElement implements IGraphTool {
         HDRTarget result = null;
         if (!compiled.passes().isEmpty()) {
             PostEffectStack.setPostRenderState();
-            try {
+            // Captured, not assumed: this runs inside a UI draw, so the frame it has to hand back to
+            // is whatever that draw was going into. Binding the main render target instead sends the
+            // rest of the UI pass — this preview included — into the game window, which is where it
+            // ended up when the editor was hosted in a window of its own.
+            try (var ignored = RenderTargetScope.capture()) {
                 // no mask source in the preview (it runs against a clean scene capture) — mask
                 // inputs degrade to an empty sampler
                 result = RenderGraphExecutor.execute(compiled, 1f, defaultParams, source,
                         source.getDepthTextureId(), -1, -1);
             } finally {
                 PostEffectStack.restorePostRenderState();
-                Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
             }
         }
 

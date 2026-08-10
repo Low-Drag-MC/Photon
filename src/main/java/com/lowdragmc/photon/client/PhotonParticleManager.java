@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Queue;
 import java.util.function.Predicate;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.UISurface;
 
 @OnlyIn(Dist.CLIENT)
 public class PhotonParticleManager extends ParticleManager implements ParticleTickHost {
@@ -160,7 +161,7 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         int viewportY = GlStateManager.Viewport.y();
         int viewportWidth = GlStateManager.Viewport.width();
         int viewportHeight = GlStateManager.Viewport.height();
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = UISurface.currentTarget();
         var chain = com.lowdragmc.photon.client.postfx.runtime.PostFXTargetPool
                 .acquire(mainTarget.width, mainTarget.height);
         chain.copyColorFrom(mainTarget);

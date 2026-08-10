@@ -29,6 +29,7 @@ import org.lwjgl.opengl.GL30;
 
 import javax.annotation.Nonnull;
 import java.util.*;
+import com.lowdragmc.lowdraglib2.gui.ui.rendering.UISurface;
 
 public class RenderPassPipeline extends BufferBuilder {
     @Getter
@@ -195,7 +196,7 @@ public class RenderPassPipeline extends BufferBuilder {
             completed = true;
         } finally {
             if (!completed) {
-                Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
+                UISurface.currentTarget().bindWrite(true);
             }
             clearRenderingState();
             current = null;
@@ -437,7 +438,7 @@ public class RenderPassPipeline extends BufferBuilder {
         //    per-buffer `size.buffer.colortexN` make that differ from MC's window, and a mismatch
         //    shows up as FX that do not line up with the scene.
         //  - AFTER_PACK -> MC's main target, since that is where the layer eventually lands.
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = UISurface.currentTarget();
         boolean packSized = irisTarget != null && irisTarget.compositeMode() != IrisCompositeMode.AFTER_PACK;
         int width = packSized ? irisTarget.width() : mainTarget.width;
         int height = packSized ? irisTarget.height() : mainTarget.height;
@@ -503,7 +504,7 @@ public class RenderPassPipeline extends BufferBuilder {
             return;
         }
         // No shader pack: DRAW_TARGET is a working copy of the frame, so the write-back can replace.
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = UISurface.currentTarget();
         DRAW_TARGET.copyColorFrom(mainTarget);
         if (!DRAW_TARGET.hasOtherAttachedDepthTexture() || DRAW_TARGET.getAttachedDepthTexture() != mainTarget.getDepthTextureId()) {
             DRAW_TARGET.attachDepthBuffer(mainTarget);
@@ -602,9 +603,9 @@ public class RenderPassPipeline extends BufferBuilder {
             parkLateLayer();
             return;
         }
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = UISurface.currentTarget();
         var lastViewport = PositionedRect.of(GlStateManager.Viewport.x(), GlStateManager.Viewport.y(), GlStateManager.Viewport.width(), GlStateManager.Viewport.height());
-        var background = Minecraft.getInstance().getMainRenderTarget();
+        var background = UISurface.currentTarget();
         var hasDifferentViewPort = lastViewport.position.x != 0 ||
                 lastViewport.position.y != 0 ||
                 lastViewport.size.width != background.width ||
@@ -759,7 +760,7 @@ public class RenderPassPipeline extends BufferBuilder {
      * not re-armed.
      */
     private void restoreEntryState() {
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = UISurface.currentTarget();
         if (entryFramebuffer == mainTarget.frameBufferId) {
             mainTarget.bindWrite(false);
         } else {
@@ -802,7 +803,7 @@ public class RenderPassPipeline extends BufferBuilder {
         // only one they can get. It runs here, once, on the layer both queues finished accumulating.
         int colorTexture = bloomedColorOf(layer, pendingLateBloom);
         // bindWrite(true) also restores the full-frame viewport that the bloom chain left mip-sized
-        Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
+        UISurface.currentTarget().bindWrite(true);
         SceneBlit.compositePremultipliedToBound(colorTexture, layer.getColorTextureId(), false);
     }
 
@@ -878,7 +879,7 @@ public class RenderPassPipeline extends BufferBuilder {
      *  target, since the late layer itself holds neither. */
     private HDRTarget getLateSceneSampler() {
         if (SCENE_SAMPLER != null && !IS_SCENE_SAMPLER_DIRTY) return SCENE_SAMPLER;
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = UISurface.currentTarget();
         SCENE_SAMPLER = resize(SCENE_SAMPLER, DRAW_TARGET.width, DRAW_TARGET.height, true);
         SCENE_SAMPLER.copyDepthAndColorFrom(mainTarget);
         IS_SCENE_SAMPLER_DIRTY = false;
