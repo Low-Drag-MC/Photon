@@ -130,23 +130,39 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             this.shaderCleanable = AutoCloseCleaner.registerRenderThread(this, this.shaderHolder);
         } catch (Throwable e) {
             Photon.LOGGER.error("Failed to recompile shader", e);
-            this.compiledErrorMessage = e.getMessage();
+            // Never blank, and never null: a blank message reads as "no error", and this flag is the
+            // only thing stopping getShader() from re-running the whole compile on every frame it
+            // draws — which would build (and strand) a GL program per frame per material.
+            // Throwable#getMessage() is null for plenty of exceptions, NPE among them.
+            this.compiledErrorMessage = describeFailure(e);
             this.shaderCleanable = null;
         }
+    }
+
+    private static String describeFailure(Throwable e) {
+        var message = e.getMessage();
+        return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
     }
 
     private LDShaderHolder loadShaderHolder(ResourceLocation shaderLocation) throws Throwable {
         var shaderHolder = LDShaderHolder.create(shaderLocation, DefaultVertexFormat.BLOCK);
         if (shaderHolder == null) throw new IllegalStateException("Failed to find shader " + shaderLocation);
-        var shader = shaderHolder.baseInstance;
-        var samplerNames = shader.getShaderInstanceAccessor().getSamplerNames();
-        if (samplerNames.contains("SamplerBlockAtlas")) {
-            var texture = Minecraft.getInstance().getTextureManager().getTexture(InventoryMenu.BLOCK_ATLAS);
-            shader.setSampler("SamplerBlockAtlas", texture);
+        try {
+            var shader = shaderHolder.baseInstance;
+            var samplerNames = shader.getShaderInstanceAccessor().getSamplerNames();
+            if (samplerNames.contains("SamplerBlockAtlas")) {
+                var texture = Minecraft.getInstance().getTextureManager().getTexture(InventoryMenu.BLOCK_ATLAS);
+                shader.setSampler("SamplerBlockAtlas", texture);
+            }
+            attachDynamicSamplers(shaderHolder);
+            attachDynamicUniforms(shaderHolder);
+            return shaderHolder;
+        } catch (Throwable e) {
+            // the holder owns a linked GL program by this point, and the caller only ever sees the
+            // exception — dropping it here would strand the program for the life of the process
+            shaderHolder.close();
+            throw e;
         }
-        attachDynamicSamplers(shaderHolder);
-        attachDynamicUniforms(shaderHolder);
-        return shaderHolder;
     }
 
     private void attachDynamicSamplers(LDShaderHolder shaderHolder) {
