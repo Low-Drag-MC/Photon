@@ -1,0 +1,105 @@
+// LDLib2 in-client UI test harness - Gradle wiring.
+//
+// Copy this file into your mod and add:
+//
+//     apply from: rootProject.file('gradle/ldlib2-uitest.gradle')
+//
+// Then:  gradlew runClient -PldTest=all
+// Docs:  https://github.com/Low-Drag-MC/LDLib2 -> docs/uitest.md
+//
+// Inert unless -PldTest is given, and scoped to the invocation that gives it: nothing is written to
+// build/moddev, so a later `gradlew runClient` - or a launch from the IDE, which reuses whatever
+// ModDev last wrote there - is completely unaffected.
+
+// A captured local, not an ext property: inside a run/task closure `ext` resolves to the closure's
+// delegate rather than the project, so ldTestOutDir would not be visible where it is needed.
+def ldTestOutDir = layout.buildDirectory.dir('ldlib2-uitest').get().asFile.absolutePath
+def ldTestRequested = project.hasProperty('ldTest')
+
+// System properties rather than program arguments: Minecraft's own argument parser owns the command
+// line and rejects what it does not recognise.
+//
+// Resolved here, once, rather than inside the task closure: with the configuration cache on, a body
+// that runs later may not reach back into `project`.
+def ldTestJvmArgs = []
+if (ldTestRequested) {
+    ldTestJvmArgs = [
+            "-Dldlib2.uitest.run=${project.property('ldTest')}",
+            "-Dldlib2.uitest.out=${ldTestOutDir}",
+            "-Dldlib2.uitest.exclude=${project.findProperty('ldTestExclude') ?: ''}",
+            // Run-wide default; individual scenarios override it via ScenarioOptions#guiScale.
+            "-Dldlib2.uitest.guiScale=${project.findProperty('ldTestGuiScale') ?: '2'}",
+            // Empty = maximise. Pass e.g. -PldTestWindow=1280x720 to pin a size for comparable captures.
+            "-Dldlib2.uitest.window=${project.findProperty('ldTestWindow') ?: ''}",
+            "-Dldlib2.uitest.inputMode=${project.findProperty('ldTestInputMode') ?: 'SYNTHETIC'}",
+            "-Dldlib2.uitest.watchdogSec=${project.findProperty('ldTestWatchdogSec') ?: '90'}",
+    ]*.toString()
+    if (project.hasProperty('ldTestKeepOpen')) {
+        ldTestJvmArgs += '-Dldlib2.uitest.keepOpen=true'
+    }
+}
+
+// Turns report.json into a build failure.
+//
+// Attached with finalizedBy so it runs even when runClient itself fails - a crash before the report
+// is written is exactly the case that must not pass silently, so a missing report is a failure too.
+// Captured outside the task closures: with the configuration cache on, a doLast/onlyIf body may
+// not reach back into `project` at execution time, and both `file(...)` and `hasProperty` do.
+def ldTestOutFile = file(ldTestOutDir)
+
+tasks.register('verifyUiTest') {
+    group = 'verification'
+    description = 'Fails the build if the LDLib2 in-client UI test report contains failures.'
+    onlyIf { ldTestRequested }
+    doLast {
+        def dir = ldTestOutFile
+        def reportFile = new File(dir, 'report.json')
+        if (!reportFile.exists()) {
+            throw new GradleException("LDLib2 UI test: no report at ${reportFile}.\n" +
+                    "The client crashed, never reached the runner, or -PldTest matched no scenarios.")
+        }
+        def report = new groovy.json.JsonSlurper().parse(reportFile)
+        logger.lifecycle("LDLib2 UI test: ${report.totals.passed}/${report.totals.scenarios} scenarios passed, " +
+                "${report.totals.checks - report.totals.checksFailed}/${report.totals.checks} checks passed " +
+                "in ${report.durationMs} ms")
+        report.scenarios.findAll { it.status != 'PASS' }.each { scenario ->
+            logger.error("FAILED scenario '${scenario.name}' (${scenario.className})")
+            if (scenario.error) logger.error("  ${scenario.error.type}: ${scenario.error.message}")
+            scenario.steps.findAll { it.status != 'PASS' }.each { step ->
+                logger.error("  step ${step.index} [${step.kind}] ${step.name} -> ${step.status}")
+                if (step.error) logger.error("    error: ${step.error.message}")
+                step.checks.findAll { !it.passed }.each { check ->
+                    logger.error("    check '${check.desc}'" +
+                            (check.expected != null ? " expected=${check.expected} actual=${check.actual}" : ""))
+                }
+                step.captures.each { logger.error("    shot: ${new File(dir, it.path)}") }
+            }
+        }
+        if (report.status != 'PASS') {
+            throw new GradleException("LDLib2 UI test ${report.status} - full report: ${reportFile}")
+        }
+    }
+}
+
+// The run tasks are created after this script is evaluated, so runClient cannot be looked up by
+// name here - match it lazily instead.
+tasks.configureEach { task ->
+    if (task.name != 'runClient') return
+    task.finalizedBy 'verifyUiTest'
+
+    // On the task, not on `neoForge.runs.client`. That distinction is the whole difference between a
+    // flag that applies to this invocation and one that applies forever:
+    //
+    //   - a run definition is a persistent declaration. ModDev serialises it to
+    //     build/moddev/clientRunVmArgs.txt, and the IDE run configuration it generates passes that
+    //     same file as its VM parameters - with no Gradle task before launch, so nothing ever
+    //     rewrites it. One `-PldTest` run therefore left every later launch from the IDE running the
+    //     whole suite, with nothing in the IDE to suggest it would.
+    //   - jvmArgs on the task are assembled when the task runs and go nowhere else. Which is also
+    //     what this did under NeoGradle, where runClient built its own command line and the IDE
+    //     configuration carried its arguments inline: two paths that could not contaminate each
+    //     other. ModDev merged them into one file; this keeps them apart again.
+    if (!ldTestJvmArgs.isEmpty()) {
+        task.jvmArgs ldTestJvmArgs
+    }
+}

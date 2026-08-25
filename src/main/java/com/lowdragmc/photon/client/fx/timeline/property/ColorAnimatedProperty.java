@@ -6,7 +6,13 @@ import com.lowdragmc.photon.client.fx.timeline.GradientClip;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Gradient;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRConstantColor;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRGradient;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
+import com.lowdragmc.lowdraglib2.math.GradientColor;
+import com.lowdragmc.lowdraglib2.math.HDRColor;
+import net.minecraft.util.Mth;
+import org.joml.Vector4f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -20,6 +26,10 @@ import java.util.List;
  * <p>
  * The sampled color is written to the target as a <b>static</b> {@code NumberFunction.color(argb)} by
  * {@link ColorPropertyType} (computed once per tick), so per-particle reads never re-sample a gradient.
+ * <p>
+ * When the bound slot takes HDR colours ({@link #isHDR()}) each stop additionally carries an
+ * {@link ColorKey#intensity}, and the emitted function is the HDR counterpart
+ * ({@link HDRConstantColor} / {@link HDRGradient}) so the range above 1 survives.
  */
 public class ColorAnimatedProperty extends AnimatedProperty {
 
@@ -27,14 +37,21 @@ public class ColorAnimatedProperty extends AnimatedProperty {
     public static final class ColorKey {
         public float tick;
         public int argb;
+        /** HDR multiplier on rgb; 1 for an LDR property (see {@link ColorAnimatedProperty#isHDR()}). */
+        public float intensity;
 
         public ColorKey(float tick, int argb) {
+            this(tick, argb, 1f);
+        }
+
+        public ColorKey(float tick, int argb, float intensity) {
             this.tick = tick;
             this.argb = argb;
+            this.intensity = intensity;
         }
 
         public ColorKey copy() {
-            return new ColorKey(tick, argb);
+            return new ColorKey(tick, argb, intensity);
         }
     }
 
@@ -43,6 +60,20 @@ public class ColorAnimatedProperty extends AnimatedProperty {
     /** Gradient clips: while the master time is inside a clip, the property emits that clip's real
      *  {@link Gradient} (per-particle) instead of the static stop color. Earliest clip wins on overlap. */
     private final List<GradientClip> gradientClips = new ArrayList<>();
+    /**
+     * Whether the bound slot takes HDR colour functions — decides which function type {@link
+     * #sampleFunction} emits and whether the editor offers an intensity. Refreshed from the target on
+     * every {@link #apply}, and persisted so the editor is correct before the first apply.
+     */
+    private boolean hdr;
+
+    public boolean isHDR() {
+        return hdr;
+    }
+
+    public void setHDR(boolean hdr) {
+        this.hdr = hdr;
+    }
 
     public ColorAnimatedProperty(AnimatedPropertyType type) {
         // no bezier channels: the gradient stops own the value entirely
@@ -66,7 +97,11 @@ public class ColorAnimatedProperty extends AnimatedProperty {
 
     /** Add a stop, keeping the list tick-sorted; returns the created stop. */
     public ColorKey addStop(float tick, int argb) {
-        var key = new ColorKey(tick, argb);
+        return addStop(tick, argb, 1f);
+    }
+
+    public ColorKey addStop(float tick, int argb, float intensity) {
+        var key = new ColorKey(tick, argb, intensity);
         stops.add(key);
         sort();
         return key;
@@ -97,6 +132,48 @@ public class ColorAnimatedProperty extends AnimatedProperty {
         return last.argb;
     }
 
+    /** Sample the HDR intensity at {@code time} (ticks), matching {@link #sampleColor}'s interpolation. */
+    public float sampleIntensity(float time) {
+        if (stops.isEmpty()) return 1f;
+        if (stops.size() == 1) return stops.getFirst().intensity;
+        var first = stops.getFirst();
+        var last = stops.getLast();
+        if (time <= first.tick) return first.intensity;
+        if (time >= last.tick) return last.intensity;
+        for (int i = 0; i < stops.size() - 1; i++) {
+            var a = stops.get(i);
+            var b = stops.get(i + 1);
+            if (time >= a.tick && time <= b.tick) {
+                var span = b.tick - a.tick;
+                var f = span <= 0 ? 0f : (time - a.tick) / span;
+                return Mth.lerp(f, a.intensity, b.intensity);
+            }
+        }
+        return last.intensity;
+    }
+
+    /**
+     * A two-stop gradient seeded with this property's sampled colour at {@code tick} — what a new
+     * gradient clip starts from. In HDR mode the stops are premultiplied by the sampled intensity, which
+     * is the storage convention {@link HDRGradient} expects.
+     */
+    public GradientColor sampledGradient(float tick) {
+        var argb = sampleColor(tick);
+        var gradient = new GradientColor(argb, argb);
+        if (hdr) {
+            var intensity = sampleIntensity(tick);
+            // 26.1 hands the stops out as Vector4fc — write mutable copies back rather than mutating
+            // through the read-only view (the gradient is freshly built here, so nothing else sees them)
+            var stops = gradient.getRgbP();
+            for (int i = 0; i < stops.size(); i++) {
+                var stop = stops.get(i);
+                stops.set(i, new Vector4f(stop.x(), stop.y() * intensity,
+                        stop.z() * intensity, stop.w() * intensity));
+            }
+        }
+        return gradient;
+    }
+
     /** Per-channel linear interpolation of two ARGB colors (rounded). */
     public static int lerpArgb(int c0, int c1, float f) {
         var a = Math.round(((c0 >> 24) & 0xFF) + (((c1 >> 24) & 0xFF) - ((c0 >> 24) & 0xFF)) * f);
@@ -125,7 +202,10 @@ public class ColorAnimatedProperty extends AnimatedProperty {
     public NumberFunction sampleFunction(float time) {
         var clip = activeGradientClip(time);
         if (clip != null && clip.gradient() != null) {
-            return new Gradient(clip.gradient().copy());
+            return hdr ? new HDRGradient(clip.gradient().copy()) : new Gradient(clip.gradient().copy());
+        }
+        if (hdr) {
+            return new HDRConstantColor(HDRColor.fromARGB(sampleColor(time)).withIntensity(sampleIntensity(time)));
         }
         return NumberFunction.color(sampleColor(time));
     }
@@ -162,6 +242,9 @@ public class ColorAnimatedProperty extends AnimatedProperty {
     @Override
     public void apply(FXObject target, double time) {
         if (type() instanceof ColorPropertyType color) {
+            // re-read from the target: the bound stream may have been switched between LDR and HDR since
+            // this property was created/loaded
+            hdr = color.isHDR(target);
             color.applyFunction(target, sampleFunction((float) time));
         }
     }
@@ -178,6 +261,7 @@ public class ColorAnimatedProperty extends AnimatedProperty {
     public ColorAnimatedProperty copy() {
         var copy = new ColorAnimatedProperty(type(), stops);
         copy.restoreGradientClips(gradientClips);
+        copy.hdr = hdr;
         return copy;
     }
 
@@ -201,6 +285,7 @@ public class ColorAnimatedProperty extends AnimatedProperty {
         if (other instanceof ColorAnimatedProperty color) {
             restoreStops(color.stops);
             restoreGradientClips(color.gradientClips);
+            hdr = color.hdr;
         }
     }
 }

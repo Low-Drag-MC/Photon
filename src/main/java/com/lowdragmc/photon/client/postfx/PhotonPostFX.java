@@ -12,9 +12,9 @@ import com.lowdragmc.photon.client.postfx.runtime.RenderGraphExecutor;
 import com.lowdragmc.photon.client.postfx.runtime.SceneBlit;
 import com.lowdragmc.photon.client.render.PhotonDeferredLayer;
 import com.lowdragmc.photon.client.render.PhotonMaskTarget;
+import com.lowdragmc.photon.client.render.PhotonRenderOutput;
 import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.RenderGraphResource;
-import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -135,7 +135,7 @@ public final class PhotonPostFX {
     }
 
     /**
-     * Run the effect chain over MC's main target.
+     * Run the effect chain over the frame's output target.
      *
      * <p>Normally the chain runs inside the drain of {@link com.lowdragmc.photon.client.render.PhotonStage#LAST},
      * over Photon's HDR target — that is cheaper and higher precision, and it is why 26.1 dropped the
@@ -151,11 +151,13 @@ public final class PhotonPostFX {
      */
     private static void runChainOverMainTarget() {
         var stack = PostEffectStack.GLOBAL;
-        var main = Minecraft.getInstance().getMainRenderTarget();
-        var color = main.getColorTextureView();
-        var depth = main.getDepthTextureView();
+        // the surface being drawn into, not the game window: with the editor hosted off-screen (a PIP
+        // visual layer, or a UI in its own OS window) those differ, and writing the chain back to the
+        // window would put it somewhere nobody is looking
+        var color = PhotonRenderOutput.color();
+        var depth = PhotonRenderOutput.depth();
         if (!stack.isConsumedThisFrame()) {
-            // no chain ran this frame — the main target IS the clean scene
+            // no chain ran this frame — the output target IS the clean scene
             PostFXPreview.captureIfRequested(color, depth);
         }
         // isConsumedThisFrame is the load-bearing half: under a shader pack the LAST drain already ran

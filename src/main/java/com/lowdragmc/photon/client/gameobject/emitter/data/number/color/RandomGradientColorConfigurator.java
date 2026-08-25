@@ -27,11 +27,18 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
     public final UIElement gradientSelector;
     public final GradientColorSelector gradientSelector0, gradientSelector1;
     public final UIElement colorPreview;
+    /** Whether the edited gradients' rgb stops hold premultiplied HDR values. */
+    protected final boolean hdr;
     // keep the floating editor open while a resource load/save dialog is on top
     protected boolean keepOpen = false;
 
     public RandomGradientColorConfigurator(String name, Supplier<Pair<GradientColor, GradientColor>> supplier, Consumer<Pair<GradientColor, GradientColor>> onUpdate, @Nonnull Pair<GradientColor, GradientColor> defaultValue, boolean forceUpdate) {
+        this(name, supplier, onUpdate, defaultValue, forceUpdate, false);
+    }
+
+    public RandomGradientColorConfigurator(String name, Supplier<Pair<GradientColor, GradientColor>> supplier, Consumer<Pair<GradientColor, GradientColor>> onUpdate, @Nonnull Pair<GradientColor, GradientColor> defaultValue, boolean forceUpdate, boolean hdr) {
         super(name, supplier, onUpdate, defaultValue, forceUpdate);
+        this.hdr = hdr;
 
         if (value == null) {
             value = defaultValue;
@@ -85,7 +92,7 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
     protected void onLoadFromResource(UIEvent event) {
         keepOpen = true;
         holdOpen(ResourceDialogs.showLoadDialog(GradientResource.INSTANCE, getModularUI(), event.x, event.y, gradients -> {
-            if (gradients.gradient1 == null || value == null) return;
+            if (gradients.gradient1 == null || value == null || !accepts(gradients)) return;
             onValueUpdatePassively(Pair.of(gradients.gradient0.copy(), gradients.gradient1.copy()));
             updateValue();
         }));
@@ -94,7 +101,7 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
     protected void onSaveToResource(UIEvent event) {
         keepOpen = true;
         holdOpen(ResourceDialogs.showSaveDialog(GradientResource.INSTANCE, getModularUI(), event.x, event.y,
-                () -> new GradientResource.Gradients(gradientSelector0.getValue().copy(), gradientSelector1.getValue().copy())));
+                () -> new GradientResource.Gradients(gradientSelector0.getValue().copy(), gradientSelector1.getValue().copy()).setHDR(hdr)));
     }
 
     private void holdOpen(@Nullable Dialog sub) {
@@ -109,7 +116,7 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
     }
 
     private GradientColorSelector createGradientSelector(Consumer<GradientColor> onGradientChanged, GradientColor initialValue) {
-        var gradientSelector = new GradientColorSelector();
+        var gradientSelector = new GradientColorSelector(hdr);
         gradientSelector.layout(layout -> {
             layout.flex(1);
         });
@@ -130,7 +137,7 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
     @Override
     protected void onDropObject(@NotNull Object object) {
         if (object instanceof GradientResource.Gradients gradients) {
-            if (gradients.gradient1 == null || value == null) return;
+            if (gradients.gradient1 == null || value == null || !accepts(gradients)) return;
             onValueUpdatePassively(Pair.of(gradients.gradient0.copy(), gradients.gradient1.copy()));
             updateValue();
         } else {
@@ -140,7 +147,16 @@ public class RandomGradientColorConfigurator extends ValueConfigurator<Pair<Grad
 
     @Override
     protected boolean canDropObject(@Nonnull Object object) {
-        return object instanceof GradientResource.Gradients || super.canDropObject(object);
+        if (object instanceof GradientResource.Gradients gradients) return accepts(gradients);
+        return super.canDropObject(object);
+    }
+
+    /**
+     * An LDR gradient is a valid HDR one (every stop is just intensity 1), so the LDR presets stay
+     * usable here. The other direction is not: the stops would be silently clamped.
+     */
+    protected boolean accepts(GradientResource.Gradients gradients) {
+        return hdr || !gradients.hdr;
     }
 
     public void show() {

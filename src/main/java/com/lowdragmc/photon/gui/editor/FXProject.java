@@ -7,13 +7,13 @@ import com.lowdragmc.lowdraglib2.editor.project.ProjectType;
 import com.lowdragmc.lowdraglib2.editor.resource.ColorsResource;
 import com.lowdragmc.lowdraglib2.editor.resource.Resources;
 import com.lowdragmc.lowdraglib2.editor.ui.Editor;
-import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.syncdata.ISubscription;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.client.fx.fxpack.FXPackExporter;
@@ -46,7 +46,7 @@ import java.util.List;
 
 public class FXProject implements IProject {
     public static int VERSION = 5;
-    public static final ProjectType TYPE = ProjectType.of(IGuiTexture.EMPTY, "fx_project", ".fxproj", FXProject::new);
+    public static final ProjectType TYPE = ProjectType.of(PhotonIcons.PHOTON_PROJECT, "fx_project", ".fxproj", FXProject::new);
 
     @Getter
     private final Resources resources;

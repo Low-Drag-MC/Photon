@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
+import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
@@ -16,7 +17,6 @@ import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.resources.Identifier;
-import org.joml.Vector4f;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -31,7 +31,7 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
     protected float discardThreshold = 0.1f;
     @Configurable(name = "TextureMaterial.hdr")
     @ConfigHDR
-    protected Vector4f hdr = new Vector4f(0, 0, 0, 1);
+    protected HDRColor hdr = HDRColor.black();
     @Configurable(name = "TextureMaterial.hdrMode")
     protected TextureMaterial.HDRMode hdrMode = TextureMaterial.HDRMode.ADDITIVE;
 
@@ -51,19 +51,22 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
             VertexFormat.Mode mode) {
         var fragment = Photon.id("core/sprite_hdr_particle");
         var spriteSet = getSpriteSet();
+        // premultiplied + opaque: the fsh applies HDR.rgb directly now, so the intensity has to be
+        // folded in here and the alpha pinned (it carries no meaning for an emission offset)
+        var emission = hdr.toVector4fOpaque();
         if (spriteSet == null) {
             // Values.of leaves U_SpriteUV at the identity window (0,0,1,1)
             return MaterialRenderTypes.hdrParticle(
                     MissingTextureAtlasSprite.getLocation(),
                     fragment, setting.pipelineKey(mode),
                     PhotonMaterialUniforms.Values.of(
-                            hdr, discardThreshold, hdrMode.mode, 0));
+                            emission, discardThreshold, hdrMode.mode, 0));
         }
         var sprite = spriteSet.get(0, 1);
         return MaterialRenderTypes.hdrParticle(
                 sprite.atlasLocation(), fragment, setting.pipelineKey(mode),
                 PhotonMaterialUniforms.Values.ofSprite(
-                        hdr, discardThreshold, hdrMode.mode,
+                        emission, discardThreshold, hdrMode.mode,
                         sprite.getU0(), sprite.getV0(), sprite.getU1(), sprite.getV1()));
     }
 

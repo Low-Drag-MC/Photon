@@ -25,7 +25,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
@@ -210,10 +209,13 @@ public class SubEmittersSetting extends ToggleGroup {
 
         @Override
         public void buildConfigurator(ConfiguratorGroup father) {
-            // The candidates are re-listed per query rather than snapshotted at build time, so an .fx
-            // saved while this panel is open shows up without reopening it. That is affordable only
-            // because the search runs off-thread and is interrupted when the query moves on — hence the
-            // bail before listResources (the pack-stack walk, not the filter, is the expensive part).
+            // The search runs per keystroke, so it gets a plain list to scan: FXHelper owns the caching
+            // (and drops it on resource reload), and the ids are turned into strings once here rather
+            // than once per search. The leading "" is the entry that clears the selection.
+            var candidates = new ArrayList<String>();
+            candidates.add("");
+            FXHelper.listAllFX().forEach(fx -> candidates.add(fx.toString()));
+
             father.addConfigurators(new SearchComponentConfigurator<>("fx",
                     () -> fxLocation == null ? "" : fxLocation.toString(),
                     v -> fxLocation = (v == null || v.isEmpty()) ? null : Identifier.parse(v),
@@ -221,11 +223,6 @@ public class SubEmittersSetting extends ToggleGroup {
                     (word, handler) -> {
                         if (Thread.currentThread().isInterrupted()) return;
                         var search = word.toLowerCase(Locale.ROOT);
-                        List<String> candidates = new ArrayList<>();
-                        candidates.add("");
-                        Minecraft.getInstance().getResourceManager()
-                                .listResources("fx", arg -> arg.getPath().endsWith(".fx"))
-                                .keySet().forEach(fx -> candidates.add(fx.toString().replace(":fx/", ":").replace(".fx", "")));
                         for (var candidate : candidates) {
                             if (Thread.currentThread().isInterrupted()) return;
                             if (candidate.toLowerCase(Locale.ROOT).contains(search)) {

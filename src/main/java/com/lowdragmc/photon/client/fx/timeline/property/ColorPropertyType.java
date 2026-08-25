@@ -7,13 +7,16 @@ import com.lowdragmc.photon.client.fx.timeline.GradientClip;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
+import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRColorFunction;
 import com.lowdragmc.photon.utils.ValueIONbt;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
+import org.joml.Vector4f;
 
 import javax.annotation.Nullable;
 
@@ -92,15 +95,38 @@ public class ColorPropertyType implements AnimatedPropertyType {
 
     /** The target's current authored color (the config {@code NumberFunction} sampled at t=0), or white. */
     public int captureColor(FXObject target) {
+        return captureHDRColor(target).toARGB();
+    }
+
+    /**
+     * As {@link #captureColor} but keeping the HDR range: an {@link HDRColorFunction} is sampled
+     * unclamped and split back into a base color + intensity, anything else keeps intensity 1.
+     */
+    public HDRColor captureHDRColor(FXObject target) {
         var binding = resolveBinding(target);
         var value = binding != null ? binding.slot(target).get() : null;
-        if (value instanceof NumberFunction function) {
-            try {
-                return function.get(0f, () -> 0f).intValue();
-            } catch (Exception ignored) {
+        try {
+            if (value instanceof HDRColorFunction hdr) {
+                var sample = new Vector4f();
+                hdr.sampleHDR(0f, () -> 0f, sample);
+                return HDRColor.fromPremultiplied(sample);
             }
+            if (value instanceof NumberFunction function) {
+                return HDRColor.fromARGB(function.get(0f, () -> 0f).intValue());
+            }
+        } catch (Exception ignored) {
         }
-        return 0xFFFFFFFF;
+        return HDRColor.white();
+    }
+
+    /**
+     * Whether the bound slot's <b>authored</b> value is an HDR color function. Read from
+     * {@code authored()} rather than {@code get()} so it isn't confused by the LDR/HDR function this
+     * very property may have already written into the slot as an override.
+     */
+    public boolean isHDR(FXObject target) {
+        var binding = resolveBinding(target);
+        return binding != null && binding.slot(target).authored() instanceof HDRColorFunction;
     }
 
     @Override
@@ -128,7 +154,9 @@ public class ColorPropertyType implements AnimatedPropertyType {
     @Override
     public AnimatedProperty create(FXObject target) {
         var property = new ColorAnimatedProperty(this);
-        property.addStop(0, captureColor(target));
+        property.setHDR(isHDR(target));
+        var captured = captureHDRColor(target);
+        property.addStop(0, captured.baseARGB(), captured.getIntensity());
         return property;
     }
 
@@ -141,10 +169,17 @@ public class ColorPropertyType implements AnimatedPropertyType {
         tag.putString("label", labelKey);
         var stops = new ListTag();
         if (property instanceof ColorAnimatedProperty color) {
+            if (color.isHDR()) {
+                tag.putBoolean("hdr", true);
+            }
             for (var stop : color.stops()) {
                 var t = new CompoundTag();
                 t.put("tick", FloatTag.valueOf(stop.tick));
                 t.put("argb", IntTag.valueOf(stop.argb));
+                // omitted for LDR stops so pre-HDR saves round-trip byte-for-byte
+                if (stop.intensity != 1f) {
+                    t.put("intensity", FloatTag.valueOf(stop.intensity));
+                }
                 stops.add(t);
             }
         }
@@ -168,10 +203,12 @@ public class ColorPropertyType implements AnimatedPropertyType {
     @Override
     public AnimatedProperty deserialize(HolderLookup.Provider provider, CompoundTag tag) {
         var property = new ColorAnimatedProperty(this);
+        property.setHDR(tag.getBooleanOr("hdr", false)); // absent in pre-HDR saves, which are all LDR
         var stops = tag.getListOrEmpty("stops");
         for (int i = 0; i < stops.size(); i++) {
             var t = stops.getCompoundOrEmpty(i);
-            property.addStop(t.getFloatOr("tick", 0.0F), t.getIntOr("argb", 0));
+            property.addStop(t.getFloatOr("tick", 0.0F), t.getIntOr("argb", 0),
+                    t.getFloatOr("intensity", 1f));
         }
         var clips = tag.getListOrEmpty("gradientClips");
         for (int i = 0; i < clips.size(); i++) {

@@ -4,7 +4,6 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.textures.TextureFormat;
-import net.minecraft.client.Minecraft;
 
 import javax.annotation.Nullable;
 
@@ -67,9 +66,12 @@ public final class OpaqueDepthCapture {
             return;
         }
         demanded = false; // re-armed by the drain each frame a LATE job is still present
-        var mainDepth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
-        if (mainDepth == null) return;
-        var source = mainDepth.texture();
+        // the depth of the surface being drawn into, not the game window's — with the frame redirected
+        // off-screen (a PIP visual layer, a UI in its own OS window) those differ, and snapshotting the
+        // window would test LATE fx against a depth buffer belonging to another frame entirely
+        var outputDepth = PhotonRenderOutput.depth();
+        if (outputDepth == null) return;
+        var source = outputDepth.texture();
         int w = source.getWidth(0);
         int h = source.getHeight(0);
         if (texture == null || w != width || h != height || source.getFormat() != format) {

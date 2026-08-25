@@ -1,9 +1,14 @@
 package com.lowdragmc.photon.client.postfx.shadergraph;
 
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
+import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
 import com.lowdragmc.kilagraph.rendertype.compiler.GlslType;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderExpr;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.PortModel;
+
+import javax.annotation.Nullable;
+import java.util.function.Supplier;
 
 /**
  * The fullscreen compile target: node semantics identical to KilaGraph's compiler, over a bare
@@ -26,8 +31,50 @@ public class PhotonFullscreenCompiler extends ShaderGraphCompiler {
      *  executor for every render-target it binds; see {@code TexelSizeNode}. */
     public static final String TEXEL_SIZE_SUFFIX = "_TexelSize";
 
+    /**
+     * The compiler currently emitting GLSL (render thread only) — mirrors
+     * {@code PhotonShaderCompiler.current()}. A node shared with the particle graph asks
+     * {@link #isCompiling()} when the two targets need different GLSL: a fullscreen pass is a bare quad
+     * blit, so anything Minecraft binds per draw (the {@code Projection} block, {@code ModelViewMat})
+     * simply is not there — {@code PhotonFullscreenPass.draw} deliberately skips
+     * {@code bindDefaultUniforms}, and only KilaGraph's own blocks are bound.
+     */
+    @Nullable
+    private static PhotonFullscreenCompiler current;
+
+    /** Whether the graph being compiled right now is a fullscreen post-processing pass. */
+    public static boolean isCompiling() {
+        return current != null;
+    }
+
     public PhotonFullscreenCompiler(FullscreenShaderGraph graph) {
         super(graph);
+    }
+
+    @Override
+    public CompiledShaderGraph compile() {
+        return whileCurrent(super::compile);
+    }
+
+    /**
+     * Node thumbnails do NOT go through {@link #compile()} — {@code NodeShaderPreview} is a separate
+     * entry point — and a node that branches on {@link #isCompiling()} would emit its particle-graph
+     * form there, referencing a Minecraft uniform block the preview pipeline never binds. Both entry
+     * points therefore have to publish the compiler.
+     */
+    @Override
+    public CompiledShaderGraph compilePreview(PortModel outputPort) {
+        return whileCurrent(() -> super.compilePreview(outputPort));
+    }
+
+    private CompiledShaderGraph whileCurrent(Supplier<CompiledShaderGraph> compilation) {
+        var previous = current;
+        current = this;
+        try {
+            return compilation.get();
+        } finally {
+            current = previous;
+        }
     }
 
     /** The fullscreen uv: quad NDC mapped to 0..1 in the vertex stage, interpolated across the pass. */

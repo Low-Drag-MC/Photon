@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client;
 
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonCommonProxy;
+import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.client.fx.fxpack.FXPacks;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMeshCache;
 import com.lowdragmc.photon.client.postfx.runtime.CustomShaderPass;
@@ -56,6 +57,10 @@ public class PhotonClientProxy extends PhotonCommonProxy {
     @SubscribeEvent
     public void registerReloadListeners(AddClientReloadListenersEvent event) {
         event.addListener(Photon.id("mesh_cache"), PhotonMeshCache.INSTANCE);
+        // both the loaded effects and the list of loadable ones are answers about the packs, so a reload
+        // (a pack toggled, an .fxpack mounted, F3+T) is exactly when they stop being true
+        event.addListener(Photon.id("fx_cache"),
+                (ResourceManagerReloadListener) resourceManager -> FXHelper.clearCache());
         // let custom-shader materials re-read their JSON layout + retry failed compiles after a reload
         event.addListener(Photon.id("shader_reload"),
                 (ResourceManagerReloadListener)

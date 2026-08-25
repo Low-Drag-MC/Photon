@@ -74,8 +74,10 @@ import java.util.Set;
  *
  * <p><b>Pure-function rule</b>: a fullscreen graph never samples the scene implicitly — KilaGraph's
  * Scene Color/Depth nodes are excluded; scene textures arrive through declared {@code SAMPLER2D} inputs
- * wired by the effect graph. Anything vertex-format/fog/lighting/camera-bound is excluded too: the draw
- * is a bare NDC quad with no matrices, normals or fog state bound.</p>
+ * wired by the effect graph. Anything vertex-format/fog/lighting-bound is excluded too: the draw is a bare
+ * NDC quad with no attributes, normals or fog state. The <b>camera</b> is the exception — the executor
+ * binds the frame's view/projection/position explicitly (see {@code PostFXCamera}), so a pass can turn a
+ * depth input back into a world position.</p>
  */
 public class FullscreenShaderGraph extends RenderTypeGraph {
     /** Photon's fullscreen node registry: nodes annotated with {@code graphTypes = FullscreenShaderGraph.class}. */
@@ -99,7 +101,8 @@ public class FullscreenShaderGraph extends RenderTypeGraph {
             VaryingCustomFloatBlock.class, VaryingCustomVec2Block.class,
             VaryingCustomVec3Block.class, VaryingCustomVec4Block.class,
             VertexIdNode.class, InstanceIdNode.class,
-            // vertex-format-bound inputs (only Position exists on the quad)
+            // vertex-format-bound inputs (only Position exists on the quad) — and Fresnel/ProjectionFromPosition
+            // build on a surface normal / a vertex position, neither of which a blit quad has
             VertexColorNode.class, PositionNode.class, NormalNode.class, ViewDirectionNode.class,
             // Geometry-derived spaces: a fullscreen quad has no object to transform, so anything that
             // needs a surface position/normal is meaningless here.

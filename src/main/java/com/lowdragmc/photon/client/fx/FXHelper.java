@@ -8,12 +8,13 @@ import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,11 +31,15 @@ public class FXHelper {
     // concurrent: sub-emitter spawns may query the cache while other threads do (never mutate mid-load;
     // loadFX does not re-enter getFX, so computeIfAbsent cannot recurse)
     private final static Map<Identifier, FX> CACHE = new ConcurrentHashMap<>();
+    // volatile: listAllFX is called from search worker threads as well as the game thread
+    @Nullable
+    private static volatile List<Identifier> idCache = null;
     public static final String FX_PATH = "fx/";
 
     public static int clearCache() {
         var count = CACHE.size();
         CACHE.clear();
+        idCache = null;
         return count;
     }
 
@@ -46,8 +51,16 @@ public class FXHelper {
     /**
      * Every fx id currently loadable through {@link #getFX} — from mod jars, resource packs and
      * mounted {@code .fxpack}s alike (anything providing {@code assets/<ns>/fx/<name>.fx}).
+     * <p>
+     * Cached, because walking every pack is far too expensive to repeat per keystroke of a search box
+     * and the answer only changes when the packs do: {@link #clearCache()} drops it, and Photon's
+     * reload listener calls that. The returned list is immutable and shared.
      */
     public static List<Identifier> listAllFX() {
+        var cached = idCache;
+        if (cached != null) {
+            return cached;
+        }
         var result = new ArrayList<Identifier>();
         Minecraft.getInstance().getResourceManager()
                 .listResources("fx", location -> location.getPath().endsWith(FX.SUFFIX))
@@ -56,7 +69,12 @@ public class FXHelper {
                     result.add(Identifier.fromNamespaceAndPath(location.getNamespace(),
                             path.substring(FX_PATH.length(), path.length() - FX.SUFFIX.length())));
                 });
-        return result;
+        // by namespace first, so the list reads the way it is displayed ("ns:path") and every effect from
+        // one pack sits together. Identifier's own order is path-first, which interleaves packs.
+        result.sort(Comparator.comparing(Identifier::getNamespace).thenComparing(Identifier::getPath));
+        var listing = Collections.unmodifiableList(result);
+        idCache = listing;
+        return listing;
     }
 
 

@@ -1,11 +1,21 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
+import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Color;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Gradient;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRColorFunction;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRConstantColor;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRGradient;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRRandomColor;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRRandomGradient;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomColor;
+import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGradient;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
-import net.minecraft.nbt.Tag;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector4f;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -74,7 +84,7 @@ public class CustomData {
         this.type = type;
         channels.clear();
         if (type == Type.COLOR) {
-            channels.add(NumberFunction.color(-1));
+            channels.add(new HDRConstantColor());
         } else {
             for (int i = 0; i < channelCount; i++) {
                 channels.add(NumberFunction.constant(0));
@@ -161,6 +171,17 @@ public class CustomData {
             if (channels.isEmpty()) return;
             var fn = channels.getFirst();
             if (resolver != null) fn = resolver.resolve(0, fn);
+            if (fn instanceof HDRColorFunction hdr) {
+                var sample = new Vector4f();
+                hdr.sampleHDR(t, lerp, sample);
+                out[0] = sample.x;
+                out[1] = sample.y;
+                out[2] = sample.z;
+                out[3] = sample.w;
+                return;
+            }
+            // An LDR colour function still ends up here: the timeline writes plain Color/Gradient
+            // functions into the runtime slot. Unpack it the old way rather than casting.
             int argb = fn.get(t, lerp).intValue();
             out[0] = ((argb >> 16) & 0xFF) / 255f; // r
             out[1] = ((argb >> 8) & 0xFF) / 255f;  // g
@@ -183,6 +204,26 @@ public class CustomData {
     @FunctionalInterface
     public interface ChannelResolver {
         NumberFunction resolve(int channelIndex, NumberFunction configFn);
+    }
+
+    /**
+     * Upgrade a legacy LDR colour function to its HDR counterpart. Colour streams only offer the HDR
+     * function set now, so a pre-HDR project would otherwise show a function the type dropdown can't
+     * switch back to. The conversion is value-preserving — intensity 1, same colours — so the rendered
+     * result is unchanged (it is in fact slightly more precise, since the HDR path skips the 8-bit
+     * round-trip). Anything already HDR, or not a known LDR colour function, is returned untouched.
+     */
+    private static NumberFunction toHDR(NumberFunction function) {
+        return switch (function) {
+            case HDRColorFunction hdr -> hdr;
+            case Color color -> new HDRConstantColor(HDRColor.fromARGB(color.getNumber().intValue()));
+            case RandomColor random -> new HDRRandomColor(HDRColor.fromARGB(random.getA().intValue()),
+                    HDRColor.fromARGB(random.getB().intValue()));
+            case Gradient gradient -> new HDRGradient(gradient.getGradientColor().copy());
+            case RandomGradient random -> new HDRRandomGradient(random.getGradientColor0().copy(),
+                    random.getGradientColor1().copy());
+            default -> function;
+        };
     }
 
     public CustomData copy() {
@@ -223,10 +264,11 @@ public class CustomData {
         var channels = new ArrayList<NumberFunction>();
         var list = tag.getListOrEmpty("channels");
         for (int i = 0; i < list.size(); i++) {
-            channels.add(NumberFunction.deserializeWrapper(list.getCompoundOrEmpty(i)));
+            var channel = NumberFunction.deserializeWrapper(list.getCompoundOrEmpty(i));
+            channels.add(type == Type.COLOR ? toHDR(channel) : channel);
         }
         if (channels.isEmpty()) {
-            channels.add(type == Type.COLOR ? NumberFunction.color(-1) : NumberFunction.constant(0));
+            channels.add(type == Type.COLOR ? new HDRConstantColor() : NumberFunction.constant(0));
         }
         var names = new ArrayList<String>();
         var nameList = tag.getListOrEmpty("names");

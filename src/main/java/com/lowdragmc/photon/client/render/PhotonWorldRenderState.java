@@ -438,11 +438,8 @@ public final class PhotonWorldRenderState {
             cache.write(blocks, totalBytes);
         }
 
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
-        var outputColor = RenderSystem.outputColorTextureOverride != null
-                ? RenderSystem.outputColorTextureOverride : mainTarget.getColorTextureView();
-        GpuTextureView depthTexture = RenderSystem.outputDepthTextureOverride != null
-                ? RenderSystem.outputDepthTextureOverride : mainTarget.getDepthTextureView();
+        var outputColor = PhotonRenderOutput.color();
+        GpuTextureView depthTexture = PhotonRenderOutput.depth();
 
         // Every draw below goes into Photon's own HDR target rather than the engine's RGBA8 output:
         // seed it with the scene (blended fx need the real background), draw, then composite back at
@@ -598,9 +595,7 @@ public final class PhotonWorldRenderState {
 
     /** The frame's output size, which is what the shared layer is pooled by. */
     private static long outputSize() {
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
-        var output = RenderSystem.outputColorTextureOverride != null
-                ? RenderSystem.outputColorTextureOverride : mainTarget.getColorTextureView();
+        var output = PhotonRenderOutput.color();
         return ((long) output.getWidth(0) << 32) | (output.getHeight(0) & 0xFFFFFFFFL);
     }
 

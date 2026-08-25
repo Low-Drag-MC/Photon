@@ -1,7 +1,5 @@
 package com.lowdragmc.photon.client.render;
 
-import net.minecraft.client.Minecraft;
-
 import javax.annotation.Nullable;
 
 /**
@@ -43,14 +41,15 @@ public final class PhotonDeferredLayer {
     }
 
     /**
-     * Blend the parked layer onto the main target, if there is one. Alpha is left alone: the main
+     * Blend the parked layer onto the frame's output target, if there is one. Alpha is left alone: the
      * target is already opaque and its alpha channel is not ours to spend.
      */
     public static void compositePending() {
         var layer = pending;
         pending = null;
         if (layer == null) return;
-        var output = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
+        // the surface being drawn into rather than the game window — see PhotonRenderOutput
+        var output = PhotonRenderOutput.color();
         if (output == null) return;
         layer.compositeTo(output, false);
     }

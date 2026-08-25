@@ -27,9 +27,9 @@ void main() {
         discard;
     }
     if (HDRMode == 0) {
-        color.rgb += HDR.a * HDR.rgb;
+        color.rgb += HDR.rgb;
     } else {
-        color.rgb *= HDR.a * HDR.rgb;
+        color.rgb *= HDR.rgb;
     }
     fragColor = apply_fog(color, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, FogColor);
 }

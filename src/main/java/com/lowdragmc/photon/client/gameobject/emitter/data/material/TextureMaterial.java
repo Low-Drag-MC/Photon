@@ -10,6 +10,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
+import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
@@ -23,7 +24,6 @@ import lombok.Setter;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Vector4f;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
@@ -56,7 +56,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     protected float discardThreshold = 0.1f;
     @Configurable(name = "TextureMaterial.hdr")
     @ConfigHDR
-    protected Vector4f hdr = new Vector4f(0, 0, 0, 1);
+    protected HDRColor hdr = HDRColor.black();
     @Configurable(name = "TextureMaterial.hdrMode")
     protected HDRMode hdrMode = HDRMode.ADDITIVE;
     @Configurable(name = "TextureMaterial.pixelArt", subConfigurable = true)
@@ -73,6 +73,10 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     public IMaterial copy() {
         var mat = new TextureMaterial(texture);
         mat.discardThreshold = discardThreshold;
+        mat.hdr = hdr.copy(); // deep: HDRColor is mutable, copies must not share it
+        mat.hdrMode = hdrMode;
+        mat.pixelArt.setEnable(pixelArt.isEnable());
+        mat.pixelArt.bits = pixelArt.bits;
         return mat;
     }
 
@@ -85,7 +89,10 @@ public class TextureMaterial extends ShaderInstanceMaterial {
         return MaterialRenderTypes.hdrParticle(texture, fragment,
                 setting.pipelineKey(mode),
                 PhotonMaterialUniforms.Values.of(
-                        hdr, discardThreshold, hdrMode.mode, pixelArt.isEnable() ? Math.max(pixelArt.bits, 1) : 0));
+                        // premultiplied + opaque: the fsh applies HDR.rgb directly now, so the intensity
+                        // has to be folded in here and the alpha pinned (it means nothing for an offset)
+                        hdr.toVector4fOpaque(), discardThreshold, hdrMode.mode,
+                        pixelArt.isEnable() ? Math.max(pixelArt.bits, 1) : 0));
     }
 
 

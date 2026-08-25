@@ -18,6 +18,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Tooltips;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.IFieldValueConfigurable;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
@@ -262,6 +263,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             case Float f -> material.setUniform(name, f);
             case Integer color -> material.setColorUniform(name, color);
             case Boolean b -> material.setUniform(name, b ? 1f : 0f);
+            case HDRColor hdr -> material.setHDRColorUniform(name, hdr);
             case Vector2f v -> material.setUniform(name, v);
             case Vector3f v -> material.setUniform(name, v);
             case Vector4f v -> material.setUniform(name, v);
@@ -319,6 +321,10 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             case RenderTypeGraphTypes.CurveValue curve ->
                     typed("curve", RenderTypeGraphTypes.CURVE_CODEC.encodeStart(NbtOps.INSTANCE, curve)
                             .result().orElse(null));
+            // must be a typed compound, not a raw float list: decodeValue's ListTag branch only knows
+            // sizes 2/3/4 and would silently drop this
+            case HDRColor hdr ->
+                    typed("hdr_color", HDRColor.CODEC.encodeStart(NbtOps.INSTANCE, hdr).result().orElse(null));
             default -> null;
         };
     }
@@ -341,6 +347,8 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
                 case "gradient" -> RenderTypeGraphTypes.GRADIENT_CODEC.parse(NbtOps.INSTANCE, compound.get("data"))
                         .result().orElse(null);
                 case "curve" -> RenderTypeGraphTypes.CURVE_CODEC.parse(NbtOps.INSTANCE, compound.get("data"))
+                        .result().orElse(null);
+                case "hdr_color" -> HDRColor.CODEC.parse(NbtOps.INSTANCE, compound.get("data"))
                         .result().orElse(null);
                 default -> null;
             };

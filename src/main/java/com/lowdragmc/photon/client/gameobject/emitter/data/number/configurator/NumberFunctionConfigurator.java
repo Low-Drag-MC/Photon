@@ -36,7 +36,7 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
     private NumberFunctionConfig config;
 
     public NumberFunctionConfigurator(String name, Supplier<NumberFunction> supplier, Consumer<NumberFunction> onUpdate, boolean forceUpdate, NumberFunctionConfig config) {
-        super(name, supplier, onUpdate, NumberFunction.constant(config.defaultValue()), forceUpdate);
+        super(name, supplier, onUpdate, defaultFunction(config), forceUpdate);
         this.config = config;
         if (value == null) {
             value = defaultValue;
@@ -81,11 +81,35 @@ public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction
             }).style(style -> style.backgroundTexture(Icons.DOWN_ARROW_NO_BAR)));
         }
         setCopiable(value -> value.copy());
-        setPastable(NumberFunction.class::isAssignableFrom, pasted -> {
+        // Only the function types this field actually offers. A function outside config.types() can be
+        // stored but never switched back to from the dropdown, and the sets are not interchangeable
+        // (a scalar function in a colour slot, or an LDR colour in an HDR one) — so refuse it outright.
+        var allowedTypes = Arrays.stream(config.types()).collect(Collectors.toSet());
+        setPastable(allowedTypes::contains, pasted -> {
             if (pasted instanceof NumberFunction function) {
                 onPaste(function);
             }
         });
+        setCanDropPredicate(object -> object != null && allowedTypes.contains(object.getClass()));
+    }
+
+    /**
+     * A fresh instance of the field's first offered function type, configured from {@code config}. Used
+     * as the fallback when the supplier has no value — it must be one of the offered types, otherwise a
+     * colour field would fall back to a numeric spinner.
+     */
+    private static NumberFunction defaultFunction(NumberFunctionConfig config) {
+        var types = config.types();
+        if (types.length > 0) {
+            for (var holder : PhotonRegistries.NUMBER_FUNCTIONS) {
+                if (holder.clazz() == types[0]) {
+                    var function = holder.value().get();
+                    function.loadConfig(config);
+                    return function;
+                }
+            }
+        }
+        return NumberFunction.constant(config.defaultValue());
     }
 
     @Override
