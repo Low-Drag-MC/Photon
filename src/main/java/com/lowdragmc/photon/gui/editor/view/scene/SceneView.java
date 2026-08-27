@@ -14,6 +14,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.FXSceneOptions;
 import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.FXObject;
@@ -36,7 +37,7 @@ import org.lwjgl.opengl.GL11;
 
 import java.util.List;
 
-public class SceneView extends View {
+public class SceneView extends View implements FXSceneOptions {
     public enum SceneMode {
         PLATFORM("scene_mode.platform"),
         REAL_WORLD("scene_mode.real_world");

@@ -26,6 +26,14 @@ import com.lowdragmc.lowdraglib2.gui.ui.rendering.UISurface;
 
 @OnlyIn(Dist.CLIENT)
 public class PhotonParticleManager extends ParticleManager implements ParticleTickHost {
+    /** The per-frame render switches; {@link FXSceneOptions#DEFAULT} for an embedded preview. */
+    public final FXSceneOptions options;
+    /**
+     * The FX editor's scene view when this manager belongs to it, {@code null} for an embedded
+     * preview. Only kept for callers that already had it; the render path goes through
+     * {@link #options}.
+     */
+    @Nullable
     public final SceneView sceneView;
     /** {@link ParticleTickHost} heartbeat. NOT {@link #time}: that is the timeline clock and resets
      *  in {@link #clear()}, while this must stay monotonic for {@code FXRuntime.isValid()}. */
@@ -38,8 +46,8 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     private static SceneView.DrawMode drawMode = null;
     /**
      * Whether the editor scene should run the bloom post-processing pass. Default {@code true} keeps
-     * in-game particle bloom following the mod config; the editor's top-bar toggle relays its
-     * {@link SceneView#isBloomEnabled()} here only for the duration of its own render.
+     * in-game particle bloom following the mod config; the scene relays its
+     * {@link FXSceneOptions#isBloomEnabled()} here only for the duration of its own render.
      */
     @Getter
     private static boolean sceneBloomEnabled = true;
@@ -76,7 +84,17 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     private int frameIndex = 0;
 
     public PhotonParticleManager(SceneView sceneView) {
+        this.options = sceneView;
         this.sceneView = sceneView;
+    }
+
+    /**
+     * A manager for a scene that is not Photon's FX editor — an FX preview embedded in another
+     * mod's LDLib2 scene. Pass {@link FXSceneOptions#DEFAULT} unless the host has its own toggles.
+     */
+    public PhotonParticleManager(FXSceneOptions options) {
+        this.options = options;
+        this.sceneView = options instanceof SceneView view ? view : null;
     }
 
     public static void setFastSimulation(boolean value) {
@@ -103,14 +121,14 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
 
     @Override
     public void render(PoseStack pMatrixStack, Camera pActiveRenderInfo, float pPartialTicks, Predicate<ParticleRenderType> renderTypeFilter) {
-        drawMode = sceneView.getDrawMode();
-        sceneBloomEnabled = sceneView.isBloomEnabled();
+        drawMode = options.getDrawMode();
+        sceneBloomEnabled = options.isBloomEnabled();
         renderingManager = this;
         // route post-effect submission/consumption to the isolated editor-scene stack
         com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.setEditorSceneRendering(true);
         com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE
-                .setEffectsEnabled(sceneView.isEffectsEnabled());
-        if (sceneView.isMaskViewEnabled()) {
+                .setEffectsEnabled(options.isEffectsEnabled());
+        if (options.isMaskViewEnabled()) {
             // top-bar debug toggle: show the CustomMask contents instead of the scene this frame
             com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE.submit(
                     com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider.TYPE.createFullPath("show_mask"),
