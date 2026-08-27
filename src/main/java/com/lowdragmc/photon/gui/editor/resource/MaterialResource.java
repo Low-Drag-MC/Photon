@@ -110,7 +110,7 @@ public class MaterialResource extends Resource<IMaterial> {
         container.setOnDragProvider(UIResourceMaterial::new);
 
         if (provider.supportAdd()) {
-            container.setOnMenu((c, m) -> m.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.add_resource", menu -> {
+            container.setOnCreateMenu((c, m) -> m.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.add_resource", menu -> {
                 for (var holder : PhotonRegistries.MATERIALS) {
                     var name = holder.annotation().name();
                     if (name.equals("missing") || name.equals("block_atlas") || name.equals("ui_resource_material")) continue;
