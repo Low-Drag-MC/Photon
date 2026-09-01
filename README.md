@@ -113,14 +113,6 @@ dependencies {
 }
 ```
 
-Recommended project variables:
-
-```properties
-minecraft_version=1.21.1
-ldlib2_version=2.2.29
-photon_version=2.2.1
-```
-
 Load an effect and bind it to a block or an entity:
 
 ```java
