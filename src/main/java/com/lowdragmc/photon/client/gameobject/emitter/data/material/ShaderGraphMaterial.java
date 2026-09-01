@@ -175,7 +175,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         if (entry == null || !entry.isValid()) {
             return PhotonShaders.getHDRParticleShader();
         }
-        var shader = entry.variant(context.getShaderDefine());
+        var shader = entry.variant(context.getVariantKey(), context.getShaderDefines());
         var compiled = entry.getCompiled();
         if (shader == null || compiled == null) {
             return PhotonShaders.getHDRParticleShader();

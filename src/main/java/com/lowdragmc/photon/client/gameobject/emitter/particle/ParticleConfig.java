@@ -230,8 +230,15 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
 
         @Override
         protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
-            var context = renderRuntime.getRenderMode() == ParticleRendererSetting.Mode.Model ?
-                    MaterialContext.PARTICLE_MODEL_INSTANCE : MaterialContext.PARTICLE_INSTANCE;
+            // The user decides whether to upload tangent vertex data (renderer settings, Model mode only —
+            // only a mesh has tangents). Every material on the pass then compiles against that one layout.
+            var isModel = renderRuntime.getRenderMode() == ParticleRendererSetting.Mode.Model;
+            var wantsTangent = isModel && renderRuntime.isTangent();
+            var context = isModel
+                    ? (wantsTangent ? MaterialContext.PARTICLE_MODEL_INSTANCE_TANGENT : MaterialContext.PARTICLE_MODEL_INSTANCE)
+                    : MaterialContext.PARTICLE_INSTANCE;
+            // toggling tangents changes the static mesh VBO, so the backend rebuilds (see uploadInstances)
+            tileParticleRenderer.setWantsTangent(wantsTangent);
 
             // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change
             additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));

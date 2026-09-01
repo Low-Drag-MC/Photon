@@ -91,40 +91,43 @@ public class TextureMaterial extends ShaderInstanceMaterial {
 
     @Override
     public ShaderInstance getShader(MaterialContext context) {
-        if (context.getShaderDefine().isEmpty()) {
+        // The whole define SET matters, not just the path: PHOTON_TANGENT changes the mesh attribute
+        // layout, and every material on a pass shares one VAO — compiling this one without it would
+        // read brightness out of the tangent slot.
+        var defines = context.getShaderDefines();
+        if (defines.isEmpty()) {
             return pixelArt.isEnable() ? PhotonShaders.getPixelHDRParticleShader() : PhotonShaders.getHDRParticleShader();
         } else {
             if (pixelArt.isEnable()) {
-                return pixelHDRParticleShaders.computeIfAbsent(context.getShaderDefine(), define -> {
+                return pixelHDRParticleShaders.computeIfAbsent(context.getVariantKey(), key -> {
                     // remove cache
                     Program.Type.FRAGMENT.getPrograms().remove(PhotonShaders.getPixelHDRParticleShader().getFragmentProgram().getName());
                     Program.Type.VERTEX.getPrograms().remove(PhotonShaders.getPixelHDRParticleShader().getVertexProgram().getName());
-                    LDProgramDefineManager.addProgramDefine(define);
-                    LDShaderInstance shader = null;
+                    defines.forEach(LDProgramDefineManager::addProgramDefine);
                     try {
-                        shader = LDShaderInstance.create(Photon.id("pixel_hdr_particle"), DefaultVertexFormat.BLOCK);
+                        return LDShaderInstance.create(Photon.id("pixel_hdr_particle"), DefaultVertexFormat.BLOCK);
                     } catch (Throwable e) {
                         Photon.LOGGER.error("Failed to create pixel HDR particle shader", e);
                         throw new RuntimeException(e);
+                    } finally {
+                        // finally, not after the try: a throw used to leak the define into every later compile
+                        defines.forEach(LDProgramDefineManager::removeProgramDefine);
                     }
-                    LDProgramDefineManager.removeProgramDefine(define);
-                    return shader;
                 });
             } else {
-                return hdrParticleShaders.computeIfAbsent(context.getShaderDefine(), define -> {
+                return hdrParticleShaders.computeIfAbsent(context.getVariantKey(), key -> {
                     // remove cache
                     Program.Type.FRAGMENT.getPrograms().remove(PhotonShaders.getHDRParticleShader().getFragmentProgram().getName());
                     Program.Type.VERTEX.getPrograms().remove(PhotonShaders.getHDRParticleShader().getVertexProgram().getName());
-                    LDProgramDefineManager.addProgramDefine(define);
-                    LDShaderInstance shader = null;
+                    defines.forEach(LDProgramDefineManager::addProgramDefine);
                     try {
-                        shader = LDShaderInstance.create(Photon.id("hdr_particle"), DefaultVertexFormat.BLOCK);
+                        return LDShaderInstance.create(Photon.id("hdr_particle"), DefaultVertexFormat.BLOCK);
                     } catch (Throwable e) {
                         Photon.LOGGER.error("Failed to create HDR particle shader", e);
                         throw new RuntimeException(e);
+                    } finally {
+                        defines.forEach(LDProgramDefineManager::removeProgramDefine);
                     }
-                    LDProgramDefineManager.removeProgramDefine(define);
-                    return shader;
                 });
             }
         }

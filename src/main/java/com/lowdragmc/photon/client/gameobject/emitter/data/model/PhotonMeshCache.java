@@ -33,6 +33,10 @@ public final class PhotonMeshCache implements ResourceManagerReloadListener {
     public record ObjKey(ResourceLocation location, boolean flipV) {
     }
 
+    /** Runtime-parsed glTF ({@code .glb}/{@code .gltf}) geometry; parser options are part of the key. */
+    public record GltfKey(ResourceLocation location, boolean flipV) {
+    }
+
     private record FileStamp(File file, long lastModified) {
     }
 

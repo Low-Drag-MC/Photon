@@ -41,9 +41,7 @@ import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
 import java.lang.ref.Cleaner;
-import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
@@ -229,10 +227,11 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         if (shaderHolder == null) {
             return PhotonShaders.getHDRParticleShader();
         }
-        if (context.getShaderDefine().isEmpty()) {
+        var defines = context.getShaderDefines();
+        if (defines.isEmpty()) {
             return shaderHolder.getShaderInstance();
         }
-        return shaderHolder.getShaderInstance(Set.of(context.getShaderDefine()));
+        return shaderHolder.getShaderInstance(defines);
     }
 
     @Override

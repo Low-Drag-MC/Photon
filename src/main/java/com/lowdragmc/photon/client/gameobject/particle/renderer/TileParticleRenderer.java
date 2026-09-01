@@ -186,18 +186,25 @@ public class TileParticleRenderer {
     // instanced path
     // ---------------------------------------------------------------------
 
+    /** Set by the render pass each frame from the emitter's Tangent renderer setting; see {@link #uploadInstances}. */
+    public void setWantsTangent(boolean wantsTangent) {
+        instanceBackend.setWantsTangent(wantsTangent);
+    }
+
     /**
      * Fill and upload the per-instance data for this pass's particles. Returns true if any
      * instance was uploaded (the VAO is left bound for {@link #drawInstanced}).
      */
     public boolean uploadInstances(Collection<IParticle> particles, Camera camera, float partialTicks) {
         var renderMode = renderer.getRenderMode();
-        // rebuild the static geometry when the model mesh was hot-reloaded (identity compare), OR when a
-        // runtime renderMode override crossed the Model/non-Model boundary (different instance layout)
+        // rebuild the static geometry when the model mesh was hot-reloaded (identity compare), when a
+        // runtime renderMode override crossed the Model/non-Model boundary (different instance layout),
+        // or when the pass started/stopped wanting tangents (different mesh vertex layout)
         if (instanceBackend.isInitialized()
                 && (instanceBackend.wasBuiltForModel() != (renderMode == ParticleRendererSetting.Mode.Model)
                     || (renderMode == ParticleRendererSetting.Mode.Model
-                        && instanceBackend.getBuiltMesh() != renderer.getModelSource().getMesh()))) {
+                        && (instanceBackend.getBuiltMesh() != renderer.getModelSource().getMesh()
+                            || instanceBackend.wasBuiltWithTangent() != instanceBackend.wantsTangent())))) {
             instanceBackend.dispose();
         }
         var buffer = instanceBackend.beginUpload(particles.size());

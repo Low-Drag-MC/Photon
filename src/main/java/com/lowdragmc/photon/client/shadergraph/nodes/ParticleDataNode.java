@@ -18,6 +18,11 @@ import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
  *   <li><b>uv</b> — the particle texcoords (sprite frame uv for particles, length uv for trails).</li>
  *   <li><b>normal</b> — the (world-space) surface normal.</li>
  * </ul>
+ *
+ * <p>The tangent frame is not here: KilaGraph's own Tangent / Bitangent nodes report it, fed from
+ * {@code ParticleData.Tangent} through {@code PhotonShaderCompiler.tangentBasis}. It is real on every
+ * GPU-instanced path — uploaded for model instancing, derived in closed form for billboards, trails and
+ * beams — and inert only on the CPU path, whose vertex format has no tangent element.</p>
  */
 @NodeAttribute(name = "photon_particle_data", group = "photon_input",
         graphTypes = {ShaderGraph.class, PhotonShaderFunctionGraph.class})

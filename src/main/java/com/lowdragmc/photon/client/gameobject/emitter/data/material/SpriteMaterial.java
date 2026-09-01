@@ -54,23 +54,27 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
 
     @Override
     public ShaderInstance getShader(@Nonnull MaterialContext context) {
-        if (context.getShaderDefine().isEmpty()) {
+        // The whole define SET matters, not just the path: PHOTON_TANGENT changes the mesh attribute
+        // layout, and every material on a pass shares one VAO — compiling this one without it would
+        // read brightness out of the tangent slot.
+        var defines = context.getShaderDefines();
+        if (defines.isEmpty()) {
             return PhotonShaders.getSpriteHDRParticleShader();
         } else {
-            return spriteHDRParticleShaders.computeIfAbsent(context.getShaderDefine(), define -> {
+            return spriteHDRParticleShaders.computeIfAbsent(context.getVariantKey(), key -> {
                 // remove cache
                 Program.Type.FRAGMENT.getPrograms().remove(PhotonShaders.getSpriteHDRParticleShader().getFragmentProgram().getName());
                 Program.Type.VERTEX.getPrograms().remove(PhotonShaders.getSpriteHDRParticleShader().getVertexProgram().getName());
-                LDProgramDefineManager.addProgramDefine(define);
-                LDShaderInstance shader;
+                defines.forEach(LDProgramDefineManager::addProgramDefine);
                 try {
-                    shader = LDShaderInstance.create(Photon.id("sprite_hdr_particle"), DefaultVertexFormat.BLOCK);
+                    return LDShaderInstance.create(Photon.id("sprite_hdr_particle"), DefaultVertexFormat.BLOCK);
                 } catch (Throwable e) {
                     Photon.LOGGER.error("Failed to create sprite HDR particle shader", e);
                     throw new RuntimeException(e);
+                } finally {
+                    // finally, not after the try: a throw used to leak the define into every later compile
+                    defines.forEach(LDProgramDefineManager::removeProgramDefine);
                 }
-                LDProgramDefineManager.removeProgramDefine(define);
-                return shader;
             });
         }
     }

@@ -25,6 +25,11 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     /** Whether the current static geometry/layout was baked for Model mode (vs billboard family); a
      *  runtime renderMode override crossing this boundary forces a rebuild. */
     private boolean builtModelMode;
+    /** The emitter's Tangent renderer setting, refreshed per frame by the pass. */
+    private boolean wantsTangent;
+    /** Whether the current static geometry carries a tangent; a change against {@link #wantsTangent}
+     *  forces a rebuild (the mesh vertex layout differs). */
+    private boolean builtWithTangent;
 
     public ParticleInstanceRenderer(ParticleConfig config, ParticleRendererSetting.Runtime renderer) {
         this.config = config;
@@ -40,6 +45,18 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         return builtModelMode;
     }
 
+    boolean wasBuiltWithTangent() {
+        return builtWithTangent;
+    }
+
+    boolean wantsTangent() {
+        return wantsTangent;
+    }
+
+    void setWantsTangent(boolean wantsTangent) {
+        this.wantsTangent = wantsTangent;
+    }
+
     @Override
     protected int initialInstanceCapacity() {
         return config.getMaxParticles();
@@ -48,20 +65,27 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     @Override
     protected void createStaticGeometry(InstanceResource resource) {
         this.builtModelMode = renderer.getRenderMode() == ParticleRendererSetting.Mode.Model;
+        this.builtWithTangent = wantsTangent;
         if (renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
             var source = renderer.getModelSource();
             var mesh = source.getMesh();
             var remapUV = source.hasAtlasUV() && !renderer.isUseBlockUV();
             var shade = renderer.isShade();
 
-            // pos 3, uv 2, normal 3, brightness 1
-            int floatsPerVertex = 3 + 2 + 3 + 1;
+            // With tangents: pos 3, uv 2, normal+brightness 4, tangent+handedness 4 — brightness and
+            // handedness ride in the w of the two vec4s so the tangent costs no EXTRA attribute location
+            // (per-instance attributes stay at 4..8, TILE_MODEL's channel base stays at 9).
+            // Without: pos 3, uv 2, normal 3, brightness 1 — byte-identical to the pre-tangent layout.
+            // MIRRORED FROM the PARTICLE_MODEL_INSTANCE block of particle.glsl (keep in lockstep).
+            int floatsPerVertex = wantsTangent ? 3 + 2 + 4 + 4 : 3 + 2 + 3 + 1;
             int quadCount = mesh.quadCount();
             var vertexBuffer = BufferUtils.createFloatBuffer(quadCount * 4 * floatsPerVertex);
             var indexBuffer = BufferUtils.createIntBuffer(quadCount * 6);
             var vertexBase = 0;
             var pivotPoint = renderer.getModelPivot();
             var vertices = mesh.vertices();
+            // only touched when the emitter asked for tangents — the mesh generates them on first access
+            var tangents = wantsTangent ? mesh.tangents() : null;
             var bounds = mesh.spriteBounds();
 
             for (int quad = 0; quad < quadCount; quad++) {
@@ -76,6 +100,7 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
 
                 for (int corner = 0; corner < 4; corner++) {
                     int off = PhotonMesh.vertexOffset(quad, corner);
+                    int tan = PhotonMesh.tangentOffset(quad, corner);
                     var u = vertices[off + 3];
                     var v = vertices[off + 4];
                     if (remapUV) {
@@ -88,7 +113,13 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
                             .put(vertices[off + 2] + pivotPoint.z); // pos
                     vertexBuffer.put(u).put(v); // uv
                     vertexBuffer.put(vertices[off + 5]).put(vertices[off + 6]).put(vertices[off + 7]); // normal
-                    vertexBuffer.put(brightness); // brightness
+                    vertexBuffer.put(brightness); // brightness (aNormal.w when tangents are on)
+                    if (wantsTangent) {
+                        // tangent.xyz + handedness in w. The atlas->sprite UV remap above is a positive
+                        // per-axis scale, so it can't rotate the tangent — no remap needed here.
+                        vertexBuffer.put(tangents[tan]).put(tangents[tan + 1]).put(tangents[tan + 2])
+                                .put(tangents[tan + 3]);
+                    }
                 }
 
                 // index (triangles are degenerate quads — the second triangle has zero area)
@@ -114,11 +145,14 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
             glEnableVertexAttribArray(1);
             offset += 2 * Float.BYTES;
 
-            glVertexAttribPointer(2, 3, GL_FLOAT, false, stride, offset); // normal
+            // with tangents location 2 widens to hold brightness in its w, freeing location 3 for the
+            // tangent; without, it is the original vec3 normal + float brightness pair
+            int normalSize = wantsTangent ? 4 : 3;
+            glVertexAttribPointer(2, normalSize, GL_FLOAT, false, stride, offset); // normal (+ brightness in w)
             glEnableVertexAttribArray(2);
-            offset += 3 * Float.BYTES;
+            offset += normalSize * Float.BYTES;
 
-            glVertexAttribPointer(3, 1, GL_FLOAT, false, stride, offset); // brightness
+            glVertexAttribPointer(3, wantsTangent ? 4 : 1, GL_FLOAT, false, stride, offset); // tangent | brightness
             glEnableVertexAttribArray(3);
 
             resource.modelEbo = glGenBuffers();

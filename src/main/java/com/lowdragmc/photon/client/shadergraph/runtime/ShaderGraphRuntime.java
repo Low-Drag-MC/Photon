@@ -66,7 +66,6 @@ public final class ShaderGraphRuntime {
         /** Whether the graph reads any user custom-data stream (a {@code CustomDataNode}). */
         @Getter
         private final boolean usesCustomData;
-
         private Entry(CompoundTag sourceTag, @Nullable ShaderGraph graph,
                       @Nullable CompiledShaderGraph compiled, String errorMessage) {
             this(sourceTag, graph, compiled, errorMessage, 0, false);
@@ -99,21 +98,25 @@ public final class ShaderGraphRuntime {
          */
         private static final String BASE_VARIANT_DEFINE = "PHOTON_VARIANT_BASE";
 
-        /** The shader for one define permutation ({@code ""} = the plain BLOCK-attribute variant), built
-         *  lazily on the render thread. Null when the graph or the GL build failed. */
+        /**
+         * The shader for one define permutation, built lazily on the render thread. Null when the graph
+         * or the GL build failed. {@code key} identifies the permutation in the variant cache (an empty
+         * define set = the plain BLOCK-attribute variant); {@code defines} is what actually gets spliced
+         * into the source.
+         */
         @Nullable
-        public LDShaderInstance variant(String define) {
-            if (compiled == null || failedVariants.contains(define)) return null;
-            var existing = variants.get(define);
+        public LDShaderInstance variant(String key, Set<String> defines) {
+            if (compiled == null || failedVariants.contains(key)) return null;
+            var existing = variants.get(key);
             if (existing != null) return existing;
             var format = KGVertexFormat.of(compiled.settings().vertexFormatElements());
             var created = KGShaderResourceProvider.createShaderInstance(compiled, format,
-                    define.isEmpty() ? Set.of(BASE_VARIANT_DEFINE) : Set.of(define));
+                    defines.isEmpty() ? Set.of(BASE_VARIANT_DEFINE) : defines);
             if (created == null) {
-                failedVariants.add(define);
+                failedVariants.add(key);
                 return null;
             }
-            variants.put(define, created);
+            variants.put(key, created);
             return created;
         }
 
