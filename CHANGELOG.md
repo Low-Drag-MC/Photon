@@ -1,6 +1,6 @@
 # Changelog
-## v2.2.4
-* Cached the FX listing and dropped it on resource reload
-* Fixed a failed shader compile being retried every frame
-* Added project icon
-* Fixed sun bloom
+## v2.2.5
+* Fixed creating curves, materials and gradients from the asset browser
+* Added FXSceneOptions
+* Added vertex tangent support
+* Added glTF models

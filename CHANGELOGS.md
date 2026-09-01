@@ -1,12 +1,11 @@
 ## ChangeLogs
 ## v2.2.5
-* Added vertex tangent support, so materials can do tangent-space normal mapping
-* Model mode's tangents are opt-in: a "Tangent" toggle in the renderer settings uploads them as vertex data, generated from the model UVs and smoothed across shared edges. Off = the vertex layout carries no tangent at all
-* Billboards, trails, AraTrails and beams always have a tangent — their geometry is built in the vertex shader, so dP/du is exactly known and costs no extra vertex data, attribute or fetch. Only the non-instanced CPU path has none
-* KilaGraph's Tangent / Bitangent nodes, the Transform node's Tangent space, and the normal nodes' World output space all read the uploaded tangent instead of a derived basis
-* Added glTF 2.0 models (.glb, and .gltf with embedded buffers) alongside OBJ and JSON — the one format that can carry its own tangents, which are then used as-is rather than generated. Node transforms are baked in; materials/animations/skins are ignored
+* Fixed creating curves, materials and gradients from the asset browser
+* Added FXSceneOptions
+* Added vertex tangent support
+* Added glTF models
 
-## v2.2.4
+## v2.2.4s
 * Cached the FX listing and dropped it on resource reload
 * Fixed a failed shader compile being retried every frame
 * Added project icon
