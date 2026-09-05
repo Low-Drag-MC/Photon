@@ -22,6 +22,7 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -51,6 +52,17 @@ public final class RenderGraphExecutor {
 
     /** Effect paths whose failure was already logged — cleared when the effect next succeeds. */
     private static final Set<String> LOGGED_FAILURES = new HashSet<>();
+
+    /** The ONE Minecraft builtin block a graph pass dispatch binds (see {@link #dispatchGraph}). Anything
+     *  else {@code PhotonPipelines.fullscreenGraph} declares would be a uniform nothing fills, which 26.1
+     *  rejects at draw — {@code FullscreenGraphPassGameTest} holds that contract. */
+    public static final String BOUND_BUILTIN_UNIFORM = "DynamicTransforms";
+
+    // The neutral DynamicTransforms a fullscreen graph pass binds (see dispatchGraph). Shared instances
+    // are safe: writeTransform copies every one of them into the buffer.
+    private static final Matrix4f IDENTITY = new Matrix4f();
+    private static final Vector4f NO_MODULATION = new Vector4f(1, 1, 1, 1);
+    private static final Vector3f NO_OFFSET = new Vector3f();
 
     private RenderGraphExecutor() {}
 
@@ -305,7 +317,22 @@ public final class RenderGraphExecutor {
         }
         material.prepareUniforms(); // uploads the UBO + resolves textures; must precede the pass
 
-        PhotonFullscreenPass.draw("photonfx graph pass", pipeline, target.view(), material::bindCustomUniforms);
+        // A fullscreen pass binds nothing of Minecraft's, but a graph CAN still pull DynamicTransforms in:
+        // the unconnected-normal / unconnected-viewDir defaults (ShaderGraphCompiler.meshNormal /
+        // meshViewDir) import dynamictransforms.glsl for ModelViewMat, and EXCLUDED_NODES only bans nodes,
+        // not port defaults. 26.1 validates every DECLARED uniform at draw, so the pipeline would then
+        // declare a block nothing fills ("Missing uniform DynamicTransforms"). Bound unconditionally: it
+        // costs one ring-buffer append, and setUniform for a block the pipeline didn't declare is a no-op.
+        // The values are neutral because the quad is a pass-through — no transform, no colour modulation
+        // and no model offset to express. Written BEFORE the pass: the write appends to (and may grow) the
+        // dynamic uniform buffer, which is illegal once one is open.
+        var transforms = RenderSystem.getDynamicUniforms()
+                .writeTransform(IDENTITY, NO_MODULATION, NO_OFFSET, IDENTITY);
+
+        PhotonFullscreenPass.draw("photonfx graph pass", pipeline, target.view(), renderPass -> {
+            renderPass.setUniform(BOUND_BUILTIN_UNIFORM, transforms);
+            material.bindCustomUniforms(renderPass);
+        });
         return true;
     }
 

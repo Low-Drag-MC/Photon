@@ -434,6 +434,11 @@ public final class PhotonPipelines {
                     .withVertexShader(shaderId)
                     .withFragmentShader(shaderId)
                     .withColorTargetState(ColorTargetState.DEFAULT);
+            // Exactly what the generated GLSL references — and here that must be taken literally, because
+            // 26.1 validates every DECLARED uniform at draw and a fullscreen pass binds nothing of
+            // Minecraft's. The one block that can still show up is DynamicTransforms (the unconnected
+            // normal/viewDir port defaults import it for ModelViewMat); RenderGraphExecutor.dispatchGraph
+            // binds a neutral one. FullscreenShaderGraph excludes every node that would pull in the others.
             for (var ubo : compiled.builtinUniforms()) {
                 builder.withUniform(ubo, UniformType.UNIFORM_BUFFER);
             }

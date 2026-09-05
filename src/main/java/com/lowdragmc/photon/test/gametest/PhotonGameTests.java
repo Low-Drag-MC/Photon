@@ -37,6 +37,7 @@ public final class PhotonGameTests {
 
         FXSerializationGameTest.registerFunctions();
         FXProjectImportGameTest.registerFunctions();
+        FullscreenGraphPassGameTest.registerFunctions();
 
         TEST_FUNCTIONS.register(eventBus);
         eventBus.addListener(PhotonGameTests::registerGameTests);
@@ -49,6 +50,7 @@ public final class PhotonGameTests {
         );
         FXSerializationGameTest.register(event, environment);
         FXProjectImportGameTest.register(event, environment);
+        FullscreenGraphPassGameTest.register(event, environment);
     }
 
     public static void registerFunction(String path, Consumer<GameTestHelper> function) {
