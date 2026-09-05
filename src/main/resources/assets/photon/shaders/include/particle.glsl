@@ -364,6 +364,73 @@ ParticleData getParticleData() {
 }
 
 // ---------------------------------------------------------------------------
+// object <-> (camera-relative) world matrices.
+//
+// Photon has NO per-draw model matrix: getParticleData() already yields camera-relative WORLD vertices,
+// so this pipeline's ModelViewMat is the VIEW matrix. The object->world transform lives in the
+// per-instance GPU expansion (quatToMat(iRot) / iScale / iPos / iSize) instead. These accessors expose
+// that expansion as an affine matrix pair so the shadergraph's object-space seams
+// (PhotonShaderCompiler.objectToViewMatrix/viewToObjectMatrix, read by the Transform and View Direction
+// nodes) can mean the mesh's own local space -- the same thing ParticleData.ObjectPosition/ObjectNormal
+// and the Position/Normal nodes' "Object" outputs mean. MIRRORED FROM the getParticleData() expansions
+// above (keep in lockstep).
+//
+// Paths with no meaningful object space (CPU quads, trails, beams) return identity, matching the
+// object -> world degeneration getParticleData() applies there.
+//
+// Deliberately functions rather than ParticleData fields: a graph that never converts spaces must not
+// pay for the matrix build (and its inverse) on every vertex.
+// ---------------------------------------------------------------------------
+
+/** Per-component reciprocal that collapses a degenerate (zero) axis to 0 rather than propagating inf/NaN
+ *  -- a zero scale/size is a legitimate particle state (spawn/despawn keyframes). */
+vec3 photon_safeRcp(vec3 v) {
+    bvec3 ok = greaterThan(abs(v), vec3(1e-6));
+    return vec3(ok.x ? 1.0 / v.x : 0.0, ok.y ? 1.0 / v.y : 0.0, ok.z ? 1.0 / v.z : 0.0);
+}
+
+/** object -> camera-relative world (affine). */
+mat4 photon_objectToWorld() {
+#if defined(PARTICLE_INSTANCE)
+    // world = iScale * (quatToMat(iRot) * vec3(aPos.xy * iSize, aPos.z)) + iPos
+    //       = diag(iScale) . R . diag(iSize.x, iSize.y, 1) . aPos + iPos
+    // NOTE the asymmetry: iSize applies BEFORE the rotation, iScale AFTER (mirrors getParticleData()).
+    // M . diag(d) scales COLUMN i by d[i]; diag(s) . M scales every column componentwise by s.
+    mat3 R = quatToMat(iRot);
+    mat3 L = mat3(R[0] * iSize.x * iScale, R[1] * iSize.y * iScale, R[2] * iScale);
+    return mat4(vec4(L[0], 0.0), vec4(L[1], 0.0), vec4(L[2], 0.0), vec4(iPos, 1.0));
+#elif defined(PARTICLE_MODEL_INSTANCE)
+    // world = quatToMat(iRot) * (aPos * iScale) + iPos = R . diag(iScale) . aPos + iPos
+    mat3 R = quatToMat(iRot);
+    mat3 L = mat3(R[0] * iScale.x, R[1] * iScale.y, R[2] * iScale.z);
+    return mat4(vec4(L[0], 0.0), vec4(L[1], 0.0), vec4(L[2], 0.0), vec4(iPos, 1.0));
+#else
+    return mat4(1.0);
+#endif
+}
+
+/** camera-relative world -> object (the exact inverse of photon_objectToWorld()). The rotation is a unit
+ *  quaternion on every path that writes iRot (JOML, normalized on the CPU), so transpose == inverse. */
+mat4 photon_worldToObject() {
+#if defined(PARTICLE_INSTANCE)
+    // L = diag(iScale) . R . diag(size)  ->  L^-1 = diag(1/size) . R^T . diag(1/iScale)
+    mat3 Rt = transpose(quatToMat(iRot));
+    vec3 rs = photon_safeRcp(iScale);
+    vec3 rz = photon_safeRcp(vec3(iSize, 1.0));
+    mat3 Li = mat3(Rt[0] * rs.x * rz, Rt[1] * rs.y * rz, Rt[2] * rs.z * rz);
+    return mat4(vec4(Li[0], 0.0), vec4(Li[1], 0.0), vec4(Li[2], 0.0), vec4(-(Li * iPos), 1.0));
+#elif defined(PARTICLE_MODEL_INSTANCE)
+    // L = R . diag(iScale)  ->  L^-1 = diag(1/iScale) . R^T
+    mat3 Rt = transpose(quatToMat(iRot));
+    vec3 rs = photon_safeRcp(iScale);
+    mat3 Li = mat3(Rt[0] * rs, Rt[1] * rs, Rt[2] * rs);
+    return mat4(vec4(Li[0], 0.0), vec4(Li[1], 0.0), vec4(Li[2], 0.0), vec4(-(Li * iPos), 1.0));
+#else
+    return mat4(1.0);
+#endif
+}
+
+// ---------------------------------------------------------------------------
 // additional GPU data accessors — MIRRORED FROM PhotonGpuChannels packing (keep in lockstep).
 // Instanced variants pull the packed record from the PhotonData buffer texture by gl_InstanceID
 // (VERTEX STAGE ONLY — gl_InstanceID is undefined in the fragment stage; the shadergraph routes

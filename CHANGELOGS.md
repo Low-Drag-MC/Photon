@@ -1,4 +1,7 @@
 ## ChangeLogs
+## v2.2.6
+* Fixed object space on the Transform and View Direction nodes: it silently meant camera-relative world on the GPU-instanced paths, so model-instanced meshes now convert through their real per-instance transform
+
 ## v2.2.5
 * Fixed creating curves, materials and gradients from the asset browser
 * Added FXSceneOptions

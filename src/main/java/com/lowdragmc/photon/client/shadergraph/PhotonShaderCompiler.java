@@ -111,11 +111,67 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
 
     // ---- coordinate-space seams --------------------------------------------------------------
     // Photon's vertices arrive already in (camera-relative) WORLD space via getParticleData(), and the
-    // object->world transform lives in that GPU expansion (rotMat/iScale/iPos), NOT in a matrix. So WORLD is
-    // the primary space and OBJECT is a SEPARATE source (ParticleData.ObjectPosition/ObjectNormal) — neither
-    // is derived from the other by a matrix; view derives from world. worldSpaceNormal is inherited: the
-    // base's mat3(IViewMat·ModelViewMat)·objectNormal round-trips an already-world normal back to world and
-    // honors a driven VertexModelNormalBlock.
+    // object->world transform lives in that GPU expansion (rotMat/iScale/iPos), NOT in a per-draw matrix. So
+    // WORLD is the primary space and OBJECT is a SEPARATE source (ParticleData.ObjectPosition/ObjectNormal)
+    // — the *SpacePosition/*SpaceNormal seams below read that source directly rather than deriving it.
+    // worldSpaceNormal is inherited: the base's mat3(IViewMat·ModelViewMat)·objectNormal round-trips an
+    // already-world normal back to world and honors a driven VertexModelNormalBlock.
+    //
+    // The object<->view MATRIX seams (objectToViewMatrix/viewToObjectMatrix) are what the Transform and View
+    // Direction nodes read — those need the expansion as an actual matrix, which particle.glsl provides per
+    // instance. They are deliberately NOT wired into viewSpacePosition/viewSpaceNormal/worldSpaceNormal:
+    // those are already overridden (or, for worldSpaceNormal, rely on objectNormal() being a WORLD normal
+    // here), so folding the instance matrix in there too would apply it twice.
+
+    /**
+     * {@code object → view} = {@code ModelViewMat · ObjectToWorld}. Photon has no per-draw model matrix, so
+     * KilaGraph's default (bare {@code ModelViewMat}) would make "object" silently mean camera-relative
+     * world — the Transform node's {@code object → X} would treat a mesh-local vertex as a world one, and
+     * {@code X → object} could never return one. The real object→world is the per-instance GPU expansion,
+     * which {@code particle.glsl} exposes as {@code photon_objectToWorld()}; folding it in here makes the
+     * Transform / View Direction nodes agree with {@link #objectSpacePosition()} and the Position/Normal
+     * nodes' "Object" outputs. The Transform node's <b>tangent</b> endpoint rides along, since its basis is
+     * derived in object space (see {@link #tangentBasis(String)}) and reaches view through this matrix.
+     */
+    @Override
+    protected ShaderExpr objectToViewMatrix() {
+        return new ShaderExpr("(" + useBuiltinUniform("ModelViewMat", GlslType.MAT4)
+                + " * " + objectToWorldMatrix().code() + ")", GlslType.MAT4);
+    }
+
+    /** {@code view → object} = {@code WorldToObject · IModelViewMat} — the exact inverse of
+     *  {@link #objectToViewMatrix()} (Photon's {@code IModelViewMat} is view→camera-relative-world). */
+    @Override
+    protected ShaderExpr viewToObjectMatrix() {
+        return new ShaderExpr("(" + worldToObjectMatrix().code()
+                + " * " + transformField("IModelViewMat", GlslType.MAT4).code() + ")", GlslType.MAT4);
+    }
+
+    /**
+     * {@code particle.glsl}'s per-instance object→world, as a stage-agnostic value: the raw function call in
+     * the vertex stage, an auto-declared {@code mat4} varying in the fragment stage (the include is
+     * vertex-only, so the fragment stage cannot call it). Lazily built by {@code varyingInput}, so a graph
+     * that never converts spaces declares no varying and costs nothing — which matters, because a {@code mat4}
+     * varying is 4 interpolator slots and a graph converting both ways spends 8. (Passing
+     * {@code iRot}/{@code iScale}/{@code iPos} instead would be 3, at the price of teaching the fragment stage
+     * every path's expansion; not worth it until a graph actually runs out.) Preview compiles have no Photon
+     * vertex stage at all — identity there, which is exactly the pre-seam behaviour.
+     * <p>
+     * The varying is named {@code photon_o2w}, NOT {@code photon_objectToWorld}: GLSL puts functions and
+     * globals in one namespace, so reusing the function's name would be a redefinition error in the vsh.
+     */
+    private ShaderExpr objectToWorldMatrix() {
+        return varyingInput("photon_o2w", GlslType.MAT4,
+                () -> new ShaderExpr("photon_objectToWorld()", GlslType.MAT4),
+                new ShaderExpr("mat4(1.0)", GlslType.MAT4));
+    }
+
+    /** The inverse of {@link #objectToWorldMatrix()}, same varying treatment ({@code photon_w2o}). */
+    private ShaderExpr worldToObjectMatrix() {
+        return varyingInput("photon_w2o", GlslType.MAT4,
+                () -> new ShaderExpr("photon_worldToObject()", GlslType.MAT4),
+                new ShaderExpr("mat4(1.0)", GlslType.MAT4));
+    }
 
     /** Object/model space (model instancing = mesh-local; billboards = centered quad coord; else world),
      *  from {@code ParticleData.ObjectPosition}. */
