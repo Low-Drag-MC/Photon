@@ -1,6 +1,3 @@
 # Changelog
-## v2.2.5
-* Fixed creating curves, materials and gradients from the asset browser
-* Added FXSceneOptions
-* Added vertex tangent support
-* Added glTF models
+## v2.2.6
+* Fixed object space on the Transform and View Direction nodes
