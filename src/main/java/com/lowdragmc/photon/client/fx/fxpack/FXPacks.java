@@ -257,7 +257,7 @@ public final class FXPacks {
      * <p>
      * CONTRACT with {@link FXPackExporter}: gc runs right after every export, so every file the
      * exporter packs MUST be reachable through {@link #mark}'s reference patterns —
-     * {@code file(assets/...)} strings, {@code .png}/{@code .obj} location strings, and the
+     * {@code file(assets/...)} strings, {@code .png}/{@code .obj}/{@code .glb}/{@code .gltf} location strings, and the
      * {@code custom_shader} json→vsh/fsh chain. A new packed kind needs a matching mark pattern
      * here, or its files are swept immediately after being written.
      */
@@ -326,8 +326,20 @@ public final class FXPacks {
         }
     }
 
+    /**
+     * Whether a plain string in an fx tree is a raw asset location the pack has to carry: a texture or a
+     * runtime-parsed model file ({@code IModelSource}'s file-backed implementations address their file by
+     * a location that KEEPS its extension, which is exactly what makes them recognisable here). Model
+     * {@code .json} is deliberately absent — those are addressed without an extension and resolve through
+     * the bakery, so there is nothing to match on.
+     */
+    static boolean isPackableAsset(String value) {
+        return value.endsWith(".png") || value.endsWith(".obj")
+                || value.endsWith(".glb") || value.endsWith(".gltf");
+    }
+
     private static void markString(String value, FileSystem zip, Set<String> referenced, Set<String> visited) {
-        if (value.endsWith(".png") || value.endsWith(".obj")) {
+        if (isPackableAsset(value)) {
             var location = ResourceLocation.tryParse(value);
             if (location != null) {
                 referenced.add(entryKey(location));

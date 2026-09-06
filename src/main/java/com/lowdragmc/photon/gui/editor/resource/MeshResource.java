@@ -15,6 +15,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.GltfModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.ObjModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
@@ -42,6 +43,8 @@ public class MeshResource extends Resource<MeshData> {
     public static final MeshResource INSTANCE = new MeshResource();
     private static final String OBJ_EXTENSION = ".obj";
     private static final String JSON_EXTENSION = ".json";
+    /** glTF 2.0, binary container and JSON form — both read by {@link GltfModelSource}. */
+    private static final String[] GLTF_EXTENSIONS = {".glb", ".gltf"};
 
     /**
      * Fired (with the clicked path) whenever a mesh tile is selected in ANY container of this
@@ -94,7 +97,14 @@ public class MeshResource extends Resource<MeshData> {
         if (super.canImportFile(file)) return true;
         if (!file.isFile()) return false;
         var name = file.getName().toLowerCase(Locale.ROOT);
-        return name.endsWith(OBJ_EXTENSION) || name.endsWith(JSON_EXTENSION);
+        return name.endsWith(OBJ_EXTENSION) || name.endsWith(JSON_EXTENSION) || isGltf(name);
+    }
+
+    private static boolean isGltf(String lowerCaseName) {
+        for (var extension : GLTF_EXTENSIONS) {
+            if (lowerCaseName.endsWith(extension)) return true;
+        }
+        return false;
     }
 
     @Override
@@ -105,11 +115,13 @@ public class MeshResource extends Resource<MeshData> {
             return;
         }
         // Either way the file has to be addressable first, so one from outside the pack gets copied in.
-        if (file.getName().toLowerCase(Locale.ROOT).endsWith(OBJ_EXTENSION)) {
-            // an obj is parsed straight off the pack when the mesh is first drawn — no bakery, no reload.
-            // The location keeps its extension, that is how ObjModelSource opens it.
+        var name = file.getName().toLowerCase(Locale.ROOT);
+        var gltf = isGltf(name);
+        if (gltf || name.endsWith(OBJ_EXTENSION)) {
+            // an obj/glTF is parsed straight off the pack when the mesh is first drawn — no bakery, no
+            // reload. The location keeps its extension, that is how those sources open it.
             ResourceFileImport.resolveOrImport(context.getOwner(), file, "models", location -> {
-                var source = new ObjModelSource(location);
+                var source = gltf ? new GltfModelSource(location) : new ObjModelSource(location);
                 // the path is normally fresh, but re-importing a file already in the pack could hit a
                 // cached failure from an earlier load attempt
                 source.invalidate();

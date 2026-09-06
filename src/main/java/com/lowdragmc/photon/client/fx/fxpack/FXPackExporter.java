@@ -51,7 +51,7 @@ import java.util.Set;
  *       paths — identical content across any exports lands on the identical path, so effects sharing
  *       a resource dedup at the pack layer and their materials batch through ordinary path
  *       equality;</li>
- *   <li><b>raw assets</b> — any referenced {@code .png}/{@code .obj} and {@code custom_shader}
+ *   <li><b>raw assets</b> — any referenced {@code .png}/{@code .obj}/{@code .glb}/{@code .gltf} and {@code custom_shader}
  *       json+vsh+fsh files — are carried under their <b>original locations</b> (no rewriting), so
  *       mods and user resource packs override them naturally (user-reskinnable);</li>
  *   <li>the fx itself is written as a plain (references-only) definition at
@@ -64,7 +64,7 @@ import java.util.Set;
  * {@code json_model} sources can't be packed (baked through the model system) and produce a warning.
  * <p>
  * CONTRACT with {@link FXPacks#gc}: gc's mark phase must be able to re-discover every packed file
- * from the fx entries ({@code file(assets/...)} strings, {@code .png}/{@code .obj} location strings,
+ * from the fx entries ({@code file(assets/...)} strings, {@code .png}/{@code .obj}/{@code .glb}/{@code .gltf} location strings,
  * the {@code custom_shader} json→vsh/fsh chain, and the render-graph pass-source
  * {@code CUSTOM_SHADER} json→vsh/fsh chain). When adding a new packed kind here, add the
  * matching mark pattern in {@code FXPacks.mark} — otherwise gc sweeps the new files right after
@@ -203,9 +203,10 @@ public final class FXPackExporter {
         }
     }
 
-    /** Any string that is a {@code .png}/{@code .obj} resource location gets packed under that location. */
+    /** Any string that is a raw-asset resource location ({@link FXPacks#isPackableAsset}) gets packed
+     *  under that location. */
     private void sweepAssetString(String value) {
-        if (value.endsWith(".png") || value.endsWith(".obj")) {
+        if (FXPacks.isPackableAsset(value)) {
             var location = ResourceLocation.tryParse(value);
             if (location != null) {
                 packAsset(location);
