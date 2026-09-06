@@ -1,4 +1,11 @@
 # Changelog
+## v26.1.2.2
+* Added vertex tangent support
+* Added glTF models
+* Added FXSceneOptions
+* Fixed object space on the Transform and View Direction nodes
+* Fixed creating curves, materials and gradients from the asset browser
+
 ## v26.1.2.1
 * Added HDR supports
 * Added more shader nodes
