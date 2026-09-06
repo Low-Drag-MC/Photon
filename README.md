@@ -104,21 +104,22 @@ repositories {
 
 dependencies {
     // LDLib2
-    implementation("com.lowdragmc.ldlib2:ldlib2-neoforge-${minecraft_version}:${ldlib2_version}:all")
+    implementation("com.lowdragmc.ldlib2:ldlib2-neoforge-${minecraft_version_vague}:${ldlib2_version}:all")
 
     // Photon
-    implementation("com.lowdragmc.photon:photon-neoforge-${minecraft_version}:${photon_version}") {
+    implementation("com.lowdragmc.photon:photon-neoforge-${minecraft_version_vague}:${photon_version}") {
         transitive = false
     }
 }
 ```
 
-Recommended project variables:
+The artifacts are published per *minor* Minecraft version, so the coordinate carries `26.1`, not the
+full `26.1.x`:
 
 ```properties
-minecraft_version=1.21.1
-ldlib2_version=2.2.29
-photon_version=2.2.1
+minecraft_version_vague=26.1
+ldlib2_version=26.1.2.39
+photon_version=26.1.2.2
 ```
 
 Load an effect and bind it to a block or an entity:

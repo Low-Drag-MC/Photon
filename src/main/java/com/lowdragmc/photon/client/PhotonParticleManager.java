@@ -27,6 +27,14 @@ import java.util.Arrays;
 import java.util.Map;
 
 public class PhotonParticleManager extends ParticleManager implements ParticleTickHost {
+    /** The per-frame render switches; {@link FXSceneOptions#DEFAULT} for an embedded preview. */
+    public final FXSceneOptions options;
+    /**
+     * The FX editor's scene view when this manager belongs to it, {@code null} for an embedded
+     * preview. Only kept for callers that already had it; the render path goes through
+     * {@link #options}.
+     */
+    @Nullable
     public final SceneView sceneView;
     /** {@link ParticleTickHost} heartbeat. NOT {@link #time}: that is the timeline clock and resets
      *  in {@link #clear()}, while this must stay monotonic for {@code FXRuntime.isValid()}. */
@@ -34,7 +42,7 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     /** {@link ParticleTickHost} wipe generation, bumped in {@link #clear()}. */
     private int generation = 0;
     /**
-     * True while an editor scene is the thing being rendered, rather than the world.
+     * True while an FX scene is the thing being rendered, rather than the world.
      * <p>
      * The shader-pack path is a world-only concern: a pack's colortex layout has nothing to do with the
      * editor's picture-in-picture target, and resolving one there would composite the scene's FX into
@@ -70,8 +78,15 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     @Nullable
     private IPhotonFXCollector collector;
 
-    public PhotonParticleManager(SceneView sceneView) {
-        this.sceneView = sceneView;
+    /**
+     * {@code options} is the editor's {@link SceneView} when this manager belongs to it, and anything
+     * else — {@link FXSceneOptions#DEFAULT} will do — for an FX preview embedded in another mod's
+     * LDLib2 scene. One constructor for both: {@code SceneView} implements the interface, so a
+     * dedicated overload would only repeat the {@code instanceof} below.
+     */
+    public PhotonParticleManager(FXSceneOptions options) {
+        this.options = options;
+        this.sceneView = options instanceof SceneView view ? view : null;
     }
 
     public static void setFastSimulation(boolean value) {
@@ -103,8 +118,8 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
      *       sawtoothing 0→1 every game tick, which made {@code extractFrame}'s deltaTime oscillate
      *       (pause flicker) and per-frame interpolation jitter;</li>
      *   <li>publish this scene's {@link PhotonViewSettings} on the collector its particles submit
-     *       into, so the deferred bake honours the SceneView toggles (wireframe/shaded/bloom) for
-     *       THIS view only — the world keeps drawing the same emitters plainly.</li>
+     *       into, so the deferred bake honours the {@link FXSceneOptions} toggles (wireframe/shaded/
+     *       bloom) for THIS view only — the world keeps drawing the same emitters plainly.</li>
      * </ul>
      */
     @Override
@@ -116,15 +131,17 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         var frameStart = System.nanoTime();
         collector = storage instanceof IPhotonFXCollector fx ? fx : null;
         if (collector != null) {
-            collector.photonViewSettings(sceneView == null ? PhotonViewSettings.DEFAULT
-                    : new PhotonViewSettings(sceneView.getDrawMode() != SceneView.DrawMode.WIREFRAME,
-                            sceneView.getDrawMode() != SceneView.DrawMode.DRAW,
-                            sceneView.isBloomEnabled(),
-                            // the editor's own request stack: a timeline post-process clip previewed
-                            // here must not tint the world, nor the world's effects this panel
-                            PostEffectStack.EDITOR_SCENE,
-                            sceneView.isEffectsEnabled()));
-            if (sceneView != null && sceneView.isMaskViewEnabled()) {
+            var drawMode = options.getDrawMode();
+            collector.photonViewSettings(new PhotonViewSettings(
+                    drawMode != SceneView.DrawMode.WIREFRAME,
+                    drawMode != SceneView.DrawMode.DRAW,
+                    options.isBloomEnabled(),
+                    // the editor's own request stack: a timeline post-process clip previewed
+                    // here must not tint the world, nor the world's effects this panel. An embedded
+                    // preview wants the same isolation, so it is the stack for EVERY Photon scene.
+                    PostEffectStack.EDITOR_SCENE,
+                    options.isEffectsEnabled()));
+            if (options.isMaskViewEnabled()) {
                 // top-bar debug toggle: show the CustomMask contents instead of the scene this frame.
                 // Submitting it like any other request is what makes the mask sub-pass run at all —
                 // the sub-pass is demand-driven on there being a pending mask consumer.

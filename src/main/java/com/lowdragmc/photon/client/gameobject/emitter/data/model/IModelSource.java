@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.model;
 
+import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.registry.ILDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
@@ -12,12 +13,16 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 
+import org.jetbrains.annotations.Nullable;
+
+import java.io.File;
 import java.util.function.Supplier;
 
 /**
- * Where a particle model's geometry comes from: a baked JSON model ({@link JsonModelSource}) or a
- * runtime-parsed OBJ file ({@link ObjModelSource}). The registry itself is the format extension
- * point — a future glTF loader is just another {@code @LDLRegisterClient} implementation. Both the
+ * Where a particle model's geometry comes from: a baked JSON model ({@link JsonModelSource}), a
+ * runtime-parsed OBJ file ({@link ObjModelSource}) or a glTF 2.0 file ({@link GltfModelSource}). The
+ * registry itself is the format extension point — a new loader is just another
+ * {@code @LDLRegisterClient} implementation, which is exactly how glTF was added. Both the
  * mesh emission shape ({@code MeshData}) and the Model render mode ({@code ParticleRendererSetting})
  * consume sources through {@link #getMesh()}, which resolves via the shared {@link PhotonMeshCache}.
  * Implementations must implement {@code equals}/{@code hashCode} over all mesh-affecting config
@@ -40,6 +45,23 @@ public interface IModelSource extends IConfigurable, IPersistedSerializable, ILD
             return new JsonModelSource(Identifier.parse(compound.getStringOr("modelLocation", "")));
         }
         return CODEC.parse(NbtOps.INSTANCE, tag).result().orElseGet(JsonModelSource::new);
+    }
+
+    /**
+     * Map a file under {@code .../assets/<namespace>/<path>} to an Identifier keeping the
+     * extension, or null when the file is outside an assets tree. Shared by every file-backed source's
+     * "pick a model" dialog — the mapping is about the assets tree, not about any one format.
+     */
+    @Nullable
+    static Identifier getAssetLocationFromFile(File file) {
+        String fullPath = file.getPath().replace('\\', '/');
+        int assetsIndex = fullPath.indexOf("assets/");
+        if (assetsIndex == -1) return null;
+        String relativePath = fullPath.substring(assetsIndex + "assets/".length());
+        int slashIndex = relativePath.indexOf('/');
+        if (slashIndex == -1) return null;
+        String location = relativePath.substring(0, slashIndex) + ":" + relativePath.substring(slashIndex + 1);
+        return LDLib2.isValidResourceLocation(location) ? Identifier.parse(location) : null;
     }
 
     /** The source's geometry via the shared cache; {@link PhotonMesh#EMPTY} when unavailable. */

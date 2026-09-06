@@ -78,6 +78,17 @@ public final class PhotonInstancedDrawState {
     public static final Layout MODEL = new Layout(15,
             List.of(f(4, 3, 0), f(5, 3, 3), f(6, 4, 6), f(7, 4, 10), i(8, 1, 14)),
             List.of(f(0, 3, 0), f(1, 2, 3), f(2, 3, 5), f(3, 1, 8)), 9);
+    /**
+     * {@link #MODEL} with the mesh tangent uploaded (the emitter's Tangent renderer setting). Only the BASE
+     * mesh differs: {@code aNormal} widens to a vec4 carrying brightness in {@code w}, which frees location 3
+     * for {@code aTangent} (xyz + handedness). The tangent therefore costs no EXTRA attribute location — the
+     * per-instance attributes stay at 4..8 and {@code PhotonGpuChannels.Kind.TILE_MODEL}'s channel tail base
+     * stays at 9. MIRRORED FROM the {@code PHOTON_TANGENT} branch of {@code particle.glsl} (keep in lockstep)
+     * and from {@code TileParticleRenderer.modelMeshBuffer}, which writes these 13 floats.
+     */
+    public static final Layout MODEL_TANGENT = new Layout(15,
+            List.of(f(4, 3, 0), f(5, 3, 3), f(6, 4, 6), f(7, 4, 10), i(8, 1, 14)),
+            List.of(f(0, 3, 0), f(1, 2, 3), f(2, 4, 5), f(3, 4, 9)), 13);
     public static final Layout TRAIL = new Layout(4,
             List.of(i(1, 2, 0), f(2, 2, 2)),
             List.of(f(0, 2, 0)), 2);

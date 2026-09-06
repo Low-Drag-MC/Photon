@@ -127,7 +127,7 @@ public class CurveResource extends Resource<CurveResource.Curves> {
         });
 
         if (provider.supportAdd()) {
-            container.setOnMenu((c, m) -> m.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.add_resource", menu -> {
+            container.setOnCreateMenu((c, m) -> m.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.add_resource", menu -> {
                 menu.leaf("curve", () -> {
                     c.addNewResource(new Curves());
                 });

@@ -11,6 +11,7 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.GltfModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.ObjModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.ResourceMeshSource;
@@ -30,6 +31,8 @@ public class MeshResource extends Resource<MeshData> {
     public static final MeshResource INSTANCE = new MeshResource();
     private static final String OBJ_EXTENSION = ".obj";
     private static final String JSON_EXTENSION = ".json";
+    /** glTF 2.0, binary container and JSON form — both read by {@link GltfModelSource}. */
+    private static final String[] GLTF_EXTENSIONS = {".glb", ".gltf"};
 
     /**
      * Fired (with the clicked path) whenever a mesh tile is selected in ANY container of this
@@ -82,18 +85,26 @@ public class MeshResource extends Resource<MeshData> {
         if (super.canImportFile(file)) return true;
         if (!file.isFile()) return false;
         var name = file.getName().toLowerCase(Locale.ROOT);
-        return name.endsWith(OBJ_EXTENSION) || name.endsWith(JSON_EXTENSION);
+        return name.endsWith(OBJ_EXTENSION) || name.endsWith(JSON_EXTENSION) || isGltf(name);
+    }
+
+    private static boolean isGltf(String lowerCaseName) {
+        for (var extension : GLTF_EXTENSIONS) {
+            if (lowerCaseName.endsWith(extension)) return true;
+        }
+        return false;
     }
 
     /**
-     * Drag an {@code .obj} or a model {@code .json} onto the mesh library and get a mesh out of it.
+     * Drag an {@code .obj}, a {@code .glb}/{@code .gltf} or a model {@code .json} onto the mesh library
+     * and get a mesh out of it.
      * <p>
      * Either way the file has to be addressable before it can be referenced, so one from outside the
-     * pack is copied in first. Both sources then read it straight off the resource manager the first
+     * pack is copied in first. Every source then reads it straight off the resource manager the first
      * time the mesh is drawn — a folder pack resolves a file that appeared after the last reload, and
      * 26.1's json path does its own baking ({@link com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonModelBaker}),
-     * so neither needs a resource reload. (1.21 did, for the json case: the model bakery only learned
-     * about a model during one.)
+     * so none of them needs a resource reload. (1.21 did, for the json case: the model bakery only
+     * learned about a model during one.)
      */
     @Override
     public void importFile(ResourceImportContext<MeshData> context) {
@@ -102,11 +113,15 @@ public class MeshResource extends Resource<MeshData> {
             super.importFile(context);
             return;
         }
-        boolean obj = file.getName().toLowerCase(Locale.ROOT).endsWith(OBJ_EXTENSION);
+        var name = file.getName().toLowerCase(Locale.ROOT);
+        boolean obj = name.endsWith(OBJ_EXTENSION);
+        boolean gltf = isGltf(name);
         ResourceFileImport.resolveOrImport(context.getOwner(), file, "models", location -> {
-            // the location keeps its extension for an obj — that is how ObjModelSource opens it; the
+            // the location keeps its extension for an obj/glTF — that is how those sources open it; the
             // json path is addressed the way the model loader does, without models/ or the extension
-            var source = obj ? new ObjModelSource(location) : new JsonModelSource(modelLocationOf(location));
+            var source = gltf ? new GltfModelSource(location)
+                    : obj ? new ObjModelSource(location)
+                    : new JsonModelSource(modelLocationOf(location));
             // the path is normally fresh, but re-importing a file already in the pack could hit a
             // cached failure from an earlier load attempt
             source.invalidate();

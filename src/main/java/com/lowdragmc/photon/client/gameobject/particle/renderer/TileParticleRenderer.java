@@ -226,23 +226,31 @@ public class TileParticleRenderer {
     }
 
     /** Model base mesh baked in the 1.21 instanced layout — 9 floats per vertex (pos3+pivot,
-     *  uv2 optionally atlas-remapped, normal3, brightness1); locations 0-3 are applied by
-     *  {@code PhotonInstancedDrawState.MODEL}. Sequential-quad indexed (1.21's EBO pattern).
-     *  Rebuilt when the mesh hot-reloads (identity compare). */
+     *  uv2 optionally atlas-remapped, normal3, brightness1), or 13 with the emitter's Tangent setting on
+     *  (normal widens to vec4 with brightness in w, then tangent4); locations 0-3 are applied by
+     *  {@code PhotonInstancedDrawState.MODEL} / {@code MODEL_TANGENT}. Sequential-quad indexed (1.21's EBO
+     *  pattern). Rebuilt when the mesh hot-reloads (identity compare) or the layout changes. */
     @Nullable
     private GpuBuffer modelVertexBuffer;
     @Nullable
     private PhotonMesh modelBuiltMesh;
+    /** Whether {@link #modelVertexBuffer} was baked with the tangent layout — a change forces a rebuild. */
+    private boolean modelBuiltTangent;
     private int modelIndexCount;
 
+    /**
+     * @param withTangent upload the mesh tangent as vertex data. Decided per bake by the emitter's
+     *                    Tangent renderer setting, and it must agree with the {@code InstancedVariant}
+     *                    the group draws with — the two describe the same attribute layout.
+     */
     @Nullable
-    public GpuBuffer modelMeshBuffer() {
+    public GpuBuffer modelMeshBuffer(boolean withTangent) {
         var source = renderer.getModelSource();
         var mesh = source == null ? null : source.getMesh();
         if (mesh == null) {
             return null;
         }
-        if (modelVertexBuffer == null || modelBuiltMesh != mesh) {
+        if (modelVertexBuffer == null || modelBuiltMesh != mesh || modelBuiltTangent != withTangent) {
             if (modelVertexBuffer != null) {
                 modelVertexBuffer.close();
                 modelVertexBuffer = null;
@@ -253,8 +261,12 @@ public class TileParticleRenderer {
             var quadCount = mesh.quadCount();
             var vertices = mesh.vertices();
             var bounds = mesh.spriteBounds();
-            // pos 3, uv 2, normal 3, brightness 1 — the 1.21 layout
-            var bytes = MemoryUtil.memAlloc(quadCount * 4 * 9 * Float.BYTES);
+            // only touched when the emitter asked for tangents — the mesh generates them on first access
+            var tangents = withTangent ? mesh.tangents() : null;
+            // pos 3, uv 2, normal 3, brightness 1 — the 1.21 layout; with tangents the brightness rides in
+            // the normal's w and a tangent4 follows (MIRRORED FROM particle.glsl; keep in lockstep)
+            var floatsPerVertex = withTangent ? 3 + 2 + 4 + 4 : 3 + 2 + 3 + 1;
+            var bytes = MemoryUtil.memAlloc(quadCount * 4 * floatsPerVertex * Float.BYTES);
             try {
                 for (int quad = 0; quad < quadCount; quad++) {
                     var brightness = shade ? mesh.shadeBrightness(quad) : 1f;
@@ -278,7 +290,14 @@ public class TileParticleRenderer {
                                 .putFloat(vertices[off + 2] + pivot.z);
                         bytes.putFloat(u).putFloat(v);
                         bytes.putFloat(vertices[off + 5]).putFloat(vertices[off + 6]).putFloat(vertices[off + 7]);
-                        bytes.putFloat(brightness);
+                        bytes.putFloat(brightness); // aNormal.w when tangents are on
+                        if (tangents != null) {
+                            // tangent.xyz + handedness in w. The atlas->sprite UV remap above is a positive
+                            // per-axis scale, so it can't rotate the tangent — no remap needed here.
+                            int tan = PhotonMesh.tangentOffset(quad, corner);
+                            bytes.putFloat(tangents[tan]).putFloat(tangents[tan + 1])
+                                    .putFloat(tangents[tan + 2]).putFloat(tangents[tan + 3]);
+                        }
                     }
                 }
                 bytes.flip();
@@ -293,6 +312,7 @@ public class TileParticleRenderer {
             }
             modelIndexCount = quadCount * 6;
             modelBuiltMesh = mesh;
+            modelBuiltTangent = withTangent;
         }
         return modelVertexBuffer;
     }

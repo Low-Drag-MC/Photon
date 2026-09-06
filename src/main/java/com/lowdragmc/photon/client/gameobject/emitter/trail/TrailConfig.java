@@ -9,8 +9,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.InstancedRendererSett
 import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.UVAnimationSetting;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -20,20 +18,12 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomCo
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGradient;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
-import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TrailParticle;
-import com.lowdragmc.photon.client.gameobject.particle.renderer.TrailParticleRenderer;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.client.Camera;
 
-import javax.annotation.Nonnull;
-import java.util.Collection;
-import java.util.List;
 
-import static org.lwjgl.opengl.GL30.glBindVertexArray;
 
 /**
  * @author KilaBash

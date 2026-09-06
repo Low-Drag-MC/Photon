@@ -4,14 +4,11 @@ import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.accessors.EnumAccessor;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
-import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InstancedRendererSetting;
@@ -29,24 +26,16 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.gameobject.particle.IParticle;
-import com.lowdragmc.photon.client.gameobject.particle.renderer.BeamParticleRenderer;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.client.Camera;
 import net.minecraft.world.level.ClipContext;
 import org.joml.Vector3f;
 
-import javax.annotation.Nonnull;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
 import java.util.Optional;
 
-import static org.lwjgl.opengl.GL30.glBindVertexArray;
 
 /**
  * @author KilaBash

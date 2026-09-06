@@ -5,12 +5,15 @@ import com.lowdragmc.kilagraph.rendertype.compiler.GlslType;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderCompileContext;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderExpr;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler;
+import com.lowdragmc.kilagraph.rendertype.compiler.TangentBasis;
 import com.lowdragmc.kilagraph.rendertype.format.KGVertexElement;
 import com.lowdragmc.kilagraph.rendertype.format.KGVertexElements;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
 import lombok.Getter;
 
 import javax.annotation.Nullable;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * The Photon compile target: identical node semantics to KilaGraph's compiler, but the vertex stage reads
@@ -126,11 +129,67 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
 
     // ---- coordinate-space seams --------------------------------------------------------------
     // Photon's vertices arrive already in (camera-relative) WORLD space via getParticleData(), and the
-    // object->world transform lives in that GPU expansion (rotMat/iScale/iPos), NOT in a matrix. So WORLD is
-    // the primary space and OBJECT is a SEPARATE source (ParticleData.ObjectPosition/ObjectNormal) — neither
-    // is derived from the other by a matrix; view derives from world. worldSpaceNormal is inherited: the
-    // base's mat3(IViewMat·ModelViewMat)·objectNormal round-trips an already-world normal back to world and
-    // honors a driven VertexModelNormalBlock.
+    // object->world transform lives in that GPU expansion (rotMat/iScale/iPos), NOT in a per-draw matrix. So
+    // WORLD is the primary space and OBJECT is a SEPARATE source (ParticleData.ObjectPosition/ObjectNormal)
+    // — the *SpacePosition/*SpaceNormal seams below read that source directly rather than deriving it.
+    // worldSpaceNormal is inherited: the base's mat3(IViewMat·ModelViewMat)·objectNormal round-trips an
+    // already-world normal back to world and honors a driven VertexModelNormalBlock.
+    //
+    // The object<->view MATRIX seams (objectToViewMatrix/viewToObjectMatrix) are what the Transform and View
+    // Direction nodes read — those need the expansion as an actual matrix, which particle.glsl provides per
+    // instance. They are deliberately NOT wired into viewSpacePosition/viewSpaceNormal/worldSpaceNormal:
+    // those are already overridden (or, for worldSpaceNormal, rely on objectNormal() being a WORLD normal
+    // here), so folding the instance matrix in there too would apply it twice.
+
+    /**
+     * {@code object → view} = {@code ModelViewMat · ObjectToWorld}. Photon has no per-draw model matrix, so
+     * KilaGraph's default (bare {@code ModelViewMat}) would make "object" silently mean camera-relative
+     * world — the Transform node's {@code object → X} would treat a mesh-local vertex as a world one, and
+     * {@code X → object} could never return one. The real object→world is the per-instance GPU expansion,
+     * which {@code particle.glsl} exposes as {@code photon_objectToWorld()}; folding it in here makes the
+     * Transform / View Direction nodes agree with {@link #objectSpacePosition()} and the Position/Normal
+     * nodes' "Object" outputs. The Transform node's <b>tangent</b> endpoint rides along, since its basis is
+     * derived in object space (see {@link #tangentBasis(String)}) and reaches view through this matrix.
+     */
+    @Override
+    protected ShaderExpr objectToViewMatrix() {
+        return new ShaderExpr("(" + transformField("ModelViewMat", GlslType.MAT4).code()
+                + " * " + objectToWorldMatrix().code() + ")", GlslType.MAT4);
+    }
+
+    /** {@code view → object} = {@code WorldToObject · IModelViewMat} — the exact inverse of
+     *  {@link #objectToViewMatrix()} (Photon's {@code IModelViewMat} is view→camera-relative-world). */
+    @Override
+    protected ShaderExpr viewToObjectMatrix() {
+        return new ShaderExpr("(" + worldToObjectMatrix().code()
+                + " * " + transformField("IModelViewMat", GlslType.MAT4).code() + ")", GlslType.MAT4);
+    }
+
+    /**
+     * {@code particle.glsl}'s per-instance object→world, as a stage-agnostic value: the raw function call in
+     * the vertex stage, an auto-declared {@code mat4} varying in the fragment stage (the include is
+     * vertex-only, so the fragment stage cannot call it). Lazily built by {@code varyingInput}, so a graph
+     * that never converts spaces declares no varying and costs nothing — which matters, because a {@code mat4}
+     * varying is 4 interpolator slots and a graph converting both ways spends 8. (Passing
+     * {@code iRot}/{@code iScale}/{@code iPos} instead would be 3, at the price of teaching the fragment stage
+     * every path's expansion; not worth it until a graph actually runs out.) Preview compiles have no Photon
+     * vertex stage at all — identity there, which is exactly the pre-seam behaviour.
+     * <p>
+     * The varying is named {@code photon_o2w}, NOT {@code photon_objectToWorld}: GLSL puts functions and
+     * globals in one namespace, so reusing the function's name would be a redefinition error in the vsh.
+     */
+    private ShaderExpr objectToWorldMatrix() {
+        return varyingInput("photon_o2w", GlslType.MAT4,
+                () -> new ShaderExpr("photon_objectToWorld()", GlslType.MAT4),
+                new ShaderExpr("mat4(1.0)", GlslType.MAT4));
+    }
+
+    /** The inverse of {@link #objectToWorldMatrix()}, same varying treatment ({@code photon_w2o}). */
+    private ShaderExpr worldToObjectMatrix() {
+        return varyingInput("photon_w2o", GlslType.MAT4,
+                () -> new ShaderExpr("photon_worldToObject()", GlslType.MAT4),
+                new ShaderExpr("mat4(1.0)", GlslType.MAT4));
+    }
 
     /** Object/model space (model instancing = mesh-local; billboards = centered quad coord; else world),
      *  from {@code ParticleData.ObjectPosition}. */
@@ -165,6 +224,98 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
                 () -> new ShaderExpr(PARTICLE_DATA + ".ObjectNormal", GlslType.VEC3),
                 new ShaderExpr("vNormal", GlslType.VEC3));
         return new ShaderExpr("normalize(" + n.code() + ")", GlslType.VEC3);
+    }
+
+    // ---- tangent basis seam ------------------------------------------------------------------
+    // KilaGraph derives its basis in OBJECT space and rotates it into view/world, because Minecraft
+    // carries no tangent attribute. ParticleData always has one: the uploaded aTangent for model
+    // instancing, and an exact closed-form dP/du on the paths whose geometry the vertex shader builds
+    // itself (billboards, trails, beams). Like the position/normal seams above, Photon's object->world
+    // transform is the per-instance GPU expansion inside getParticleData(), NOT a matrix.
+    // The base's mat3(IViewMat * ModelViewMat) rotation is the identity for particles, so inheriting it
+    // would hand back a mesh-local frame labelled "world" with the particle's own rotation silently
+    // dropped. Read each space from its own ParticleData source instead.
+
+    /** Per-space, per-stage basis memo. The base's own map lives on its private stage scope, and the
+     *  columns are hoisted temps — reusing a vertex-stage temp in the fragment stage would not compile,
+     *  hence the stage in the key. */
+    private final Map<String, TangentBasis> tangentBases = new HashMap<>();
+
+    @Override
+    protected TangentBasis tangentBasis(String space) {
+        // A per-node preview has no vertex stage (so no ParticleData at all); the base's uv cotangent
+        // frame off the preview quad is exactly right there.
+        if (isPreview()) {
+            return super.tangentBasis(space);
+        }
+        var key = space + (isFragmentStage() ? "|f" : "|v");
+        var cached = tangentBases.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        var basis = buildBasis(space);
+        tangentBases.put(key, basis);
+        return basis;
+    }
+
+    /**
+     * The basis for one space. N comes from the normal seam for that space so tangent and normal always
+     * agree; T from {@code ParticleData}'s matching tangent. The Gram-Schmidt + {@code sign(w)} mirror
+     * KilaGraph's own per-vertex-tangent tier: interpolation across a triangle leaves T neither unit
+     * length nor perpendicular to N, and w must not scale B if it drifts off ±1 in the varying.
+     */
+    private TangentBasis buildBasis(String space) {
+        var n = hoist(GlslType.VEC3, switch (space) {
+            case "object" -> objectSpaceNormal().code();
+            case "view" -> viewSpaceNormal().code();
+            default -> worldSpaceNormal().code();
+        });
+        // object reads the mesh-local tangent; world/view read the already-rotated one (view is world
+        // turned by ModelViewMat, the same rotation viewSpaceNormal uses).
+        var tangent4 = "object".equals(space) ? objectTangent() : worldTangent();
+        var raw = "view".equals(space)
+                ? "(mat3(" + transformField("ModelViewMat", GlslType.MAT4).code() + ") * " + tangent4.code() + ".xyz)"
+                : tangent4.code() + ".xyz";
+        var t3 = hoist(GlslType.VEC3, raw);
+        var proj = hoist(GlslType.VEC3, t3.code() + " - " + n.code()
+                + " * dot(" + n.code() + ", " + t3.code() + ")");
+
+        // Gram-Schmidt can collapse: whenever the tangent ends up parallel to the normal the projection is
+        // zero and normalize() would hand back NaN for the whole frame. That is not hypothetical — the two
+        // paths with nothing to report (the CPU path, and model instancing with the Tangent setting off)
+        // hand back the constant PHOTON_NO_TANGENT (+X), so every surface facing along world X hits it.
+        // Fall back to the same branchless Duff frame KilaGraph's own basis-from-normal tier uses
+        // (TangentGlsl#FROM_NORMAL, inlined because addFunction is not visible here): arbitrary around the
+        // normal, but orthonormal and finite.
+        var s = hoist(GlslType.FLOAT, "(" + n.code() + ".z >= 0.0 ? 1.0 : -1.0)");
+        var a = hoist(GlslType.FLOAT, "(-1.0 / (" + s.code() + " + " + n.code() + ".z))");
+        var fallback = hoist(GlslType.VEC3, "vec3("
+                + "1.0 + " + s.code() + " * " + n.code() + ".x * " + n.code() + ".x * " + a.code() + ", "
+                + s.code() + " * (" + n.code() + ".x * " + n.code() + ".y * " + a.code() + "), "
+                + "-" + s.code() + " * " + n.code() + ".x)");
+
+        var usable = "dot(" + proj.code() + ", " + proj.code() + ") > 1.0e-12";
+        var t = hoist(GlslType.VEC3,
+                "(" + usable + " ? normalize(" + proj.code() + ") : " + fallback.code() + ")");
+        // the fallback frame has no uv to be handed by, so it is simply right-handed
+        var b = hoist(GlslType.VEC3, "(cross(" + n.code() + ", " + t.code() + ") * ("
+                + usable + " ? sign(" + tangent4.code() + ".w) : 1.0))");
+        return new TangentBasis(t, b, n);
+    }
+
+    /** {@code ParticleData.Tangent} — already camera-relative world, like {@code ParticleData.Normal}. */
+    private ShaderExpr worldTangent() {
+        return varyingInput("photon_worldTangent", GlslType.VEC4,
+                () -> new ShaderExpr(PARTICLE_DATA + ".Tangent", GlslType.VEC4),
+                new ShaderExpr("vec4(1.0, 0.0, 0.0, 1.0)", GlslType.VEC4));
+    }
+
+    /** The mesh-local tangent, mirroring {@link #objectSpaceNormal()}. {@code ParticleData} carries it as
+     *  a vec4 so the handedness comes along without reaching into the world tangent. */
+    private ShaderExpr objectTangent() {
+        return varyingInput("photon_objectTangent", GlslType.VEC4,
+                () -> new ShaderExpr(PARTICLE_DATA + ".ObjectTangent", GlslType.VEC4),
+                new ShaderExpr("vec4(1.0, 0.0, 0.0, 1.0)", GlslType.VEC4));
     }
 
     /** Eye/view-space normal: the world normal rotated world→view. */

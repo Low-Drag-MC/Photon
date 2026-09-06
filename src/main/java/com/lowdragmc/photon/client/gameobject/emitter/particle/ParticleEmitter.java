@@ -752,10 +752,14 @@ public class ParticleEmitter extends Emitter {
             }
         }
         var model = runtime().renderer.getRenderMode() == ParticleRendererSetting.Mode.Model;
+        // The user decides whether to upload tangent vertex data (renderer settings, Model mode only —
+        // only a mesh has tangents). It selects the instanced VARIANT, so the base mesh, the VAO layout and
+        // every material/sub-pass pipeline of this group are built from one decision and cannot disagree.
+        var tangent = model && runtime().renderer.isTangent();
         GpuBuffer vertices;
         int indexCount;
         if (model) {
-            vertices = extractRenderer.modelMeshBuffer();
+            vertices = extractRenderer.modelMeshBuffer(tangent);
             indexCount = extractRenderer.modelIndexCount();
             if (vertices == null || indexCount == 0) {
                 return false; // no mesh — CPU path renders the fallback
@@ -766,7 +770,9 @@ public class ParticleEmitter extends Emitter {
         }
         var floats = model ? TileParticleRenderer.MODEL_INSTANCE_FLOATS : TileParticleRenderer.INSTANCE_FLOATS;
         return bakeInstancedGroup(settings, out, camera, runtime().renderer, config.additionalGPUDataSetting,
-                model ? PhotonPipelines.InstancedVariant.MODEL : PhotonPipelines.InstancedVariant.TILE,
+                model ? (tangent ? PhotonPipelines.InstancedVariant.MODEL_TANGENT
+                                 : PhotonPipelines.InstancedVariant.MODEL)
+                      : PhotonPipelines.InstancedVariant.TILE,
                 BaseMesh.quads(vertices, indexCount), tileCount * floats, 0, new Vector3f(),
                 (instances, points, data, custom) -> {
                     var count = 0;

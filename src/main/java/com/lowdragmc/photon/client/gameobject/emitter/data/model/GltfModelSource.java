@@ -20,26 +20,28 @@ import java.io.File;
 import java.util.Objects;
 
 /**
- * Geometry from a Wavefront OBJ file parsed at runtime through the resource manager — no bakery,
- * no atlas, no resource reload needed. The location keeps its {@code .obj} extension (e.g.
- * {@code photon:models/rocket.obj}); files under {@code <gameDir>/ldlib2/assets/<ns>/...} (LDLib2's
- * injected pack) or any resource pack resolve. UVs are raw 0..1 — the texture comes from the
- * material system. Load failures are cached as an empty mesh (cleared by reload/invalidate) so a
- * missing file doesn't retry every frame.
+ * Geometry from a glTF 2.0 file parsed at runtime through the resource manager — same deal as
+ * {@link ObjModelSource}: no bakery, no atlas, no resource reload. Reads {@code .glb} and
+ * {@code .gltf} with embedded buffers; see {@link GltfMeshParser} for what is taken from the file.
+ *
+ * <p>The reason to pick this over OBJ: glTF can carry real per-vertex <b>tangents</b>, so a model
+ * exported alongside a baked normal map keeps the exact frame the map was baked against instead of one
+ * reconstructed from UVs. Turn on the emitter's {@code Tangent} renderer setting to upload them.</p>
  */
-@LDLRegisterClient(name = "obj_model", registry = "photon:model_source")
-public class ObjModelSource implements IModelSource {
+@LDLRegisterClient(name = "gltf_model", registry = "photon:model_source")
+public class GltfModelSource implements IModelSource {
     @Getter
-    @Configurable(name = "ObjModelSource.modelLocation")
-    private Identifier modelLocation = Photon.id("models/missing.obj");
+    @Configurable(name = "GltfModelSource.modelLocation")
+    private Identifier modelLocation = Photon.id("models/missing.glb");
+    /** glTF's UV origin is already top-left like Minecraft's, so unlike OBJ this defaults to off. */
     @Getter
-    @Configurable(name = "ObjModelSource.flipV", tips = "photon.model_source.obj_model.flipV.tips")
-    private boolean flipV = true;
+    @Configurable(name = "GltfModelSource.flipV", tips = "photon.model_source.gltf_model.flipV.tips")
+    private boolean flipV = false;
 
-    public ObjModelSource() {
+    public GltfModelSource() {
     }
 
-    public ObjModelSource(Identifier modelLocation) {
+    public GltfModelSource(Identifier modelLocation) {
         this.modelLocation = modelLocation;
     }
 
@@ -55,8 +57,8 @@ public class ObjModelSource implements IModelSource {
         this.flipV = flipV;
     }
 
-    private PhotonMeshCache.ObjKey key() {
-        return new PhotonMeshCache.ObjKey(modelLocation, flipV);
+    private PhotonMeshCache.GltfKey key() {
+        return new PhotonMeshCache.GltfKey(modelLocation, flipV);
     }
 
     @Override
@@ -71,7 +73,7 @@ public class ObjModelSource implements IModelSource {
 
     @Override
     public IModelSource copy() {
-        var copy = new ObjModelSource(modelLocation);
+        var copy = new GltfModelSource(modelLocation);
         copy.flipV = flipV;
         return copy;
     }
@@ -79,14 +81,13 @@ public class ObjModelSource implements IModelSource {
     /** {@code null} = "can't load right now, don't cache" (retry next call); see {@link PhotonMeshCache#get}. */
     @Nullable
     private PhotonMesh load() {
-        // The resource manager is mid-swap during a reload (F3+T / resource reload also clears our
-        // cache). Loading now can transiently fail; caching EMPTY would blank the mesh until the next
-        // invalidation. Retry after the reload instead — mirrors JsonModelSource's overlay guard.
+        // mid-reload the resource manager is swapping; caching EMPTY now would blank the mesh until the
+        // next invalidation, so retry afterwards instead (mirrors ObjModelSource).
         if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
             return null;
         }
         try (var in = Minecraft.getInstance().getResourceManager().open(modelLocation)) {
-            var mesh = ObjMeshParser.parse(in, flipV);
+            var mesh = GltfMeshParser.parse(in, flipV);
             // track the editable disk copy (if any) so pollFileChanges can hot-reload it
             var file = new File(LDLib2.getAssetsDir(), modelLocation.getNamespace() + "/" + modelLocation.getPath());
             if (file.isFile()) {
@@ -94,7 +95,7 @@ public class ObjModelSource implements IModelSource {
             }
             return mesh;
         } catch (Exception e) {
-            Photon.LOGGER.warn("Failed to load OBJ model {}", modelLocation, e);
+            Photon.LOGGER.warn("Failed to load glTF model {}", modelLocation, e);
             return PhotonMesh.EMPTY;
         }
     }
@@ -103,11 +104,11 @@ public class ObjModelSource implements IModelSource {
     public void buildConfigurator(ConfiguratorGroup father) {
         IModelSource.super.buildConfigurator(father);
         var buttonConfigurator = new Configurator();
-        buttonConfigurator.addInlineChild(new Button().setText("photon.gui.editor.tips.select_obj").setOnClick(e -> {
+        buttonConfigurator.addInlineChild(new Button().setText("photon.gui.editor.tips.select_gltf").setOnClick(e -> {
             var mui = e.currentElement.getModularUI();
             if (mui == null) return;
-            Dialog.showFileDialog("photon.gui.editor.tips.select_obj", LDLib2.getAssetsDir(), true,
-                    Dialog.suffixFilter(".obj"), r -> {
+            Dialog.showFileDialog("photon.gui.editor.tips.select_gltf", LDLib2.getAssetsDir(), true,
+                    Dialog.suffixFilter(".glb", ".gltf"), r -> {
                         if (r != null && r.isFile()) {
                             var location = IModelSource.getAssetLocationFromFile(r);
                             if (location == null || location.equals(modelLocation)) return;
@@ -129,7 +130,7 @@ public class ObjModelSource implements IModelSource {
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
-        var that = (ObjModelSource) o;
+        var that = (GltfModelSource) o;
         return flipV == that.flipV && Objects.equals(modelLocation, that.modelLocation);
     }
 

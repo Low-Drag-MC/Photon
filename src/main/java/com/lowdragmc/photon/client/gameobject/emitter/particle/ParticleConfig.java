@@ -9,8 +9,6 @@ import com.lowdragmc.lowdraglib2.configurator.ui.TransformRefConfigurator;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.TransformRef;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
@@ -21,21 +19,14 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.client.gameobject.particle.IParticle;
-import com.lowdragmc.photon.client.gameobject.particle.renderer.TileParticleRenderer;
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.client.Camera;
 
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.util.Collection;
-import java.util.List;
 
-import static org.lwjgl.opengl.GL30.glBindVertexArray;
 
 /**
  * @author KilaBash

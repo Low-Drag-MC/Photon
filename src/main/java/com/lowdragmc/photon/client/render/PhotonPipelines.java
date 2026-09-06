@@ -43,6 +43,11 @@ public final class PhotonPipelines {
      *  reaches the DrawInfo/instanced derivations. */
     public static final int BLEND_EQUATION_ADD = 32774; // GL14.GL_FUNC_ADD
 
+    /** Enables the mesh tangent attribute — MIRRORED IN {@code photon:particle.glsl}, where it repacks
+     *  the model path's vertex layout (brightness moves into {@code aNormal.w}, location 3 becomes the
+     *  tangent). See {@link InstancedVariant#MODEL_TANGENT}. */
+    public static final String TANGENT_DEFINE = "PHOTON_TANGENT";
+
     /** The state that selects a pipeline variant: MaterialSetting blend/cull/depth + the emitter's
      *  primitive mode (quads for tiles/beams, TRIANGLE_STRIP for trails, TRIANGLES for ara-trails)
      *  + the editor wireframe overlay flag. Blend null = no blending; it does NOT decide when the draw
@@ -164,20 +169,33 @@ public final class PhotonPipelines {
     public enum InstancedVariant {
         // DEDICATED formats (unique element names -> value-unequal -> exclusive VAOs) so the
         // divisor mixin never touches shared VAOs; real pointers are applied by the mixin
-        TILE("PARTICLE_INSTANCE", instancedFormat("PhotonTileCorner"), false, true, true,
+        TILE(List.of("PARTICLE_INSTANCE"), instancedFormat("PhotonTileCorner"), false, true, true,
                 PhotonGpuChannels.Kind.TILE, PhotonInstancedDrawState.TILE),
-        MODEL("PARTICLE_MODEL_INSTANCE", instancedFormat("PhotonModelVertex"), false, true, true,
+        MODEL(List.of("PARTICLE_MODEL_INSTANCE"), instancedFormat("PhotonModelVertex"), false, true, true,
                 PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstancedDrawState.MODEL),
-        TRAIL("TRAIL_INSTANCE", instancedFormat("PhotonTrailCorner"), true, false, false,
+        /**
+         * {@link #MODEL} with the mesh tangent uploaded as vertex data — the emitter's {@code Tangent}
+         * renderer setting. A SEPARATE variant rather than a flag on the draw, because the tangent changes
+         * the base-mesh attribute layout ({@code aNormal} widens to vec4 and location 3 becomes the
+         * tangent, see {@code particle.glsl}), and in 26.1 an attribute layout IS a vertex format, which is
+         * what picks the VAO and the pipeline. Every material and sub-pass on the group therefore compiles
+         * against the same layout by construction — a per-material define could not guarantee that.
+         */
+        MODEL_TANGENT(List.of("PARTICLE_MODEL_INSTANCE", TANGENT_DEFINE),
+                instancedFormat("PhotonModelVertexTangent"), false, true, true,
+                PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstancedDrawState.MODEL_TANGENT),
+        TRAIL(List.of("TRAIL_INSTANCE"), instancedFormat("PhotonTrailCorner"), true, false, false,
                 PhotonGpuChannels.Kind.TRAIL, PhotonInstancedDrawState.TRAIL),
-        ARA("ARA_TRAIL_INSTANCE", instancedFormat("PhotonAraCorner"), true, false, false,
+        ARA(List.of("ARA_TRAIL_INSTANCE"), instancedFormat("PhotonAraCorner"), true, false, false,
                 PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstancedDrawState.ARA),
-        ARA_TUBE("ARA_TRAIL_TUBE_INSTANCE", instancedFormat("PhotonAraTubeCorner"), true, false, false,
+        ARA_TUBE(List.of("ARA_TRAIL_TUBE_INSTANCE"), instancedFormat("PhotonAraTubeCorner"), true, false, false,
                 PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstancedDrawState.ARA_TUBE),
-        BEAM("BEAM_INSTANCE", instancedFormat("PhotonBeamCorner"), false, false, true,
+        BEAM(List.of("BEAM_INSTANCE"), instancedFormat("PhotonBeamCorner"), false, false, true,
                 PhotonGpuChannels.Kind.BEAM, PhotonInstancedDrawState.BEAM);
 
-        final String define;
+        /** Every {@code #define} this variant's shaders compile with: the geometry-family selector that
+         *  makes {@code getParticleData()} expand to the instanced read, plus any layout modifier. */
+        public final List<String> defines;
         final VertexFormat format;
         public final boolean usesPoints;
         /** Whether {@code particle.glsl} declares {@code PhotonCustomData} for this define — per-particle
@@ -197,10 +215,10 @@ public final class PhotonPipelines {
         public final PhotonGpuChannels.Kind kind;
         public final PhotonInstancedDrawState.Layout layout;
 
-        InstancedVariant(String define, VertexFormat format, boolean usesPoints,
+        InstancedVariant(List<String> defines, VertexFormat format, boolean usesPoints,
                          boolean usesCustomData, boolean positionAtRecordHead, PhotonGpuChannels.Kind kind,
                          PhotonInstancedDrawState.Layout layout) {
-            this.define = define;
+            this.defines = defines;
             this.format = format;
             this.usesPoints = usesPoints;
             this.usesCustomData = usesCustomData;
@@ -242,7 +260,7 @@ public final class PhotonPipelines {
                             k.depthTest() ? CompareOp.LESS_THAN_OR_EQUAL : CompareOp.ALWAYS_PASS,
                             k.depthMask()))
                     .withCull(k.cull());
-            builder.withShaderDefine(ik.variant().define);
+            ik.variant().defines.forEach(builder::withShaderDefine);
             if (ik.variant().usesPoints) {
                 builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
             }
@@ -278,7 +296,7 @@ public final class PhotonPipelines {
                     .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, true))
                     .withCull(false);
             if (mk.variant() != null) {
-                builder.withShaderDefine(mk.variant().define);
+                mk.variant().defines.forEach(builder::withShaderDefine);
                 if (mk.variant().usesPoints) {
                     builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
                 }
@@ -317,7 +335,7 @@ public final class PhotonPipelines {
                             pk.depthTest() ? CompareOp.LESS_THAN_OR_EQUAL : CompareOp.ALWAYS_PASS,
                             pk.depthMask()))
                     .withCull(pk.cull());
-            builder.withShaderDefine(ik.variant().define);
+            ik.variant().defines.forEach(builder::withShaderDefine);
             if (ik.variant().usesPoints) {
                 builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
             }
@@ -398,7 +416,7 @@ public final class PhotonPipelines {
                 builder.withSampler(PhotonShaderCompiler.SCENE_DEPTH);
             }
             if (variant != null) {
-                builder.withShaderDefine(variant.define);
+                variant.defines.forEach(builder::withShaderDefine);
                 if (variant.usesPoints) {
                     builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
                 }

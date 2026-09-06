@@ -9,8 +9,6 @@ import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InstancedRendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -21,26 +19,13 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
-import com.lowdragmc.photon.client.gameobject.particle.IParticle;
-import com.lowdragmc.photon.client.gameobject.particle.renderer.AraTrailParticleRenderer;
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.client.Camera;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector3f;
 
-import javax.annotation.Nonnull;
-import java.util.Collection;
-import java.util.List;
 
-import static org.lwjgl.opengl.GL30.glBindVertexArray;
 
 /**
  * @author KilaBash

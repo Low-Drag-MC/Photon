@@ -91,6 +91,11 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     @Persisted
     @EqualsAndHashCode.Include
     protected boolean useBlockUV = true;
+    /** Upload the mesh tangent as vertex data (and define {@code PHOTON_TANGENT} for the shaders), for
+     *  tangent-space normal mapping. Off = the vertex layout has no tangent at all. */
+    @Persisted
+    @EqualsAndHashCode.Include
+    protected boolean tangent = false;
     @Persisted
     @EqualsAndHashCode.Include
     protected Vector3f modelPivot = new Vector3f();
@@ -125,6 +130,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         public final RuntimeValue<MeshData> model;
         public final RuntimeValue<Boolean> shade;
         public final RuntimeValue<Boolean> useBlockUV;
+        public final RuntimeValue<Boolean> tangent;
         public final RuntimeValue<Vector3f> modelPivot;
         public final RuntimeValue<Float> velocityScale;
         public final RuntimeValue<Float> lengthScale;
@@ -139,6 +145,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
             this.model = new RuntimeValue<>(config::getModel);
             this.shade = new RuntimeValue<>(config::isShade);
             this.useBlockUV = new RuntimeValue<>(config::isUseBlockUV);
+            this.tangent = new RuntimeValue<>(config::isTangent);
             this.modelPivot = new RuntimeValue<>(config::getModelPivot);
             this.velocityScale = new RuntimeValue<>(config::getVelocityScale);
             this.lengthScale = new RuntimeValue<>(config::getLengthScale);
@@ -152,6 +159,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
         public IModelSource getModelSource() { return getModel().getSource(); }
         public boolean isShade() { return shade.get(); }
         public boolean isUseBlockUV() { return useBlockUV.get(); }
+        public boolean isTangent() { return tangent.get(); }
         public Vector3f getModelPivot() { return modelPivot.get(); }
         public float getVelocityScale() { return velocityScale.get(); }
         public float getLengthScale() { return lengthScale.get(); }
@@ -165,7 +173,8 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
             // facingDirection are read per-particle (the Billboard lambda reads p.getRuntime()), so
             // overriding them needs no pass — excluded here and from effectiveEquals.
             return super.hasOverride() || renderMode.isOverridden() || model.isOverridden()
-                    || shade.isOverridden() || useBlockUV.isOverridden() || modelPivot.isOverridden()
+                    || shade.isOverridden() || useBlockUV.isOverridden() || tangent.isOverridden()
+                    || modelPivot.isOverridden()
                     || velocityScale.isOverridden() || lengthScale.isOverridden()
                     || useGPUInstance.isOverridden();
         }
@@ -177,6 +186,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
             model.clear();
             shade.clear();
             useBlockUV.clear();
+            tangent.clear();
             modelPivot.clear();
             velocityScale.clear();
             lengthScale.clear();
@@ -196,6 +206,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
                     && Objects.equals(getModel(), other.getModel())
                     && isShade() == other.isShade()
                     && isUseBlockUV() == other.isUseBlockUV()
+                    && isTangent() == other.isTangent()
                     && Objects.equals(getModelPivot(), other.getModelPivot())
                     && getVelocityScale() == other.getVelocityScale()
                     && getLengthScale() == other.getLengthScale()
@@ -204,7 +215,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
 
         @Override
         public int effectiveHashCode() {
-            return Objects.hash(super.effectiveHashCode(), getRenderMode(), getModel(), isShade(), isUseBlockUV(),
+            return Objects.hash(super.effectiveHashCode(), getRenderMode(), getModel(), isShade(), isUseBlockUV(), isTangent(),
                     getModelPivot(), getVelocityScale(), getLengthScale(), isUseGPUInstance());
         }
     }
@@ -265,6 +276,8 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
                             .setTips("photon.emitter.config.renderer.renderMode.model.shade"),
                     new BooleanConfigurator("useBlockUV", this::isUseBlockUV, this::setUseBlockUV, true, true)
                             .setTips("photon.emitter.config.renderer.renderMode.model.useBlockUV"),
+                    new BooleanConfigurator("tangent", this::isTangent, this::setTangent, false, true)
+                            .setTips("photon.emitter.config.renderer.renderMode.model.tangent"),
                     new Vector3fAccessor().create("modelPivot", this::getModelPivot, this::setModelPivot,
                             true, getModelPivotField(), this)
                             .setTips("photon.emitter.config.renderer.renderMode.model.modelPivot")
@@ -306,6 +319,14 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
 
     public void setShade(boolean shade) {
         this.shade = shade;
+        clearRenderPassInstance();
+    }
+
+    /** Toggling this changes the mesh vertex layout, so the base VBO is rebuilt — but that is
+     *  {@code TileParticleRenderer.modelMeshBuffer}'s own doing (it compares against what it baked);
+     *  this call is the same pass-invalidation hook the neighbouring setters use. */
+    public void setTangent(boolean tangent) {
+        this.tangent = tangent;
         clearRenderPassInstance();
     }
 
