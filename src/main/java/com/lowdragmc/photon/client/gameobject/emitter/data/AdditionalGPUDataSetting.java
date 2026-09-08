@@ -42,7 +42,7 @@ import java.util.function.Supplier;
 import static org.lwjgl.opengl.GL11.GL_FLOAT;
 import static org.lwjgl.opengl.GL20.glEnableVertexAttribArray;
 import static org.lwjgl.opengl.GL20.glVertexAttribPointer;
-import static org.lwjgl.opengl.GL33.glVertexAttribDivisor;
+import static com.lowdragmc.photon.client.gameobject.particle.renderer.GlInstancing.vertexAttribDivisor;
 
 /**
  * Per-emitter selection of {@link PhotonGpuChannels} to expose as per-instance data. Two paths,
@@ -224,7 +224,8 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
             if ((mask & channel.bit()) == 0 || !channel.supported().contains(kind) || !channel.uploadable()) continue;
             glVertexAttribPointer(attribIndex, channel.floats(), GL_FLOAT, false, stride, offset);
             glEnableVertexAttribArray(attribIndex);
-            glVertexAttribDivisor(attribIndex, 1);
+            // ⚠️ through GlInstancing: Minecraft's 3.2 core context has no 3.3 entry points loaded
+            vertexAttribDivisor(attribIndex, 1);
             offset += channel.floats() * Float.BYTES;
             attribIndex++;
             attribPlan.add(channel);
@@ -236,7 +237,7 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
         for (int i = 0; i < customCount; i++) {
             glVertexAttribPointer(attribIndex, 4, GL_FLOAT, false, stride, offset);
             glEnableVertexAttribArray(attribIndex);
-            glVertexAttribDivisor(attribIndex, 1);
+            vertexAttribDivisor(attribIndex, 1);
             offset += 4 * Float.BYTES;
             attribIndex++;
         }

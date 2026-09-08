@@ -260,7 +260,9 @@ abstract class InstancedRenderBackend {
     protected static int floatInstanceAttrib(int attribIndex, int size, int stride, int offset) {
         glVertexAttribPointer(attribIndex, size, GL_FLOAT, false, stride, offset);
         glEnableVertexAttribArray(attribIndex);
-        glVertexAttribDivisor(attribIndex, 1);
+        // ⚠️ not GL33.glVertexAttribDivisor: Minecraft's 3.2 core context has no 3.3 entry points
+        // loaded, and the call aborted the JVM on Windows/NVIDIA — see GlInstancing
+        GlInstancing.vertexAttribDivisor(attribIndex, 1);
         return offset + size * Float.BYTES;
     }
 
@@ -273,7 +275,7 @@ abstract class InstancedRenderBackend {
     protected static int intInstanceAttrib(int attribIndex, int size, int stride, int offset) {
         glVertexAttribIPointer(attribIndex, size, GL_UNSIGNED_INT, stride, offset);
         glEnableVertexAttribArray(attribIndex);
-        glVertexAttribDivisor(attribIndex, 1);
+        GlInstancing.vertexAttribDivisor(attribIndex, 1);
         return offset + size * Float.BYTES;
     }
 
