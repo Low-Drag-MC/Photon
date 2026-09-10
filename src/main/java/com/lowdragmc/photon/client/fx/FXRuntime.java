@@ -37,6 +37,8 @@ public class FXRuntime implements IScene {
     private ParticleTickHost host;
     /** The host's wipe generation at emit time; a later generation means our particles were discarded. */
     private int generationAtEmit;
+    /** Playback rate for this whole runtime; see {@link #setRate}. */
+    private float rate = 1f;
 
     public FXRuntime(FXData fxData) {
         this.fxData = fxData;
@@ -51,8 +53,13 @@ public class FXRuntime implements IScene {
         // the always-on root drives the timeline once per tick (editor + in-world)
         if (root instanceof FXObject fxRoot) {
             fxRoot.setOnUpdateTick(() -> {
+                // ⚠️ Re-applied every tick, not only in setRate: FXObject.reset() puts selfTimeScale
+                // back to 1, and a control clip restarting a subtree resets the root with it. Runs
+                // before the timeline's own speed tracks (evaluate -> applySpeed), so a track that
+                // targets the root deliberately wins for that tick — see setRate.
+                root.setSelfTimeScale(rate);
                 if (!timelinePlayer.isEmpty()) {
-                    timelinePlayer.tick();
+                    timelinePlayer.tick(rate);
                 }
             });
             // and the per-frame animation pass for smooth (interpolated) transform animation
@@ -119,6 +126,36 @@ public class FXRuntime implements IScene {
         } else {
             throw new IllegalArgumentException("%s is not an instance of IFXObject".formatted(sceneObject));
         }
+    }
+
+    /**
+     * <b>How fast this whole playback runs</b> — 1 is normal, 0.5 half speed, 0 frozen. Both halves
+     * of "the FX's time" are scaled together:
+     *
+     * <ul>
+     *   <li>the objects' simulation, through the root's {@code selfTimeScale}, which every
+     *       descendant inherits ({@link IFXObject#timeScale()}) and which
+     *       {@code FXObject.tick} spends as its per-tick {@code dt};</li>
+     *   <li>the <b>timeline's master clock</b> ({@link TimelinePlayer#tick(float)}), so activator,
+     *       control, animation, signal and audio clips keep their places relative to the particles.
+     *       Without this half a slowed FX ran its particles slowly and its timeline at full speed.</li>
+     * </ul>
+     *
+     * <p><b>Cost</b>: above 1 the simulation sub-steps ({@code ceil(rate)} steps of {@code dt <= 1},
+     * capped at {@code FXObject.MAX_SUBSTEPS}), which is the cost of the extra simulated time and
+     * nothing more; at or below 1 it is one step per tick, exactly as before. A rate of 1 changes
+     * no behaviour at all.
+     *
+     * <p>⚠️ Not persisted and not the timeline's: an FX whose own <b>speed track</b> targets the
+     * root overwrites this for the ticks that track covers ({@code TimelinePlayer.applySpeed} runs
+     * after the re-apply), which is the author's explicit intent winning over the caller's.
+     *
+     * <p>⚠️ Above 1 the timeline advances in steps larger than a tick, so a clip shorter than one
+     * step can be stepped over; signals are not (they fire in the window {@code (last, now]}).
+     */
+    public void setRate(float rate) {
+        this.rate = Math.max(0f, rate);
+        root.setSelfTimeScale(this.rate);
     }
 
     /** Start playback: emit every object into the executor's particle engine and reset the timeline. */
