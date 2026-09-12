@@ -38,7 +38,6 @@ import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.NotNull;
@@ -241,11 +240,10 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         if (values == null || entry == null || entry.getCompiled() == null) return;
         var compiled = entry.getCompiled();
         switch (value) {
-            case RenderTypeGraphTypes.Sampler2DValue sampler -> {
-                if (com.lowdragmc.lowdraglib2.LDLib2.isValidResourceLocation(sampler.location())) {
-                    values.setTexture(name, ResourceLocation.parse(sampler.location()));
-                }
-            }
+            // setSampler, NOT setTexture: the inspector row edits the WHOLE Sampler2DValue (texture +
+            // filter/address/mipmap), and setTexture keeps the graph's baked params — which silently
+            // dropped a wrap mode picked here. An unparseable location leaves the binding untouched.
+            case RenderTypeGraphTypes.Sampler2DValue sampler -> values.setSampler(name, sampler);
             case RenderTypeGraphTypes.GradientValue gradient -> values.setGradient(name, gradient);
             case RenderTypeGraphTypes.CurveValue curve -> values.setCurve(name, curve);
             case HDRColor hdr -> values.setHDRColorUniform(name, hdr);

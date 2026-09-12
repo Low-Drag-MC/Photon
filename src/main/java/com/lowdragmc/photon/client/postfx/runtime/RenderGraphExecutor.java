@@ -267,11 +267,9 @@ public final class RenderGraphExecutor {
      *  marshalling {@code ShaderGraphMaterial.applyOverride} uses. */
     static void stageValue(KGMaterialValues values, CompiledShaderGraph compiled, String name, Object value) {
         switch (value) {
-            case RenderTypeGraphTypes.Sampler2DValue sampler -> {
-                if (LDLib2.isValidResourceLocation(sampler.location())) {
-                    values.setTexture(name, ResourceLocation.parse(sampler.location()));
-                }
-            }
+            // the whole value (texture + filter/address/mipmap), so a wrap/filter set on the parameter
+            // isn't dropped for the graph's baked one; an unparseable location leaves the binding alone
+            case RenderTypeGraphTypes.Sampler2DValue sampler -> values.setSampler(name, sampler);
             case RenderTypeGraphTypes.GradientValue gradient -> values.setGradient(name, gradient);
             case RenderTypeGraphTypes.CurveValue curve -> values.setCurve(name, curve);
             case Vector2f v -> values.setUniform(name, v);
