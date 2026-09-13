@@ -37,9 +37,6 @@
   "editor.fx_object.hierarchy": "FX Hierarchy",
   "editor.scene": "Scene",
   "editor.timeline": "Timeline",
-  "photon.gui.editor.timeline.play": "Play",
-  "photon.gui.editor.timeline.pause": "Pause",
-  "photon.gui.editor.timeline.stop": "Stop",
   "photon.gui.editor.timeline.add_track": "Add Track",
   "photon.gui.editor.timeline.time.tip": "Current time (seconds); type a value and click away to jump",
   "photon.gui.editor.timeline.end_mode.tip": "End condition: wait until every FX object is finished (off), or stop at the timeline's end (on)",
@@ -879,5 +876,10 @@
   "PhysicsSetting.collidedFriction": "Collided Friction",
   "photon.emitter.config.physics.collidedFriction": "Friction applied when particles is collided",
   "SamplerCurve": "Sampler Curve",
-  "SamplerGradient": "Sampler Gradient"
+  "SamplerGradient": "Sampler Gradient",
+  "photon.gui.editor.timeline.play.tip": "Play / pause the preview",
+  "photon.gui.editor.timeline.stop.tip": "Stop and rewind to the start",
+  "photon.gui.editor.timeline.step_back.tip": "Step back one tick",
+  "photon.gui.editor.timeline.step_forward.tip": "Step forward one tick",
+  "photon.gui.editor.timeline.to_end.tip": "Jump to the end of the effect\u0027s content"
 }

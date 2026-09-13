@@ -37,9 +37,6 @@
   "editor.fx_object.hierarchy": "特效层级",
   "editor.scene": "场景",
   "editor.timeline": "时间轴",
-  "photon.gui.editor.timeline.play": "播放",
-  "photon.gui.editor.timeline.pause": "暂停",
-  "photon.gui.editor.timeline.stop": "停止",
   "photon.gui.editor.timeline.add_track": "添加轨道",
   "photon.gui.editor.timeline.time.tip": "当前时间（秒）；输入数值并失去焦点后跳转",
   "photon.gui.editor.timeline.end_mode.tip": "结束条件：等待所有 FX 对象播放完毕（关），或到达时间轴末尾即停止（开）",
@@ -869,5 +866,10 @@
   "PhysicsSetting.collidedFriction": "碰撞摩擦",
   "photon.emitter.config.physics.collidedFriction": "发生碰撞后的摩擦系数",
   "SamplerCurve": "曲线采样",
-  "SamplerGradient": "渐变采样"
+  "SamplerGradient": "渐变采样",
+  "photon.gui.editor.timeline.play.tip": "播放 / 暂停预览",
+  "photon.gui.editor.timeline.stop.tip": "停止并回到开头",
+  "photon.gui.editor.timeline.step_back.tip": "后退一 tick",
+  "photon.gui.editor.timeline.step_forward.tip": "前进一 tick",
+  "photon.gui.editor.timeline.to_end.tip": "跳到特效内容的末尾"
 }

@@ -22,4 +22,12 @@ public final class PhotonIcons {
     public static final IGuiTexture MARKER = Icons.icon(Photon.MOD_ID, "marker");
     public static final IGuiTexture RECORDING = Icons.icon(Photon.MOD_ID, "recording");
     public static final IGuiTexture PHOTON_PROJECT = Icons.icon(Photon.MOD_ID, "photon_project");
+
+    // Timeline transport, in the order they sit on the bar.
+    public static final SpriteTexture TRANSPORT_TO_START = Icons.icon(Photon.MOD_ID, "transport_to_start");
+    public static final SpriteTexture TRANSPORT_STEP_BACK = Icons.icon(Photon.MOD_ID, "transport_step_back");
+    public static final SpriteTexture TRANSPORT_PLAY = Icons.icon(Photon.MOD_ID, "transport_play");
+    public static final SpriteTexture TRANSPORT_PAUSE = Icons.icon(Photon.MOD_ID, "transport_pause");
+    public static final SpriteTexture TRANSPORT_STEP_FORWARD = Icons.icon(Photon.MOD_ID, "transport_step_forward");
+    public static final SpriteTexture TRANSPORT_TO_END = Icons.icon(Photon.MOD_ID, "transport_to_end");
 }
