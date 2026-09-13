@@ -375,12 +375,30 @@ public class TileParticleRenderer {
                                                           Camera camera, float partialTicks, Vector3f rotation) {
         var quaternion = renderMode.quaternion.apply(particle, camera, partialTicks);
         if (!Vector3fHelper.isZero(rotation)) {
-            quaternion = new Quaternionf(quaternion).rotateXYZ(rotation.x, rotation.y, rotation.z);
+            quaternion = new Quaternionf(quaternion).mul(eulerRotation(rotation));
         }
         return quaternion;
     }
 
-    private static Quaternionf computeModelQuaternion(TileParticle particle, Vector3f rotation) {
-        return new Quaternionf().rotateXYZ(rotation.x, rotation.y, rotation.z).mul(particle.getSpaceRotation());
+    /**
+     * A particle's own euler rotation (radians) as a quaternion, in <b>Unity's ZXY order</b>: roll,
+     * then pitch, then yaw.
+     *
+     * <p>NOT JOML's {@code rotateXYZ}, which was used here before: with {@code (90, y, 0)} the X term
+     * lays a mesh flat and ZXY makes Y a yaw <b>of that flat mesh</b>, where XYZ yaws it while still
+     * upright and lands it at a tilt. Roll is innermost either way, so rotation-over-lifetime keeps
+     * spinning a flat mesh in its own plane.</p>
+     */
+    public static Quaternionf eulerRotation(Vector3f rotation) {
+        return new Quaternionf().rotateY(rotation.y).rotateX(rotation.x).rotateZ(rotation.z);
+    }
+
+    /**
+     * A model particle's world orientation: the space rotation composed <b>outside</b> the particle's
+     * own, since it is what carries simulation space into the world. It used to be the inner term
+     * ({@code euler * space}), which made a rotated parent skew the mesh instead of carrying it.
+     */
+    public static Quaternionf computeModelQuaternion(TileParticle particle, Vector3f rotation) {
+        return particle.getSpaceRotation().mul(eulerRotation(rotation));
     }
 }
