@@ -20,6 +20,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.gui.ui.event.CommandEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.gui.LDLibFonts;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.PhotonRegistries;
@@ -776,7 +777,13 @@ public class FXTimelineView extends View implements TimelineContext {
             var mx = origin + (float) ((t - scrollTicks) * scale);
             if (mx < x || mx > x + width) continue;
             DrawerHelper.drawSolidRect(graphics, mx, y, 1, height, ColorPattern.GRAY.color);
-            DrawerHelper.drawText(graphics, String.valueOf(Math.round(t)), mx + 2, y + 3, 1f, ColorPattern.WHITE.color);
+            // the guard above places the tick LINE only; the label runs on from mx + 2. Dropping it
+            // beats overflowing the ruler, which would paint the digits over the panels either side.
+            var label = String.valueOf(Math.round(t));
+            var labelX = mx + 2;
+            if (rulerLabelFits(label, labelX, x, width)) {
+                DrawerHelper.drawText(graphics, label, labelX, y + 3, 1f, ColorPattern.WHITE.color);
+            }
         }
         drawContentExtent(graphics, x, y, width, height);
         drawPlayhead(graphics, x, y, width, height, partialTick);
@@ -792,6 +799,12 @@ public class FXTimelineView extends View implements TimelineContext {
         var endX = Math.min(x + width, origin + (float) ((contentMax - scrollTicks) * scale));
         if (endX <= startX) return;
         DrawerHelper.drawSolidRect(graphics, startX, y + height - 1, endX - startX, 1, ColorPattern.BLUE.color);
+    }
+
+    /** Whether a ruler label drawn at {@code labelX} fits inside {@code [x, x + width)} — its WIDTH
+     *  being the point, where the visibility guard used to consider only the 1px tick line. */
+    public static boolean rulerLabelFits(String label, float labelX, float x, float width) {
+        return labelX >= x && labelX + LDLibFonts.font().width(label) <= x + width;
     }
 
     private double niceInterval(double raw) {
