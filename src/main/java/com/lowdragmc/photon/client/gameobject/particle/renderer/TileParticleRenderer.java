@@ -2,6 +2,8 @@ package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.FacingMode;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.FacingOrientationHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
@@ -83,7 +85,7 @@ public class TileParticleRenderer {
         if (renderMode == ParticleRendererSetting.Mode.Model) {
             // mesh positions are already in centered model space (PhotonMesh convention)
             var transform = new Matrix4f().translate(x, y, z)
-                    .rotate(computeModelQuaternion(particle, rotation))
+                    .rotate(computeModelQuaternion(particle, rotation, camera, partialTicks))
                     .scale(size.mul(particle.getSpaceScale()));
             // draw 3d model
             var source = renderer.getModelSource();
@@ -230,7 +232,7 @@ public class TileParticleRenderer {
             var light = particle.getRealLight(partialTicks);
 
             if (renderMode == ParticleRendererSetting.Mode.Model) {
-                var quaternion = computeModelQuaternion(particle, rotation);
+                var quaternion = computeModelQuaternion(particle, rotation, camera, partialTicks);
                 // pos vec3
                 buffer.put(x).put(y).put(z);
                 // scale vec3
@@ -394,11 +396,20 @@ public class TileParticleRenderer {
     }
 
     /**
-     * A model particle's world orientation: the space rotation composed <b>outside</b> the particle's
-     * own, since it is what carries simulation space into the world. It used to be the inner term
-     * ({@code euler * space}), which made a rotated parent skew the mesh instead of carrying it.
+     * A model particle's world orientation: an outer term composed <b>outside</b> its own euler
+     * (inside — {@code euler * space} — made a rotated parent skew the mesh instead of carrying it).
+     * The outer term is the simulation space's rotation, unless a {@link FacingMode} replaces it;
+     * {@code DEFAULT} is "no facing" for a model, where on a billboard it means "face the camera".
      */
-    public static Quaternionf computeModelQuaternion(TileParticle particle, Vector3f rotation) {
-        return particle.getSpaceRotation().mul(eulerRotation(rotation));
+    private static Quaternionf computeModelQuaternion(TileParticle particle, Vector3f rotation,
+                                                      Camera camera, float partialTicks) {
+        // the particle's own runtime, as the Billboard lambda does: a facing override needs no extra pass
+        var renderer = particle.getRuntime().renderer;
+        var facing = renderer.getFacingMode();
+        var outer = facing == FacingMode.DEFAULT
+                ? particle.getSpaceRotation()
+                : new Quaternionf(FacingOrientationHelper.compute(
+                        facing, renderer.getFacingDirection(), particle, camera, partialTicks));
+        return outer.mul(eulerRotation(rotation));
     }
 }
