@@ -215,6 +215,32 @@ public class ParticleEmitter extends Emitter {
                     o -> ((ParticleEmitter) o).runtime().rotationBySpeed.pitch),
             new RuntimeBinding("rotationBySpeed.yaw", "RotationBySpeedSetting.yaw", ConfigValueType.NUMBER_FUNCTION,
                     o -> ((ParticleEmitter) o).runtime().rotationBySpeed.yaw),
+            new RuntimeBinding("noise2.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().noise2.enable),
+            new RuntimeBinding("noise2.strengthAxes", "Noise2Setting.strength", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().noise2.strengthAxes),
+            new RuntimeBinding("noise2.frequency", "Noise2Setting.frequency", ConfigValueType.FLOAT,
+                    o -> ((ParticleEmitter) o).runtime().noise2.frequency),
+            new RuntimeBinding("noise2.scrollSpeed", "Noise2Setting.scrollSpeed", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().noise2.scrollSpeed),
+            new RuntimeBinding("noise2.damping", "Noise2Setting.damping", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().noise2.damping),
+            new RuntimeBinding("noise2.octaveCount", "Noise2Setting.octaveCount", ConfigValueType.INT,
+                    o -> ((ParticleEmitter) o).runtime().noise2.octaveCount),
+            new RuntimeBinding("noise2.octaveMultiplier", "Noise2Setting.octaveMultiplier", ConfigValueType.FLOAT,
+                    o -> ((ParticleEmitter) o).runtime().noise2.octaveMultiplier),
+            new RuntimeBinding("noise2.octaveScale", "Noise2Setting.octaveScale", ConfigValueType.FLOAT,
+                    o -> ((ParticleEmitter) o).runtime().noise2.octaveScale),
+            new RuntimeBinding("noise2.remapEnabled", "Noise2Setting.remap", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().noise2.remapEnabled),
+            new RuntimeBinding("noise2.remapAxes", "Noise2Setting.remapCurve", ConfigValueType.NUMBER_FUNCTION3,
+                    o -> ((ParticleEmitter) o).runtime().noise2.remapAxes),
+            new RuntimeBinding("noise2.positionAmount", "Noise2Setting.positionAmount", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().noise2.positionAmount),
+            new RuntimeBinding("noise2.rotationAmount", "Noise2Setting.rotationAmount", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().noise2.rotationAmount),
+            new RuntimeBinding("noise2.sizeAmount", "Noise2Setting.sizeAmount", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().noise2.sizeAmount),
             new RuntimeBinding("noise.frequency", "NoiseSetting.frequency", ConfigValueType.FLOAT,
                     o -> ((ParticleEmitter) o).runtime().noise.frequency),
             new RuntimeBinding("noise.position", "NoiseSetting.position", ConfigValueType.NUMBER_FUNCTION3,
@@ -485,6 +511,7 @@ public class ParticleEmitter extends Emitter {
     }
 
     public void emitParticle(float dt) {
+        runtime().noise2.advance(this, dt);
         // calculate distance (scaled by this step's dt)
         accumulatedDistance += getVelocity().length() * dt;
         // emit new particle (maxParticles may be timeline-overridden; authored value is the fallback)
