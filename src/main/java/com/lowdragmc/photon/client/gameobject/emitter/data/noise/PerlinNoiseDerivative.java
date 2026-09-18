@@ -22,9 +22,9 @@ public final class PerlinNoiseDerivative {
         184, 84, 204, 176, 115, 121, 50, 45, 127, 4, 150, 254, 138, 236, 205, 93,
         222, 114, 67, 29, 24, 72, 243, 141, 128, 195, 78, 66, 215, 61, 156, 180
     };
-    private static final double SQRT_TWO = Math.sqrt(2);
-    private static final double[] GRADIENT_X_2D = {SQRT_TWO, -SQRT_TWO, 0, 0, 1, -1, 1, -1};
-    private static final double[] GRADIENT_Y_2D = {0, 0, SQRT_TWO, -SQRT_TWO, 1, 1, -1, -1};
+    private static final float SQRT_TWO = (float) Math.sqrt(2);
+    private static final float[] GRADIENT_X_2D = {SQRT_TWO, -SQRT_TWO, 0, 0, 1, -1, 1, -1};
+    private static final float[] GRADIENT_Y_2D = {0, 0, SQRT_TWO, -SQRT_TWO, 1, 1, -1, -1};
 
     private PerlinNoiseDerivative() {
     }
@@ -33,12 +33,14 @@ public final class PerlinNoiseDerivative {
         return PERMUTATION[index & 255];
     }
 
-    private static double fade(double t) {
+    private static final ThreadLocal<float[]> CORNERS = ThreadLocal.withInitial(() -> new float[32]);
+
+    private static float fade(float t) {
         return t * t * t * (t * (t * 6 - 15) + 10);
     }
 
-    private static double fadeDerivative(double t) {
-        return 30 * t * t * (t - 1) * (t - 1);
+    private static float fadeDerivative(float t) {
+        return 30 * t * t * (t * (t - 2) + 1);
     }
 
     public static Vector3f sample(double x, double y, double z, CurlNoise.Quality quality, Vector3f result) {
@@ -47,48 +49,63 @@ public final class PerlinNoiseDerivative {
         y -= Math.floor(y / 256) * 256;
         z -= Math.floor(z / 256) * 256;
         int ix = (int) Math.floor(x), iy = (int) Math.floor(y), iz = (int) Math.floor(z);
-        double tx = x - ix, ty = y - iy, tz = z - iz;
-        double ux = fade(tx), uy = fade(ty), uz = fade(tz);
-        double dx = fadeDerivative(tx), dy = fadeDerivative(ty), dz = fadeDerivative(tz);
+        float tx = (float) (x - ix), ty = (float) (y - iy), tz = (float) (z - iz);
+        float ux = fade(tx), uy = fade(ty), uz = fade(tz);
+        float dx = fadeDerivative(tx), dy = fadeDerivative(ty), dz = fadeDerivative(tz);
         if (quality == CurlNoise.Quality.Low) {
-            double a = (perm(ix) & 1) == 0 ? 2 : -2;
-            double b = (perm(ix + 1) & 1) == 0 ? 2 : -2;
-            return result.set((float) ((1 - ux) * a + ux * b + dx * (b * (tx - 1) - a * tx)), 0, 0);
+            float a = (perm(ix) & 1) == 0 ? 2 : -2;
+            float b = (perm(ix + 1) & 1) == 0 ? 2 : -2;
+            return result.set(a + dx * ((b - a) * tx - b) + ux * (b - a), 0, 0);
         }
         boolean twoDimensions = quality == CurlNoise.Quality.Medium;
-        double rx = 0, ry = 0, rz = 0;
-        for (int i = 0; i < 2; i++) {
-            double wx = i == 0 ? 1 - ux : ux, dwx = i == 0 ? -dx : dx;
+        var corners = CORNERS.get();
+        for (int k = 0; k < (twoDimensions ? 1 : 2); k++) {
             for (int j = 0; j < 2; j++) {
-                double wy = j == 0 ? 1 - uy : uy, dwy = j == 0 ? -dy : dy;
-                for (int k = 0; k < (twoDimensions ? 1 : 2); k++) {
-                    double wz = twoDimensions ? 1 : k == 0 ? 1 - uz : uz;
-                    double dwz = twoDimensions ? 0 : k == 0 ? -dz : dz;
+                for (int i = 0; i < 2; i++) {
                     int h = perm(perm(ix + i) + iy + j);
-                    double gx, gy, gz;
+                    float gx, gy, gz;
                     if (twoDimensions) {
                         gx = GRADIENT_X_2D[h & 7];
                         gy = GRADIENT_Y_2D[h & 7];
                         gz = 0;
                     } else {
                         h = perm(h + iz + k) & 15;
-                        // The final four lattice gradients use the 12,14,13,15 ordering.
                         if (h == 13) h = 14;
                         else if (h == 14) h = 13;
                         int u = h < 8 ? 0 : 1;
                         int v = h < 4 ? 1 : h == 12 || h == 14 ? 0 : 2;
-                        double gu = (h & 1) == 0 ? 1 : -1, gv = (h & 2) == 0 ? 1 : -1;
+                        float gu = (h & 1) == 0 ? 1 : -1, gv = (h & 2) == 0 ? 1 : -1;
                         gx = (u == 0 ? gu : 0) + (v == 0 ? gv : 0);
                         gy = (u == 1 ? gu : 0) + (v == 1 ? gv : 0);
                         gz = v == 2 ? gv : 0;
                     }
-                    double dot = gx * (tx - i) + gy * (ty - j) + gz * (tz - k);
-                    rx += dwx * wy * wz * dot + wx * wy * wz * gx;
-                    ry += wx * dwy * wz * dot + wx * wy * wz * gy;
-                    rz += wx * wy * dwz * dot + wx * wy * wz * gz;
+                    int index = (k * 4 + j * 2 + i) * 4;
+                    corners[index] = gx;
+                    corners[index + 1] = gy;
+                    corners[index + 2] = gz;
+                    corners[index + 3] = gx * (tx - i) + gy * (ty - j) + gz * (tz - k);
                 }
             }
         }
-        return result.set((float) rx, (float) ry, (float) rz);
+        // Interpolate value and its derivatives together, in float and in X/Y/Z order.
+        // Equivalent double-precision corner sums drift sooner in chaotic particle trajectories.
+        for (int k = 0; k < (twoDimensions ? 1 : 2); k++) {
+            for (int j = 0; j < 2; j++) interpolate(corners, (k * 4 + j * 2) * 4, (k * 4 + j * 2 + 1) * 4, 0, ux, dx);
+            interpolate(corners, k * 16, k * 16 + 8, 1, uy, dy);
+        }
+        if (!twoDimensions) interpolate(corners, 0, 16, 2, uz, dz);
+        return result.set(corners[0], corners[1], corners[2]);
+    }
+
+    private static void interpolate(float[] values, int a, int b, int axis, float weight, float derivative) {
+        float difference = values[b + 3] - values[a + 3];
+        for (int component = 0; component < 3; component++) {
+            float gradientDifference = values[b + component] - values[a + component];
+            float gradient = values[a + component];
+            float change = weight * gradientDifference;
+            if (component == axis) change += derivative * difference;
+            values[a + component] = gradient + change;
+        }
+        values[a + 3] += weight * difference;
     }
 }

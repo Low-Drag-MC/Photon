@@ -86,6 +86,8 @@ public abstract class FXObject extends Particle implements IFXObject {
     @Nullable
     @Getter
     protected IEffectExecutor effectExecutor;
+    @Getter
+    private long randomSeed;
     /**
      * Runtime wiring (set by {@code FXRuntime}, not persisted, not touched by {@link #reset()}): while
      * it returns true the particle engine must retain this object even if it is otherwise done — used
@@ -124,11 +126,12 @@ public abstract class FXObject extends Particle implements IFXObject {
     @Override
     public void setEffect(IEffectExecutor effectExecutor) {
         this.effectExecutor = effectExecutor;
-        random.setSeed(effectExecutor.getRandomSource().nextLong());
+        setRandomSeed(effectExecutor.getRandomSource().nextLong());
     }
 
     /** Reseed this object's RNG (used by control-track clips on restart). */
     public void setRandomSeed(long seed) {
+        this.randomSeed = seed;
         random.setSeed(seed);
     }
 

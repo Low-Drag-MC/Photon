@@ -12,7 +12,8 @@ public final class NoiseParticleState {
                        boolean rotation3D, float dt) {
         // Photon velocities and dt are in ticks; Noise 2 uses seconds and degrees/second.
         velocity.set(noise).mul(positionAmount / 20f);
-        float angle = rotationAmount * (float) (Math.PI / 180) * dt / 20f;
+        // Rotation consumes normalized curl (half the positional field), measured in degrees/s.
+        float angle = rotationAmount * (float) (Math.PI / 180) * dt / 40f;
         if (rotation3D) {
             rotation.fma(angle, noise);
         } else {

@@ -142,7 +142,9 @@ public class Noise2Setting extends ToggleGroup {
         public final RuntimeValue<NumberFunction> rotationAmount;
         public final RuntimeValue<NumberFunction> sizeAmount;
         private double scroll;
+        private double previousScroll;
         private int seed;
+        private final Vector3f seedOffset = CurlNoise.seedOffset(0, new Vector3f());
 
         public Runtime(Noise2Setting config) {
             enable = new RuntimeValue<>(config::isEnable);
@@ -167,38 +169,57 @@ public class Noise2Setting extends ToggleGroup {
 
         /** Called once before emission/parallel updates, including prewarm and seek replay. */
         public void advance(ParticleEmitter emitter, float dt) {
+            advance((int) emitter.getRandomSeed(), emitter.getT(),
+                    () -> emitter.getMemRandom("noise2-scroll"), dt);
+        }
+
+        public void advance(int emitterSeed, float emitterTime, Supplier<Float> random, float dt) {
             if (!isEnable()) return;
-            seed = (int) (emitter.getMemRandom("noise2-seed") * 0x1000000);
-            scroll += scrollSpeed.get().get(emitter.getT(), () -> emitter.getMemRandom("noise2-scroll")).doubleValue() * dt / 20;
+            if (seed != emitterSeed) {
+                seed = emitterSeed;
+                CurlNoise.seedOffset(seed, seedOffset);
+            }
+            previousScroll = scroll;
+            scroll += scrollSpeed.get().get(emitterTime, random).doubleValue() * dt / 20;
         }
 
         public Vector3f sample(Vector3f position, float lifetime, Supplier<Float> random, Vector3f result) {
-            sampleField(position, random, result);
-            result.mul(strengthAxes.get().get(lifetime, random));
-            return result.mul(CurlNoise.dampingScale(frequency.get(), damping.get()));
+            return sample(position, lifetime, random, 1, result);
         }
 
-        private Vector3f sampleField(Vector3f position, Supplier<Float> random, Vector3f result) {
-            if (!Float.isFinite(frequency.get()) || frequency.get() <= 0) return result.zero();
-            CurlNoise.sample(position.x, position.y, position.z, scroll, seed, frequency.get(), false,
+        public Vector3f sample(Vector3f position, float lifetime, Supplier<Float> random, float stepFraction, Vector3f result) {
+            double sampleScroll = previousScroll + (scroll - previousScroll) * stepFraction;
+            sampleField(position, random, sampleScroll, result);
+            return result.mul(strengthAxes.get().get(lifetime, random));
+        }
+
+        private Vector3f sampleField(Vector3f position, Supplier<Float> random, double sampleScroll, Vector3f result) {
+            if (!Float.isFinite(frequency.get()) || frequency.get() < 0) return result.zero();
+            CurlNoise.sample(position.x, position.y, position.z, sampleScroll, seedOffset, frequency.get(), false,
                     octaveCount.get(), octaveMultiplier.get(), octaveScale.get(), quality.get(), result);
             if (remapEnabled.get()) {
                 var axes = remapAxes.get();
-                result.set(remap(axes.x, result.x, random),
-                        remap(axes.y, result.y, random),
-                        remap(axes.z, result.z, random));
+                // Remap the signed [-2, 2] curl before the base-frequency derivative factor.
+                // Octave derivative scales remain in the signal; strength/damping follow remap.
+                float baseFrequency = Math.max(frequency.get(), 0.0001f);
+                float inputScale = 0.5f / baseFrequency;
+                result.set(2 * baseFrequency * remap(axes.x, result.x * inputScale, random),
+                        2 * baseFrequency * remap(axes.y, result.y * inputScale, random),
+                        2 * baseFrequency * remap(axes.z, result.z * inputScale, random));
             }
-            return result;
+            return result.mul(CurlNoise.dampingScale(frequency.get(), damping.get()));
         }
 
         private static float remap(NumberFunction curve, float value, Supplier<Float> random) {
             return curve.get(Mth.clamp((value + 1) * 0.5f, 0, 1), random).floatValue();
         }
 
-        public void updateParticle(TileParticle particle, NoiseParticleState state, float dt) {
-            float t = particle.getT();
+        public void updateParticle(TileParticle particle, NoiseParticleState state, float dt, float stepFraction) {
+            // Unity samples lifetime curves at the beginning of the simulation substep.
+            float t = particle.getLifetime() > 0 ? Math.max(0, particle.getT() - dt / particle.getLifetime()) : particle.getT();
             var value = sample(particle.getSimPosWithoutNoise(1), t,
-                    () -> particle.getMemRandom("noise2-strength"), new Vector3f());
+                    () -> particle.getMemRandom("noise2-strength"),
+                    stepFraction, new Vector3f());
             state.update(value,
                     positionAmount.get().get(t, () -> particle.getMemRandom("noise2-position")).floatValue(),
                     rotationAmount.get().get(t, () -> particle.getMemRandom("noise2-rotation")).floatValue(),
@@ -222,7 +243,9 @@ public class Noise2Setting extends ToggleGroup {
             rotationAmount.clear();
             sizeAmount.clear();
             scroll = 0;
+            previousScroll = 0;
             seed = 0;
+            CurlNoise.seedOffset(0, seedOffset);
         }
     }
 

@@ -8,6 +8,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.ValueSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.noise.NoiseParticleState;
+import com.lowdragmc.photon.client.gameobject.emitter.data.noise.CurlNoise;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRuntime;
@@ -81,6 +82,7 @@ public class TileParticle implements IParticle {
     protected Vector4f initialColor;
     @Nullable
     protected NoiseParticleState noise2State;
+    private float noise2StepFraction = 1;
     protected boolean isFirstCollision;
     @Getter
     protected ParticleConfig config;
@@ -156,7 +158,8 @@ public class TileParticle implements IParticle {
         setSize(initialSize);
         setRotation(initialRotation);
         setColor(initialColor);
-        update(1f);
+        // Noise 2 starts at the authored spawn position; initialization is not a simulated tick.
+        update(runtime.noise2.isEnable() ? 0 : 1f);
         updateOrigin();
 
         if (runtime.trails.isEnable() && emitter instanceof ParticleEmitter particleEmitter) {
@@ -448,15 +451,19 @@ public class TileParticle implements IParticle {
             }
             return;
         }
-        this.age += dt;
-        if (lifetime > 0) {
-            // recompute BEFORE update so curves sample this step's t (was one tick late), and clamp:
-            // fractional dt can push age past lifetime here, which previously produced t > 1
-            t = Math.min(age / lifetime, 1f);
+        int steps = runtime.noise2.isEnable() ? CurlNoise.substepCount(dt) : 1;
+        float stepDt = dt / steps;
+        for (int step = 0; step < steps; step++) {
+            this.age += stepDt;
+            if (lifetime > 0) {
+                t = Math.min(age / lifetime, 1f);
+            }
+            noise2StepFraction = (step + 1f) / steps;
+            // Curl depends on the position reached by the preceding substep. Sweep collisions
+            // and integrate other forces at the same timestep instead of averaging noise alone.
+            update(stepDt);
+            if (isRemoved()) break;
         }
-
-        // update data
-        update(dt);
 
         if (runtime.subEmitters.isEnable()) {
             runtime.subEmitters.triggerTickEvent(this, dt);
@@ -491,8 +498,8 @@ public class TileParticle implements IParticle {
     protected void updateChanges(float dt) {
         if (runtime.noise2.isEnable()) {
             if (noise2State == null) noise2State = new NoiseParticleState();
-            // setup() calls update(1) to initialize legacy modules; it is not elapsed simulation time.
-            runtime.noise2.updateParticle(this, noise2State, age == 0 ? 0 : dt);
+            // setup() initializes the modules without advancing the Noise 2 simulation.
+            runtime.noise2.updateParticle(this, noise2State, age == 0 ? 0 : dt, noise2StepFraction);
             if (age == 0) noise2State.velocity.zero();
         }
         this.updatePositionAndInternalVelocity(dt); // NEVER skipped: position/velocity accumulate
