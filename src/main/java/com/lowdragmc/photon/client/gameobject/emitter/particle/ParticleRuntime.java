@@ -9,6 +9,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.ForceOverLifetimeSett
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LifetimeByEmitterSpeedSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.NoiseSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.Noise2Setting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RotationBySpeedSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SizeBySpeedSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.UVAnimationSetting;
@@ -52,6 +53,7 @@ public class ParticleRuntime {
     public final SizeBySpeedSetting.Runtime sizeBySpeed;
     public final RotationBySpeedSetting.Runtime rotationBySpeed;
     public final NoiseSetting.Runtime noise;
+    public final Noise2Setting.Runtime noise2;
     public final UVAnimationSetting.Runtime uvAnimation;
     public final TrailsSetting.Runtime trails;
     public final SubEmittersSetting.Runtime subEmitters;
@@ -107,6 +109,7 @@ public class ParticleRuntime {
         this.sizeBySpeed = config.sizeBySpeed.createRuntime();
         this.rotationBySpeed = config.rotationBySpeed.createRuntime();
         this.noise = config.noise.createRuntime();
+        this.noise2 = config.noise2.createRuntime();
         this.uvAnimation = config.uvAnimation.createRuntime();
         this.trails = config.trails.createRuntime();
         this.subEmitters = config.subEmitters.createRuntime();
@@ -176,6 +179,7 @@ public class ParticleRuntime {
         sizeBySpeed.clear();
         rotationBySpeed.clear();
         noise.clear();
+        noise2.clear();
         uvAnimation.clear();
         trails.clear();
         subEmitters.clear();

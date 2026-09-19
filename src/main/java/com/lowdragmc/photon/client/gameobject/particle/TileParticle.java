@@ -7,6 +7,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRen
 import com.lowdragmc.photon.client.gameobject.emitter.data.ValueSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.noise.NoiseParticleState;
+import com.lowdragmc.photon.client.gameobject.emitter.data.noise.CurlNoise;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRuntime;
@@ -78,6 +80,9 @@ public class TileParticle implements IParticle {
     protected Vector3f initialSize;
     protected Vector3f initialRotation;
     protected Vector4f initialColor;
+    @Nullable
+    protected NoiseParticleState noise2State;
+    private float noise2StepFraction = 1;
     protected boolean isFirstCollision;
     @Getter
     protected ParticleConfig config;
@@ -153,7 +158,8 @@ public class TileParticle implements IParticle {
         setSize(initialSize);
         setRotation(initialRotation);
         setColor(initialColor);
-        update(1f);
+        // Noise 2 starts at the authored spawn position; initialization is not a simulated tick.
+        update(runtime.noise2.isEnable() ? 0 : 1f);
         updateOrigin();
 
         if (runtime.trails.isEnable() && emitter instanceof ParticleEmitter particleEmitter) {
@@ -445,15 +451,19 @@ public class TileParticle implements IParticle {
             }
             return;
         }
-        this.age += dt;
-        if (lifetime > 0) {
-            // recompute BEFORE update so curves sample this step's t (was one tick late), and clamp:
-            // fractional dt can push age past lifetime here, which previously produced t > 1
-            t = Math.min(age / lifetime, 1f);
+        int steps = runtime.noise2.isEnable() ? CurlNoise.substepCount(dt) : 1;
+        float stepDt = dt / steps;
+        for (int step = 0; step < steps; step++) {
+            this.age += stepDt;
+            if (lifetime > 0) {
+                t = Math.min(age / lifetime, 1f);
+            }
+            noise2StepFraction = (step + 1f) / steps;
+            // Curl depends on the position reached by the preceding substep. Sweep collisions
+            // and integrate other forces at the same timestep instead of averaging noise alone.
+            update(stepDt);
+            if (isRemoved()) break;
         }
-
-        // update data
-        update(dt);
 
         if (runtime.subEmitters.isEnable()) {
             runtime.subEmitters.triggerTickEvent(this, dt);
@@ -486,8 +496,15 @@ public class TileParticle implements IParticle {
     }
 
     protected void updateChanges(float dt) {
+        if (runtime.noise2.isEnable()) {
+            if (noise2State == null) noise2State = new NoiseParticleState();
+            // setup() initializes the modules without advancing the Noise 2 simulation.
+            runtime.noise2.updateParticle(this, noise2State, age == 0 ? 0 : dt, noise2StepFraction);
+            if (age == 0) noise2State.velocity.zero();
+        }
         this.updatePositionAndInternalVelocity(dt); // NEVER skipped: position/velocity accumulate
         if (PhotonParticleManager.isFastSimulation()) {
+            // Noise 2 rotation has already accumulated above, including unrendered seek steps.
             // seek replay of a tick that will never be rendered: color/rotation/light are pure
             // per-tick recomputes from initial values + curves (the final full ticks restore them
             // exactly). Size is NOT pure downstream when (a) collision reads the boundingBox that
@@ -514,10 +531,10 @@ public class TileParticle implements IParticle {
         var moveY = desiredY;
         var moveZ = desiredZ;
 
-        var level = emitter.getLevel();
-        if (runtime.physics.isEnable() && runtime.physics.hasCollision() && level != null &&
+        if (runtime.physics.isEnable() && runtime.physics.hasCollision() &&
                 (moveX != 0.0 || moveY != 0.0 || moveZ != 0.0) && moveX * moveX + moveY * moveY + moveZ * moveZ < MAXIMUM_COLLISION_VELOCITY_SQUARED) {
-            var vec3 = Entity.collideBoundingBox(null, new Vec3(moveX, moveY, moveZ), getRealBoundingBox(0), level, List.of());
+            // The render origin stays fixed for the frame; collision starts at each substep's position.
+            var vec3 = collideMovement(new Vec3(moveX, moveY, moveZ), getRealBoundingBox(runtime.noise2.isEnable() ? 1 : 0));
             moveX = (float) vec3.x;
             moveY = (float) vec3.y;
             moveZ = (float) vec3.z;
@@ -537,7 +554,7 @@ public class TileParticle implements IParticle {
             if (!fields.isEmpty()) {
                 var multiplier = runtime.externalForces.getMultiplier(this);
                 if (multiplier != 0) {
-                    var worldPos = getWorldPos();
+                    var worldPos = getWorldPos(runtime.noise2.isEnable() ? 1 : 0);
                     var worldVelocity = getSpaceTransform().transformDirection(new Vector3f(velocityX, velocityY, velocityZ));
                     var size = Math.max(sizeX, Math.max(sizeY, sizeZ));
                     for (var field : fields) {
@@ -577,6 +594,11 @@ public class TileParticle implements IParticle {
             this.velocityY *= collidedFriction;
             this.velocityZ *= collidedFriction;
         }
+    }
+
+    protected Vec3 collideMovement(Vec3 movement, AABB box) {
+        var level = emitter.getLevel();
+        return level == null ? movement : Entity.collideBoundingBox(null, movement, box, level, List.of());
     }
 
     private void updateCollisionBounce(boolean blockedX, boolean blockedY, boolean blockedZ) {
@@ -635,6 +657,7 @@ public class TileParticle implements IParticle {
      *     <li>{@code + forceOverLifetime} (Local: the spawn frame's axes, World: as-is)</li>
      *     <li>{@code + inheritVelocity} (CURRENT mode)</li>
      *     <li>{@code * velocityOverLifetime speed modifier}</li>
+     *     <li>{@code + simToWorld * noise2 velocity}</li>
      * </ol>
      * Must stay side-effect-free and cheap; it is called several times per tick/frame.
      */
@@ -657,11 +680,14 @@ public class TileParticle implements IParticle {
             var velocityMultiplier = runtime.velocityOverLifetime.getVelocityMultiplier(this);
             velocity.mul(velocityMultiplier);
         }
+        if (runtime.noise2.isEnable() && noise2State != null) {
+            velocity.add(getSpaceTransform().transformDirection(new Vector3f(noise2State.velocity)));
+        }
         return velocity;
     }
 
     protected void updateSize() {
-        if (runtime.sizeBySpeed.isEnable() || runtime.sizeOverLifetime.isEnable() || runtime.noise.isEnable()) {
+        if (runtime.sizeBySpeed.isEnable() || runtime.sizeOverLifetime.isEnable() || runtime.noise.isEnable() || noise2State != null) {
             var size = new Vector3f(initialSize);
             var mul = new Vector3f(1, 1, 1);
 
@@ -675,13 +701,16 @@ public class TileParticle implements IParticle {
             if (runtime.sizeOverLifetime.isEnable()) {
                 mul.mul(runtime.sizeOverLifetime.getSize(this, 0));
             }
+            if (runtime.noise2.isEnable() && noise2State != null) {
+                mul.mul(noise2State.size);
+            }
 
             setSize(size.mul(mul));
         }
     }
 
     protected void updateRotation() {
-        if (runtime.rotationOverLifetime.isEnable() || runtime.rotationBySpeed.isEnable() || runtime.noise.isEnable()) {
+        if (runtime.rotationOverLifetime.isEnable() || runtime.rotationBySpeed.isEnable() || runtime.noise.isEnable() || noise2State != null) {
             var rotation = new Vector3f(initialRotation);
 
             if (runtime.rotationOverLifetime.isEnable()) {
@@ -694,6 +723,9 @@ public class TileParticle implements IParticle {
 
             if (runtime.noise.isEnable()) {
                 rotation.add(runtime.noise.getRotation(this, 0));
+            }
+            if (runtime.noise2.isEnable() && noise2State != null) {
+                rotation.add(noise2State.rotation);
             }
 
             setRotation(rotation);
