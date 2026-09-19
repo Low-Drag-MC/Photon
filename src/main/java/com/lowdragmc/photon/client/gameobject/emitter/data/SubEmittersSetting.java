@@ -139,6 +139,8 @@ public class SubEmittersSetting extends ToggleGroup {
         Tick
     }
 
+    @Setter
+    @Getter
     public static class Emitter implements IConfigurable, IPersistedSerializable {
         @Nullable
         @Persisted

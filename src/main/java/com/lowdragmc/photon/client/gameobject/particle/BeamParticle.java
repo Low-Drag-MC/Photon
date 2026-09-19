@@ -74,6 +74,12 @@ public class BeamParticle implements IParticle {
     public void setup() {
         this.setDelay(runtime.startDelay.get());
         update();
+        // see TileParticle.setup: a delayed particle never reaches the seek's final full ticks, so
+        // the frame it first becomes visible on would otherwise carry unrecomputed birth values
+        if (PhotonParticleManager.isFastSimulation()) {
+            this.updateColor();
+            this.updateLight();
+        }
         updateOrigin();
     }
 
