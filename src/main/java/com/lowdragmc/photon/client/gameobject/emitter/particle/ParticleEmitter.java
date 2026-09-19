@@ -239,6 +239,8 @@ public class ParticleEmitter extends Emitter {
                     o -> ((ParticleEmitter) o).runtime().noise2.positionAmount),
             new RuntimeBinding("noise2.rotationAmount", "Noise2Setting.rotationAmount", ConfigValueType.NUMBER_FUNCTION,
                     o -> ((ParticleEmitter) o).runtime().noise2.rotationAmount),
+            new RuntimeBinding("noise2.rotation3D", "Noise2Setting.rotation3D", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().noise2.rotation3D),
             new RuntimeBinding("noise2.sizeAmount", "Noise2Setting.sizeAmount", ConfigValueType.NUMBER_FUNCTION,
                     o -> ((ParticleEmitter) o).runtime().noise2.sizeAmount),
             new RuntimeBinding("noise.frequency", "NoiseSetting.frequency", ConfigValueType.FLOAT,
@@ -511,7 +513,6 @@ public class ParticleEmitter extends Emitter {
     }
 
     public void emitParticle(float dt) {
-        runtime().noise2.advance(this, dt);
         // calculate distance (scaled by this step's dt)
         accumulatedDistance += getVelocity().length() * dt;
         // emit new particle (maxParticles may be timeline-overridden; authored value is the fallback)
@@ -534,6 +535,21 @@ public class ParticleEmitter extends Emitter {
                 particles.computeIfAbsent(p.getRenderType(), type -> new ArrayDeque<>(Math.min(maxParticles, 256))).add(p);
             }
             waitToAdded.clear();
+        }
+
+        if (runtime().noise2.isEnable()) {
+            boolean hasParticles = false;
+            for (var queue : particles.values()) {
+                for (var particle : queue) {
+                    if (particle instanceof TileParticle tile && tile.isAlive() && tile.getDelay() <= 0
+                            && (tile.getLifetime() <= 0 || tile.getAge() < tile.getLifetime())) {
+                        hasParticles = true;
+                        break;
+                    }
+                }
+                if (hasParticles) break;
+            }
+            runtime().noise2.advance(this, dt, hasParticles);
         }
 
         var parallelAllowed = useParallelUpdate();

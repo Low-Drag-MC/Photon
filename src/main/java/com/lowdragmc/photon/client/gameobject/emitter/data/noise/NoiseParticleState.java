@@ -17,9 +17,9 @@ public final class NoiseParticleState {
         if (rotation3D) {
             rotation.fma(angle, noise);
         } else {
-            rotation.z += noise.x * angle; // billboard roll is the Z component in Photon
+            rotation.z += noise.z * angle;
         }
-        // Noise's strength/remap axis controls do not select the particle's size dimensionality.
-        size.set(Math.max(0, 1 + noise.x * sizeAmount));
+        // Size consumes the same normalized amplitude as rotation, using the X channel.
+        size.set(Math.max(0, 1 + noise.x * 0.5f * sizeAmount));
     }
 }

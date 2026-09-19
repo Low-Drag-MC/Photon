@@ -884,10 +884,12 @@
   "Noise2Setting.remapCurve": "重映射曲线",
   "Noise2Setting.positionAmount": "位置影响量",
   "Noise2Setting.rotationAmount": "旋转影响量",
+  "Noise2Setting.rotation3D": "三维旋转",
+  "photon.emitter.config.noise2.rotation3D": "关闭时噪声只影响Z轴旋转；开启时影响XYZ旋转。模型和广告牌均可使用。",
   "Noise2Setting.sizeAmount": "尺寸影响量",
   "photon.emitter.config.noise2.strength": "随粒子寿命变化的噪声强度，可在编辑器中选择全部合一或分离轴。",
-  "photon.emitter.config.noise2.frequency": "空间频率。低值产生大范围平滑湍流，高值增加细节。零值关闭基础噪声场。",
-  "photon.emitter.config.noise2.scrollSpeed": "每秒滚动噪声场，与粒子寿命无关。曲线随发射器周期变化。零值固定噪声场，粒子仍会受场影响而移动。",
+  "photon.emitter.config.noise2.frequency": "空间频率。低值产生大范围平滑湍流，高值增加细节。零值按极小正频率计算；关闭模块或将强度设为零可停止影响。",
+  "photon.emitter.config.noise2.scrollSpeed": "每秒滚动噪声场，速度曲线随发射器周期变化。没有活粒子时暂停滚动。零值冻结噪声场，但粒子仍可在场中运动。",
   "photon.emitter.config.noise2.damping": "按频率的倒数调整强度，保持不同空间尺度下的运动形态。",
   "photon.emitter.config.noise2.octaveCount": "叠加1至4层噪声。更多层数增加细节与计算开销。",
   "photon.emitter.config.noise2.octaveMultiplier": "每增加一层，强度乘以此值。",
@@ -896,6 +898,6 @@
   "photon.emitter.config.noise2.remap": "在应用强度之前重映射有符号噪声。默认曲线保留-1至1范围内的值。",
   "photon.emitter.config.noise2.remapCurve": "可使用统一或XYZ独立曲线重映射噪声。曲线横轴0至1对应输入噪声-1至1。",
   "photon.emitter.config.noise2.positionAmount": "噪声对运动的影响量。零值保留旋转和尺寸效果。曲线随粒子寿命变化。",
-  "photon.emitter.config.noise2.rotationAmount": "噪声缩放后的角速度，单位为度/秒。广告牌绕Z轴旋转，模型使用XYZ旋转。曲线随粒子寿命变化。",
-  "photon.emitter.config.noise2.sizeAmount": "尺寸相对变化：尺寸乘以max(0, 1 + 噪声 × 影响量)。曲线随粒子寿命变化。"
+  "photon.emitter.config.noise2.rotationAmount": "噪声缩放后的角速度，单位为度/秒。默认绕Z轴旋转，启用三维旋转后使用XYZ旋转，与渲染模式无关。曲线随粒子寿命变化。",
+  "photon.emitter.config.noise2.sizeAmount": "尺寸的相对变化幅度，使用与旋转相同的归一化噪声。曲线随粒子寿命变化。"
 }

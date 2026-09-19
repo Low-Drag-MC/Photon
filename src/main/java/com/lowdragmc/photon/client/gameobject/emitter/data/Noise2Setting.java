@@ -15,7 +15,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveCon
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.ECBCurves;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
-import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import lombok.Getter;
 import lombok.Setter;
@@ -29,6 +28,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector3f;
 
+import java.util.Arrays;
 import java.util.function.Supplier;
 
 /** Unity-style spatial turbulence, independent of the legacy lifetime-based {@link NoiseSetting}. */
@@ -76,6 +76,9 @@ public class Noise2Setting extends ToggleGroup {
     @Configurable(name = "Noise2Setting.rotationAmount", tips = "photon.emitter.config.noise2.rotationAmount")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 10, curveConfig = @CurveConfig(bound = {0, 180}, xAxis = "lifetime", yAxis = "degrees/second"))
     protected NumberFunction rotationAmount = NumberFunction.constant(0);
+
+    @Configurable(name = "Noise2Setting.rotation3D", tips = "photon.emitter.config.noise2.rotation3D")
+    protected boolean rotation3D;
 
     @Configurable(name = "Noise2Setting.sizeAmount", tips = "photon.emitter.config.noise2.sizeAmount")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "lifetime", yAxis = "size amount"))
@@ -141,8 +144,10 @@ public class Noise2Setting extends ToggleGroup {
         public final RuntimeValue<NumberFunction> positionAmount;
         public final RuntimeValue<NumberFunction> rotationAmount;
         public final RuntimeValue<NumberFunction> sizeAmount;
+        public final RuntimeValue<Boolean> rotation3D;
         private double scroll;
-        private double previousScroll;
+        private double[] stepScroll = new double[2];
+        private int scrollSteps = 1;
         private int seed;
         private final Vector3f seedOffset = CurlNoise.seedOffset(0, new Vector3f());
 
@@ -161,35 +166,44 @@ public class Noise2Setting extends ToggleGroup {
             positionAmount = new RuntimeValue<>(() -> config.positionAmount);
             rotationAmount = new RuntimeValue<>(() -> config.rotationAmount);
             sizeAmount = new RuntimeValue<>(() -> config.sizeAmount);
+            rotation3D = new RuntimeValue<>(() -> config.rotation3D);
         }
 
         public boolean isEnable() {
             return enable.get();
         }
 
-        /** Called once before emission/parallel updates, including prewarm and seek replay. */
-        public void advance(ParticleEmitter emitter, float dt) {
-            advance((int) emitter.getRandomSeed(), emitter.getT(),
-                    () -> emitter.getMemRandom("noise2-scroll"), dt);
+        /** Called after emission and before parallel particle updates. */
+        public void advance(ParticleEmitter emitter, float dt, boolean hasParticles) {
+            advance((int) emitter.getRandomSeed(), emitter.getT(), emitter.getLifetime(), emitter.isLooping(),
+                    () -> emitter.getMemRandom("noise2-scroll"), dt, hasParticles);
         }
 
-        public void advance(int emitterSeed, float emitterTime, Supplier<Float> random, float dt) {
+        public void advance(int emitterSeed, float emitterTime, float duration, boolean looping,
+                            Supplier<Float> random, float dt, boolean hasParticles) {
             if (!isEnable()) return;
             if (seed != emitterSeed) {
                 seed = emitterSeed;
                 CurlNoise.seedOffset(seed, seedOffset);
             }
-            previousScroll = scroll;
-            scroll += scrollSpeed.get().get(emitterTime, random).doubleValue() * dt / 20;
-        }
-
-        public Vector3f sample(Vector3f position, float lifetime, Supplier<Float> random, Vector3f result) {
-            return sample(position, lifetime, random, 1, result);
+            scrollSteps = CurlNoise.substepCount(dt);
+            if (stepScroll.length <= scrollSteps) stepScroll = new double[scrollSteps + 1];
+            stepScroll[0] = scroll;
+            float stepDt = dt / scrollSteps;
+            for (int step = 1; step <= scrollSteps; step++) {
+                if (hasParticles) {
+                    // Unity evaluates scroll speed at the end of each substep, unlike strength.
+                    float t = duration > 0 ? emitterTime + stepDt * step / duration : 0;
+                    t = looping ? t - (float) Math.floor(t) : Mth.clamp(t, 0, 1);
+                    scroll += scrollSpeed.get().get(t, random).doubleValue() * stepDt / 20;
+                }
+                stepScroll[step] = scroll;
+            }
         }
 
         public Vector3f sample(Vector3f position, float lifetime, Supplier<Float> random, float stepFraction, Vector3f result) {
-            double sampleScroll = previousScroll + (scroll - previousScroll) * stepFraction;
-            sampleField(position, random, sampleScroll, result);
+            int step = Math.clamp(Math.round(stepFraction * scrollSteps), 0, scrollSteps);
+            sampleField(position, random, stepScroll[step], result);
             return result.mul(strengthAxes.get().get(lifetime, random));
         }
 
@@ -224,7 +238,7 @@ public class Noise2Setting extends ToggleGroup {
                     positionAmount.get().get(t, () -> particle.getMemRandom("noise2-position")).floatValue(),
                     rotationAmount.get().get(t, () -> particle.getMemRandom("noise2-rotation")).floatValue(),
                     sizeAmount.get().get(t, () -> particle.getMemRandom("noise2-size")).floatValue(),
-                    particle.getRuntime().renderer.getRenderMode() == ParticleRendererSetting.Mode.Model, dt);
+                    rotation3D.get(), dt);
         }
 
         public void clear() {
@@ -242,8 +256,10 @@ public class Noise2Setting extends ToggleGroup {
             positionAmount.clear();
             rotationAmount.clear();
             sizeAmount.clear();
+            rotation3D.clear();
             scroll = 0;
-            previousScroll = 0;
+            Arrays.fill(stepScroll, 0);
+            scrollSteps = 1;
             seed = 0;
             CurlNoise.seedOffset(0, seedOffset);
         }
@@ -278,10 +294,15 @@ public class Noise2Setting extends ToggleGroup {
             }
             previousTime = now;
             var key = new PreviewKey(frequency, quality, octaveCount, octaveMultiplier,
-                    octaveScale, damping, copyAxes(strengthAxes), remap.isEnable(), copyAxes(remap.axes));
+                    octaveScale, damping, strengthAxes, remap.isEnable(), remap.axes);
             boolean scrolling = scrollSpeed.get(0, () -> 0.5f).floatValue() != 0;
-            if (key.equals(previousKey) && (!scrolling || now - previousSampleTime < 16_666_667)) return;
-            previousKey = key;
+            boolean changed = !key.equals(previousKey);
+            if (!changed && (!scrolling || now - previousSampleTime < 16_666_667)) return;
+            if (changed) {
+                // Snapshot mutable curves only when edited; scrolling does not change the key.
+                previousKey = new PreviewKey(frequency, quality, octaveCount, octaveMultiplier,
+                        octaveScale, damping, copyAxes(strengthAxes), remap.isEnable(), copyAxes(remap.axes));
+            }
             previousSampleTime = now;
             var value = new Vector3f();
             var strength = strengthAxes.get(0, () -> 0.5f);

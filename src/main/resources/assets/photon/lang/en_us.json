@@ -894,10 +894,12 @@
   "Noise2Setting.remapCurve": "Remap Curve",
   "Noise2Setting.positionAmount": "Position Amount",
   "Noise2Setting.rotationAmount": "Rotation Amount",
+  "Noise2Setting.rotation3D": "3D Rotation",
+  "photon.emitter.config.noise2.rotation3D": "When disabled, noise rotates around Z. When enabled, noise rotates on XYZ. Both models and billboards support either mode.",
   "Noise2Setting.sizeAmount": "Size Amount",
   "photon.emitter.config.noise2.strength": "Noise strength over particle lifetime. The editor supports shared or independent XYZ values.",
-  "photon.emitter.config.noise2.frequency": "Spatial frequency. Low values produce broad, smooth turbulence; high values produce fine detail. Zero disables the base field.",
-  "photon.emitter.config.noise2.scrollSpeed": "Move the noise field per second, independently of particle lifetime. Curves follow emitter duration. Zero freezes the field, not particles moving through it.",
+  "photon.emitter.config.noise2.frequency": "Spatial frequency. Low values produce broad turbulence; high values add detail. Zero uses a small positive frequency. Disable the module or set strength to zero to stop its influence.",
+  "photon.emitter.config.noise2.scrollSpeed": "Scroll the noise field per second. Speed curves follow emitter duration. Scrolling pauses without live particles. Zero freezes the field while particles can still move through it.",
   "photon.emitter.config.noise2.damping": "Reduce strength in inverse proportion to frequency to preserve the shape of motion at different scales.",
   "photon.emitter.config.noise2.octaveCount": "Combine 1 to 4 noise layers. More layers add detail and simulation cost.",
   "photon.emitter.config.noise2.octaveMultiplier": "Multiply the strength of each additional octave by this value.",
@@ -906,6 +908,6 @@
   "photon.emitter.config.noise2.remap": "Reshape signed noise before applying strength. The default curves preserve values in the -1 to 1 range.",
   "photon.emitter.config.noise2.remapCurve": "Remap noise with shared or independent XYZ curves. Curve X from 0 to 1 represents input noise from -1 to 1.",
   "photon.emitter.config.noise2.positionAmount": "Noise influence on movement. Zero leaves only rotation and size effects. Curves follow particle lifetime.",
-  "photon.emitter.config.noise2.rotationAmount": "Angular speed in degrees/second, scaled by noise. Billboards roll around Z; models rotate on XYZ. Curves follow particle lifetime.",
-  "photon.emitter.config.noise2.sizeAmount": "Relative size variation: size is multiplied by max(0, 1 + noise * amount). Curves follow particle lifetime."
+  "photon.emitter.config.noise2.rotationAmount": "Angular speed in degrees/second, scaled by noise. Uses Z rotation by default, or XYZ when 3D Rotation is enabled, independently of render mode. Curves follow particle lifetime.",
+  "photon.emitter.config.noise2.sizeAmount": "Relative size variation using the same normalized noise amplitude as rotation. Curves follow particle lifetime."
 }

@@ -531,10 +531,10 @@ public class TileParticle implements IParticle {
         var moveY = desiredY;
         var moveZ = desiredZ;
 
-        var level = emitter.getLevel();
-        if (runtime.physics.isEnable() && runtime.physics.hasCollision() && level != null &&
+        if (runtime.physics.isEnable() && runtime.physics.hasCollision() &&
                 (moveX != 0.0 || moveY != 0.0 || moveZ != 0.0) && moveX * moveX + moveY * moveY + moveZ * moveZ < MAXIMUM_COLLISION_VELOCITY_SQUARED) {
-            var vec3 = Entity.collideBoundingBox(null, new Vec3(moveX, moveY, moveZ), getRealBoundingBox(0), level, List.of());
+            // The render origin stays fixed for the frame; collision starts at each substep's position.
+            var vec3 = collideMovement(new Vec3(moveX, moveY, moveZ), getRealBoundingBox(runtime.noise2.isEnable() ? 1 : 0));
             moveX = (float) vec3.x;
             moveY = (float) vec3.y;
             moveZ = (float) vec3.z;
@@ -554,7 +554,7 @@ public class TileParticle implements IParticle {
             if (!fields.isEmpty()) {
                 var multiplier = runtime.externalForces.getMultiplier(this);
                 if (multiplier != 0) {
-                    var worldPos = getWorldPos();
+                    var worldPos = getWorldPos(runtime.noise2.isEnable() ? 1 : 0);
                     var worldVelocity = getSpaceTransform().transformDirection(new Vector3f(velocityX, velocityY, velocityZ));
                     var size = Math.max(sizeX, Math.max(sizeY, sizeZ));
                     for (var field : fields) {
@@ -594,6 +594,11 @@ public class TileParticle implements IParticle {
             this.velocityY *= collidedFriction;
             this.velocityZ *= collidedFriction;
         }
+    }
+
+    protected Vec3 collideMovement(Vec3 movement, AABB box) {
+        var level = emitter.getLevel();
+        return level == null ? movement : Entity.collideBoundingBox(null, movement, box, level, List.of());
     }
 
     private void updateCollisionBounce(boolean blockedX, boolean blockedY, boolean blockedZ) {
