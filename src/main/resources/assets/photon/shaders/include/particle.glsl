@@ -23,19 +23,19 @@ uniform samplerBuffer PhotonCustomData;
 
 #elif defined(PARTICLE_MODEL_INSTANCE)
 
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec2 aUV;
+// The mesh arrives as THREE separate buffers, one per PhotonMesh stream, because only the geometry one
+// changes when a mesh deforms (see PhotonMesh / ParticleInstanceRenderer). Locations are unaffected by
+// that split — a VAO can source each attribute from a different buffer — so the per-instance attributes
+// stay at 4..8 and PhotonGpuChannels.Kind.TILE_MODEL's channel base stays at 9, which is what the
+// additional-data attributes a hand-written shader declares are numbered against.
+layout(location = 0) in vec3 aPos;     // geometry stream
+// attribute stream: xy = uv, z = per-face shade brightness. Brightness rides here rather than taking a
+// location of its own for the reason above — 4..8 and 9+ are not ours to shift.
+layout(location = 1) in vec3 aUV;
+layout(location = 2) in vec3 aNormal;  // geometry stream
 #ifdef PHOTON_TANGENT
-// The emitter's "Tangent" renderer setting is ON, so tangent vertex data is uploaded. Brightness moves
-// into aNormal.w so the tangent costs no EXTRA attribute location — the mesh still uses locations 0..3,
-// the per-instance attributes stay at 4..8 and PhotonGpuChannels.Kind.TILE_MODEL's channel base at 9.
-layout(location = 2) in vec4 aNormal;  // xyz = normal, w = per-face shade brightness
+// The emitter's "Tangent" renderer setting is ON, so the tangent stream is uploaded and bound.
 layout(location = 3) in vec4 aTangent; // xyz = tangent (dP/du), w = handedness
-#else
-// Setting off: byte-for-byte the pre-tangent layout. Nothing is uploaded, nothing is generated, and a
-// hand-written shader written against the old layout still links.
-layout(location = 2) in vec3 aNormal;
-layout(location = 3) in float aBrightness;
 #endif
 
 layout(location = 4) in vec3 iPos;
@@ -222,17 +222,18 @@ ParticleData getParticleData() {
 #elif defined(PARTICLE_MODEL_INSTANCE)
 
     mat3 rotMat = quatToMat(iRot);
-    // aPos is already in centered model space (PhotonMesh convention)
+    // aPos is already in centered model space (PhotonMesh convention); the model pivot is folded into
+    // iPos on the CPU (TileParticleRenderer.uploadInstances), so the mesh buffer holds only the mesh
     data.Position = (rotMat * (aPos * iScale)) + iPos;
-    data.UV = aUV;
+    data.UV = aUV.xy;
     // vanilla UV2 order is (block, sky); java packs sky<<20 | block<<4
     data.LightUV = ivec2(iLight & 0xFFFF, (iLight >> 16) & 0xFFFF);
     // object space: the mesh's own centered model-space vertex + normal
     data.ObjectPosition = aPos;
+    data.Color = vec4(iColor.rgb * aUV.z, iColor.a);
+    data.Normal = normalize(rotMat * aNormal);
+    data.ObjectNormal = aNormal;
 #ifdef PHOTON_TANGENT
-    data.Color = vec4(iColor.rgb * aNormal.w, iColor.a);
-    data.Normal = normalize(rotMat * aNormal.xyz);
-    data.ObjectNormal = aNormal.xyz;
     // Like Normal above, the tangent is ROTATED but not scaled — iScale is deliberately left out of
     // both (a long-standing simplification; the CPU path uses a real normal matrix). The frame therefore
     // lives in the mesh's own unscaled space and keeps the mesh's own handedness. Flipping w for a
@@ -242,10 +243,7 @@ ParticleData getParticleData() {
     data.Tangent = vec4(normalize(rotMat * aTangent.xyz), aTangent.w);
     data.ObjectTangent = aTangent;
 #else
-    data.Color = vec4(iColor.rgb * aBrightness, iColor.a);
-    data.Normal = normalize(rotMat * aNormal);
-    data.ObjectNormal = aNormal;
-    // the emitter's Tangent setting is off, so no tangent data was uploaded
+    // the emitter's Tangent setting is off, so no tangent stream was uploaded
     data.Tangent = PHOTON_NO_TANGENT;
     data.ObjectTangent = data.Tangent;
 #endif

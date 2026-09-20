@@ -24,13 +24,18 @@ class GltfMeshParserTest {
         return "data:application/octet-stream;base64," + Base64.getEncoder().encodeToString(bytes.array());
     }
 
-    private static float vertex(PhotonMesh mesh, int quad, int corner, int component) {
-        return mesh.vertices()[PhotonMesh.vertexOffset(quad, corner) + component];
+    /** {@code component} indexes the geometry stream: 0..2 position, 3..5 normal. */
+    private static float geometry(PhotonMesh mesh, int vertex, int component) {
+        return mesh.geometry()[PhotonMesh.geometryOffset(vertex) + component];
     }
 
-    /** Every fixture here is a single triangle, so the quad index is always 0. */
-    private static float tangent(PhotonMesh mesh, int corner, int component) {
-        return mesh.tangents()[PhotonMesh.tangentOffset(0, corner) + component];
+    /** {@code component} indexes the attribute stream: 0 u, 1 v, 2 shade. */
+    private static float attribute(PhotonMesh mesh, int vertex, int component) {
+        return mesh.attributes()[PhotonMesh.attributeOffset(vertex) + component];
+    }
+
+    private static float tangent(PhotonMesh mesh, int vertex, int component) {
+        return mesh.tangents()[PhotonMesh.tangentOffset(vertex) + component];
     }
 
     /**
@@ -75,11 +80,77 @@ class GltfMeshParserTest {
     @Test
     void readsPositionsNormalsAndUvs() throws IOException {
         var mesh = parse(gltf("", "", "", BASE));
-        assertEquals(1, mesh.quadCount());
-        assertTrue(mesh.isTriangle(0), "a glTF triangle is stored as a degenerate quad");
-        assertEquals(1f, vertex(mesh, 0, 1, 0), 1e-5f, "second corner x");
-        assertEquals(1f, vertex(mesh, 0, 1, 3), 1e-5f, "second corner u");
-        assertEquals(1f, vertex(mesh, 0, 0, 7), 1e-5f, "normal z");
+        assertEquals(1, mesh.triangleCount());
+        assertEquals(3, mesh.vertexCount());
+        assertArrayEquals(new int[]{0, 1, 2}, mesh.indices());
+        assertFalse(mesh.quadPaired(0), "glTF authors triangles, never quads");
+        assertEquals(1f, geometry(mesh, 1, 0), 1e-5f, "second vertex x");
+        assertEquals(1f, attribute(mesh, 1, 0), 1e-5f, "second vertex u");
+        assertEquals(1f, geometry(mesh, 0, 5), 1e-5f, "normal z");
+    }
+
+    /**
+     * ⭐ The file's own vertex numbering survives. An indexed quad is 4 vertices and 6 indices, not the
+     * 6 vertices de-indexing it would produce — which matters beyond the saving, because that numbering
+     * is what a skinned glTF's JOINTS_0/WEIGHTS_0 are addressed by.
+     */
+    @Test
+    void keepsTheFilesVertexSharing() throws IOException {
+        var mesh = parse(indexedQuad(true));
+        assertEquals(2, mesh.triangleCount());
+        assertEquals(4, mesh.vertexCount(), "the quad's 4 shared vertices, not 2x3 loose ones");
+        assertArrayEquals(new int[]{0, 1, 2, 0, 2, 3}, mesh.indices());
+    }
+
+    /**
+     * A primitive with no {@code NORMAL} is the one case that has to be de-indexed: the normal comes
+     * from Newell's method over the <b>face</b>, and no two faces can share that.
+     */
+    @Test
+    void aPrimitiveWithoutNormalsIsDeIndexedForFlatShading() throws IOException {
+        var mesh = parse(indexedQuad(false));
+        assertEquals(2, mesh.triangleCount());
+        assertEquals(6, mesh.vertexCount(), "no NORMAL: one vertex per triangle corner");
+        assertArrayEquals(new int[]{0, 1, 2, 3, 4, 5}, mesh.indices());
+        for (int vertex = 0; vertex < mesh.vertexCount(); vertex++) {
+            assertEquals(1f, geometry(mesh, vertex, 5), 1e-5f, "face normal of a CCW XY triangle is +Z");
+        }
+    }
+
+    /**
+     * An indexed quad in the XY plane: 4 positions, 4 uvs, 6 unsigned-short indices, and normals only
+     * when {@code withNormals}.
+     */
+    private static String indexedQuad(boolean withNormals) {
+        var bytes = ByteBuffer.allocate(48 + 48 + 32 + 12).order(ByteOrder.LITTLE_ENDIAN);
+        float[][] positions = {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}};
+        for (var p : positions) for (float f : p) bytes.putFloat(f);
+        for (int i = 0; i < 4; i++) bytes.putFloat(0).putFloat(0).putFloat(1);
+        float[][] uvs = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+        for (var uv : uvs) for (float f : uv) bytes.putFloat(f);
+        for (int index : new int[]{0, 1, 2, 0, 2, 3}) bytes.putShort((short) index);
+
+        var attributes = withNormals
+                ? "{\"POSITION\": 0, \"NORMAL\": 1, \"TEXCOORD_0\": 2}"
+                : "{\"POSITION\": 0, \"TEXCOORD_0\": 2}";
+        return """
+                {
+                  "asset": {"version": "2.0"},
+                  "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+                  "meshes": [{"primitives": [{"indices": 3, "attributes": %s}]}],
+                  "accessors": [
+                    {"bufferView": 0, "byteOffset": 0,   "componentType": 5126, "count": 4, "type": "VEC3"},
+                    {"bufferView": 0, "byteOffset": 48,  "componentType": 5126, "count": 4, "type": "VEC3"},
+                    {"bufferView": 0, "byteOffset": 96,  "componentType": 5126, "count": 4, "type": "VEC2"},
+                    {"bufferView": 1, "componentType": 5123, "count": 6, "type": "SCALAR"}
+                  ],
+                  "bufferViews": [
+                    {"buffer": 0, "byteOffset": 0, "byteLength": 128},
+                    {"buffer": 0, "byteOffset": 128, "byteLength": 12}
+                  ],
+                  "buffers": [{"byteLength": 140, "uri": "data:application/octet-stream;base64,%s"}]
+                }
+                """.formatted(attributes, Base64.getEncoder().encodeToString(bytes.array()));
     }
 
     /** No TANGENT in the file: fall back to generating from the UVs, exactly like OBJ/JSON. */
@@ -105,9 +176,9 @@ class GltfMeshParserTest {
         var mesh = parse(gltf(", \"TANGENT\": 3",
                 ", {\"bufferView\": 0, \"byteOffset\": 96, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC4\"}",
                 "", data));
-        for (int corner = 0; corner < 4; corner++) {
-            assertEquals(-1f, tangent(mesh, corner, 0), 1e-5f, "corner " + corner + " tangent.x");
-            assertEquals(-1f, tangent(mesh, corner, 3), "corner " + corner + " handedness");
+        for (int vertex = 0; vertex < mesh.vertexCount(); vertex++) {
+            assertEquals(-1f, tangent(mesh, vertex, 0), 1e-5f, "vertex " + vertex + " tangent.x");
+            assertEquals(-1f, tangent(mesh, vertex, 3), "vertex " + vertex + " handedness");
         }
     }
 
@@ -115,9 +186,9 @@ class GltfMeshParserTest {
     @Test
     void appliesNodeTransforms() throws IOException {
         var mesh = parse(gltf("", "", ", \"translation\": [10, 0, 0], \"scale\": [2, 2, 2]", BASE));
-        assertEquals(10f, vertex(mesh, 0, 0, 0), 1e-5f, "translated origin");
-        assertEquals(12f, vertex(mesh, 0, 1, 0), 1e-5f, "scaled then translated");
-        assertEquals(1f, vertex(mesh, 0, 0, 7), 1e-5f, "uniform scale leaves the normal alone");
+        assertEquals(10f, geometry(mesh, 0, 0), 1e-5f, "translated origin");
+        assertEquals(12f, geometry(mesh, 1, 0), 1e-5f, "scaled then translated");
+        assertEquals(1f, geometry(mesh, 0, 5), 1e-5f, "uniform scale leaves the normal alone");
     }
 
     /** A mirroring transform flips which way the bitangent points, so w has to flip with it. */
@@ -162,10 +233,11 @@ class GltfMeshParserTest {
                 """.formatted("data:application/octet-stream;base64,"
                 + Base64.getEncoder().encodeToString(bytes.array()));
         var mesh = parse(json);
-        assertEquals(1, mesh.quadCount());
-        // indices reverse the winding, so corner 0 is the vertex that was last
-        assertEquals(0f, vertex(mesh, 0, 0, 0), 1e-5f);
-        assertEquals(1f, vertex(mesh, 0, 0, 1), 1e-5f);
+        assertEquals(1, mesh.triangleCount());
+        // the file's winding is preserved in the index buffer; the vertices stay in file order
+        assertArrayEquals(new int[]{2, 1, 0}, mesh.indices());
+        assertEquals(0f, geometry(mesh, 2, 0), 1e-5f);
+        assertEquals(1f, geometry(mesh, 2, 1), 1e-5f);
     }
 
     @Test
@@ -177,8 +249,8 @@ class GltfMeshParserTest {
         glb.putInt(padded).putInt(0x4E4F534A).put(json);
         while (glb.position() < glb.capacity()) glb.put((byte) ' ');
         var mesh = GltfMeshParser.parse(glb.array(), false);
-        assertEquals(1, mesh.quadCount());
-        assertEquals(1f, vertex(mesh, 0, 1, 0), 1e-5f);
+        assertEquals(1, mesh.triangleCount());
+        assertEquals(1f, geometry(mesh, 1, 0), 1e-5f);
     }
 
     /** An external .bin is the one thing we deliberately refuse; the message has to say why. */
@@ -202,8 +274,8 @@ class GltfMeshParserTest {
     @Test
     void flipVMirrorsUVs() throws IOException {
         var mesh = GltfMeshParser.parse(gltf("", "", "", BASE).getBytes(StandardCharsets.UTF_8), true);
-        // the third corner's v is 1 in the fixture
-        assertEquals(0f, vertex(mesh, 0, 2, 4), 1e-5f);
+        // the third vertex's v is 1 in the fixture
+        assertEquals(0f, attribute(mesh, 2, 1), 1e-5f);
     }
 
     /**
@@ -216,10 +288,10 @@ class GltfMeshParserTest {
         // column-major: [ 2 0 0 0 | 0 2 0 0 | 0 0 2 0 | 5 6 7 1 ]  =  scale 2 then translate (5,6,7)
         var matrix = ", \"matrix\": [2,0,0,0, 0,2,0,0, 0,0,2,0, 5,6,7,1]";
         var mesh = parse(gltf("", "", matrix, BASE));
-        assertEquals(5f, vertex(mesh, 0, 0, 0), 1e-5f, "translation column read as x");
-        assertEquals(6f, vertex(mesh, 0, 0, 1), 1e-5f, "translation column read as y");
-        assertEquals(7f, vertex(mesh, 0, 0, 2), 1e-5f, "translation column read as z");
-        assertEquals(7f, vertex(mesh, 0, 1, 0), 1e-5f, "second corner: 1 scaled by 2, then +5");
+        assertEquals(5f, geometry(mesh, 0, 0), 1e-5f, "translation column read as x");
+        assertEquals(6f, geometry(mesh, 0, 1), 1e-5f, "translation column read as y");
+        assertEquals(7f, geometry(mesh, 0, 2), 1e-5f, "translation column read as z");
+        assertEquals(7f, geometry(mesh, 1, 0), 1e-5f, "second vertex: 1 scaled by 2, then +5");
     }
 
     /**
@@ -252,11 +324,11 @@ class GltfMeshParserTest {
                 }
                 """.formatted(Base64.getEncoder().encodeToString(bytes.array()));
         var mesh = parse(json);
-        assertEquals(1, mesh.quadCount());
-        assertEquals(1f, vertex(mesh, 0, 1, 0), 1e-5f, "second vertex x");
-        assertEquals(1f, vertex(mesh, 0, 2, 1), 1e-5f, "third vertex y");
-        assertEquals(1f, vertex(mesh, 0, 0, 7), 1e-5f, "normal z");
-        assertEquals(1f, vertex(mesh, 0, 1, 3), 1e-5f, "second vertex u");
+        assertEquals(1, mesh.triangleCount());
+        assertEquals(1f, geometry(mesh, 1, 0), 1e-5f, "second vertex x");
+        assertEquals(1f, geometry(mesh, 2, 1), 1e-5f, "third vertex y");
+        assertEquals(1f, geometry(mesh, 0, 5), 1e-5f, "normal z");
+        assertEquals(1f, attribute(mesh, 1, 0), 1e-5f, "second vertex u");
     }
 
     /** KHR_mesh_quantization-style attributes: normalized integers rather than floats. */
@@ -283,9 +355,9 @@ class GltfMeshParserTest {
                 }
                 """.formatted(Base64.getEncoder().encodeToString(bytes.array()));
         var mesh = parse(json);
-        assertEquals(0f, vertex(mesh, 0, 0, 3), 1e-4f, "unorm16 0 -> 0.0");
-        assertEquals(1f, vertex(mesh, 0, 1, 3), 1e-4f, "unorm16 65535 -> 1.0");
-        assertEquals(1f, vertex(mesh, 0, 2, 4), 1e-4f, "unorm16 65535 -> 1.0 (v)");
+        assertEquals(0f, attribute(mesh, 0, 0), 1e-4f, "unorm16 0 -> 0.0");
+        assertEquals(1f, attribute(mesh, 1, 0), 1e-4f, "unorm16 65535 -> 1.0");
+        assertEquals(1f, attribute(mesh, 2, 1), 1e-4f, "unorm16 65535 -> 1.0 (v)");
     }
 
     /** A real export is many primitives under many nodes; every one has to land, each in its own space. */
@@ -316,37 +388,50 @@ class GltfMeshParserTest {
                 """.formatted(buffer(BASE));
         var mesh = parse(json);
         // 3 nodes (root, its child, the second root) x 2 primitives
-        assertEquals(6, mesh.quadCount(), "every node x every primitive");
-        float maxX = 0, maxY = 0;
-        for (int quad = 0; quad < mesh.quadCount(); quad++) {
-            maxX = Math.max(maxX, vertex(mesh, quad, 0, 0));
-            maxY = Math.max(maxY, vertex(mesh, quad, 0, 1));
+        assertEquals(6, mesh.triangleCount(), "every node x every primitive");
+        assertEquals(18, mesh.vertexCount(), "each primitive's vertices appended at its own base");
+        // every index must address the vertices of the primitive that emitted it, not another's
+        for (int index : mesh.indices()) {
+            assertTrue(index >= 0 && index < mesh.vertexCount(), "index " + index + " out of range");
         }
-        assertEquals(100f, maxX, 1e-4f, "the sibling node's translation was applied");
-        assertEquals(100f, maxY, 1e-4f, "the CHILD node's translation was applied");
+        // each fixture triangle starts at its node's origin, so the translation shows up as a vertex
+        // sitting exactly there
+        boolean atSibling = false, atChild = false;
+        for (int vertex = 0; vertex < mesh.vertexCount(); vertex++) {
+            float x = geometry(mesh, vertex, 0);
+            float y = geometry(mesh, vertex, 1);
+            float z = geometry(mesh, vertex, 2);
+            atSibling |= Math.abs(x - 100f) < 1e-4f && Math.abs(y) < 1e-4f && Math.abs(z) < 1e-4f;
+            atChild |= Math.abs(x) < 1e-4f && Math.abs(y - 100f) < 1e-4f && Math.abs(z) < 1e-4f;
+        }
+        assertTrue(atSibling, "the sibling node's translation was applied");
+        assertTrue(atChild, "the CHILD node's translation was applied");
     }
 
     /**
      * glTF 3.7.2.1: a node whose global transform has a negative determinant must have its winding
      * reversed. Without it a mirrored instance is back-facing — culled away by a cull-enabled material,
      * which looks like the model failed to load rather than like a winding bug.
+     *
+     * <p>The reversal now lives in the index buffer rather than in the order the vertices were emitted,
+     * which is the only place it can live once the file's own vertices are kept.</p>
      */
     @Test
     void reversesWindingForMirroredNodes() throws IOException {
         var mesh = parse(gltf("", "", ", \"scale\": [-1, 1, 1]", BASE));
-        // source order is (0,0,0) (1,0,0) (0,1,0); mirrored in x and with corners 1/2 swapped that is
-        // (0,0,0) (0,1,0) (-1,0,0)
-        assertEquals(0f, vertex(mesh, 0, 1, 0), 1e-5f, "corner 1 x");
-        assertEquals(1f, vertex(mesh, 0, 1, 1), 1e-5f, "corner 1 y — the swapped-in third vertex");
-        assertEquals(-1f, vertex(mesh, 0, 2, 0), 1e-5f, "corner 2 x — the swapped-in second vertex");
+        assertArrayEquals(new int[]{0, 2, 1}, mesh.indices(), "corners 1 and 2 swapped");
+        // the geometry itself is mirrored in x, in file order
+        assertEquals(-1f, geometry(mesh, 1, 0), 1e-5f, "second vertex mirrored");
+        assertEquals(1f, geometry(mesh, 2, 1), 1e-5f, "third vertex untouched in y");
     }
 
     /** An unmirrored node must keep its winding, or the fix above would break every normal model. */
     @Test
     void keepsWindingForUnmirroredNodes() throws IOException {
         var mesh = parse(gltf("", "", ", \"scale\": [2, 2, 2]", BASE));
-        assertEquals(2f, vertex(mesh, 0, 1, 0), 1e-5f, "corner 1 is still the second vertex");
-        assertEquals(2f, vertex(mesh, 0, 2, 1), 1e-5f, "corner 2 is still the third vertex");
+        assertArrayEquals(new int[]{0, 1, 2}, mesh.indices());
+        assertEquals(2f, geometry(mesh, 1, 0), 1e-5f);
+        assertEquals(2f, geometry(mesh, 2, 1), 1e-5f);
     }
 
     /**
@@ -367,13 +452,11 @@ class GltfMeshParserTest {
     @Test
     void aSingularNodeTransformDoesNotProduceNaN() throws IOException {
         var mesh = parse(gltf("", "", ", \"scale\": [0, 1, 1]", BASE));
-        var vertices = mesh.vertices();
-        for (int corner = 0; corner < 4; corner++) {
-            int off = PhotonMesh.vertexOffset(0, corner);
-            for (int k = 0; k < PhotonMesh.FLOATS_PER_VERTEX; k++) {
-                assertTrue(Float.isFinite(vertices[off + k]),
-                        "vertex float " + k + " of corner " + corner + " is not finite");
-            }
+        for (float f : mesh.geometry()) {
+            assertTrue(Float.isFinite(f), "a geometry float is not finite");
+        }
+        for (float f : mesh.attributes()) {
+            assertTrue(Float.isFinite(f), "an attribute float is not finite");
         }
         for (float t : mesh.tangents()) {
             assertTrue(Float.isFinite(t), "a generated tangent is not finite");
@@ -382,19 +465,17 @@ class GltfMeshParserTest {
 
     /**
      * The other half of the NaN story: the transform is fine but the file's own NORMAL data is garbage.
-     * The singular-transform guard cannot help here, so this is what pins the per-corner check.
+     * The singular-transform guard cannot help here, so this is what pins the per-vertex check.
      */
     @Test
     void nonFiniteNormalsInTheFileAreReplaced() throws IOException {
         float[] data = BASE.clone();
         for (int i = 9; i < 18; i++) data[i] = i % 2 == 0 ? Float.NaN : Float.POSITIVE_INFINITY;
         var mesh = parse(gltf("", "", "", data));
-        var vertices = mesh.vertices();
-        for (int corner = 0; corner < 4; corner++) {
-            int off = PhotonMesh.vertexOffset(0, corner);
-            for (int k = 5; k < 8; k++) {
-                assertTrue(Float.isFinite(vertices[off + k]),
-                        "normal component " + k + " of corner " + corner + " is not finite");
+        for (int vertex = 0; vertex < mesh.vertexCount(); vertex++) {
+            for (int k = 3; k < 6; k++) {
+                assertTrue(Float.isFinite(geometry(mesh, vertex, k)),
+                        "normal component " + k + " of vertex " + vertex + " is not finite");
             }
         }
     }
@@ -403,7 +484,7 @@ class GltfMeshParserTest {
     @Test
     void anOutOfRangeSceneIndexStillRenders() throws IOException {
         var mesh = parse(gltf("", "", "", BASE).replace("\"scene\": 0", "\"scene\": 7"));
-        assertEquals(1, mesh.quadCount(), "fell back to walking the node list");
+        assertEquals(1, mesh.triangleCount(), "fell back to walking the node list");
     }
 
     /** Taking every node as a root would emit a child twice — once as a root, once through its parent. */
@@ -415,15 +496,15 @@ class GltfMeshParserTest {
                 .replace("\"nodes\": [{\"mesh\": 0}]",
                         "\"nodes\": [{\"mesh\": 0, \"children\": [1]}, {\"mesh\": 0}]");
         var mesh = parse(json);
-        assertEquals(2, mesh.quadCount(), "one triangle per node, the child reached only via its parent");
+        assertEquals(2, mesh.triangleCount(), "one triangle per node, the child reached only via its parent");
     }
 
     /** A short `matrix` array would zero-pad into a singular transform that eats the geometry. */
     @Test
     void aShortMatrixArrayFallsBackToIdentity() throws IOException {
         var mesh = parse(gltf("", "", ", \"matrix\": [1, 0, 0, 0]", BASE));
-        assertEquals(1, mesh.quadCount());
-        assertEquals(1f, vertex(mesh, 0, 1, 0), 1e-5f, "geometry survived at its authored position");
+        assertEquals(1, mesh.triangleCount());
+        assertEquals(1f, geometry(mesh, 1, 0), 1e-5f, "geometry survived at its authored position");
     }
 
     @Test

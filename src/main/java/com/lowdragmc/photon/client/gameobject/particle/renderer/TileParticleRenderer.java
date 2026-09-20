@@ -90,11 +90,34 @@ public class TileParticleRenderer {
             // draw 3d model
             var source = renderer.getModelSource();
             var mesh = source.getMesh();
-            var remapUV = source.hasAtlasUV() && !renderer.isUseBlockUV();
+            var remapUV = source.hasAtlasUV() && !renderer.isUseBlockUV() && mesh.spriteBounds().length > 0;
             var shade = renderer.isShade();
-            for (int quad = 0; quad < mesh.quadCount(); quad++) {
-                putMeshQuad(transform, buffer, mesh, quad, shade ? mesh.shadeBrightness(quad) : 1f,
-                        r, g, b, a, light, remapUV);
+            var pivot = renderer.getModelPivot();
+            // the normal matrix depends on the particle, not the face — it used to be rebuilt per quad
+            var normalMat = transform.normal(new Matrix3f());
+            var indices = mesh.indices();
+            int triangle = 0;
+            while (triangle < mesh.triangleCount()) {
+                int i = triangle * 3;
+                int va = indices[i], vb = indices[i + 1], vc = indices[i + 2];
+                // ⚠️ This draws into a QUADS-mode buffer, so every primitive is four vertices. A pair
+                // the source authored as one quad is emitted as that quad (its second triangle is
+                // (c, d, a), so the d it adds is the one index in the middle); a lone triangle repeats
+                // its last corner, the degenerate form every Photon render path already tolerates.
+                if (mesh.quadPaired(triangle)) {
+                    int vd = indices[i + 4];
+                    putMeshVertex(transform, normalMat, buffer, mesh, va, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, vb, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, vc, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, vd, pivot, shade, remapUV, r, g, b, a, light);
+                    triangle += 2;
+                } else {
+                    putMeshVertex(transform, normalMat, buffer, mesh, va, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, vb, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, vc, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, vc, pivot, shade, remapUV, r, g, b, a, light);
+                    triangle++;
+                }
             }
         } else {
             Quaternionf quaternion;
@@ -145,43 +168,44 @@ public class TileParticleRenderer {
         }
     }
 
-    private void putMeshQuad(Matrix4f transform, VertexConsumer buffer, PhotonMesh mesh, int quad,
-                             float brightness, float red, float green, float blue, float alpha, int light,
-                             boolean remapUV) {
-        var vertices = mesh.vertices();
-        var pivotPoint = renderer.getModelPivot();
-        var normalMat = transform.normal(new Matrix3f());
+    /** Scratch for {@link #putMeshVertex}; the CPU path is render-thread only, and a large mesh would
+     *  otherwise allocate two JOML objects per emitted corner. */
+    private final Vector4f meshPos = new Vector4f();
+    private final Vector3f meshNormal = new Vector3f();
+    /** Scratch for the per-instance model pivot; see {@link #uploadInstances}. */
+    private final Vector3f instancePivot = new Vector3f();
 
-        float u0 = 0, v0 = 0, uw = 1, vh = 1;
+    private void putMeshVertex(Matrix4f transform, Matrix3f normalMat, VertexConsumer buffer,
+                               PhotonMesh mesh, int vertex, Vector3f pivot, boolean shade,
+                               boolean remapUV, float red, float green, float blue, float alpha,
+                               int light) {
+        var geometry = mesh.geometry();
+        var attributes = mesh.attributes();
+        int g = PhotonMesh.geometryOffset(vertex);
+        int at = PhotonMesh.attributeOffset(vertex);
+
+        float u = attributes[at];
+        float v = attributes[at + 1];
         if (remapUV) {
             var bounds = mesh.spriteBounds();
-            u0 = bounds[quad * 4];
-            v0 = bounds[quad * 4 + 1];
-            uw = bounds[quad * 4 + 2] - u0;
-            vh = bounds[quad * 4 + 3] - v0;
+            int s = PhotonMesh.spriteOffset(vertex);
+            float u0 = bounds[s], v0 = bounds[s + 1];
+            float uw = bounds[s + 2] - u0, vh = bounds[s + 3] - v0;
+            if (uw != 0f) u = (u - u0) / uw;
+            if (vh != 0f) v = (v - v0) / vh;
         }
+        float brightness = shade ? attributes[at + 2] : 1f;
 
-        for (int corner = 0; corner < 4; corner++) {
-            int off = PhotonMesh.vertexOffset(quad, corner);
-            var x = vertices[off] + pivotPoint.x;
-            var y = vertices[off + 1] + pivotPoint.y;
-            var z = vertices[off + 2] + pivotPoint.z;
-            var u = vertices[off + 3];
-            var v = vertices[off + 4];
-            if (remapUV) {
-                u = (u - u0) / uw;
-                v = (v - v0) / vh;
-            }
+        var pos = transform.transform(meshPos.set(geometry[g] + pivot.x, geometry[g + 1] + pivot.y,
+                geometry[g + 2] + pivot.z, 1.0F));
+        var normal = meshNormal.set(geometry[g + 3], geometry[g + 4], geometry[g + 5])
+                .mul(normalMat).normalize();
 
-            var pos = transform.transform(new Vector4f(x, y, z, 1.0F));
-            var normal = new Vector3f(vertices[off + 5], vertices[off + 6], vertices[off + 7]).mul(normalMat).normalize();
-
-            buffer.addVertex(pos.x, pos.y, pos.z);
-            buffer.setColor(red * brightness, green * brightness, blue * brightness, alpha);
-            buffer.setUv(u, v);
-            buffer.setLight(light);
-            buffer.setNormal(normal.x, normal.y, normal.z);
-        }
+        buffer.addVertex(pos.x, pos.y, pos.z);
+        buffer.setColor(red * brightness, green * brightness, blue * brightness, alpha);
+        buffer.setUv(u, v);
+        buffer.setLight(light);
+        buffer.setNormal(normal.x, normal.y, normal.z);
     }
 
     // ---------------------------------------------------------------------
@@ -199,15 +223,16 @@ public class TileParticleRenderer {
      */
     public boolean uploadInstances(Collection<IParticle> particles, Camera camera, float partialTicks) {
         var renderMode = renderer.getRenderMode();
-        // rebuild the static geometry when the model mesh was hot-reloaded (identity compare), when a
-        // runtime renderMode override crossed the Model/non-Model boundary (different instance layout),
-        // or when the pass started/stopped wanting tangents (different mesh vertex layout)
-        if (instanceBackend.isInitialized()
-                && (instanceBackend.wasBuiltForModel() != (renderMode == ParticleRendererSetting.Mode.Model)
-                    || (renderMode == ParticleRendererSetting.Mode.Model
-                        && (instanceBackend.getBuiltMesh() != renderer.getModelSource().getMesh()
-                            || instanceBackend.wasBuiltWithTangent() != instanceBackend.wantsTangent())))) {
-            instanceBackend.dispose();
+        if (instanceBackend.isInitialized()) {
+            if (instanceBackend.wasBuiltForModel() != (renderMode == ParticleRendererSetting.Mode.Model)) {
+                // a runtime renderMode override crossed the Model/non-Model boundary: the PER-INSTANCE
+                // layout differs too, so everything goes
+                instanceBackend.dispose();
+            } else if (instanceBackend.staticGeometryStale()) {
+                // the mesh was hot-reloaded or deformed, or the attribute stream's inputs changed —
+                // base geometry only, the instance VBO and the buffer textures stay
+                instanceBackend.rebuildStaticGeometry();
+            }
         }
         var buffer = instanceBackend.beginUpload(particles.size());
         if (buffer == null) return false;
@@ -233,10 +258,23 @@ public class TileParticleRenderer {
 
             if (renderMode == ParticleRendererSetting.Mode.Model) {
                 var quaternion = computeModelQuaternion(particle, rotation, camera, partialTicks);
+                float scaleX = scale.x * size.x, scaleY = scale.y * size.y, scaleZ = scale.z * size.z;
+                // ⚠️ The pivot is applied here rather than baked into the mesh, which is what keeps the
+                // static geometry buffer free of renderer settings — a dynamic mesh can then replace it
+                // outright. The shader computes rot * (aPos * iScale) + iPos, so a pivot that was baked
+                // as aPos + pivot is exactly rot * (pivot * iScale) added to iPos.
+                var pivot = renderer.getModelPivot();
+                if (pivot.x != 0f || pivot.y != 0f || pivot.z != 0f) {
+                    var offset = quaternion.transform(
+                            instancePivot.set(pivot.x * scaleX, pivot.y * scaleY, pivot.z * scaleZ));
+                    x += offset.x;
+                    y += offset.y;
+                    z += offset.z;
+                }
                 // pos vec3
                 buffer.put(x).put(y).put(z);
                 // scale vec3
-                buffer.put(scale.x * size.x).put(scale.y * size.y).put(scale.z * size.z);
+                buffer.put(scaleX).put(scaleY).put(scaleZ);
                 // rot quat (vec4)
                 buffer.put(quaternion.x).put(quaternion.y).put(quaternion.z).put(quaternion.w);
                 // color vec4

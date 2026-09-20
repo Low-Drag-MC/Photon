@@ -28,6 +28,10 @@ abstract class InstancedRenderBackend {
         protected int vao = -1;
         protected int modelVbo = -1;
         protected int modelEbo = -1;
+        // extra static streams, used only by backends whose base mesh is split into more than one
+        // buffer (the model path: geometry / attributes / tangents — see ParticleInstanceRenderer)
+        protected int attributeVbo = -1;
+        protected int tangentVbo = -1;
         protected int instanceVbo = -1;
         // optional per-point buffer texture (vertex pulling), see pointTexelsPerPoint()
         protected int pointTbo = -1;
@@ -39,6 +43,29 @@ abstract class InstancedRenderBackend {
         protected int customTbo = -1;
         protected int customTex = -1;
 
+        /** Delete just the base-mesh buffers, for a static rebuild that keeps the instance data. */
+        void closeStatic() {
+            if (modelVbo != -1) {
+                glDeleteBuffers(modelVbo);
+                modelVbo = -1;
+            }
+
+            if (attributeVbo != -1) {
+                glDeleteBuffers(attributeVbo);
+                attributeVbo = -1;
+            }
+
+            if (tangentVbo != -1) {
+                glDeleteBuffers(tangentVbo);
+                tangentVbo = -1;
+            }
+
+            if (modelEbo != -1) {
+                glDeleteBuffers(modelEbo);
+                modelEbo = -1;
+            }
+        }
+
         @Override
         public void close() {
             if (vao != -1) {
@@ -46,19 +73,11 @@ abstract class InstancedRenderBackend {
                 vao = -1;
             }
 
-            if (modelVbo != -1) {
-                glDeleteBuffers(modelVbo);
-                modelVbo = -1;
-            }
+            closeStatic();
 
             if (instanceVbo != -1) {
                 glDeleteBuffers(instanceVbo);
                 instanceVbo = -1;
-            }
-
-            if (modelEbo != -1) {
-                glDeleteBuffers(modelEbo);
-                modelEbo = -1;
             }
 
             if (pointTex != -1) {
@@ -277,6 +296,28 @@ abstract class InstancedRenderBackend {
         glEnableVertexAttribArray(attribIndex);
         GlInstancing.vertexAttribDivisor(attribIndex, 1);
         return offset + size * Float.BYTES;
+    }
+
+    /**
+     * Re-create the base mesh alone — the static streams and the index buffer — keeping the VAO, the
+     * instance VBO and every buffer texture.
+     *
+     * <p>Call this when the geometry changed but the <b>layouts</b> did not: a hot-reloaded model, a
+     * re-baked attribute stream, a mesh that deformed. {@link #dispose()} would also work and is what
+     * this replaces, but it drops the instance VBO (re-allocated at {@code maxParticles}) and all three
+     * TBOs with it — affordable once on a reload, not once a frame for a mesh that animates.</p>
+     *
+     * <p>⚠️ The instance attribute pointers survive because {@code glVertexAttribPointer} captures the
+     * buffer that was bound when <i>it</i> ran: re-specifying locations 0..3 against new buffers cannot
+     * disturb 4..8, which still reference {@code instanceVbo}.</p>
+     */
+    public void rebuildStaticGeometry() {
+        if (resource == null || !initialized) return;
+        RenderSystem.assertOnRenderThread();
+        glBindVertexArray(resource.vao);
+        resource.closeStatic();
+        createStaticGeometry(resource);
+        glBindVertexArray(0);
     }
 
     /**

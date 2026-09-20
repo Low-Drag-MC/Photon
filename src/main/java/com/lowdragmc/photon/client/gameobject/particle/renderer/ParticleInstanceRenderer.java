@@ -12,6 +12,11 @@ import static org.lwjgl.opengl.GL30.*;
  * GL-resource backend of {@link TileParticleRenderer}: billboard-quad or baked-model base
  * geometry plus the tile per-instance layout (pos/size/scale/rot/color/uv/light + custom data).
  * Buffer management and the draw call live in {@link InstancedRenderBackend}.
+ *
+ * <p>In Model mode the mesh's three streams ({@link PhotonMesh}) become three static buffers, which is
+ * the whole reason they are split: <b>only the geometry stream changes when a mesh deforms</b>, so a
+ * dynamic mesh re-uploads that one and an external provider can supply it outright, while the UVs and
+ * the tangents stay exactly where they were put.</p>
  */
 class ParticleInstanceRenderer extends InstancedRenderBackend {
 
@@ -19,7 +24,7 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     /** Effective renderer runtime (slot-or-config per field); drives render-mode-dependent geometry +
      *  layout. Custom GPU data still comes from the config. */
     private final ParticleRendererSetting.Runtime renderer;
-    /** Mesh baked into the current static VBO, for hot-reload staleness checks (identity compare). */
+    /** Mesh baked into the current static buffers, for hot-reload staleness checks (identity compare). */
     @Nullable
     private PhotonMesh builtMesh;
     /** Whether the current static geometry/layout was baked for Model mode (vs billboard family); a
@@ -28,8 +33,14 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     /** The emitter's Tangent renderer setting, refreshed per frame by the pass. */
     private boolean wantsTangent;
     /** Whether the current static geometry carries a tangent; a change against {@link #wantsTangent}
-     *  forces a rebuild (the mesh vertex layout differs). */
+     *  forces a rebuild (the tangent stream exists or it does not). */
     private boolean builtWithTangent;
+    /** Shade / useBlockUV as the attribute stream was baked with them. Both are runtime-overridable and
+     *  timeline-animatable, and both are folded into that stream, so both have to be able to invalidate
+     *  it — before this was tracked, animating either did nothing until some other change forced a
+     *  rebuild. */
+    private boolean builtShade;
+    private boolean builtUseBlockUV;
 
     public ParticleInstanceRenderer(ParticleConfig config, ParticleRendererSetting.Runtime renderer) {
         this.config = config;
@@ -45,8 +56,15 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         return builtModelMode;
     }
 
-    boolean wasBuiltWithTangent() {
-        return builtWithTangent;
+    /** Whether the baked static streams still match what the renderer settings ask for. */
+    boolean staticGeometryStale() {
+        if (renderer.getRenderMode() != ParticleRendererSetting.Mode.Model) {
+            return false; // the billboard quad depends on nothing
+        }
+        return builtMesh != renderer.getModelSource().getMesh()
+                || builtWithTangent != wantsTangent
+                || builtShade != renderer.isShade()
+                || builtUseBlockUV != renderer.isUseBlockUV();
     }
 
     boolean wantsTangent() {
@@ -66,127 +84,118 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     protected void createStaticGeometry(InstanceResource resource) {
         this.builtModelMode = renderer.getRenderMode() == ParticleRendererSetting.Mode.Model;
         this.builtWithTangent = wantsTangent;
-        if (renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
-            var source = renderer.getModelSource();
-            var mesh = source.getMesh();
-            var remapUV = source.hasAtlasUV() && !renderer.isUseBlockUV();
-            var shade = renderer.isShade();
-
-            // With tangents: pos 3, uv 2, normal+brightness 4, tangent+handedness 4 — brightness and
-            // handedness ride in the w of the two vec4s so the tangent costs no EXTRA attribute location
-            // (per-instance attributes stay at 4..8, TILE_MODEL's channel base stays at 9).
-            // Without: pos 3, uv 2, normal 3, brightness 1 — byte-identical to the pre-tangent layout.
-            // MIRRORED FROM the PARTICLE_MODEL_INSTANCE block of particle.glsl (keep in lockstep).
-            int floatsPerVertex = wantsTangent ? 3 + 2 + 4 + 4 : 3 + 2 + 3 + 1;
-            int quadCount = mesh.quadCount();
-            var vertexBuffer = BufferUtils.createFloatBuffer(quadCount * 4 * floatsPerVertex);
-            var indexBuffer = BufferUtils.createIntBuffer(quadCount * 6);
-            var vertexBase = 0;
-            var pivotPoint = renderer.getModelPivot();
-            var vertices = mesh.vertices();
-            // only touched when the emitter asked for tangents — the mesh generates them on first access
-            var tangents = wantsTangent ? mesh.tangents() : null;
-            var bounds = mesh.spriteBounds();
-
-            for (int quad = 0; quad < quadCount; quad++) {
-                var brightness = shade ? mesh.shadeBrightness(quad) : 1f;
-                float u0 = 0, v0 = 0, uw = 1, vh = 1;
-                if (remapUV) {
-                    u0 = bounds[quad * 4];
-                    v0 = bounds[quad * 4 + 1];
-                    uw = bounds[quad * 4 + 2] - u0;
-                    vh = bounds[quad * 4 + 3] - v0;
-                }
-
-                for (int corner = 0; corner < 4; corner++) {
-                    int off = PhotonMesh.vertexOffset(quad, corner);
-                    int tan = PhotonMesh.tangentOffset(quad, corner);
-                    var u = vertices[off + 3];
-                    var v = vertices[off + 4];
-                    if (remapUV) {
-                        u = (u - u0) / uw;
-                        v = (v - v0) / vh;
-                    }
-
-                    vertexBuffer.put(vertices[off] + pivotPoint.x)
-                            .put(vertices[off + 1] + pivotPoint.y)
-                            .put(vertices[off + 2] + pivotPoint.z); // pos
-                    vertexBuffer.put(u).put(v); // uv
-                    vertexBuffer.put(vertices[off + 5]).put(vertices[off + 6]).put(vertices[off + 7]); // normal
-                    vertexBuffer.put(brightness); // brightness (aNormal.w when tangents are on)
-                    if (wantsTangent) {
-                        // tangent.xyz + handedness in w. The atlas->sprite UV remap above is a positive
-                        // per-axis scale, so it can't rotate the tangent — no remap needed here.
-                        vertexBuffer.put(tangents[tan]).put(tangents[tan + 1]).put(tangents[tan + 2])
-                                .put(tangents[tan + 3]);
-                    }
-                }
-
-                // index (triangles are degenerate quads — the second triangle has zero area)
-                indexBuffer.put(vertexBase).put(vertexBase + 1).put(vertexBase + 2);
-                indexBuffer.put(vertexBase + 2).put(vertexBase + 3).put(vertexBase);
-                vertexBase += 4;
-            }
-
-            vertexBuffer.flip();
-            indexBuffer.flip();
-
-            resource.modelVbo = glGenBuffers();
-            glBindBuffer(GL_ARRAY_BUFFER, resource.modelVbo);
-            glBufferData(GL_ARRAY_BUFFER, vertexBuffer, GL_DYNAMIC_DRAW);
-            int stride = floatsPerVertex * Float.BYTES;
-            int offset = 0;
-
-            glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, offset); // position
-            glEnableVertexAttribArray(0);
-            offset += 3 * Float.BYTES;
-
-            glVertexAttribPointer(1, 2, GL_FLOAT, false, stride, offset); // uv
-            glEnableVertexAttribArray(1);
-            offset += 2 * Float.BYTES;
-
-            // with tangents location 2 widens to hold brightness in its w, freeing location 3 for the
-            // tangent; without, it is the original vec3 normal + float brightness pair
-            int normalSize = wantsTangent ? 4 : 3;
-            glVertexAttribPointer(2, normalSize, GL_FLOAT, false, stride, offset); // normal (+ brightness in w)
-            glEnableVertexAttribArray(2);
-            offset += normalSize * Float.BYTES;
-
-            glVertexAttribPointer(3, wantsTangent ? 4 : 1, GL_FLOAT, false, stride, offset); // tangent | brightness
-            glEnableVertexAttribArray(3);
-
-            resource.modelEbo = glGenBuffers();
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, resource.modelEbo);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL_DYNAMIC_DRAW);
-            modelEboSize = 6 * quadCount;
-            builtMesh = mesh;
-
+        this.builtShade = renderer.isShade();
+        this.builtUseBlockUV = renderer.isUseBlockUV();
+        if (builtModelMode) {
+            createModelGeometry(resource);
         } else {
-            // particle quad
-            float[] quadVertices = {
-                    // x, y, z
-                    1f, -1f, 0f,
-                    1f, 1f, 0f,
-                    -1f, 1f, 0f,
-                    -1f, -1f, 0f,
-            };
-            int[] quadIndices = {
-                    0, 1, 2, 2, 3, 0
-            };
-
-            // bind vertex data
-            resource.modelVbo = glGenBuffers();
-            glBindBuffer(GL_ARRAY_BUFFER, resource.modelVbo);
-            glBufferData(GL_ARRAY_BUFFER, quadVertices, GL_STATIC_DRAW);
-            glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
-            glEnableVertexAttribArray(0);
-
-            // create ebo
-            resource.modelEbo = glGenBuffers();
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, resource.modelEbo);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, quadIndices, GL_STATIC_DRAW);
-            modelEboSize = 6;
+            createBillboardGeometry(resource);
         }
+    }
+
+    /**
+     * The mesh's streams, one buffer each.
+     *
+     * <p>MIRRORED FROM the PARTICLE_MODEL_INSTANCE block of particle.glsl (keep in lockstep):
+     * location 0 = position and location 2 = normal out of the geometry buffer, location 1 =
+     * {@code (u, v, shade)} out of the attribute buffer, location 3 = the tangent out of its own.
+     * Shade rides in the attribute vec3's z rather than taking a location of its own because
+     * locations 4..8 are the per-instance attributes and 9+ are the additional-data channels a
+     * hand-written shader declares — inserting anything here would shift those out from under it.</p>
+     *
+     * <p>⚠️ The model pivot is deliberately NOT baked in. It is applied per instance (see
+     * {@link TileParticleRenderer#uploadInstances}) so these buffers hold nothing but the mesh: that is
+     * what lets the geometry buffer be replaced wholesale by a dynamic mesh, and it also fixes a pivot
+     * animation doing nothing, since a pivot change never invalidated the bake.</p>
+     */
+    private void createModelGeometry(InstanceResource resource) {
+        var source = renderer.getModelSource();
+        var mesh = source.getMesh();
+        var remapUV = source.hasAtlasUV() && !builtUseBlockUV && mesh.spriteBounds().length > 0;
+        int vertexCount = mesh.vertexCount();
+
+        // ---- geometry: position 3 + normal 3 ----------------------------------------------------
+        var geometry = mesh.geometry();
+        resource.modelVbo = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, resource.modelVbo);
+        glBufferData(GL_ARRAY_BUFFER, geometry, GL_DYNAMIC_DRAW);
+        int geometryStride = PhotonMesh.FLOATS_PER_GEOMETRY * Float.BYTES;
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, geometryStride, 0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(2, 3, GL_FLOAT, false, geometryStride, 3 * Float.BYTES);
+        glEnableVertexAttribArray(2);
+
+        // ---- attributes: u, v, shade ------------------------------------------------------------
+        var attributes = mesh.attributes();
+        var bounds = mesh.spriteBounds();
+        var attributeBuffer = BufferUtils.createFloatBuffer(vertexCount * PhotonMesh.FLOATS_PER_ATTRIBUTE);
+        for (int vertex = 0; vertex < vertexCount; vertex++) {
+            int off = PhotonMesh.attributeOffset(vertex);
+            float u = attributes[off];
+            float v = attributes[off + 1];
+            if (remapUV) {
+                int s = PhotonMesh.spriteOffset(vertex);
+                float u0 = bounds[s], v0 = bounds[s + 1];
+                float uw = bounds[s + 2] - u0, vh = bounds[s + 3] - v0;
+                if (uw != 0f) u = (u - u0) / uw;
+                if (vh != 0f) v = (v - v0) / vh;
+            }
+            attributeBuffer.put(u).put(v).put(builtShade ? attributes[off + 2] : 1f);
+        }
+        attributeBuffer.flip();
+        resource.attributeVbo = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, resource.attributeVbo);
+        glBufferData(GL_ARRAY_BUFFER, attributeBuffer, GL_STATIC_DRAW);
+        glVertexAttribPointer(1, 3, GL_FLOAT, false, PhotonMesh.FLOATS_PER_ATTRIBUTE * Float.BYTES, 0);
+        glEnableVertexAttribArray(1);
+
+        // ---- tangents, only when the emitter asked for them -------------------------------------
+        // The array is generated on first access, so a tangent-free emitter never pays for it. When it
+        // is off, location 3 must be left DISABLED rather than pointing at a buffer that no longer
+        // exists — the enable bit is VAO state and survives a rebuild.
+        glDisableVertexAttribArray(3);
+        if (wantsTangent) {
+            resource.tangentVbo = glGenBuffers();
+            glBindBuffer(GL_ARRAY_BUFFER, resource.tangentVbo);
+            glBufferData(GL_ARRAY_BUFFER, mesh.tangents(), GL_STATIC_DRAW);
+            glVertexAttribPointer(3, 4, GL_FLOAT, false, PhotonMesh.FLOATS_PER_TANGENT * Float.BYTES, 0);
+            glEnableVertexAttribArray(3);
+        }
+
+        // ---- indices ----------------------------------------------------------------------------
+        var indices = mesh.indices();
+        resource.modelEbo = glGenBuffers();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, resource.modelEbo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices, GL_STATIC_DRAW);
+        modelEboSize = indices.length;
+        builtMesh = mesh;
+    }
+
+    private void createBillboardGeometry(InstanceResource resource) {
+        float[] quadVertices = {
+                // x, y, z
+                1f, -1f, 0f,
+                1f, 1f, 0f,
+                -1f, 1f, 0f,
+                -1f, -1f, 0f,
+        };
+        int[] quadIndices = {
+                0, 1, 2, 2, 3, 0
+        };
+
+        // bind vertex data
+        resource.modelVbo = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, resource.modelVbo);
+        glBufferData(GL_ARRAY_BUFFER, quadVertices, GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
+        glEnableVertexAttribArray(0);
+
+        // create ebo
+        resource.modelEbo = glGenBuffers();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, resource.modelEbo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, quadIndices, GL_STATIC_DRAW);
+        modelEboSize = 6;
+        builtMesh = null;
     }
 
     @Override

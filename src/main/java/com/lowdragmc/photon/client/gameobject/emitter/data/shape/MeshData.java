@@ -18,6 +18,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import dev.vfyjxf.taffy.style.AlignItems;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -99,38 +100,50 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
         }
     }
 
+    /**
+     * Derive the sampling geometry from the mesh's indexed triangles.
+     *
+     * <p>⚠️ Two sampling weights moved when the mesh format started welding vertices, and both moved
+     * towards what Unity does. <b>Vertex</b> emission now picks uniformly among <i>distinct</i>
+     * vertices, where it used to see one copy per face corner and so favoured high-valence vertices
+     * (a sphere's poles). <b>Edge</b> emission now counts a shared edge once, where it used to count
+     * it once per adjoining face. A baked JSON model is unaffected either way: its faces genuinely
+     * share no corners.</p>
+     */
     private void rebuildFrom(PhotonMesh mesh) {
         double sumLength = 0;
         double sumArea = 0;
-        var data = mesh.vertices();
-        var points = new Vector3f[4];
-        for (int quad = 0; quad < mesh.quadCount(); quad++) {
-            // degenerate quads (corner 3 == corner 2) are real triangles: 3 vertices, 3 edges, 1
-            // triangle — so duplicate corners/edges don't skew the weighted sampling
-            boolean triangle = mesh.isTriangle(quad);
-            int corners = triangle ? 3 : 4;
-            for (int corner = 0; corner < corners; corner++) {
-                int off = PhotonMesh.vertexOffset(quad, corner);
-                points[corner] = new Vector3f(data[off], data[off + 1], data[off + 2]);
-                this.vertices.add(points[corner]);
-            }
-            if (triangle) {
-                sumLength += addEdge(points[0], points[1]);
-                sumLength += addEdge(points[1], points[2]);
-                sumLength += addEdge(points[2], points[0]);
-                sumArea += addTriangle(points[0], points[1], points[2]);
-            } else {
-                sumLength += addEdge(points[0], points[1]);
-                sumLength += addEdge(points[1], points[2]);
-                sumLength += addEdge(points[2], points[3]);
-                sumLength += addEdge(points[3], points[0]);
-                sumLength += addEdge(points[1], points[3]);
-                sumArea += addTriangle(points[0], points[1], points[2]);
-                sumArea += addTriangle(points[2], points[3], points[0]);
-            }
+        var geometry = mesh.geometry();
+        var indices = mesh.indices();
+        // One Vector3f per vertex, shared by every edge and triangle referencing it — the shape
+        // samplers only ever read them, and a welded mesh would otherwise allocate the same point
+        // once per face that touches it.
+        var points = new Vector3f[mesh.vertexCount()];
+        for (int v = 0; v < points.length; v++) {
+            int off = PhotonMesh.geometryOffset(v);
+            points[v] = new Vector3f(geometry[off], geometry[off + 1], geometry[off + 2]);
+            this.vertices.add(points[v]);
+        }
+        var seen = new LongOpenHashSet();
+        for (int i = 0; i + 2 < indices.length; i += 3) {
+            int a = indices[i], b = indices[i + 1], c = indices[i + 2];
+            if (a >= points.length || b >= points.length || c >= points.length) continue;
+            sumLength += addEdgeOnce(seen, points, a, b);
+            sumLength += addEdgeOnce(seen, points, b, c);
+            sumLength += addEdgeOnce(seen, points, c, a);
+            sumArea += addTriangle(points[a], points[b], points[c]);
         }
         this.edgeSumLength = sumLength;
         this.triangleSumArea = sumArea;
+    }
+
+    /** Adds the edge unless an adjoining triangle already contributed it; returns the length added. */
+    private double addEdgeOnce(LongOpenHashSet seen, Vector3f[] points, int a, int b) {
+        long key = a < b ? ((long) a << 32) | b : ((long) b << 32) | a;
+        if (!seen.add(key)) {
+            return 0;
+        }
+        return addEdge(points[a], points[b]);
     }
 
     public List<Vector3f> getVertices() {

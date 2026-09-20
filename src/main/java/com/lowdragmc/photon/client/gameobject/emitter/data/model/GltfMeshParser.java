@@ -129,8 +129,9 @@ public final class GltfMeshParser {
         private final PhotonMesh.Builder builder = new PhotonMesh.Builder();
         private final List<byte[]> buffers = new ArrayList<>();
 
-        // reused per triangle corner so a large mesh doesn't allocate per vertex
-        private final float[][] corner = new float[3][PhotonMesh.FLOATS_PER_VERTEX];
+        // reused per triangle corner so a large mesh doesn't allocate per vertex; x,y,z,u,v,nx,ny,nz,
+        // which is what PhotonMesh.Builder's fresh-vertex overloads take
+        private final float[][] corner = new float[3][8];
         private final float[][] cornerTangent = new float[3][PhotonMesh.FLOATS_PER_TANGENT];
         private final Vector3f scratch = new Vector3f();
 
@@ -261,25 +262,93 @@ public final class GltfMeshParser {
             if (indices == null) return;
 
             float handedness = mirrored ? -1f : 1f;
+            if (normals == null) {
+                readUnindexed(indices, vertexCount, positions, uvs, tangents, world, normalMatrix,
+                        mirrored, handedness);
+                return;
+            }
+
+            // ⭐ The file's own vertices and indices are kept as they are. That numbering is what a
+            // skinned glTF's JOINTS_0/WEIGHTS_0 are addressed by, so throwing it away — which is what
+            // expanding every triangle into its own three corners used to do — is what would make
+            // attaching a skin stream impossible later, quite apart from costing 7.7x the vertices.
+            int base = -1;
+            for (int v = 0; v < vertexCount; v++) {
+                int index = addVertex(v, positions, normals, uvs, world, normalMatrix);
+                if (base < 0) base = index;
+                if (tangents != null) {
+                    addTangent(index, v, tangents, world, handedness);
+                }
+            }
+            for (int i = 0; i + 2 < indices.length; i += 3) {
+                int a = indices[i];
+                // corners 1 and 2 swap on a mirrored node, restoring the front face
+                int b = indices[i + (mirrored ? 2 : 1)];
+                int c = indices[i + (mirrored ? 1 : 2)];
+                if (outOfRange(a, vertexCount) || outOfRange(b, vertexCount) || outOfRange(c, vertexCount)) {
+                    continue;
+                }
+                builder.triangle(base + a, base + b, base + c);
+            }
+        }
+
+        /**
+         * A primitive that shipped without {@code NORMAL}: the normal is Newell's of the <b>face</b>,
+         * which is a property no two faces can share, so this one primitive is de-indexed and its
+         * triangles each get three vertices of their own. Rare, and rarely large.
+         */
+        private void readUnindexed(int[] indices, int vertexCount, float[] positions, float[] uvs,
+                                   float[] tangents, Matrix4f world, Matrix3f normalMatrix,
+                                   boolean mirrored, float handedness) {
             for (int i = 0; i + 2 < indices.length; i += 3) {
                 boolean ok = true;
                 for (int k = 0; k < 3; k++) {
-                    // corners 1 and 2 swap on a mirrored node, restoring the front face
                     int src = (mirrored && k > 0) ? 3 - k : k;
-                    ok &= fillCorner(k, indices[i + src], vertexCount, positions, normals, uvs, tangents,
+                    ok &= fillCorner(k, indices[i + src], vertexCount, positions, null, uvs, tangents,
                             world, normalMatrix, handedness);
                 }
                 if (!ok) continue;
-                if (normals == null) {
-                    faceNormal();
-                }
-                if (tangents == null) {
-                    builder.triangle(corner[0], corner[1], corner[2]);
-                } else {
-                    builder.triangle(corner[0], corner[1], corner[2],
-                            cornerTangent[0], cornerTangent[1], cornerTangent[2]);
+                faceNormal();
+                builder.triangle(corner[0], corner[1], corner[2], 1f);
+                if (tangents != null) {
+                    int first = builder.lastFaceStart();
+                    for (int k = 0; k < 3; k++) {
+                        var t = cornerTangent[k];
+                        builder.tangent(first + k, t[0], t[1], t[2], t[3]);
+                    }
                 }
             }
+        }
+
+        /** Transform and add one of the primitive's vertices; returns its mesh index. */
+        private int addVertex(int vertex, float[] positions, float[] normals, float[] uvs,
+                              Matrix4f world, Matrix3f normalMatrix) {
+            world.transformPosition(scratch.set(positions[vertex * 3], positions[vertex * 3 + 1],
+                    positions[vertex * 3 + 2]));
+            float x = scratch.x, y = scratch.y, z = scratch.z;
+
+            float u = uvs == null ? 0f : uvs[vertex * 2];
+            float v = uvs == null ? 0f : uvs[vertex * 2 + 1];
+
+            scratch.set(normals[vertex * 3], normals[vertex * 3 + 1], normals[vertex * 3 + 2])
+                    .mul(normalMatrix);
+            if (isDegenerate(scratch)) scratch.set(0f, 1f, 0f);
+            else scratch.normalize();
+
+            return builder.vertex(x, y, z, u, flipV ? 1f - v : v, scratch.x, scratch.y, scratch.z, 1f);
+        }
+
+        private void addTangent(int index, int vertex, float[] tangents, Matrix4f world, float handedness) {
+            world.transformDirection(scratch.set(tangents[vertex * 4], tangents[vertex * 4 + 1],
+                    tangents[vertex * 4 + 2]));
+            if (isDegenerate(scratch)) scratch.set(1f, 0f, 0f);
+            else scratch.normalize();
+            builder.tangent(index, scratch.x, scratch.y, scratch.z,
+                    (tangents[vertex * 4 + 3] < 0f ? -1f : 1f) * handedness);
+        }
+
+        private static boolean outOfRange(int vertex, int vertexCount) {
+            return vertex < 0 || vertex >= vertexCount;
         }
 
         /** Decode one indexed vertex into {@link #corner}/{@link #cornerTangent}, in scene space. */
