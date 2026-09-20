@@ -227,8 +227,9 @@ public class TileParticleRenderer {
      * provider's own drawing is not evidence: an emitter outlives whatever spawned it.
      */
     private void notifyDynamicMesh() {
-        if (renderer.getModelSource() instanceof DynamicMeshSource source) {
-            source.getDynamic().onDrawn();
+        var dynamic = renderer.getModelSource().asDynamic();
+        if (dynamic != null) {
+            dynamic.onDrawn();
         }
     }
 

@@ -88,25 +88,50 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
     }
 
     /**
-     * Re-derive the sampling geometry if the source handed out a different mesh.
+     * Re-derive the sampling geometry when the source's <b>topology</b> changed, and refresh the vertex
+     * positions when only its pose did.
      *
-     * <p>⚠️ A <b>dynamic</b> source ({@code IDynamicMesh}) hands out a new mesh per pose, so emitting
-     * from one rebuilds all of this every time the pose changes — a Vector3f per vertex plus an Edge per
-     * edge and a Triangle per triangle, once a frame. That is correct but it is not cheap, and the cheap
-     * answer is a different algorithm rather than a faster rebuild: sample a triangle on the REST pose,
-     * which never changes, and deform only the one point that came out. That needs the source's skin
-     * weights, which no model source carries yet.</p>
+     * <p>⭐ The split is what makes emitting from an animated model affordable. A dynamic source hands out
+     * a new mesh every time it moves, and rebuilding the edge and triangle lists for each of those would
+     * allocate four objects a vertex, once a frame. It is not necessary: {@link Edge} and {@link Triangle}
+     * hold <b>references</b> to the very {@code Vector3f} objects in {@link #vertices}, so writing new
+     * coordinates into those in place moves every edge and every triangle with them, allocating nothing.</p>
+     *
+     * <p>⚠️ Edge lengths and triangle areas are therefore the <b>rest pose's</b>, and stay that way: they
+     * are the sampling weights, and recomputing them per pose would put the O(n) work straight back. So a
+     * stretched limb receives the particles its unstretched self would have. Unity's skinned-mesh sampling
+     * has the same bias, and the alternative costs more than it is worth.</p>
+     *
+     * <p>⚠️ A parallel-sim worker can read these positions while another thread is writing them, so a
+     * particle spawned on the frame a pose changes can land on a position mixing the two. It is a
+     * fraction of one frame of motion on one particle; locking the sampler against the writer would cost
+     * every spawn on every emitter.</p>
      */
     private void ensureLoaded() {
         var mesh = source.getMesh();
         if (mesh == derivedFrom) return;
         synchronized (this) {
             if (mesh == derivedFrom) return; // rebuilt by a parallel-sim worker meanwhile
-            vertices.clear();
-            edges.clear();
-            triangles.clear();
-            rebuildFrom(mesh);
+            var previous = derivedFrom;
+            if (previous != null && previous.topology() == mesh.topology()
+                    && previous.vertexCount() == mesh.vertexCount()) {
+                refreshPositions(mesh);
+            } else {
+                vertices.clear();
+                edges.clear();
+                triangles.clear();
+                rebuildFrom(mesh);
+            }
             derivedFrom = mesh;
+        }
+    }
+
+    /** Move the existing sampling geometry onto a new pose of the same topology. */
+    private void refreshPositions(PhotonMesh mesh) {
+        var geometry = mesh.geometry();
+        for (int vertex = 0; vertex < vertices.size(); vertex++) {
+            int off = PhotonMesh.geometryOffset(vertex);
+            vertices.get(vertex).set(geometry[off], geometry[off + 1], geometry[off + 2]);
         }
     }
 

@@ -76,6 +76,14 @@ public final class ResourceMeshSource implements IModelSource {
         return source != null && source.hasAtlasUV();
     }
 
+    /** A reference to an animated mesh is animated; the reference itself adds nothing either way. */
+    @Override
+    @Nullable
+    public IDynamicMesh asDynamic() {
+        var source = resolveRaw();
+        return source == null ? null : source.asDynamic();
+    }
+
     @Override
     public IModelSource copy() {
         return new ResourceMeshSource(getResourcePath());

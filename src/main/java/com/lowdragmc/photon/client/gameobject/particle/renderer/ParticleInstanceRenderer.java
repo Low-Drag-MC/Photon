@@ -66,7 +66,7 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     /** The live-geometry provider behind the current model source, or null for an ordinary model. */
     @Nullable
     private IDynamicMesh dynamic() {
-        return renderer.getModelSource() instanceof DynamicMeshSource source ? source.getDynamic() : null;
+        return renderer.getModelSource().asDynamic();
     }
 
     /**

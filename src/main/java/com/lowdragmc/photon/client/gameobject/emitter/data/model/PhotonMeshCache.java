@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.model;
 
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.SkinnedModel;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
@@ -41,6 +42,13 @@ public final class PhotonMeshCache implements ResourceManagerReloadListener {
     }
 
     private final ConcurrentHashMap<Object, PhotonMesh> cache = new ConcurrentHashMap<>();
+    /**
+     * Parsed models with their skins and animations, for the sources that need more than geometry.
+     * Separate from {@link #cache} rather than replacing it because most sources produce no skeleton at
+     * all and should not be made to carry a wrapper for one — but invalidation is shared, so a reload or
+     * an edit drops both under the same key.
+     */
+    private final ConcurrentHashMap<Object, SkinnedModel> models = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Object, FileStamp> fileStamps = new ConcurrentHashMap<>();
 
     private PhotonMeshCache() {
@@ -56,6 +64,15 @@ public final class PhotonMeshCache implements ResourceManagerReloadListener {
         return mesh == null ? PhotonMesh.EMPTY : mesh;
     }
 
+    /**
+     * Cached lookup of a parsed model, with the same {@code null} = "cannot load right now, retry"
+     * contract as {@link #get}.
+     */
+    public SkinnedModel getModel(Object key, Function<Object, @Nullable SkinnedModel> loader) {
+        var model = models.computeIfAbsent(key, loader);
+        return model == null ? SkinnedModel.staticModel(PhotonMesh.EMPTY) : model;
+    }
+
     /** Watch the disk file backing {@code key}; {@link #pollFileChanges()} invalidates the entry when it changes. */
     public void trackFile(Object key, File file) {
         fileStamps.put(key, new FileStamp(file, file.lastModified()));
@@ -63,7 +80,12 @@ public final class PhotonMeshCache implements ResourceManagerReloadListener {
 
     public void invalidate(Object key) {
         cache.remove(key);
+        models.remove(key);
         fileStamps.remove(key);
+        // Poses are keyed by the model instance they were deformed from, so dropping a model would
+        // otherwise leave its poses holding the only reference to it. They cost one frame to rebuild, so
+        // clearing all of them is cheaper than tracking which belong to this key.
+        AnimatedPose.clear();
     }
 
     /** Invalidate every entry whose tracked disk file changed (or vanished) since it was loaded. */
@@ -77,7 +99,9 @@ public final class PhotonMeshCache implements ResourceManagerReloadListener {
 
     public void clear() {
         cache.clear();
+        models.clear();
         fileStamps.clear();
+        AnimatedPose.clear();
     }
 
     @Override

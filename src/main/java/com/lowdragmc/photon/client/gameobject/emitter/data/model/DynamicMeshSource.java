@@ -65,6 +65,11 @@ public final class DynamicMeshSource implements IModelSource {
     }
 
     @Override
+    public IDynamicMesh asDynamic() {
+        return dynamic;
+    }
+
+    @Override
     public void invalidate() {
         cache.invalidate(); // the provider owns the data; nothing of ours is cached beyond the last mesh
     }

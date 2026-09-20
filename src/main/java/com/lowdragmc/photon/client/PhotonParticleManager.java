@@ -59,6 +59,8 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     @Nullable
     @Getter
     private static PhotonParticleManager renderingManager = null;
+    /** The partial tick the current frame is being drawn at, for clocks read mid-render. */
+    private float lastPartialTick;
 
     /** The scene's particles by render type (LDLib2 keeps the map protected). */
     public Map<ParticleRenderType, Queue<Particle>> particlesByRenderType() {
@@ -105,6 +107,20 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         return time + timeOffset;
     }
 
+    /**
+     * Seconds on the <b>timeline's</b> clock while an editor scene is the thing being rendered, or a
+     * negative number when it is not (i.e. in the world).
+     *
+     * <p>What an animated model poses itself at in the editor, and deliberately the timeline's time
+     * rather than the world's: scrubbing the playhead has to scrub the animation with it, or the author
+     * is looking at a pose that belongs to no frame they can reach. {@link #getTime(float)} already
+     * freezes the partial while paused, so a paused scene holds its pose.</p>
+     */
+    public static float editorAnimationSeconds() {
+        var manager = renderingManager;
+        return manager == null ? -1f : manager.getTime(manager.lastPartialTick) / 20f;
+    }
+
     public float getRealTime(float pPartialTicks) {
         return getRealTime() + (isPlaying ? pPartialTicks : 0);
     }
@@ -124,6 +140,7 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         drawMode = options.getDrawMode();
         sceneBloomEnabled = options.isBloomEnabled();
         renderingManager = this;
+        lastPartialTick = pPartialTicks;
         // route post-effect submission/consumption to the isolated editor-scene stack
         com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.setEditorSceneRendering(true);
         com.lowdragmc.photon.client.postfx.runtime.PostEffectStack.EDITOR_SCENE

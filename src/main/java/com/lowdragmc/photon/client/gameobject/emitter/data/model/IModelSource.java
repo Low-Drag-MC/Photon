@@ -72,6 +72,24 @@ public interface IModelSource extends IConfigurable, IPersistedSerializable, ILD
     /** The source's geometry via the shared cache; {@link PhotonMesh#EMPTY} when unavailable. */
     PhotonMesh getMesh();
 
+    /**
+     * The live-geometry provider behind this source, or {@code null} — the default — when its geometry is
+     * static.
+     *
+     * <p>How the render backend learns that a mesh can change under it, so it re-uploads the geometry
+     * stream instead of rebuilding its buffers, or binds a buffer it does not own. A source that
+     * <i>wraps</i> a provider returns it ({@link DynamicMeshSource}); one that <i>is</i> one returns
+     * {@code this} ({@link AnimatedGltfModelSource}); one that <i>references</i> another delegates
+     * ({@link ResourceMeshSource}).</p>
+     *
+     * <p>⚠️ May go from non-null to null and back for the same source — an animated model whose file has
+     * not loaded yet has nothing to pose, and behaves as a static mesh until it does.</p>
+     */
+    @Nullable
+    default IDynamicMesh asDynamic() {
+        return null;
+    }
+
     /** Drop this source's cache entry so the next {@link #getMesh()} reloads. */
     void invalidate();
 
