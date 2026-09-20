@@ -79,6 +79,16 @@ public interface IModelSource extends IConfigurable, IPersistedSerializable, ILD
         return null;
     }
 
+    /**
+     * The baked pose table this source draws with, or null when it poses on the CPU (or not at all).
+     * Non-null puts the draw on the {@code PHOTON_VAT} shader variant, where the position comes from
+     * the table and every particle can be at its own frame.
+     */
+    @Nullable
+    default VertexAnimation vertexAnimation() {
+        return null;
+    }
+
     /** Drop this source's cache entry so the next {@link #getMesh()} reloads. */
     void invalidate();
 

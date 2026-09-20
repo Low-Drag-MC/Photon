@@ -201,6 +201,11 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     }
 
     @ParametersAreNonnullByDefault
+    /** What the PHOTON_VAT variant fetches for its phase — MIRRORED FROM particle.glsl. */
+    private static final long VAT_CHANNELS = com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels
+            .maskOf(com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels.Kind.TILE_MODEL,
+                    java.util.List.of("addition_gpu_data.random", "addition_gpu_data.t"));
+
     public class RenderPass extends PhotonFXRenderPass {
         // the slot-or-config render runtime this pass draws with (typed; the base `renderer` field holds
         // the same object). Not named "renderer" (would shadow ParticleConfig.renderer here).
@@ -234,14 +239,21 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
             // only a mesh has tangents). Every material on the pass then compiles against that one layout.
             var isModel = renderRuntime.getRenderMode() == ParticleRendererSetting.Mode.Model;
             var wantsTangent = isModel && renderRuntime.isTangent();
-            var context = isModel
-                    ? (wantsTangent ? MaterialContext.PARTICLE_MODEL_INSTANCE_TANGENT : MaterialContext.PARTICLE_MODEL_INSTANCE)
-                    : MaterialContext.PARTICLE_INSTANCE;
             // toggling tangents changes the static mesh VBO, so the backend rebuilds (see uploadInstances)
             tileParticleRenderer.setWantsTangent(wantsTangent);
+            var vat = isModel && tileParticleRenderer.usesVertexAnimation();
+            var context = !isModel ? MaterialContext.PARTICLE_INSTANCE
+                    : vat
+                    ? (wantsTangent ? MaterialContext.PARTICLE_MODEL_INSTANCE_VAT_TANGENT
+                            : MaterialContext.PARTICLE_MODEL_INSTANCE_VAT)
+                    : (wantsTangent ? MaterialContext.PARTICLE_MODEL_INSTANCE_TANGENT
+                            : MaterialContext.PARTICLE_MODEL_INSTANCE);
 
-            // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change
-            additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));
+            // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change.
+            // ⚠️ A baked pose table reads the per-particle random and t out of the same record, so those
+            // two have to be uploaded whether or not any material asked for them.
+            additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials)
+                    | (vat ? VAT_CHANNELS : 0L));
             additionalGPUDataSetting.setCustomDataMaterialUsed(shaderGraphUsesCustomData(materials));
             if (additionalGPUDataSetting.attribRelayoutNeeded()) {
                 clearInstance();

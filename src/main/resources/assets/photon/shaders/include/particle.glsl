@@ -38,6 +38,17 @@ layout(location = 2) in vec3 aNormal;  // geometry stream
 layout(location = 3) in vec4 aTangent; // xyz = tangent (dP/du), w = handedness
 #endif
 
+#ifdef PHOTON_VAT
+// A baked pose table: one texel per vertex per frame, so every particle can be at its own frame of the
+// animation without anything being deformed per frame. MIRRORED FROM VertexAnimationBake.
+uniform samplerBuffer PhotonVat;
+uniform ivec2 PhotonVatSize;   // x = vertices a frame, y = frames
+// (shared clip position, weight on the per-particle random, weight on the particle's own t) — the two
+// weights are how "a flock, each at its own offset" and "plays once over a lifetime" are the same
+// expression rather than two shader variants
+uniform vec3 PhotonVatParams;
+#endif
+
 layout(location = 4) in vec3 iPos;
 layout(location = 5) in vec3 iScale;
 layout(location = 6) in vec4 iRot;
@@ -222,14 +233,28 @@ ParticleData getParticleData() {
 #elif defined(PARTICLE_MODEL_INSTANCE)
 
     mat3 rotMat = quatToMat(iRot);
+#ifdef PHOTON_VAT
+    // gl_VertexID is the value read out of the index buffer, which is the mesh vertex number the table
+    // was baked against
+    // ⚠️ fetched inline rather than through photon_data_random()/photon_data_t(), which are declared
+    // further down this file than getParticleData — slot 0 xy, LOCKSTEP with those accessors
+    vec4 photonVatData = texelFetch(PhotonData, gl_InstanceID * PHOTON_DATA_TEXELS);
+    float photonVatPhase = fract(PhotonVatParams.x
+            + photonVatData.x * PhotonVatParams.y
+            + photonVatData.y * PhotonVatParams.z);
+    int photonVatFrame = clamp(int(photonVatPhase * float(PhotonVatSize.y)), 0, PhotonVatSize.y - 1);
+    vec3 photonPos = texelFetch(PhotonVat, photonVatFrame * PhotonVatSize.x + gl_VertexID).xyz;
+#else
+    vec3 photonPos = aPos;
+#endif
     // aPos is already in centered model space (PhotonMesh convention); the model pivot is folded into
     // iPos on the CPU (TileParticleRenderer.uploadInstances), so the mesh buffer holds only the mesh
-    data.Position = (rotMat * (aPos * iScale)) + iPos;
+    data.Position = (rotMat * (photonPos * iScale)) + iPos;
     data.UV = aUV.xy;
     // vanilla UV2 order is (block, sky); java packs sky<<20 | block<<4
     data.LightUV = ivec2(iLight & 0xFFFF, (iLight >> 16) & 0xFFFF);
     // object space: the mesh's own centered model-space vertex + normal
-    data.ObjectPosition = aPos;
+    data.ObjectPosition = photonPos;
     data.Color = vec4(iColor.rgb * aUV.z, iColor.a);
     data.Normal = normalize(rotMat * aNormal);
     data.ObjectNormal = aNormal;

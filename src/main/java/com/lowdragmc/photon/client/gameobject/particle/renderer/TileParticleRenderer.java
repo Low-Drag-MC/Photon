@@ -218,6 +218,11 @@ public class TileParticleRenderer {
         instanceBackend.setWantsTangent(wantsTangent);
     }
 
+    /** Whether this pass draws from a baked pose table, which picks the shader variant. */
+    public boolean usesVertexAnimation() {
+        return instanceBackend.vertexAnimation() != null;
+    }
+
     /** Tell a provider this frame's draw read from it — its cue to keep the allocation alive. */
     private void notifyDynamicMesh() {
         var dynamic = renderer.getModelSource().asDynamic();

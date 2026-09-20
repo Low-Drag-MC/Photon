@@ -123,6 +123,8 @@ abstract class InstancedRenderBackend {
     public static final String DATA_SAMPLER = "PhotonData";
     /** Vertex-shader sampler name of the per-instance custom-data buffer texture. */
     public static final String CUSTOM_SAMPLER = "PhotonCustomData";
+    /** Vertex-shader sampler name of the baked pose table. */
+    public static final String VAT_SAMPLER = "PhotonVat";
     /**
      * Texture units the buffer textures bind to, resolved once against the driver limit instead of
      * hardcoded.
@@ -137,6 +139,7 @@ abstract class InstancedRenderBackend {
     private static int pointSamplerUnit = -1;
     private static int dataSamplerUnit = -1;
     private static int customSamplerUnit = -1;
+    private static int vatSamplerUnit = -1;
 
     private static void resolveSamplerUnits() {
         if (pointSamplerUnit >= 0) return;
@@ -147,6 +150,13 @@ abstract class InstancedRenderBackend {
         pointSamplerUnit = top;
         dataSamplerUnit = top - 1;
         customSamplerUnit = top - 2;
+        vatSamplerUnit = top - 3;
+    }
+
+    /** The unit {@link #VAT_SAMPLER} binds to, for a subclass that has a table to bind. */
+    protected static int vatSamplerUnit() {
+        resolveSamplerUnits();
+        return vatSamplerUnit;
     }
 
     @Getter
@@ -352,6 +362,8 @@ abstract class InstancedRenderBackend {
         lastDataSamplerLocation = -1;
         lastCustomSamplerShader = null;
         lastCustomSamplerLocation = -1;
+        lastVatSamplerShader = null;
+        lastVatSamplerLocation = -1;
 
         initialized = false;
     }
@@ -579,6 +591,7 @@ abstract class InstancedRenderBackend {
             bindBufferSampler(shader, POINT_SAMPLER, pointSamplerUnit, resource.pointTex, POINT_MEMO);
             bindBufferSampler(shader, DATA_SAMPLER, dataSamplerUnit, resource.dataTex, DATA_MEMO);
             bindBufferSampler(shader, CUSTOM_SAMPLER, customSamplerUnit, resource.customTex, CUSTOM_MEMO);
+            bindExtraBuffers(shader);
             GlStateManager._activeTexture(previousUnit);
         }
 
@@ -589,9 +602,14 @@ abstract class InstancedRenderBackend {
     // per-shader memo of each buffer sampler's uniform location (the per-draw glGetUniformLocation
     // string lookup is measurable at small batch sizes); keyed by shader identity — a recompiled
     // shader is a new object
+    /** Bind whatever else this backend samples, inside the one active-unit save/restore. */
+    protected void bindExtraBuffers(ShaderInstance shader) {
+    }
+
     private static final int POINT_MEMO = 0;
     private static final int DATA_MEMO = 1;
     private static final int CUSTOM_MEMO = 2;
+    protected static final int VAT_MEMO = 3;
     @Nullable
     private ShaderInstance lastPointSamplerShader;
     private int lastPointSamplerLocation = -1;
@@ -601,6 +619,9 @@ abstract class InstancedRenderBackend {
     @Nullable
     private ShaderInstance lastCustomSamplerShader;
     private int lastCustomSamplerLocation = -1;
+    @Nullable
+    private ShaderInstance lastVatSamplerShader;
+    private int lastVatSamplerLocation = -1;
 
     /**
      * Binds a buffer texture to {@code samplerName} via raw GL (after apply(), the program is bound).
@@ -614,7 +635,7 @@ abstract class InstancedRenderBackend {
      * buffer-texture binding cannot affect any other program, and clearing it would double this
      * method's GL traffic on every instanced draw.
      */
-    private void bindBufferSampler(ShaderInstance shader, String samplerName, int unit, int tex, int memo) {
+    protected void bindBufferSampler(ShaderInstance shader, String samplerName, int unit, int tex, int memo) {
         if (tex == -1) return;
         int location;
         if (memo == POINT_MEMO) {
@@ -629,12 +650,18 @@ abstract class InstancedRenderBackend {
                 lastDataSamplerLocation = glGetUniformLocation(shader.getId(), samplerName);
             }
             location = lastDataSamplerLocation;
-        } else {
+        } else if (memo == CUSTOM_MEMO) {
             if (shader != lastCustomSamplerShader) {
                 lastCustomSamplerShader = shader;
                 lastCustomSamplerLocation = glGetUniformLocation(shader.getId(), samplerName);
             }
             location = lastCustomSamplerLocation;
+        } else {
+            if (shader != lastVatSamplerShader) {
+                lastVatSamplerShader = shader;
+                lastVatSamplerLocation = glGetUniformLocation(shader.getId(), samplerName);
+            }
+            location = lastVatSamplerLocation;
         }
         if (location < 0) return;
         glUniform1i(location, unit);

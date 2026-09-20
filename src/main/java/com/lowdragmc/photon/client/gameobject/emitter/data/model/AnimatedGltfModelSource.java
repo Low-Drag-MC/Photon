@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.model;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigList;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
@@ -16,6 +17,7 @@ import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.AnimationClip;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.ClipRetarget;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.SkinnedModel;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.VertexAnimationBake;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
@@ -88,7 +90,41 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
             tips = "photon.model_source.animated_gltf_model.animationFiles.tips")
     private List<ResourceLocation> animationFiles = new ArrayList<>();
 
+    /**
+     * Give every particle its own frame of the animation instead of posing them all alike.
+     *
+     * <p>The clip is baked into a table once and the vertex shader reads it, so a swarm costs one
+     * texture and no per-frame work — deforming a thousand copies is not something a CPU can do. ⚠️ The
+     * normals stay the rest pose's, so lighting does not follow the deformation.</p>
+     */
+    @Getter
+    @Configurable(name = "AnimatedGltfModelSource.perParticlePhase",
+            tips = "photon.model_source.animated_gltf_model.perParticlePhase.tips")
+    private boolean perParticlePhase = false;
+    @Getter
+    @Configurable(name = "AnimatedGltfModelSource.frames",
+            tips = "photon.model_source.animated_gltf_model.frames.tips")
+    @ConfigNumber(range = {2, 240})
+    private int frames = 30;
+    @Getter
+    @Configurable(name = "AnimatedGltfModelSource.phaseSource",
+            tips = "photon.model_source.animated_gltf_model.phaseSource.tips")
+    private PhaseSource phaseSource = PhaseSource.Random;
+
+    /** Where a particle's place in the clip comes from. */
+    public enum PhaseSource {
+        /** A stable per-particle offset from the shared clock — a flock, each at its own point. */
+        Random,
+        /** The particle's own life, so the clip plays exactly once from spawn to death. */
+        Lifetime
+    }
+
     private final DynamicMeshCache meshCache = new DynamicMeshCache();
+    /** Baked on demand and thrown away with the model; see {@link #vertexAnimation()}. */
+    @Nullable
+    private VertexAnimation vertexAnimation;
+    @Nullable
+    private Object bakedFor;
 
     /** Test seam: whether a deformation ran is invisible in the picture, so asserting reuse means
      *  holding the clock still and watching the revision not move. Null restores the real clock. */
@@ -132,6 +168,73 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     @ConfigSetter(field = "loop")
     public void setLoop(boolean loop) {
         this.loop = loop;
+    }
+
+    @ConfigSetter(field = "perParticlePhase")
+    public void setPerParticlePhase(boolean perParticlePhase) {
+        this.perParticlePhase = perParticlePhase;
+        dropBake();
+    }
+
+    @ConfigSetter(field = "frames")
+    public void setFrames(int frames) {
+        this.frames = frames;
+        dropBake();
+    }
+
+    @ConfigSetter(field = "phaseSource")
+    public void setPhaseSource(PhaseSource phaseSource) {
+        this.phaseSource = phaseSource;
+    }
+
+    private void dropBake() {
+        if (vertexAnimation != null) {
+            vertexAnimation.dispose();
+            vertexAnimation = null;
+        }
+        bakedFor = null;
+    }
+
+    /**
+     * The baked pose table, or null when this source poses on the CPU instead.
+     *
+     * <p>Baking walks the clip once per frame, so it is done when the model or the frame count changes
+     * and not again.</p>
+     */
+    @Override
+    @Nullable
+    public VertexAnimation vertexAnimation() {
+        if (!perParticlePhase) return null;
+        var model = model();
+        if (!model.isAnimated()) return null;
+        var clip = animation.isEmpty() ? model.clipAt(0) : model.clip(animation);
+        var key = java.util.List.of(model, String.valueOf(animation), frames);
+        if (vertexAnimation != null && key.equals(bakedFor)) {
+            refreshPhase(model); // the clock moved even though the table did not
+            return vertexAnimation;
+        }
+        dropBake();
+        var table = VertexAnimationBake.bake(model, clip, frames);
+        if (table == null) {
+            Photon.LOGGER.warn("could not bake {} frames of {} — too large, or nothing to pose",
+                    frames, modelLocation);
+            return null;
+        }
+        vertexAnimation = new VertexAnimation(table, model.mesh().vertexCount(), frames);
+        bakedFor = key;
+        refreshPhase(model);
+        return vertexAnimation;
+    }
+
+    private void refreshPhase(SkinnedModel model) {
+        if (vertexAnimation == null) return;
+        if (phaseSource == PhaseSource.Lifetime) {
+            vertexAnimation.setPhase(0f, 0f, 1f);
+            return;
+        }
+        var clip = animation.isEmpty() ? model.clipAt(0) : model.clip(animation);
+        float duration = clip == null ? 0f : clip.duration();
+        vertexAnimation.setPhase(duration <= 0f ? 0f : clipTime(clip) / duration, 1f, 0f);
     }
 
     /** The base file's own key, shared with {@link GltfModelSource}: one parse serves both. */
@@ -201,7 +304,8 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
 
     @Override
     public PhotonMesh getMesh() {
-        return meshCache.resolve(this);
+        // with a baked table the rest pose IS the mesh; the shader replaces the position per vertex
+        return perParticlePhase ? topology() : meshCache.resolve(this);
     }
 
     /** Every clip this source can play: the model's own plus whatever the animation files added. */
@@ -209,11 +313,16 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         return model().clipNames();
     }
 
-    /** Only a model that can be posed is dynamic; an unskinned or failed one is an ordinary mesh. */
+    /**
+     * Only a model that can be posed is dynamic; an unskinned or failed one is an ordinary mesh.
+     *
+     * <p>⚠️ And a per-particle one is not dynamic either: nothing is deformed on this side at all, the
+     * mesh stays the rest pose and the shader does the posing.</p>
+     */
     @Override
     @Nullable
     public IDynamicMesh asDynamic() {
-        return model().isAnimated() ? this : null;
+        return !perParticlePhase && model().isAnimated() ? this : null;
     }
 
     // ---- IDynamicMesh ----------------------------------------------------------------------------
@@ -272,6 +381,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
 
     @Override
     public void invalidate() {
+        dropBake();
         PhotonMeshCache.INSTANCE.invalidate(key());
         PhotonMeshCache.INSTANCE.invalidate(new CombinedKey(modelLocation, flipV, List.copyOf(animationFiles)));
         for (var file : animationFiles) {
@@ -288,6 +398,9 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         copy.speed = speed;
         copy.loop = loop;
         copy.animationFiles = new ArrayList<>(animationFiles);
+        copy.perParticlePhase = perParticlePhase;
+        copy.frames = frames;
+        copy.phaseSource = phaseSource;
         return copy;
     }
 
@@ -408,11 +521,14 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
                 && Float.compare(speed, that.speed) == 0
                 && animation.equals(that.animation)
                 && Objects.equals(modelLocation, that.modelLocation)
-                && animationFiles.equals(that.animationFiles);
+                && animationFiles.equals(that.animationFiles)
+                && perParticlePhase == that.perParticlePhase && frames == that.frames
+                && phaseSource == that.phaseSource;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(modelLocation, flipV, animation, speed, loop, animationFiles);
+        return Objects.hash(modelLocation, flipV, animation, speed, loop, animationFiles,
+                perParticlePhase, frames, phaseSource);
     }
 }

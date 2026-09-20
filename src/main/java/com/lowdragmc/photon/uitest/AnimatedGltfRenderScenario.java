@@ -90,6 +90,13 @@ public class AnimatedGltfRenderScenario implements UIScenario {
             s.step("stop the fox (" + tag + ")", AnimatedGltfRenderScenario::stopFox);
         }
 
+        // Per-particle phase: one baked table, every particle at its own frame. The point of the capture
+        // is that the poses DIFFER between particles, which no numeric check states as plainly.
+        s.step("play a swarm with per-particle phase", AnimatedGltfRenderScenario::startSwarm)
+                .frames(6)
+                .screenshot("fox_swarm_random")
+                .step("stop the swarm", AnimatedGltfRenderScenario::stopFox);
+
         s.teardown("unpin the clock", ctx -> AnimatedGltfModelSource.pinClock(null))
                 .teardown("stop any effect", AnimatedGltfRenderScenario::stopFox)
                 .teardown("remove the fixture", ctx -> {
@@ -178,6 +185,52 @@ public class AnimatedGltfRenderScenario implements UIScenario {
         executor.start();
         ctx.put("foxExecutor", executor);
         ctx.check("the effect started", executor.getRuntime() != null, "a runtime", "null");
+    }
+
+    /** Twelve of them, spread out, each at its own point in the clip. */
+    private static void startSwarm(TestContext ctx) {
+        stopFox(ctx);
+        var emitter = new ParticleEmitter();
+        var config = emitter.config;
+        config.setLooping(true);
+        config.setDuration(200);
+        config.setStartLifetime(NumberFunction.constant(200));
+        config.setStartSpeed(NumberFunction.constant(0));
+        config.setStartSize(new NumberFunction3(SIZE, SIZE, SIZE));
+        config.setMaxParticles(12);
+        config.shape.setScale(new NumberFunction3(9, 0, 2));
+        config.emission.setEmissionRate(NumberFunction.constant(0));
+        var burst = new EmissionSetting.Burst();
+        burst.time = 0;
+        burst.setCount(NumberFunction.constant(12));
+        burst.cycles = 1;
+        config.emission.getBursts().add(burst);
+
+        var source = new AnimatedGltfModelSource(MODEL);
+        source.setPerParticlePhase(true);
+        source.setFrames(24);
+        var renderer = config.renderer;
+        renderer.setRenderMode(ParticleRendererSetting.Mode.Model);
+        renderer.setModel(new MeshData(source));
+        renderer.setUseGPUInstance(true);
+        renderer.getMaterials().add(new com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting(
+                new com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial(
+                        ResourceLocation.parse("textures/block/white_concrete.png")))
+                .setDepthMask(true).setCull(true));
+
+        var fx = new FX();
+        fx.getFxData().objects().add(emitter);
+        var player = ctx.mc().player;
+        ctx.require("the client player exists", player != null);
+        var pos = player.blockPosition().relative(player.getDirection(), 8);
+        var executor = new BlockEffectExecutor(fx, player.level(), pos);
+        executor.setOffset(0, 1, 0);
+        executor.setAllowMulti(false);
+        executor.start();
+        ctx.put("foxExecutor", executor);
+        ctx.check("the swarm started", executor.getRuntime() != null, "a runtime", "null");
+        ctx.check("it baked a pose table", source.vertexAnimation() != null, "a table", "null");
+        ctx.check("and stopped deforming on the CPU", source.asDynamic() == null, "not dynamic", "dynamic");
     }
 
     private static void stopFox(TestContext ctx) {

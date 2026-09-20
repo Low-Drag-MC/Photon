@@ -3,6 +3,8 @@ package com.lowdragmc.photon.client.gameobject.particle.renderer;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.DynamicMeshSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.IDynamicMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.VertexAnimation;
+import net.minecraft.client.renderer.ShaderInstance;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -61,6 +63,33 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     @Nullable
     private IDynamicMesh dynamic() {
         return renderer.getModelSource().asDynamic();
+    }
+
+    /** The baked pose table the shader samples, or null when the model is posed on this side. */
+    @Nullable
+    VertexAnimation vertexAnimation() {
+        return renderer.getRenderMode() == ParticleRendererSetting.Mode.Model
+                ? renderer.getModelSource().vertexAnimation() : null;
+    }
+
+    /**
+     * The table and the two uniforms the PHOTON_VAT variant reads. Raw GL like the sampler binds above,
+     * which is what makes it work for core-shader JSONs and KilaGraph programs alike.
+     */
+    @Override
+    protected void bindExtraBuffers(ShaderInstance shader) {
+        var animation = vertexAnimation();
+        if (animation == null) return;
+        int texture = animation.texture();
+        if (texture == -1) return;
+        bindBufferSampler(shader, VAT_SAMPLER, vatSamplerUnit(), texture, VAT_MEMO);
+        int size = glGetUniformLocation(shader.getId(), "PhotonVatSize");
+        if (size >= 0) glUniform2i(size, animation.vertexCount(), animation.frames());
+        int params = glGetUniformLocation(shader.getId(), "PhotonVatParams");
+        if (params >= 0) {
+            var phase = animation.phase();
+            glUniform3f(params, phase[0], phase[1], phase[2]);
+        }
     }
 
     /** The model was replaced, a bake input changed, or the provider moved us to another buffer.

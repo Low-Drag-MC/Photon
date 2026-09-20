@@ -30,25 +30,37 @@ public class MaterialContext {
      */
     public final static MaterialContext PARTICLE_MODEL_INSTANCE_TANGENT =
             new MaterialContext().setShaderDefine("PARTICLE_MODEL_INSTANCE").setTangent(true);
+    /** Model instancing where the pose comes from a baked table, one frame per particle. */
+    public final static MaterialContext PARTICLE_MODEL_INSTANCE_VAT =
+            new MaterialContext().setShaderDefine("PARTICLE_MODEL_INSTANCE").setVat(true);
+    public final static MaterialContext PARTICLE_MODEL_INSTANCE_VAT_TANGENT =
+            new MaterialContext().setShaderDefine("PARTICLE_MODEL_INSTANCE").setVat(true).setTangent(true);
 
     /** Extra define enabling the mesh tangent attribute — MIRRORED IN {@code photon:particle.glsl}. */
     public static final String TANGENT_DEFINE = "PHOTON_TANGENT";
+    /** Extra define making the position come from the baked pose table — MIRRORED IN the same file. */
+    public static final String VAT_DEFINE = "PHOTON_VAT";
 
     private String shaderDefine = "";
     private boolean tangent;
+    private boolean vat;
     private boolean isRenderingPreview;
 
     /** Every {@code #define} this draw needs, for the shader builders. */
     public Set<String> getShaderDefines() {
-        if (shaderDefine.isEmpty()) {
-            return tangent ? Set.of(TANGENT_DEFINE) : Set.of();
-        }
-        return tangent ? Set.of(shaderDefine, TANGENT_DEFINE) : Set.of(shaderDefine);
+        var defines = new java.util.LinkedHashSet<String>();
+        if (!shaderDefine.isEmpty()) defines.add(shaderDefine);
+        if (tangent) defines.add(TANGENT_DEFINE);
+        if (vat) defines.add(VAT_DEFINE);
+        return Set.copyOf(defines);
     }
 
     /** Stable cache key for {@link #getShaderDefines()} (a {@code Set} is not an ordered key). */
     public String getVariantKey() {
-        return tangent ? shaderDefine + "+" + TANGENT_DEFINE : shaderDefine;
+        var key = new StringBuilder(shaderDefine);
+        if (tangent) key.append("+").append(TANGENT_DEFINE);
+        if (vat) key.append("+").append(VAT_DEFINE);
+        return key.toString();
     }
 
     public boolean isUsingShaderPack() {
