@@ -148,6 +148,24 @@ in vec3 Normal;
  */
 #define PHOTON_NO_TANGENT vec4(1.0, 0.0, 0.0, 1.0)
 
+/**
+ * A normal out of one float, octahedral at 12 bits a component — MIRRORED FROM
+ * VertexAnimationBake.packNormal, whose sign convention is `>= 0 ? 1 : -1` and not sign(), which
+ * answers zero at zero.
+ */
+vec3 photon_unpack_normal(float encoded) {
+    // ⚠️ NOT named `packed`: that is a reserved word in GLSL, and the compiler reports it as
+    // "abstract parameters not allowed" plus a cascade of undefined variables
+    float qy = mod(encoded, 4096.0);
+    float qx = floor(encoded / 4096.0);
+    vec2 e = vec2(qx, qy) / 4095.0 * 2.0 - 1.0;
+    vec3 n = vec3(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
+    if (n.z < 0.0) {
+        n.xy = (1.0 - abs(n.yx)) * vec2(n.x >= 0.0 ? 1.0 : -1.0, n.y >= 0.0 ? 1.0 : -1.0);
+    }
+    return normalize(n);
+}
+
 /** Any unit vector perpendicular to n, for a dP/du that collapsed (a zero-length segment). */
 vec3 photon_any_perpendicular(vec3 n) {
     vec3 axis = abs(n.x) > 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
@@ -243,9 +261,12 @@ ParticleData getParticleData() {
             + photonVatData.x * PhotonVatParams.y
             + photonVatData.y * PhotonVatParams.z);
     int photonVatFrame = clamp(int(photonVatPhase * float(PhotonVatSize.y)), 0, PhotonVatSize.y - 1);
-    vec3 photonPos = texelFetch(PhotonVat, photonVatFrame * PhotonVatSize.x + gl_VertexID).xyz;
+    vec4 photonVatTexel = texelFetch(PhotonVat, photonVatFrame * PhotonVatSize.x + gl_VertexID);
+    vec3 photonPos = photonVatTexel.xyz;
+    vec3 photonNormal = photon_unpack_normal(photonVatTexel.w);
 #else
     vec3 photonPos = aPos;
+    vec3 photonNormal = aNormal;
 #endif
     // aPos is already in centered model space (PhotonMesh convention); the model pivot is folded into
     // iPos on the CPU (TileParticleRenderer.uploadInstances), so the mesh buffer holds only the mesh
@@ -256,8 +277,8 @@ ParticleData getParticleData() {
     // object space: the mesh's own centered model-space vertex + normal
     data.ObjectPosition = photonPos;
     data.Color = vec4(iColor.rgb * aUV.z, iColor.a);
-    data.Normal = normalize(rotMat * aNormal);
-    data.ObjectNormal = aNormal;
+    data.Normal = normalize(rotMat * photonNormal);
+    data.ObjectNormal = photonNormal;
 #ifdef PHOTON_TANGENT
     // Like Normal above, the tangent is ROTATED but not scaled — iScale is deliberately left out of
     // both (a long-standing simplification; the CPU path uses a real normal matrix). The frame therefore

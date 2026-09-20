@@ -98,6 +98,74 @@ class VertexAnimationBakeTest {
         assertNull(VertexAnimationBake.bake(model, model.clipAt(0), 0));
     }
 
+    /**
+     * The normal rides in the texel's fourth channel, octahedral at 12 bits a component. ⚠️ The decode
+     * here mirrors the shader's; they are in lockstep on the sign convention, which is
+     * {@code >= 0 ? 1 : -1} and not {@code sign()}.
+     */
+    @Test
+    void normalsSurviveThePackingToWithinAFractionOfADegree() {
+        var out = new float[3];
+        float worst = 0f;
+        var random = new java.util.Random(1);
+        for (int i = 0; i < 20000; i++) {
+            float x = (float) random.nextGaussian();
+            float y = (float) random.nextGaussian();
+            float z = (float) random.nextGaussian();
+            float length = (float) Math.sqrt(x * x + y * y + z * z);
+            if (length < 1e-4f) continue;
+            x /= length;
+            y /= length;
+            z /= length;
+
+            VertexAnimationBake.unpackNormal(VertexAnimationBake.packNormal(x, y, z), out);
+            assertEquals(1f, out[0] * out[0] + out[1] * out[1] + out[2] * out[2], 1e-4f, "not unit");
+            float dot = Math.min(1f, Math.max(-1f, x * out[0] + y * out[1] + z * out[2]));
+            worst = Math.max(worst, (float) Math.toDegrees(Math.acos(dot)));
+        }
+        assertTrue(worst < 0.1f, "worst angular error " + worst + " degrees");
+    }
+
+    /** The axes are where the octahedral fold is most fragile — and where sign() would collapse it. */
+    @Test
+    void theAxisDirectionsSurviveExactly() {
+        var out = new float[3];
+        float[][] axes = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+        for (var axis : axes) {
+            VertexAnimationBake.unpackNormal(
+                    VertexAnimationBake.packNormal(axis[0], axis[1], axis[2]), out);
+            assertArrayEquals(axis, out, 1e-3f, java.util.Arrays.toString(axis));
+        }
+    }
+
+    @Test
+    void aDegenerateNormalPacksToSomethingUnit() {
+        var out = new float[3];
+        for (float[] bad : new float[][]{{0, 0, 0}, {Float.NaN, 0, 0}, {Float.POSITIVE_INFINITY, 1, 1}}) {
+            VertexAnimationBake.unpackNormal(VertexAnimationBake.packNormal(bad[0], bad[1], bad[2]), out);
+            assertEquals(1f, out[0] * out[0] + out[1] * out[1] + out[2] * out[2], 1e-3f,
+                    java.util.Arrays.toString(bad));
+        }
+    }
+
+    /** A baked frame carries the DEFORMED normal, not the rest pose's. */
+    @Test
+    void theTableCarriesTheDeformedNormal() {
+        var model = model();
+        int vertices = model.mesh().vertexCount();
+        var table = VertexAnimationBake.bake(model, model.clipAt(0), 2);
+        assertNotNull(table);
+        var out = new float[3];
+        for (int vertex = 0; vertex < vertices; vertex++) {
+            int texel = vertex * VertexAnimationBake.FLOATS_PER_TEXEL;
+            VertexAnimationBake.unpackNormal(table[texel + 3], out);
+            // the fixture's joint only translates, so +Z survives the deformation
+            assertEquals(0f, out[0], 1e-2f, "vertex " + vertex + " normal x");
+            assertEquals(0f, out[1], 1e-2f, "vertex " + vertex + " normal y");
+            assertEquals(1f, out[2], 1e-2f, "vertex " + vertex + " normal z");
+        }
+    }
+
     /** With no clip the table is the rest pose repeated — usable, and not a heap at the origin. */
     @Test
     void noClipBakesTheRestPose() {

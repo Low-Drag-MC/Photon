@@ -13,18 +13,62 @@ import org.jetbrains.annotations.Nullable;
  * vertex model is eighty megabytes of deformed geometry a frame. Baking the poses once trades that for
  * a texture and makes the per-frame cost zero.</p>
  *
- * <p>⚠️ Positions only. The normals stay the rest pose's, so lighting does not follow the deformation.
- * Storing them would double the table for something a particle material rarely uses.</p>
+ * <p>The normal rides in the texel's fourth channel, octahedral-encoded at 12 bits a component, so it
+ * costs nothing: that channel was padding. Worst case is under a sixteenth of a degree, against the
+ * ~1.5 degrees of the byte normals vanilla ships.</p>
  */
 @OnlyIn(Dist.CLIENT)
 public final class VertexAnimationBake {
 
-    /** RGBA32F texels: xyz = position, w unused. */
+    /** RGBA32F texels: xyz = position, w = the packed normal. */
     public static final int FLOATS_PER_TEXEL = 4;
+    /** Quantization of each octahedral component; 4095 * 4096 + 4095 is exactly representable in a float. */
+    private static final float OCT_SCALE = 4095f;
+    private static final float OCT_STRIDE = 4096f;
     /** Refuse to bake past this many texels (32 MiB); a model this size is not a particle. */
     public static final int MAX_TEXELS = 2_000_000;
 
     private VertexAnimationBake() {
+    }
+
+    /**
+     * A unit normal as one float. MIRRORED BY {@code photon_unpack_normal} in particle.glsl — including
+     * the sign convention, which is {@code >= 0 ? 1 : -1} and NOT {@code sign()}, whose answer at zero
+     * is zero and would collapse a component.
+     */
+    public static float packNormal(float nx, float ny, float nz) {
+        float sum = Math.abs(nx) + Math.abs(ny) + Math.abs(nz);
+        if (sum < 1.0e-20f || !Float.isFinite(sum)) {
+            return packNormal(0f, 0f, 1f);
+        }
+        float px = nx / sum;
+        float py = ny / sum;
+        if (nz < 0f) {
+            float folded = (1f - Math.abs(py)) * (px >= 0f ? 1f : -1f);
+            py = (1f - Math.abs(px)) * (py >= 0f ? 1f : -1f);
+            px = folded;
+        }
+        int qx = Math.round(Math.min(1f, Math.max(0f, px * 0.5f + 0.5f)) * OCT_SCALE);
+        int qy = Math.round(Math.min(1f, Math.max(0f, py * 0.5f + 0.5f)) * OCT_SCALE);
+        return qx * OCT_STRIDE + qy;
+    }
+
+    /** The decode, for testing the round trip; the shader has its own copy of this. */
+    public static void unpackNormal(float packed, float[] out) {
+        float qy = packed % OCT_STRIDE;
+        float qx = (float) Math.floor(packed / OCT_STRIDE);
+        float ex = qx / OCT_SCALE * 2f - 1f;
+        float ey = qy / OCT_SCALE * 2f - 1f;
+        float z = 1f - Math.abs(ex) - Math.abs(ey);
+        if (z < 0f) {
+            float folded = (1f - Math.abs(ey)) * (ex >= 0f ? 1f : -1f);
+            ey = (1f - Math.abs(ex)) * (ey >= 0f ? 1f : -1f);
+            ex = folded;
+        }
+        float length = (float) Math.sqrt(ex * ex + ey * ey + z * z);
+        out[0] = ex / length;
+        out[1] = ey / length;
+        out[2] = z / length;
     }
 
     /**
@@ -62,6 +106,7 @@ public final class VertexAnimationBake {
                 out[to] = pose[from];
                 out[to + 1] = pose[from + 1];
                 out[to + 2] = pose[from + 2];
+                out[to + 3] = packNormal(pose[from + 3], pose[from + 4], pose[from + 5]);
             }
         }
         return out;

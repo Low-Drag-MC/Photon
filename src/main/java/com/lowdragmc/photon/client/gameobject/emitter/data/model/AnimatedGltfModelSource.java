@@ -94,8 +94,8 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
      * Give every particle its own frame of the animation instead of posing them all alike.
      *
      * <p>The clip is baked into a table once and the vertex shader reads it, so a swarm costs one
-     * texture and no per-frame work — deforming a thousand copies is not something a CPU can do. ⚠️ The
-     * normals stay the rest pose's, so lighting does not follow the deformation.</p>
+     * texture and no per-frame work — deforming a thousand copies is not something a CPU can do.
+     * ⚠️ Tangents are not baked, so a normal-mapped model drawn this way keeps the rest pose's frame.</p>
      */
     @Getter
     @Configurable(name = "AnimatedGltfModelSource.perParticlePhase",
