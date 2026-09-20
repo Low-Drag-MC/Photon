@@ -95,6 +95,15 @@ public final class PhotonMesh {
      */
     @Nullable
     private volatile float[] tangents;
+    /**
+     * The mesh this one's topology came from — {@code this} for a freshly built mesh, the original for
+     * every {@link #withGeometry} derivative. Two meshes share a topology iff their {@link #topology()}
+     * is the same object, which is what lets a dynamic mesh hand out a new instance per frame without
+     * every identity-compare consumer concluding the model was replaced.
+     */
+    private final PhotonMesh topology;
+    /** Which revision of that topology's geometry this instance holds; see {@link #withGeometry}. */
+    private final long geometryRevision;
 
     private PhotonMesh(float[] geometry, float[] attributes, float[] spriteBounds, int[] indices,
                        boolean[] quadPaired, @Nullable float[] suppliedTangents) {
@@ -104,6 +113,59 @@ public final class PhotonMesh {
         this.indices = indices;
         this.quadPaired = quadPaired;
         this.tangents = suppliedTangents;
+        this.topology = this;
+        this.geometryRevision = 0L;
+    }
+
+    /** Derivative constructor: same topology, different geometry. */
+    private PhotonMesh(PhotonMesh topology, float[] geometry, @Nullable float[] tangents, long revision) {
+        this.geometry = geometry;
+        this.attributes = topology.attributes;
+        this.spriteBounds = topology.spriteBounds;
+        this.indices = topology.indices;
+        this.quadPaired = topology.quadPaired;
+        this.tangents = tangents;
+        this.topology = topology.topology;
+        this.geometryRevision = revision;
+    }
+
+    /**
+     * This mesh's geometry replaced, sharing every stream that a deformation does not touch — the
+     * indices, the UVs, the shade and the sprite bounds are the same arrays, not copies.
+     *
+     * <p>The result reports the same {@link #topology()}, so a consumer that caches per topology (the
+     * index buffer, the attribute stream, the VAO itself) keeps what it has and only re-reads the
+     * geometry. That is the whole mechanism behind {@link IDynamicMesh}.</p>
+     *
+     * @param geometry {@link #FLOATS_PER_GEOMETRY} floats per vertex, {@link #vertexCount()} of them
+     * @param tangents the deformed tangents, or {@code null} to derive them from this geometry on
+     *                 demand. ⚠️ Deriving is a weld-map rebuild over the whole mesh, so a dynamic mesh
+     *                 that is drawn with the Tangent setting on should supply them — the correct
+     *                 deformed tangent is the bind-pose one carried through the same deformation, which
+     *                 the provider knows and this class cannot.
+     * @param revision must differ from the previous revision of the same topology whenever the contents
+     *                 do; consumers upload when it changes and skip when it does not
+     */
+    public PhotonMesh withGeometry(float[] geometry, @Nullable float[] tangents, long revision) {
+        if (geometry.length != this.geometry.length) {
+            throw new IllegalArgumentException("geometry stream is " + geometry.length
+                    + " floats but this topology has " + vertexCount() + " vertices ("
+                    + this.geometry.length + " floats)");
+        }
+        return new PhotonMesh(this, geometry, tangents, revision);
+    }
+
+    /**
+     * The mesh whose topology this one shares. Compare by identity to ask "is this still the same
+     * model", as opposed to "is this still the same pose".
+     */
+    public PhotonMesh topology() {
+        return topology;
+    }
+
+    /** Which revision of {@link #topology()}'s geometry this holds; 0 for a statically built mesh. */
+    public long geometryRevision() {
+        return geometryRevision;
     }
 
     public int vertexCount() {

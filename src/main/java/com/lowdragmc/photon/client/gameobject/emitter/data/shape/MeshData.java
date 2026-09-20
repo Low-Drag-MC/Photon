@@ -87,6 +87,16 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
         triangleSumArea = 0;
     }
 
+    /**
+     * Re-derive the sampling geometry if the source handed out a different mesh.
+     *
+     * <p>⚠️ A <b>dynamic</b> source ({@code IDynamicMesh}) hands out a new mesh per pose, so emitting
+     * from one rebuilds all of this every time the pose changes — a Vector3f per vertex plus an Edge per
+     * edge and a Triangle per triangle, once a frame. That is correct but it is not cheap, and the cheap
+     * answer is a different algorithm rather than a faster rebuild: sample a triangle on the REST pose,
+     * which never changes, and deform only the one point that came out. That needs the source's skin
+     * weights, which no model source carries yet.</p>
+     */
     private void ensureLoaded() {
         var mesh = source.getMesh();
         if (mesh == derivedFrom) return;

@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.DynamicMeshSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.FacingMode;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.FacingOrientationHelper;
@@ -53,6 +54,9 @@ public class TileParticleRenderer {
     public void renderQueue(VertexConsumer buffer, Collection<IParticle> particles, Camera camera, float partialTicks) {
         if (renderer.getRenderMode() == ParticleRendererSetting.Mode.None) {
             return;
+        }
+        if (renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
+            notifyDynamicMesh();
         }
         for (var particle : particles) {
             if (particle instanceof TileParticle tileParticle && tileParticle.getDelay() <= 0) {
@@ -218,6 +222,17 @@ public class TileParticleRenderer {
     }
 
     /**
+     * Tell a live-geometry provider that this frame's draw read from it — its cue to keep the allocation
+     * its buffer or its pose lives in. Photon has no other way to say it is still interested, and the
+     * provider's own drawing is not evidence: an emitter outlives whatever spawned it.
+     */
+    private void notifyDynamicMesh() {
+        if (renderer.getModelSource() instanceof DynamicMeshSource source) {
+            source.getDynamic().onDrawn();
+        }
+    }
+
+    /**
      * Fill and upload the per-instance data for this pass's particles. Returns true if any
      * instance was uploaded (the VAO is left bound for {@link #drawInstanced}).
      */
@@ -229,10 +244,17 @@ public class TileParticleRenderer {
                 // layout differs too, so everything goes
                 instanceBackend.dispose();
             } else if (instanceBackend.staticGeometryStale()) {
-                // the mesh was hot-reloaded or deformed, or the attribute stream's inputs changed —
-                // base geometry only, the instance VBO and the buffer textures stay
+                // the model was replaced or hot-reloaded, the attribute stream's inputs changed, or a
+                // provider moved us to another buffer — base mesh only, the instance VBO and the buffer
+                // textures stay
                 instanceBackend.rebuildStaticGeometry();
+            } else if (instanceBackend.geometryStale()) {
+                // same model, new pose: overwrite the geometry stream and nothing else
+                instanceBackend.updateGeometry();
             }
+        }
+        if (renderMode == ParticleRendererSetting.Mode.Model) {
+            notifyDynamicMesh();
         }
         var buffer = instanceBackend.beginUpload(particles.size());
         if (buffer == null) return false;

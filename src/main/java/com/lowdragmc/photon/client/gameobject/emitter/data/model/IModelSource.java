@@ -27,6 +27,11 @@ import java.util.function.Supplier;
  * consume sources through {@link #getMesh()}, which resolves via the shared {@link PhotonMeshCache}.
  * Implementations must implement {@code equals}/{@code hashCode} over all mesh-affecting config
  * fields — render-pass batching and {@code MeshData} equality depend on it.
+ *
+ * <p>Geometry that <b>changes while it is drawn</b> — a skinned model mid-animation, a mesh another mod
+ * deformed on the GPU — arrives the same way, through {@link DynamicMeshSource} wrapping an
+ * {@link IDynamicMesh}. That one is not registered here and not persisted: it is installed as a runtime
+ * override on the emitter, because a live mesh has no authored form to save.</p>
  */
 public interface IModelSource extends IConfigurable, IPersistedSerializable, ILDLRegisterClient<IModelSource, Supplier<IModelSource>> {
     Codec<IModelSource> CODEC = PhotonRegistries.MODEL_SOURCES.optionalCodec().dispatch(ILDLRegisterClient::getRegistryHolderOptional,

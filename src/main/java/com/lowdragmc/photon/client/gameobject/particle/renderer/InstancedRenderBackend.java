@@ -33,6 +33,12 @@ abstract class InstancedRenderBackend {
         protected int attributeVbo = -1;
         protected int tangentVbo = -1;
         protected int instanceVbo = -1;
+        /**
+         * Whether {@link #createStaticGeometry} has run for the current buffers. Not inferred from
+         * {@code modelVbo != -1} any more: a backend can source its geometry from a buffer it does not
+         * own (see {@code IDynamicMesh}), and would then be rebuilt every single frame.
+         */
+        protected boolean staticCreated;
         // optional per-point buffer texture (vertex pulling), see pointTexelsPerPoint()
         protected int pointTbo = -1;
         protected int pointTex = -1;
@@ -64,6 +70,8 @@ abstract class InstancedRenderBackend {
                 glDeleteBuffers(modelEbo);
                 modelEbo = -1;
             }
+
+            staticCreated = false;
         }
 
         @Override
@@ -168,6 +176,12 @@ abstract class InstancedRenderBackend {
     @Nullable
     private static FloatBuffer customDataBuffer = null;
 
+    /** The GL handles, or null before {@link #init()} / after {@link #dispose()}. */
+    @Nullable
+    protected InstanceResource resource() {
+        return resource;
+    }
+
     /** Uploads the static base mesh into {@code resource.modelVbo}/{@code modelEbo} (the VAO is bound), sets the static attribute pointers and {@link #modelEboSize}. */
     protected abstract void createStaticGeometry(InstanceResource resource);
 
@@ -237,8 +251,9 @@ abstract class InstancedRenderBackend {
 
         glBindVertexArray(resource.vao);
 
-        if (resource.modelVbo == -1 || resource.modelEbo == -1) {
+        if (!resource.staticCreated) {
             createStaticGeometry(resource);
+            resource.staticCreated = true;
         }
 
         // create instance data + grow capacity if needed
@@ -317,6 +332,7 @@ abstract class InstancedRenderBackend {
         glBindVertexArray(resource.vao);
         resource.closeStatic();
         createStaticGeometry(resource);
+        resource.staticCreated = true;
         glBindVertexArray(0);
     }
 

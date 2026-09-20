@@ -1,8 +1,11 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.DynamicMeshSource;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.IDynamicMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
+import com.mojang.blaze3d.systems.RenderSystem;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.BufferUtils;
 
@@ -24,9 +27,18 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     /** Effective renderer runtime (slot-or-config per field); drives render-mode-dependent geometry +
      *  layout. Custom GPU data still comes from the config. */
     private final ParticleRendererSetting.Runtime renderer;
-    /** Mesh baked into the current static buffers, for hot-reload staleness checks (identity compare). */
+    /** Topology baked into the current static buffers (identity compare; see {@link PhotonMesh#topology()}).
+     *  A dynamic mesh hands out a new instance per pose, so comparing the MESH would rebuild every frame —
+     *  the topology is what the index buffer, the attribute stream and the VAO actually depend on. */
     @Nullable
-    private PhotonMesh builtMesh;
+    private PhotonMesh builtTopology;
+    /** Geometry revision currently in the geometry buffer; a change means re-upload, not rebuild. */
+    private long builtRevision;
+    /** The provider's buffer this VAO points at, or 0 when the geometry buffer is ours. Rebinding is a
+     *  static rebuild (cheap — pointers only), re-uploading is not possible: we do not own it. */
+    private int builtGlBuffer;
+    private long builtGlOffset;
+    private boolean builtGlPackedNormals;
     /** Whether the current static geometry/layout was baked for Model mode (vs billboard family); a
      *  runtime renderMode override crossing this boundary forces a rebuild. */
     private boolean builtModelMode;
@@ -47,24 +59,72 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         this.renderer = renderer;
     }
 
-    @Nullable
-    PhotonMesh getBuiltMesh() {
-        return builtMesh;
-    }
-
     boolean wasBuiltForModel() {
         return builtModelMode;
     }
 
-    /** Whether the baked static streams still match what the renderer settings ask for. */
+    /** The live-geometry provider behind the current model source, or null for an ordinary model. */
+    @Nullable
+    private IDynamicMesh dynamic() {
+        return renderer.getModelSource() instanceof DynamicMeshSource source ? source.getDynamic() : null;
+    }
+
+    /**
+     * Whether the static streams have to be rebuilt from scratch — the model was replaced or
+     * hot-reloaded, a bake input changed, or the provider is pointing us at a different buffer.
+     * <b>Not</b> true for a mesh that merely deformed; that is {@link #geometryStale()}.
+     */
     boolean staticGeometryStale() {
         if (renderer.getRenderMode() != ParticleRendererSetting.Mode.Model) {
             return false; // the billboard quad depends on nothing
         }
-        return builtMesh != renderer.getModelSource().getMesh()
+        if (builtTopology != renderer.getModelSource().getMesh().topology()
                 || builtWithTangent != wantsTangent
                 || builtShade != renderer.isShade()
-                || builtUseBlockUV != renderer.isUseBlockUV();
+                || builtUseBlockUV != renderer.isUseBlockUV()) {
+            return true;
+        }
+        var dynamic = dynamic();
+        int buffer = dynamic == null ? 0 : dynamic.glBuffer();
+        if (buffer != builtGlBuffer) {
+            return true;
+        }
+        return buffer != 0 && (dynamic.glByteOffset() != builtGlOffset
+                || dynamic.glPackedNormals() != builtGlPackedNormals);
+    }
+
+    /**
+     * Whether the geometry buffer holds an older pose than the source has. Only ever true for a mesh we
+     * upload: a provider's own buffer is deformed in place by whoever owns it, so there is nothing for
+     * this side to notice or to do.
+     */
+    boolean geometryStale() {
+        return builtModelMode && builtGlBuffer == 0
+                && renderer.getModelSource().getMesh().geometryRevision() != builtRevision;
+    }
+
+    /**
+     * Re-upload the geometry stream (and the tangents, if this pass uses them) in place. Everything else
+     * — the index buffer, the UVs, the VAO, the instance data, the buffer textures — is untouched,
+     * which is the entire reason the streams are split.
+     */
+    void updateGeometry() {
+        if (!isInitialized() || builtGlBuffer != 0) return;
+        var mesh = renderer.getModelSource().getMesh();
+        if (mesh.topology() != builtTopology) return; // a rebuild is due instead; don't write a mismatch
+        RenderSystem.assertOnRenderThread();
+        var resource = resource();
+        if (resource == null) return;
+        if (resource.modelVbo != -1) {
+            glBindBuffer(GL_ARRAY_BUFFER, resource.modelVbo);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, mesh.geometry());
+        }
+        if (wantsTangent && resource.tangentVbo != -1) {
+            glBindBuffer(GL_ARRAY_BUFFER, resource.tangentVbo);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, mesh.tangents());
+        }
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        builtRevision = mesh.geometryRevision();
     }
 
     boolean wantsTangent() {
@@ -115,15 +175,38 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         int vertexCount = mesh.vertexCount();
 
         // ---- geometry: position 3 + normal 3 ----------------------------------------------------
-        var geometry = mesh.geometry();
-        resource.modelVbo = glGenBuffers();
-        glBindBuffer(GL_ARRAY_BUFFER, resource.modelVbo);
-        glBufferData(GL_ARRAY_BUFFER, geometry, GL_DYNAMIC_DRAW);
-        int geometryStride = PhotonMesh.FLOATS_PER_GEOMETRY * Float.BYTES;
-        glVertexAttribPointer(0, 3, GL_FLOAT, false, geometryStride, 0);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(2, 3, GL_FLOAT, false, geometryStride, 3 * Float.BYTES);
-        glEnableVertexAttribArray(2);
+        // Either a buffer of ours that we upload into, or — when a provider deformed on the GPU — the
+        // provider's own buffer, bound straight in. A buffer object is untyped in GL, so the SSBO a
+        // compute pass wrote is a perfectly good vertex buffer, and nothing is copied or read back.
+        var dynamic = dynamic();
+        builtGlBuffer = dynamic == null ? 0 : dynamic.glBuffer();
+        if (builtGlBuffer != 0) {
+            builtGlOffset = dynamic.glByteOffset();
+            builtGlPackedNormals = dynamic.glPackedNormals();
+            glBindBuffer(GL_ARRAY_BUFFER, builtGlBuffer);
+            // packed: position 3 floats + normal as 4 signed normalized bytes = 16 bytes a vertex, the
+            // layout a compute skinning pass usually already writes. The shader sees a vec3 regardless.
+            int stride = builtGlPackedNormals ? 3 * Float.BYTES + 4 : PhotonMesh.FLOATS_PER_GEOMETRY * Float.BYTES;
+            glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, builtGlOffset);
+            glEnableVertexAttribArray(0);
+            if (builtGlPackedNormals) {
+                glVertexAttribPointer(2, 4, GL_BYTE, true, stride, builtGlOffset + 3 * Float.BYTES);
+            } else {
+                glVertexAttribPointer(2, 3, GL_FLOAT, false, stride, builtGlOffset + 3 * Float.BYTES);
+            }
+            glEnableVertexAttribArray(2);
+        } else {
+            builtGlOffset = 0L;
+            builtGlPackedNormals = false;
+            resource.modelVbo = glGenBuffers();
+            glBindBuffer(GL_ARRAY_BUFFER, resource.modelVbo);
+            glBufferData(GL_ARRAY_BUFFER, mesh.geometry(), GL_DYNAMIC_DRAW);
+            int geometryStride = PhotonMesh.FLOATS_PER_GEOMETRY * Float.BYTES;
+            glVertexAttribPointer(0, 3, GL_FLOAT, false, geometryStride, 0);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(2, 3, GL_FLOAT, false, geometryStride, 3 * Float.BYTES);
+            glEnableVertexAttribArray(2);
+        }
 
         // ---- attributes: u, v, shade ------------------------------------------------------------
         var attributes = mesh.attributes();
@@ -168,7 +251,8 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, resource.modelEbo);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices, GL_STATIC_DRAW);
         modelEboSize = indices.length;
-        builtMesh = mesh;
+        builtTopology = mesh.topology();
+        builtRevision = mesh.geometryRevision();
     }
 
     private void createBillboardGeometry(InstanceResource resource) {
@@ -195,7 +279,9 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, resource.modelEbo);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, quadIndices, GL_STATIC_DRAW);
         modelEboSize = 6;
-        builtMesh = null;
+        builtTopology = null;
+        builtRevision = 0L;
+        builtGlBuffer = 0;
     }
 
     @Override
