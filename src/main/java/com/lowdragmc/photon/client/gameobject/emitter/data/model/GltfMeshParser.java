@@ -4,8 +4,16 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.AnimationClip;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.MeshSkin;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.Skeleton;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.SkinnedModel;
+import it.unimi.dsi.fastutil.floats.FloatArrayList;
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -17,6 +25,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
@@ -33,8 +42,15 @@ import java.util.List;
  * <p>What it takes from the file: the default scene's node hierarchy (each node's {@code matrix} or
  * TRS, composed down the tree and baked into the vertices), every {@code TRIANGLES} primitive of every
  * mesh, and the {@code POSITION} / {@code NORMAL} / {@code TEXCOORD_0} / {@code TANGENT} attributes.
- * Materials, textures, cameras, skins, animations and morph targets are ignored — Photon has its own
- * material system, and the rest is not geometry.</p>
+ * Materials, textures, cameras and morph targets are ignored — Photon has its own material system, and
+ * the rest is not geometry.</p>
+ *
+ * <p><b>Skins and animations</b> are read into a {@link SkinnedModel} by {@link #parseModel}; a caller
+ * that only wants geometry uses {@code parse} and pays for none of it. Two things about a skinned mesh
+ * differ from a static one, both because the spec says so: its node's own transform is <b>ignored</b>
+ * (the joint matrices carry it), and the joint hierarchy is <b>kept</b> rather than baked, along with
+ * every ancestor of every joint — the armature is routinely parked under a node holding an up-axis
+ * conversion. Morph-target ({@code weights}) channels are skipped rather than approximated.</p>
  *
  * <p><b>Tangents.</b> glTF is the first format Photon reads that can carry them, and its convention is
  * already ours: {@code TANGENT} is a {@code vec4}, {@code xyz} the unit tangent and {@code w} the
@@ -64,8 +80,17 @@ public final class GltfMeshParser {
         return parse(in.readAllBytes(), flipV);
     }
 
-    /** Package-visible for tests. */
+    /** Geometry only, for callers with no interest in how it might move. */
     static PhotonMesh parse(byte[] bytes, boolean flipV) throws IOException {
+        return parseModel(bytes, flipV).mesh();
+    }
+
+    public static SkinnedModel parseModel(InputStream in, boolean flipV) throws IOException {
+        return parseModel(in.readAllBytes(), flipV);
+    }
+
+    /** Package-visible for tests. */
+    static SkinnedModel parseModel(byte[] bytes, boolean flipV) throws IOException {
         var buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
         JsonObject root;
         byte[] glbBin = null;
@@ -134,6 +159,13 @@ public final class GltfMeshParser {
         private final float[][] corner = new float[3][8];
         private final float[][] cornerTangent = new float[3][PhotonMesh.FLOATS_PER_TANGENT];
         private final Vector3f scratch = new Vector3f();
+        /** Null until a file with a skin is read; a static model never allocates any of this. */
+        @Nullable
+        private Skeleton skeleton;
+        @Nullable
+        private Int2IntOpenHashMap jointSlotOfNode;
+        private final IntArrayList skinJoints = new IntArrayList();
+        private final FloatArrayList skinWeights = new FloatArrayList();
 
         Reader(JsonObject root, byte[] glbBin, boolean flipV) {
             this.root = root;
@@ -141,9 +173,24 @@ public final class GltfMeshParser {
             this.flipV = flipV;
         }
 
-        PhotonMesh read() throws IOException {
+        SkinnedModel read() throws IOException {
             decodeBuffers();
             var nodes = array("nodes");
+            var roots = sceneRoots(nodes);
+            buildSkeleton(nodes);
+            for (int nodeIndex : roots) {
+                visitNode(nodes, nodeIndex, new Matrix4f(), 0, -1);
+            }
+            var mesh = builder.build();
+            if (skeleton == null || mesh.isEmpty()) {
+                return SkinnedModel.staticModel(mesh);
+            }
+            padSkinTo(mesh.vertexCount());
+            var skin = new MeshSkin(skinJoints.toIntArray(), skinWeights.toFloatArray());
+            return new SkinnedModel(mesh, skin, skeleton, readAnimations());
+        }
+
+        private List<Integer> sceneRoots(JsonArray nodes) {
             var scenes = array("scenes");
             var roots = new ArrayList<Integer>();
             int sceneIndex = root.has("scene") ? root.get("scene").getAsInt() : 0;
@@ -164,24 +211,239 @@ public final class GltfMeshParser {
                     if (!children.contains(i)) roots.add(i);
                 }
             }
-            for (int nodeIndex : roots) {
-                visitNode(nodes, nodeIndex, new Matrix4f(), 0);
-            }
-            return builder.build();
+            return roots;
         }
 
-        /** Walk the hierarchy, composing transforms so each primitive is emitted in scene space. */
-        private void visitNode(JsonArray nodes, int index, Matrix4f parent, int depth) {
+        /**
+         * Walk the hierarchy, composing transforms so each primitive is emitted in scene space.
+         *
+         * <p>⚠️ {@code skin} is inherited down the tree only in the sense that a node carrying one applies
+         * it to its own mesh; a child's mesh is not skinned by its parent's skin. Passing it as a
+         * parameter rather than reading it inside {@code readMesh} keeps that explicit.</p>
+         */
+        private void visitNode(JsonArray nodes, int index, Matrix4f parent, int depth, int inheritedSkin) {
             if (depth > MAX_NODE_DEPTH || index < 0 || index >= nodes.size()) return;
             var node = nodes.get(index).getAsJsonObject();
             var world = new Matrix4f(parent).mul(localTransform(node));
             if (node.has("mesh")) {
-                readMesh(node.get("mesh").getAsInt(), world);
+                int skin = node.has("skin") ? node.get("skin").getAsInt() : -1;
+                // glTF 3.7.3: the node's own global transform MUST be ignored for a skinned mesh — the
+                // joint matrices carry it. Baking it as well would apply the armature's placement twice.
+                readMesh(node.get("mesh").getAsInt(), skin >= 0 ? new Matrix4f() : world, skin);
             }
             var children = node.getAsJsonArray("children");
             if (children != null) {
                 for (var child : children) {
-                    visitNode(nodes, child.getAsInt(), world, depth + 1);
+                    visitNode(nodes, child.getAsInt(), world, depth + 1, inheritedSkin);
+                }
+            }
+        }
+
+        // ---- skeleton ----------------------------------------------------------------------------
+
+        /**
+         * Build the joint hierarchy from every {@code skin} in the file, before any geometry is read so
+         * per-vertex joint indices can be resolved as they are parsed.
+         *
+         * <p>⚠️ Every <b>ancestor</b> of a joint goes in too, joint or not. A joint's world transform is
+         * the product of the whole chain above it, and exporters routinely park an armature under a node
+         * that carries the up-axis conversion — drop that node and the entire model arrives rotated.</p>
+         */
+        private void buildSkeleton(JsonArray nodes) {
+            var skins = array("skins");
+            if (skins.isEmpty()) return;
+
+            int[] parentOf = new int[nodes.size()];
+            Arrays.fill(parentOf, -1);
+            for (int i = 0; i < nodes.size(); i++) {
+                var children = nodes.get(i).getAsJsonObject().getAsJsonArray("children");
+                if (children != null) {
+                    for (var child : children) {
+                        int c = child.getAsInt();
+                        if (c >= 0 && c < parentOf.length) parentOf[c] = i;
+                    }
+                }
+            }
+
+            var builder = new Skeleton.Builder();
+            var trs = new float[Skeleton.FLOATS_PER_TRS];
+            for (var element : skins) {
+                var joints = element.getAsJsonObject().getAsJsonArray("joints");
+                if (joints == null) continue;
+                for (var joint : joints) {
+                    addJointChain(builder, nodes, parentOf, joint.getAsInt(), trs);
+                }
+            }
+            if (builder.jointCount() == 0) return;
+
+            var sorted = new Skeleton[1];
+            int[] remap = builder.sortInto(sorted);
+            this.skeleton = sorted[0];
+            this.jointSlotOfNode = new Int2IntOpenHashMap();
+            this.jointSlotOfNode.defaultReturnValue(-1);
+            for (int node = 0; node < nodes.size(); node++) {
+                int slot = builder.slot(node);
+                if (slot >= 0) jointSlotOfNode.put(node, remap[slot]);
+            }
+
+            // inverse bind matrices are per SKIN, so they are applied after the slots exist
+            var affine = new float[Skeleton.FLOATS_PER_MATRIX];
+            for (var element : skins) {
+                var skin = element.getAsJsonObject();
+                var joints = skin.getAsJsonArray("joints");
+                if (joints == null || !skin.has("inverseBindMatrices")) continue;
+                float[] matrices = readAccessor(skin.get("inverseBindMatrices").getAsInt(), 16);
+                if (matrices == null) continue;
+                for (int j = 0; j < joints.size() && (j + 1) * 16 <= matrices.length; j++) {
+                    int slot = jointSlotOfNode.get(joints.get(j).getAsInt());
+                    if (slot < 0) continue;
+                    Skeleton.fromColumnMajor4x4(affine, 0, matrices, j * 16);
+                    System.arraycopy(affine, 0, skeleton.inverseBind(),
+                            slot * Skeleton.FLOATS_PER_MATRIX, Skeleton.FLOATS_PER_MATRIX);
+                }
+            }
+        }
+
+        private void addJointChain(Skeleton.Builder builder, JsonArray nodes, int[] parentOf, int node,
+                                   float[] trs) {
+            for (int depth = 0; node >= 0 && node < nodes.size() && depth <= MAX_NODE_DEPTH; depth++) {
+                if (builder.has(node)) return; // this node and everything above it is already in
+                var json = nodes.get(node).getAsJsonObject();
+                nodeTrs(json, trs);
+                int parent = parentOf[node];
+                builder.joint(node, parent, json.has("name") ? json.get("name").getAsString() : "joint" + node,
+                        trs, 0);
+                node = parent;
+            }
+        }
+
+        /**
+         * A node's local transform as translation / rotation / scale. A node that gave a full
+         * {@code matrix} instead is decomposed — legal for a joint as long as nothing animates it, and
+         * refusing would reject files that are otherwise fine.
+         */
+        private static void nodeTrs(JsonObject node, float[] out) {
+            if (node.has("matrix")) {
+                var matrix = localTransform(node);
+                var translation = matrix.getTranslation(new Vector3f());
+                var rotation = matrix.getNormalizedRotation(new Quaternionf());
+                var scale = matrix.getScale(new Vector3f());
+                out[0] = translation.x;
+                out[1] = translation.y;
+                out[2] = translation.z;
+                out[3] = rotation.x;
+                out[4] = rotation.y;
+                out[5] = rotation.z;
+                out[6] = rotation.w;
+                out[7] = scale.x;
+                out[8] = scale.y;
+                out[9] = scale.z;
+                return;
+            }
+            var t = node.getAsJsonArray("translation");
+            out[0] = t == null ? 0f : t.get(0).getAsFloat();
+            out[1] = t == null ? 0f : t.get(1).getAsFloat();
+            out[2] = t == null ? 0f : t.get(2).getAsFloat();
+            var r = node.getAsJsonArray("rotation"); // glTF stores the quaternion as (x, y, z, w)
+            out[3] = r == null ? 0f : r.get(0).getAsFloat();
+            out[4] = r == null ? 0f : r.get(1).getAsFloat();
+            out[5] = r == null ? 0f : r.get(2).getAsFloat();
+            out[6] = r == null ? 1f : r.get(3).getAsFloat();
+            var s = node.getAsJsonArray("scale");
+            out[7] = s == null ? 1f : s.get(0).getAsFloat();
+            out[8] = s == null ? 1f : s.get(1).getAsFloat();
+            out[9] = s == null ? 1f : s.get(2).getAsFloat();
+        }
+
+        // ---- animations -------------------------------------------------------------------------
+
+        private List<AnimationClip> readAnimations() {
+            var animations = array("animations");
+            var clips = new ArrayList<AnimationClip>();
+            for (int i = 0; i < animations.size(); i++) {
+                var animation = animations.get(i).getAsJsonObject();
+                var channels = new ArrayList<AnimationClip.Channel>();
+                var channelArray = animation.getAsJsonArray("channels");
+                var samplers = animation.getAsJsonArray("samplers");
+                if (channelArray != null && samplers != null) {
+                    for (var element : channelArray) {
+                        var channel = readChannel(element.getAsJsonObject(), samplers);
+                        if (channel != null) channels.add(channel);
+                    }
+                }
+                if (channels.isEmpty()) continue; // a clip that drives nothing we have is not a clip
+                String name = animation.has("name") ? animation.get("name").getAsString() : "animation" + i;
+                clips.add(new AnimationClip(name, channels));
+            }
+            return List.copyOf(clips);
+        }
+
+        @Nullable
+        private AnimationClip.Channel readChannel(JsonObject channel, JsonArray samplers) {
+            var target = channel.getAsJsonObject("target");
+            if (target == null || !target.has("node") || !target.has("path")) return null;
+            int slot = jointSlotOfNode == null ? -1 : jointSlotOfNode.get(target.get("node").getAsInt());
+            // A channel targeting a node no skin uses has nothing to move; `weights` (morph targets) is a
+            // path we do not implement, and silently sampling it into a TRS slot would corrupt the pose.
+            if (slot < 0) return null;
+            var path = switch (target.get("path").getAsString()) {
+                case "translation" -> AnimationClip.Path.TRANSLATION;
+                case "rotation" -> AnimationClip.Path.ROTATION;
+                case "scale" -> AnimationClip.Path.SCALE;
+                default -> null;
+            };
+            if (path == null) return null;
+
+            if (!channel.has("sampler")) return null;
+            int samplerIndex = channel.get("sampler").getAsInt();
+            if (samplerIndex < 0 || samplerIndex >= samplers.size()) return null;
+            var sampler = samplers.get(samplerIndex).getAsJsonObject();
+            if (!sampler.has("input") || !sampler.has("output")) return null;
+
+            var interpolation = switch (sampler.has("interpolation")
+                    ? sampler.get("interpolation").getAsString() : "LINEAR") {
+                case "STEP" -> AnimationClip.Interpolation.STEP;
+                case "CUBICSPLINE" -> AnimationClip.Interpolation.CUBICSPLINE;
+                default -> AnimationClip.Interpolation.LINEAR;
+            };
+
+            float[] times = readAccessor(sampler.get("input").getAsInt(), 1);
+            int components = path == AnimationClip.Path.ROTATION ? 4 : 3;
+            float[] values = readAccessor(sampler.get("output").getAsInt(), components);
+            if (times == null || values == null || times.length == 0) return null;
+            int expected = times.length * components
+                    * (interpolation == AnimationClip.Interpolation.CUBICSPLINE ? 3 : 1);
+            if (values.length < expected) return null; // malformed; a short read would sample garbage
+            return new AnimationClip.Channel(slot, path, interpolation, times, values);
+        }
+
+        // ---- per-vertex skin bookkeeping ---------------------------------------------------------
+
+        /**
+         * Pad the per-vertex skin arrays out to {@code vertexCount} with zero weights, which
+         * {@link MeshSkin} reads as "rigid, leave this vertex alone".
+         *
+         * <p>Called around every primitive so the arrays stay index-aligned with the mesh's vertices no
+         * matter which primitives were skinned — a file mixing the two is ordinary, and a misalignment
+         * here would move the wrong vertices.</p>
+         */
+        private void padSkinTo(int vertexCount) {
+            while (skinJoints.size() < vertexCount * MeshSkin.INFLUENCES) {
+                skinJoints.add(0);
+                skinWeights.add(0f);
+            }
+        }
+
+        private void recordSkin(int vertex, int[] joints, float[] weights, int off) {
+            padSkinTo(vertex);
+            int at = vertex * MeshSkin.INFLUENCES;
+            for (int i = 0; i < MeshSkin.INFLUENCES; i++) {
+                if (skinJoints.size() <= at + i) {
+                    skinJoints.add(joints[off + i]);
+                    skinWeights.add(weights[off + i]);
+                } else {
+                    skinJoints.set(at + i, joints[off + i]);
+                    skinWeights.set(at + i, weights[off + i]);
                 }
             }
         }
@@ -216,9 +478,11 @@ public final class GltfMeshParser {
             return matrix;
         }
 
-        private void readMesh(int meshIndex, Matrix4f world) {
+        private void readMesh(int meshIndex, Matrix4f world, int skinIndex) {
             var meshes = array("meshes");
             if (meshIndex < 0 || meshIndex >= meshes.size()) return;
+            // skin-local joint index -> skeleton slot, resolved once per mesh rather than per vertex
+            int[] jointSlots = skinJointSlots(skinIndex);
             float determinant = world.determinant3x3();
             // Normals need the inverse transpose (non-uniform scale skews them); tangents are plain
             // directions and use the matrix itself, per the glTF spec. A singular transform — a zero
@@ -234,12 +498,32 @@ public final class GltfMeshParser {
             var primitives = meshes.get(meshIndex).getAsJsonObject().getAsJsonArray("primitives");
             if (primitives == null) return;
             for (var element : primitives) {
-                readPrimitive(element.getAsJsonObject(), world, normalMatrix, mirrored);
+                readPrimitive(element.getAsJsonObject(), world, normalMatrix, mirrored, jointSlots);
             }
         }
 
+        /**
+         * The skeleton slot for each of a skin's joints, or null when this mesh is not skinned. glTF's
+         * {@code JOINTS_0} indexes into the SKIN's joint list, not into the nodes, so this indirection has
+         * to happen somewhere -- getting it wrong moves a vertex with the wrong bone, which reads as a
+         * model that explodes on the first frame of animation.
+         */
+        @Nullable
+        private int[] skinJointSlots(int skinIndex) {
+            if (skinIndex < 0 || jointSlotOfNode == null) return null;
+            var skins = array("skins");
+            if (skinIndex >= skins.size()) return null;
+            var joints = skins.get(skinIndex).getAsJsonObject().getAsJsonArray("joints");
+            if (joints == null) return null;
+            var slots = new int[joints.size()];
+            for (int i = 0; i < slots.length; i++) {
+                slots[i] = jointSlotOfNode.get(joints.get(i).getAsInt());
+            }
+            return slots;
+        }
+
         private void readPrimitive(JsonObject primitive, Matrix4f world, Matrix3f normalMatrix,
-                                   boolean mirrored) {
+                                   boolean mirrored, @Nullable int[] jointSlots) {
             int mode = primitive.has("mode") ? primitive.get("mode").getAsInt() : 4;
             if (mode != 4) {
                 // 4 = TRIANGLES. Strips/fans/points/lines are legal glTF but essentially never exported
@@ -255,6 +539,16 @@ public final class GltfMeshParser {
             float[] normals = attributeOf(attributes, "NORMAL", 3, vertexCount);
             float[] uvs = attributeOf(attributes, "TEXCOORD_0", 2, vertexCount);
             float[] tangents = attributeOf(attributes, "TANGENT", 4, vertexCount);
+            // JOINTS_0 goes through the same float accessor path as everything else: the values are small
+            // integers (unsigned byte or short), which a float carries exactly, and it avoids a second
+            // decode path for one attribute.
+            float[] jointIndices = jointSlots == null ? null
+                    : attributeOf(attributes, "JOINTS_0", 4, vertexCount);
+            float[] jointWeights = jointIndices == null ? null
+                    : attributeOf(attributes, "WEIGHTS_0", 4, vertexCount);
+            if (jointWeights == null) {
+                jointIndices = null; // joints without weights move nothing
+            }
 
             int[] indices = primitive.has("indices")
                     ? readIndices(primitive.get("indices").getAsInt())
@@ -264,7 +558,7 @@ public final class GltfMeshParser {
             float handedness = mirrored ? -1f : 1f;
             if (normals == null) {
                 readUnindexed(indices, vertexCount, positions, uvs, tangents, world, normalMatrix,
-                        mirrored, handedness);
+                        mirrored, handedness, jointIndices, jointWeights, jointSlots);
                 return;
             }
 
@@ -278,6 +572,9 @@ public final class GltfMeshParser {
                 if (base < 0) base = index;
                 if (tangents != null) {
                     addTangent(index, v, tangents, world, handedness);
+                }
+                if (jointIndices != null) {
+                    addSkin(index, v, jointIndices, jointWeights, jointSlots);
                 }
             }
             for (int i = 0; i + 2 < indices.length; i += 3) {
@@ -299,7 +596,8 @@ public final class GltfMeshParser {
          */
         private void readUnindexed(int[] indices, int vertexCount, float[] positions, float[] uvs,
                                    float[] tangents, Matrix4f world, Matrix3f normalMatrix,
-                                   boolean mirrored, float handedness) {
+                                   boolean mirrored, float handedness, @Nullable float[] jointIndices,
+                                   @Nullable float[] jointWeights, @Nullable int[] jointSlots) {
             for (int i = 0; i + 2 < indices.length; i += 3) {
                 boolean ok = true;
                 for (int k = 0; k < 3; k++) {
@@ -310,11 +608,17 @@ public final class GltfMeshParser {
                 if (!ok) continue;
                 faceNormal();
                 builder.triangle(corner[0], corner[1], corner[2], 1f);
+                int first = builder.lastFaceStart();
                 if (tangents != null) {
-                    int first = builder.lastFaceStart();
                     for (int k = 0; k < 3; k++) {
                         var t = cornerTangent[k];
                         builder.tangent(first + k, t[0], t[1], t[2], t[3]);
+                    }
+                }
+                if (jointIndices != null) {
+                    for (int k = 0; k < 3; k++) {
+                        int src = (mirrored && k > 0) ? 3 - k : k;
+                        addSkin(first + k, indices[i + src], jointIndices, jointWeights, jointSlots);
                     }
                 }
             }
@@ -345,6 +649,40 @@ public final class GltfMeshParser {
             else scratch.normalize();
             builder.tangent(index, scratch.x, scratch.y, scratch.z,
                     (tangents[vertex * 4 + 3] < 0f ? -1f : 1f) * handedness);
+        }
+
+        /**
+         * Resolve one vertex's four influences into skeleton slots and record them.
+         *
+         * <p>Weights are renormalized. glTF requires them to sum to 1 and quantized exports routinely miss
+         * by a fraction; left alone that fraction scales the vertex towards or away from the origin, which
+         * looks like a model that breathes. An all-zero set is left alone and read as "rigid".</p>
+         */
+        private void addSkin(int vertex, int sourceVertex, float[] jointIndices, float[] weights,
+                             int[] jointSlots) {
+            int at = sourceVertex * MeshSkin.INFLUENCES;
+            var slots = new int[MeshSkin.INFLUENCES];
+            var normalized = new float[MeshSkin.INFLUENCES];
+            float total = 0f;
+            for (int i = 0; i < MeshSkin.INFLUENCES; i++) {
+                int local = (int) jointIndices[at + i];
+                int slot = local >= 0 && local < jointSlots.length ? jointSlots[local] : -1;
+                float weight = weights[at + i];
+                if (slot < 0 || !(weight > 0f) || !Float.isFinite(weight)) {
+                    slots[i] = 0;
+                    normalized[i] = 0f;
+                    continue;
+                }
+                slots[i] = slot;
+                normalized[i] = weight;
+                total += weight;
+            }
+            if (total > 0f && Math.abs(total - 1f) > 1.0e-4f) {
+                for (int i = 0; i < MeshSkin.INFLUENCES; i++) {
+                    normalized[i] /= total;
+                }
+            }
+            recordSkin(vertex, slots, normalized, 0);
         }
 
         private static boolean outOfRange(int vertex, int vertexCount) {
@@ -572,6 +910,10 @@ public final class GltfMeshParser {
                 case "VEC2" -> 2;
                 case "VEC3" -> 3;
                 case "VEC4" -> 4;
+                // MAT4 is how inverse bind matrices arrive. Without it readAccessor rejected them for a
+                // component-count mismatch and every skin fell back to an identity bind pose — which is
+                // correct for a model authored at the origin and silently wrong for every other one.
+                case "MAT4" -> 16;
                 default -> -1;
             };
         }
