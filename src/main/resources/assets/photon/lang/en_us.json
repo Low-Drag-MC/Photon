@@ -609,6 +609,8 @@
   "GltfModelSource.modelLocation": "glTF Location",
   "GltfModelSource.flipV": "Flip V",
   "AnimatedGltfModelSource.animation": "Animation",
+  "AnimatedGltfModelSource.animationFiles": "Animation Files",
+  "photon.model_source.animated_gltf_model.animationFiles.tips": "Extra .glb files whose clips are added to this model's list, matched onto its skeleton by joint name. For the usual layout of one character file plus one file per animation. Both files must be exports of the same rig.",
   "AnimatedGltfModelSource.speed": "Speed",
   "AnimatedGltfModelSource.loop": "Loop",
   "photon.model_source.animated_gltf_model.animation.tips": "Which of the file's animations to play, by name. Leave empty for the first one. 'List Animations' prints the file's clip names to the log.",

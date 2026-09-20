@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.model;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigList;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
@@ -13,19 +14,29 @@ import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.AnimationClip;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.ClipRetarget;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.SkinnedModel;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.LoadingOverlay;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.NotNull;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * A glTF model playing one of its own animations: an ordinary authored model source that is also an
@@ -62,6 +73,20 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     @Configurable(name = "AnimatedGltfModelSource.loop",
             tips = "photon.model_source.animated_gltf_model.loop.tips")
     private boolean loop = true;
+
+    /**
+     * Extra glb files whose clips are retargeted onto this model's skeleton by joint name — the
+     * one-character-file-plus-many-animation-files layout every exporter offers.
+     *
+     * <p>Serialized by hand: a {@code List<ResourceLocation>} is not something the persisted parser
+     * round-trips.</p>
+     */
+    @Getter
+    @ConfigList(configuratorMethod = "createAnimationFileConfigurator",
+            addDefaultMethod = "addDefaultAnimationFile")
+    @Configurable(name = "AnimatedGltfModelSource.animationFiles",
+            tips = "photon.model_source.animated_gltf_model.animationFiles.tips")
+    private List<ResourceLocation> animationFiles = new ArrayList<>();
 
     private final DynamicMeshCache meshCache = new DynamicMeshCache();
 
@@ -109,18 +134,79 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         this.loop = loop;
     }
 
+    /** The base file's own key, shared with {@link GltfModelSource}: one parse serves both. */
     private PhotonMeshCache.GltfKey key() {
         return new PhotonMeshCache.GltfKey(modelLocation, flipV);
     }
 
-    /** Shared with {@link GltfModelSource}: one parse serves both. */
+    /** The model plus whatever the animation files added to it. */
+    private record CombinedKey(ResourceLocation model, boolean flipV, List<ResourceLocation> animations) {
+    }
+
     private SkinnedModel model() {
-        return PhotonMeshCache.INSTANCE.getModel(key(), k -> load());
+        if (animationFiles.isEmpty()) {
+            return PhotonMeshCache.INSTANCE.getModel(key(), k -> load(modelLocation));
+        }
+        return PhotonMeshCache.INSTANCE.getModel(
+                new CombinedKey(modelLocation, flipV, List.copyOf(animationFiles)), k -> combine());
+    }
+
+    /**
+     * The base model with every animation file's clips retargeted onto its skeleton.
+     * {@code null} = cannot load right now; see {@link #load}.
+     */
+    @Nullable
+    private SkinnedModel combine() {
+        if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
+            return null;
+        }
+        var base = PhotonMeshCache.INSTANCE.getModel(key(), k -> load(modelLocation));
+        var skeleton = base.skeleton();
+        if (skeleton == null) {
+            // nothing to retarget onto; the files are silently unusable, so say why once
+            if (!animationFiles.isEmpty()) {
+                Photon.LOGGER.warn("{} has no skeleton, so its {} animation file(s) cannot be used",
+                        modelLocation, animationFiles.size());
+            }
+            return base;
+        }
+        var clips = new ArrayList<>(base.clips());
+        for (var file : animationFiles) {
+            var source = PhotonMeshCache.INSTANCE.getModel(
+                    new PhotonMeshCache.GltfKey(file, flipV), k -> load(file));
+            if (source.skeleton() == null || source.clips().isEmpty()) {
+                Photon.LOGGER.warn("animation file {} has no clips to take", file);
+                continue;
+            }
+            var result = ClipRetarget.onto(skeleton, source.skeleton(), source.clips(), baseName(file));
+            if (result.clips().isEmpty()) {
+                Photon.LOGGER.warn("none of {}'s channels match {}'s joints — a different rig?",
+                        file, modelLocation);
+            } else if (result.droppedChannels() > 0) {
+                Photon.LOGGER.warn("{} of {}'s channels name joints {} does not have",
+                        result.droppedChannels(), file, modelLocation);
+            }
+            clips.addAll(result.clips());
+        }
+        return new SkinnedModel(base.mesh(), base.skin(), skeleton, List.copyOf(clips));
+    }
+
+    /** The file name without its directory or extension, which is what an animation file is called. */
+    private static String baseName(ResourceLocation file) {
+        var path = file.getPath();
+        int slash = path.lastIndexOf('/');
+        int dot = path.lastIndexOf('.');
+        return path.substring(slash + 1, dot > slash ? dot : path.length());
     }
 
     @Override
     public PhotonMesh getMesh() {
         return meshCache.resolve(this);
+    }
+
+    /** Every clip this source can play: the model's own plus whatever the animation files added. */
+    public List<String> getClipNames() {
+        return model().clipNames();
     }
 
     /** Only a model that can be posed is dynamic; an unskinned or failed one is an ordinary mesh. */
@@ -187,6 +273,10 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     @Override
     public void invalidate() {
         PhotonMeshCache.INSTANCE.invalidate(key());
+        PhotonMeshCache.INSTANCE.invalidate(new CombinedKey(modelLocation, flipV, List.copyOf(animationFiles)));
+        for (var file : animationFiles) {
+            PhotonMeshCache.INSTANCE.invalidate(new PhotonMeshCache.GltfKey(file, flipV));
+        }
         meshCache.invalidate();
     }
 
@@ -197,26 +287,84 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         copy.animation = animation;
         copy.speed = speed;
         copy.loop = loop;
+        copy.animationFiles = new ArrayList<>(animationFiles);
         return copy;
+    }
+
+    @Override
+    public Tag serializeAdditionalNBT(HolderLookup.@NotNull Provider provider) {
+        if (animationFiles.isEmpty()) return IModelSource.super.serializeAdditionalNBT(provider);
+        var tag = new CompoundTag();
+        var list = new ListTag();
+        for (var file : animationFiles) {
+            list.add(StringTag.valueOf(file.toString()));
+        }
+        tag.put("animationFiles", list);
+        return tag;
+    }
+
+    @Override
+    public void deserializeAdditionalNBT(Tag tag, HolderLookup.@NotNull Provider provider) {
+        animationFiles.clear();
+        if (!(tag instanceof CompoundTag compound)) return;
+        for (var element : compound.getList("animationFiles", Tag.TAG_STRING)) {
+            if (LDLib2.isValidResourceLocation(element.getAsString())) {
+                animationFiles.add(ResourceLocation.parse(element.getAsString()));
+            }
+        }
+    }
+
+    private ResourceLocation addDefaultAnimationFile() {
+        return Photon.id("models/missing.glb");
+    }
+
+    private Configurator createAnimationFileConfigurator(Supplier<ResourceLocation> getter,
+                                                         Consumer<ResourceLocation> setter) {
+        var configurator = new Configurator();
+        configurator.addInlineChild(new Button().setText(getter.get().getPath()).setOnClick(e -> {
+            var mui = e.currentElement.getModularUI();
+            if (mui == null) return;
+            showGlbDialog(mui.ui.rootElement, file -> {
+                setter.accept(file);
+                invalidate();
+                configurator.notifyChanges();
+            });
+        }).layout(layout -> layout.alignSelf(AlignItems.CENTER)));
+        return configurator;
     }
 
     /** {@code null} = "can't load right now, don't cache" (retry next call); see {@link PhotonMeshCache#get}. */
     @Nullable
-    private SkinnedModel load() {
+    private SkinnedModel load(ResourceLocation location) {
         if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
             return null;
         }
-        try (var in = Minecraft.getInstance().getResourceManager().open(modelLocation)) {
+        try (var in = Minecraft.getInstance().getResourceManager().open(location)) {
             var model = GltfMeshParser.parseModel(in, flipV);
-            var file = new File(LDLib2.getAssetsDir(), modelLocation.getNamespace() + "/" + modelLocation.getPath());
+            var file = new File(LDLib2.getAssetsDir(), location.getNamespace() + "/" + location.getPath());
             if (file.isFile()) {
-                PhotonMeshCache.INSTANCE.trackFile(key(), file);
+                PhotonMeshCache.INSTANCE.trackFile(new PhotonMeshCache.GltfKey(location, flipV), file);
             }
             return model;
         } catch (Exception e) {
-            Photon.LOGGER.warn("Failed to load animated glTF model {}", modelLocation, e);
+            Photon.LOGGER.warn("Failed to load glTF {}", location, e);
             return SkinnedModel.staticModel(PhotonMesh.EMPTY);
         }
+    }
+
+    /** The glb/gltf picker, shared by the model field and every animation-file row. */
+    private static void showGlbDialog(Object root, Consumer<ResourceLocation> onPicked) {
+        Dialog.showFileDialog("photon.gui.editor.tips.select_gltf", LDLib2.getAssetsDir(), true,
+                node -> {
+                    if (!node.getKey().isFile()) return true; // allow directories
+                    var name = node.getKey().getName().toLowerCase();
+                    return name.endsWith(".glb") || name.endsWith(".gltf");
+                }, r -> {
+                    if (r != null && r.isFile()) {
+                        var location = IModelSource.getAssetLocationFromFile(r);
+                        if (location != null) onPicked.accept(location);
+                    }
+                }).show((com.lowdragmc.lowdraglib2.gui.ui.UIElement) root);
     }
 
     @Override
@@ -227,19 +375,11 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         buttonConfigurator.addInlineChild(new Button().setText("photon.gui.editor.tips.select_gltf").setOnClick(e -> {
             var mui = e.currentElement.getModularUI();
             if (mui == null) return;
-            Dialog.showFileDialog("photon.gui.editor.tips.select_gltf", LDLib2.getAssetsDir(), true,
-                    node -> {
-                        if (!node.getKey().isFile()) return true; // allow directories
-                        var name = node.getKey().getName().toLowerCase();
-                        return name.endsWith(".glb") || name.endsWith(".gltf");
-                    }, r -> {
-                        if (r != null && r.isFile()) {
-                            var location = IModelSource.getAssetLocationFromFile(r);
-                            if (location == null || location.equals(modelLocation)) return;
-                            setModelLocation(location);
-                            buttonConfigurator.notifyChanges();
-                        }
-                    }).show(mui.ui.rootElement);
+            showGlbDialog(mui.ui.rootElement, location -> {
+                if (location.equals(modelLocation)) return;
+                setModelLocation(location);
+                buttonConfigurator.notifyChanges();
+            });
         }).layout(layout -> layout.alignSelf(AlignItems.CENTER)));
 
         // the file's own clip names, so the animation field is picked rather than typed. Empty until
@@ -267,11 +407,12 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         return flipV == that.flipV && loop == that.loop
                 && Float.compare(speed, that.speed) == 0
                 && animation.equals(that.animation)
-                && Objects.equals(modelLocation, that.modelLocation);
+                && Objects.equals(modelLocation, that.modelLocation)
+                && animationFiles.equals(that.animationFiles);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(modelLocation, flipV, animation, speed, loop);
+        return Objects.hash(modelLocation, flipV, animation, speed, loop, animationFiles);
     }
 }

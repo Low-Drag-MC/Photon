@@ -71,6 +71,9 @@ public final class GltfMeshParser {
     /** Malformed files can describe a node cycle; glTF forbids it, so bail rather than recurse forever. */
     private static final int MAX_NODE_DEPTH = 64;
 
+    /** A rigid binding is one joint at full weight. */
+    private static final float[] RIGID_WEIGHTS = {1f, 0f, 0f, 0f};
+
     private GltfMeshParser() {
     }
 
@@ -162,6 +165,9 @@ public final class GltfMeshParser {
         private Skeleton skeleton;
         @Nullable
         private Int2IntOpenHashMap jointSlotOfNode;
+        /** Node -> the slot its unskinned-but-animated mesh binds to; see addRigidMeshJoints. */
+        @Nullable
+        private Int2IntOpenHashMap rigidSlotOfNode;
         private final IntArrayList skinJoints = new IntArrayList();
         private final FloatArrayList skinWeights = new FloatArrayList();
 
@@ -180,11 +186,13 @@ public final class GltfMeshParser {
                 visitNode(nodes, nodeIndex, new Matrix4f(), 0, -1);
             }
             var mesh = builder.build();
-            if (skeleton == null || mesh.isEmpty()) {
+            if (skeleton == null) {
                 return SkinnedModel.staticModel(mesh);
             }
             padSkinTo(mesh.vertexCount());
-            var skin = new MeshSkin(skinJoints.toIntArray(), skinWeights.toFloatArray());
+            // an animation-only file has no mesh and no skin, but its skeleton and clips are the point
+            var skin = mesh.isEmpty() ? null
+                    : new MeshSkin(skinJoints.toIntArray(), skinWeights.toFloatArray());
             return new SkinnedModel(mesh, skin, skeleton, readAnimations());
         }
 
@@ -219,8 +227,12 @@ public final class GltfMeshParser {
             var world = new Matrix4f(parent).mul(localTransform(node));
             if (node.has("mesh")) {
                 int skin = node.has("skin") ? node.get("skin").getAsInt() : -1;
-                // glTF 3.7.3: a skinned mesh's node transform MUST be ignored; the joints carry it
-                readMesh(node.get("mesh").getAsInt(), skin >= 0 ? new Matrix4f() : world, skin);
+                int rigid = rigidSlotOfNode == null ? -1 : rigidSlotOfNode.get(index);
+                // Both of these keep their vertices in LOCAL space and let a joint carry the placement:
+                // for a skin because glTF 3.7.3 says the node's transform must be ignored, for a rigid
+                // animated node because its transform is no longer a constant to bake.
+                boolean posed = skin >= 0 || rigid >= 0;
+                readMesh(node.get("mesh").getAsInt(), posed ? new Matrix4f() : world, skin, rigid);
             }
             var children = node.getAsJsonArray("children");
             if (children != null) {
@@ -239,7 +251,8 @@ public final class GltfMeshParser {
          */
         private void buildSkeleton(JsonArray nodes) {
             var skins = array("skins");
-            if (skins.isEmpty()) return;
+            var animations = array("animations");
+            if (skins.isEmpty() && animations.isEmpty()) return;
 
             int[] parentOf = new int[nodes.size()];
             Arrays.fill(parentOf, -1);
@@ -262,6 +275,7 @@ public final class GltfMeshParser {
                     addJointChain(builder, nodes, parentOf, joint.getAsInt(), trs);
                 }
             }
+            var rigidNodes = addRigidMeshJoints(builder, nodes, parentOf, animations, trs);
             if (builder.jointCount() == 0) return;
 
             var sorted = new Skeleton[1];
@@ -272,6 +286,14 @@ public final class GltfMeshParser {
             for (int node = 0; node < nodes.size(); node++) {
                 int slot = builder.slot(node);
                 if (slot >= 0) jointSlotOfNode.put(node, remap[slot]);
+            }
+            if (!rigidNodes.isEmpty()) {
+                this.rigidSlotOfNode = new Int2IntOpenHashMap();
+                this.rigidSlotOfNode.defaultReturnValue(-1);
+                for (int node : rigidNodes) {
+                    int slot = builder.slot(rigidKey(node, nodes.size()));
+                    if (slot >= 0) rigidSlotOfNode.put(node, remap[slot]);
+                }
             }
 
             // per SKIN, so applied after the slots exist
@@ -290,6 +312,65 @@ public final class GltfMeshParser {
                             slot * Skeleton.FLOATS_PER_MATRIX, Skeleton.FLOATS_PER_MATRIX);
                 }
             }
+        }
+
+        /**
+         * Give every animated mesh node that no skin covers a joint to hang from, so the existing skinning
+         * path moves it — its transform stopped being a constant that could be baked into its vertices.
+         *
+         * <p>⚠️ The mesh binds to a CHILD slot with an identity local transform and an identity inverse
+         * bind, not to the node's own joint: that joint may also be listed in a skin, and would then carry
+         * that skin's inverse bind matrix.</p>
+         *
+         * @return the nodes that got one
+         */
+        private IntArrayList addRigidMeshJoints(Skeleton.Builder builder, JsonArray nodes, int[] parentOf,
+                                                JsonArray animations, float[] trs) {
+            var rigidNodes = new IntArrayList();
+            var animated = animatedNodes(animations);
+            if (animated.isEmpty()) return rigidNodes;
+            var identity = new float[]{0, 0, 0, 0, 0, 0, 1, 1, 1, 1};
+            for (int node = 0; node < nodes.size(); node++) {
+                var json = nodes.get(node).getAsJsonObject();
+                if (!json.has("mesh") || json.has("skin")) continue;
+                if (!isAnimatedInTree(node, parentOf, animated)) continue;
+                addJointChain(builder, nodes, parentOf, node, trs);
+                builder.joint(rigidKey(node, nodes.size()), node, "rigid" + node, identity, 0);
+                rigidNodes.add(node);
+            }
+            return rigidNodes;
+        }
+
+        /** Keys for the rigid binding slots, kept clear of the node indices they sit beside. */
+        private static int rigidKey(int node, int nodeCount) {
+            return nodeCount + node;
+        }
+
+        private java.util.Set<Integer> animatedNodes(JsonArray animations) {
+            var animated = new HashSet<Integer>();
+            for (var element : animations) {
+                var channels = element.getAsJsonObject().getAsJsonArray("channels");
+                if (channels == null) continue;
+                for (var channel : channels) {
+                    var target = channel.getAsJsonObject().getAsJsonObject("target");
+                    if (target == null || !target.has("node") || !target.has("path")) continue;
+                    var path = target.get("path").getAsString();
+                    // `weights` is a morph target, which moves vertices rather than the node
+                    if (path.equals("translation") || path.equals("rotation") || path.equals("scale")) {
+                        animated.add(target.get("node").getAsInt());
+                    }
+                }
+            }
+            return animated;
+        }
+
+        /** A node moves if it or anything above it does. */
+        private static boolean isAnimatedInTree(int node, int[] parentOf, java.util.Set<Integer> animated) {
+            for (int depth = 0; node >= 0 && depth <= MAX_NODE_DEPTH; depth++) {
+                if (animated.contains(node)) return true;
+                node = parentOf[node];
+            }
+            return false;
         }
 
         private void addJointChain(Skeleton.Builder builder, JsonArray nodes, int[] parentOf, int node,
@@ -454,7 +535,7 @@ public final class GltfMeshParser {
             return matrix;
         }
 
-        private void readMesh(int meshIndex, Matrix4f world, int skinIndex) {
+        private void readMesh(int meshIndex, Matrix4f world, int skinIndex, int rigidSlot) {
             var meshes = array("meshes");
             if (meshIndex < 0 || meshIndex >= meshes.size()) return;
             // skin-local joint index -> skeleton slot, resolved once per mesh rather than per vertex
@@ -474,7 +555,7 @@ public final class GltfMeshParser {
             var primitives = meshes.get(meshIndex).getAsJsonObject().getAsJsonArray("primitives");
             if (primitives == null) return;
             for (var element : primitives) {
-                readPrimitive(element.getAsJsonObject(), world, normalMatrix, mirrored, jointSlots);
+                readPrimitive(element.getAsJsonObject(), world, normalMatrix, mirrored, jointSlots, rigidSlot);
             }
         }
 
@@ -495,7 +576,7 @@ public final class GltfMeshParser {
         }
 
         private void readPrimitive(JsonObject primitive, Matrix4f world, Matrix3f normalMatrix,
-                                   boolean mirrored, @Nullable int[] jointSlots) {
+                                   boolean mirrored, @Nullable int[] jointSlots, int rigidSlot) {
             int mode = primitive.has("mode") ? primitive.get("mode").getAsInt() : 4;
             if (mode != 4) {
                 // 4 = TRIANGLES. Strips/fans/points/lines are legal glTF but essentially never exported
@@ -528,7 +609,7 @@ public final class GltfMeshParser {
             float handedness = mirrored ? -1f : 1f;
             if (normals == null) {
                 readUnindexed(indices, vertexCount, positions, uvs, tangents, world, normalMatrix,
-                        mirrored, handedness, jointIndices, jointWeights, jointSlots);
+                        mirrored, handedness, jointIndices, jointWeights, jointSlots, rigidSlot);
                 return;
             }
 
@@ -542,6 +623,8 @@ public final class GltfMeshParser {
                 }
                 if (jointIndices != null) {
                     addSkin(index, v, jointIndices, jointWeights, jointSlots);
+                } else if (rigidSlot >= 0) {
+                    recordSkin(index, new int[]{rigidSlot, 0, 0, 0}, RIGID_WEIGHTS, 0);
                 }
             }
             for (int i = 0; i + 2 < indices.length; i += 3) {
@@ -560,7 +643,8 @@ public final class GltfMeshParser {
         private void readUnindexed(int[] indices, int vertexCount, float[] positions, float[] uvs,
                                    float[] tangents, Matrix4f world, Matrix3f normalMatrix,
                                    boolean mirrored, float handedness, @Nullable float[] jointIndices,
-                                   @Nullable float[] jointWeights, @Nullable int[] jointSlots) {
+                                   @Nullable float[] jointWeights, @Nullable int[] jointSlots,
+                                   int rigidSlot) {
             for (int i = 0; i + 2 < indices.length; i += 3) {
                 boolean ok = true;
                 for (int k = 0; k < 3; k++) {
@@ -582,6 +666,10 @@ public final class GltfMeshParser {
                     for (int k = 0; k < 3; k++) {
                         int src = (mirrored && k > 0) ? 3 - k : k;
                         addSkin(first + k, indices[i + src], jointIndices, jointWeights, jointSlots);
+                    }
+                } else if (rigidSlot >= 0) {
+                    for (int k = 0; k < 3; k++) {
+                        recordSkin(first + k, new int[]{rigidSlot, 0, 0, 0}, RIGID_WEIGHTS, 0);
                     }
                 }
             }

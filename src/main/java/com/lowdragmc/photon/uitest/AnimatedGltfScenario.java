@@ -163,6 +163,39 @@ public class AnimatedGltfScenario implements UIScenario {
             }
         })
 
+        // the one-character-file-plus-one-file-per-animation layout
+        .step("an animation-only file adds its clip to the model", ctx -> {
+            var model = write("base.glb", glb(skinnedGltf()));
+            var donor = write("donor.glb", glb(animationOnlyGltf()));
+            var source = new AnimatedGltfModelSource(model);
+            source.invalidate();
+            AnimatedGltfModelSource.pinClock(0.5f);
+            try {
+                ctx.check("the model's own clip moves it in y, not x",
+                        source.getMesh().geometry()[PhotonMesh.geometryOffset(0)] == 0f,
+                        0f, source.getMesh().geometry()[PhotonMesh.geometryOffset(0)]);
+
+                source.getAnimationFiles().add(donor);
+                source.invalidate();
+                ctx.check("the donor's clip is named after its file",
+                        source.getClipNames().contains("uitest_anim_donor"),
+                        "uitest_anim_donor", source.getClipNames().toString());
+                ctx.check("the model's own clip is still there",
+                        source.getClipNames().contains("slide"), "slide", source.getClipNames().toString());
+                ctx.check("the mesh still loads", !source.getMesh().isEmpty(), "non-empty", "empty");
+
+                // the donor drives the same joint the other way, so selecting it has to look different
+                source.setAnimation("uitest_anim_donor");
+                var retargeted = source.getMesh();
+                ctx.check("it poses the model", !retargeted.isEmpty(), "non-empty", "empty");
+                ctx.check("and differently from the model's own clip — this one moves it in x",
+                        retargeted.geometry()[PhotonMesh.geometryOffset(0)] != 0f,
+                        "moved in x", retargeted.geometry()[PhotonMesh.geometryOffset(0)]);
+            } finally {
+                AnimatedGltfModelSource.pinClock(null);
+            }
+        })
+
         .step("a static source reads the same file without a second parse", ctx -> {
             var location = write("shared.glb", glb(skinnedGltf()));
             var animated = new AnimatedGltfModelSource(location);
@@ -267,6 +300,36 @@ public class AnimatedGltfScenario implements UIScenario {
                   "buffers": [{"byteLength": 316, "uri": "data:application/octet-stream;base64,%s"}]
                 }
                 """.formatted(Base64.getEncoder().encodeToString(full.array()));
+    }
+
+    /**
+     * A donor: one joint named "bone" — the same name {@link #skinnedGltf()} uses — and a clip moving it
+     * +4 in x, where the model's own clip moves it in y. No mesh, no inverse bind matrices.
+     */
+    private static String animationOnlyGltf() {
+        var bytes = ByteBuffer.allocate(32).order(ByteOrder.LITTLE_ENDIAN);
+        bytes.putFloat(0f).putFloat(1f);
+        bytes.putFloat(0).putFloat(0).putFloat(0);
+        bytes.putFloat(4).putFloat(0).putFloat(0);
+        return """
+                {
+                  "asset": {"version": "2.0"},
+                  "scene": 0, "scenes": [{"nodes": [0]}],
+                  "nodes": [{"name": "bone"}],
+                  "skins": [{"joints": [0]}],
+                  "animations": [{
+                    "name": "Armature|mixamo.com|Layer0",
+                    "channels": [{"sampler": 0, "target": {"node": 0, "path": "translation"}}],
+                    "samplers": [{"input": 0, "output": 1, "interpolation": "LINEAR"}]
+                  }],
+                  "accessors": [
+                    {"bufferView": 0, "byteOffset": 0, "componentType": 5126, "count": 2, "type": "SCALAR"},
+                    {"bufferView": 0, "byteOffset": 8, "componentType": 5126, "count": 2, "type": "VEC3"}
+                  ],
+                  "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 32}],
+                  "buffers": [{"byteLength": 32, "uri": "data:application/octet-stream;base64,%s"}]
+                }
+                """.formatted(Base64.getEncoder().encodeToString(bytes.array()));
     }
 
     /** Wrap JSON in a GLB container: 12-byte header, then a 4-byte-aligned JSON chunk. */
