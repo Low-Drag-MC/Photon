@@ -5,9 +5,11 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSetter;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
+import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.AnimationClip;
@@ -22,6 +24,7 @@ import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Objects;
 
 /**
@@ -46,10 +49,10 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     @Getter
     @Configurable(name = "GltfModelSource.flipV", tips = "photon.model_source.gltf_model.flipV.tips")
     private boolean flipV = false;
-    /** By name, empty meaning the first; an index would silently follow a reordered export. */
+    /** By name, empty meaning the first; an index would silently follow a reordered export.
+     *  Shown as a selector built from the loaded file's clips, not as a @Configurable text field. */
     @Getter
-    @Configurable(name = "AnimatedGltfModelSource.animation",
-            tips = "photon.model_source.animated_gltf_model.animation.tips")
+    @Persisted
     private String animation = "";
     @Getter
     @Configurable(name = "AnimatedGltfModelSource.speed",
@@ -239,12 +242,14 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
                     }).show(mui.ui.rootElement);
         }).layout(layout -> layout.alignSelf(AlignItems.CENTER)));
 
-        var clips = new Configurator().addInlineChild(new Button()
-                .setOnClick(event -> {
-                    var names = model().clipNames();
-                    Photon.LOGGER.info("{} animations in {}: {}", names.size(), modelLocation, names);
-                }).setText("photon.model_source.animated_gltf_model.list_animations")
-                .layout(layout -> layout.alignSelf(AlignItems.CENTER)));
+        // the file's own clip names, so the animation field is picked rather than typed. Empty until
+        // the model loads, and "" stays in the list as "the first one".
+        var names = new ArrayList<String>();
+        names.add("");
+        names.addAll(model().clipNames());
+        var clips = new SelectorConfigurator<>("AnimatedGltfModelSource.animation",
+                this::getAnimation, this::setAnimation, "", true, names,
+                name -> name.isEmpty() ? "photon.model_source.animated_gltf_model.first_animation" : name);
 
         var reloadButton = new Configurator().addInlineChild(new Button()
                 .setOnClick(event -> {

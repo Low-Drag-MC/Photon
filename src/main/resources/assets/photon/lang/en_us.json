@@ -614,7 +614,7 @@
   "photon.model_source.animated_gltf_model.animation.tips": "Which of the file's animations to play, by name. Leave empty for the first one. 'List Animations' prints the file's clip names to the log.",
   "photon.model_source.animated_gltf_model.speed.tips": "Playback rate. 1 is the clip's authored speed, 2 is twice as fast, negative plays it backwards.",
   "photon.model_source.animated_gltf_model.loop.tips": "Restart the clip when it ends. Off holds the last frame instead.",
-  "photon.model_source.animated_gltf_model.list_animations": "list animations",
+  "photon.model_source.animated_gltf_model.first_animation": "(first in the file)",
   "ColorBySpeedSetting.speedRange": "Speed Range",
   "color": "Color",
   "EmissionSetting.emissionRate": "Emission Rate",

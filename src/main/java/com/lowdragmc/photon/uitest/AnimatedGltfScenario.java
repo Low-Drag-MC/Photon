@@ -48,6 +48,30 @@ public class AnimatedGltfScenario implements UIScenario {
                     built == null ? "null" : built.getClass().getSimpleName());
         })
 
+        // the inspector path: everything else here builds the source in Java
+        .step("the inspector can build its configurator", ctx -> {
+            var source = new AnimatedGltfModelSource();
+            var group = new com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup("test", false);
+            Throwable thrown = null;
+            try {
+                source.buildConfigurator(group);
+            } catch (Throwable e) {
+                thrown = e;
+            }
+            ctx.check("buildConfigurator did not throw", thrown == null, "built", String.valueOf(thrown));
+            ctx.check("it produced rows", !group.getConfigurators().isEmpty(),
+                    "> 0", group.getConfigurators().size());
+            for (String key : java.util.List.of(
+                    "photon.model_source.animated_gltf_model",
+                    "AnimatedGltfModelSource.animation",
+                    "AnimatedGltfModelSource.speed",
+                    "AnimatedGltfModelSource.loop",
+                    "photon.model_source.animated_gltf_model.first_animation")) {
+                var text = net.minecraft.client.resources.language.I18n.get(key);
+                ctx.check("lang key resolves: " + key, !text.equals(key), "a translation", text);
+            }
+        })
+
         .step("a skinned glb loads and reports itself animated", ctx -> {
             var location = write("skinned.glb", glb(skinnedGltf()));
             var source = new AnimatedGltfModelSource(location);
