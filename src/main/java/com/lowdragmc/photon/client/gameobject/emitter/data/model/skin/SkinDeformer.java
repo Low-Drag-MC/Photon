@@ -6,30 +6,16 @@ import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Linear blend skinning on the CPU: a clip and a time in, a {@link PhotonMesh} geometry stream out.
- *
- * <p>Two steps, and the split matters because they cost wildly different amounts. {@link #pose} walks the
- * joints — tens of them — and is where the animation is evaluated. {@link #deform} walks the vertices —
- * thousands — and does nothing but multiply. So an emitter that shares a pose with another emitter can
- * share the whole thing, and one that only changed its time still pays the vertex pass; there is no way
- * around the second, which is why the first is worth caching.</p>
- *
- * <p>⚠️ <b>Flat float arrays, deliberately.</b> Written with a JOML object per vertex this is several
- * milliseconds on a twenty-thousand-vertex model, most of it allocation; written like this it is a
- * fraction of one. The arithmetic is the same arithmetic.</p>
- *
- * <p>Not thread-safe: one deformer holds one set of scratch buffers and is meant to be owned by whatever
- * is animating.</p>
+ * Linear blend skinning on the CPU: a clip and a time in, a geometry stream out.
+ * Not thread-safe — one deformer owns one set of scratch buffers.
  */
 @OnlyIn(Dist.CLIENT)
 public final class SkinDeformer {
 
     private final Skeleton skeleton;
-    /** Sampled pose, refilled from the rest pose on every {@link #pose}. */
     private final float[] trs;
-    /** Joint-to-scene matrices, composed in one forward pass (parents precede children). */
     private final float[] world;
-    /** {@code world * inverseBind} — what a vertex is actually multiplied by. */
+    /** {@code world * inverseBind} — what a vertex is multiplied by. */
     private final float[] skinMatrices;
 
     public SkinDeformer(Skeleton skeleton) {
@@ -44,11 +30,7 @@ public final class SkinDeformer {
         return skeleton;
     }
 
-    /**
-     * Evaluate {@code clip} at {@code time} (seconds) into this deformer's joint matrices. A null clip
-     * poses the skeleton at rest, which is what a model with no animation selected should look like —
-     * not a heap at the origin.
-     */
+    /** Evaluate {@code clip} at {@code time} (seconds); a null clip poses the skeleton at rest. */
     public void pose(@Nullable AnimationClip clip, float time) {
         System.arraycopy(skeleton.restTrs(), 0, trs, 0, trs.length);
         if (clip != null) {
@@ -61,7 +43,8 @@ public final class SkinDeformer {
             Skeleton.fromTrs(world, at, trs, joint * Skeleton.FLOATS_PER_TRS);
             int parent = skeleton.parent(joint);
             if (parent >= 0) {
-                // parent < joint by construction, so its world matrix is already final
+                // parent < joint by construction, so its world matrix is already final; skinMatrices
+                // doubles as scratch here and is overwritten immediately below
                 Skeleton.multiply(skinMatrices, at, world, parent * Skeleton.FLOATS_PER_MATRIX, world, at);
                 System.arraycopy(skinMatrices, at, world, at, Skeleton.FLOATS_PER_MATRIX);
             }
@@ -70,12 +53,8 @@ public final class SkinDeformer {
     }
 
     /**
-     * Skin {@code rest}'s geometry stream into {@code out} with the pose {@link #pose} left behind.
-     *
-     * @param rest the bind-pose mesh — read, never written
-     * @param skin which joints move which vertex
-     * @param out  {@code rest.vertexCount() * }{@link PhotonMesh#FLOATS_PER_GEOMETRY} floats; a buffer to
-     *             reuse across frames, since this is called once per pose
+     * Skin {@code rest}'s geometry into {@code out} with the pose {@link #pose} left behind.
+     * {@code out} is {@code rest.vertexCount() * }{@link PhotonMesh#FLOATS_PER_GEOMETRY} floats.
      */
     public void deform(PhotonMesh rest, MeshSkin skin, float[] out) {
         var source = rest.geometry();
@@ -109,16 +88,13 @@ public final class SkinDeformer {
                 oy += weight * (m4 * px + m5 * py + m6 * pz + m7);
                 oz += weight * (m8 * px + m9 * py + m10 * pz + m11);
 
-                // the 3x3 without the inverse transpose, which is what every engine ships: joints are
-                // rigid in practice, and a non-uniformly scaled one would need a second matrix per joint
-                // to fix a normal nobody is lighting that precisely
+                // the 3x3 without the inverse transpose, which is what every engine ships
                 mx += weight * (m0 * nx + m1 * ny + m2 * nz);
                 my += weight * (m4 * nx + m5 * ny + m6 * nz);
                 mz += weight * (m8 * nx + m9 * ny + m10 * nz);
             }
 
             if (!skinned) {
-                // rigid vertex: its node transform is already baked into the rest position
                 out[g] = px;
                 out[g + 1] = py;
                 out[g + 2] = pz;
@@ -138,8 +114,6 @@ public final class SkinDeformer {
                 out[g + 4] = my * inv;
                 out[g + 5] = mz * inv;
             } else {
-                // opposing influences cancelled, or the pose is degenerate; anything unit will do and a
-                // NaN here would reach the vertex buffer
                 out[g + 3] = nx;
                 out[g + 4] = ny;
                 out[g + 5] = nz;
@@ -148,16 +122,8 @@ public final class SkinDeformer {
     }
 
     /**
-     * Skin one point rather than a whole mesh — what an emission shape needs.
-     *
-     * <p>⭐ A shape samples a position on the surface and nothing else, so it can sample the <b>rest</b>
-     * pose, which never changes and therefore needs no per-frame rebuild of anything, and then carry just
-     * that one point through the deformation. O(1) a particle instead of O(vertices) a frame.</p>
-     *
-     * <p>The influences are the barycentric blend of the triangle's three corners', which is what the
-     * deformation would have produced at that point anyway. ⚠️ The one approximation is the weighting of
-     * the sampling itself: triangles are picked by their <b>rest</b> area, so a stretched limb gets the
-     * particles its unstretched self would have. Unity's skinned-mesh sampling has the same bias.</p>
+     * Skin one point rather than a whole mesh: sample the rest pose, then carry just that point through.
+     * O(1) a particle instead of O(vertices) a frame.
      *
      * @param out written as {@code x, y, z}
      */

@@ -34,14 +34,10 @@ public final class ObjMeshParser {
     }
 
     /**
-     * One welded vertex. The {@code v/vt/vn} triplet <b>is</b> OBJ's own indexing — two face corners
-     * naming the same triplet are the same vertex, by definition of the format — so welding on it is
-     * not a heuristic and needs no tolerance.
+     * One welded vertex; the {@code v/vt/vn} triplet is OBJ's own indexing, so this needs no tolerance.
      *
-     * <p>⚠️ {@code normal} is the resolved normal's identity, not the {@code vn} index: a corner with
-     * no {@code vn} takes its <i>face's</i> polygon normal, so two faces sharing a {@code v/vt} but
-     * no {@code vn} are genuinely different vertices. Those carry {@code -(face + 2)}, which cannot
-     * collide with a real {@code vn} index or with the {@code -1} that means "absent".
+     * <p>⚠️ {@code normal} is the resolved normal's identity, not the {@code vn} index: a corner with no
+     * {@code vn} takes its face's polygon normal, so those carry {@code -(face + 2)}.</p>
      */
     private record VertexKey(int position, int uv, int normal) {
     }
@@ -96,8 +92,7 @@ public final class ObjMeshParser {
             if (p[i] == null) return; // invalid face — skip whole face
         }
         float[] polyN = polygonNormal(p);
-        // resolve every corner to a welded vertex index before any triangulation: the polygon normal
-        // is a property of the face, so it has to exist before a cornerless-vn corner can be keyed
+        // before any triangulation: the polygon normal has to exist before a vn-less corner is keyed
         int[] v = new int[n];
         for (int i = 0; i < n; i++) {
             v[i] = weld(builder, welded, face.get(i), p[i], uvs, normals, flipV, polyN, faceIndex);
@@ -106,10 +101,8 @@ public final class ObjMeshParser {
             builder.triangle(v[0], v[1], v[2]);
             return;
         }
-        // A convex quad is passed through as a quad: the CPU draw path emits it as one QUADS-mode
-        // primitive instead of two degenerate ones, and OBJ exports out of a modelling package are
-        // mostly quads. Concave ones must not take this path — PhotonMesh.Builder.quad splits on the
-        // a-c diagonal, which for a reflex corner at a or c lies outside the polygon.
+        // ⚠️ convex only: Builder.quad splits on the a-c diagonal, which for a reflex corner at a
+        // or c lies outside the polygon
         if (n == 4 && isConvex(p, polyN)) {
             builder.quad(v[0], v[1], v[2], v[3]);
             return;
@@ -141,11 +134,7 @@ public final class ObjMeshParser {
         return index;
     }
 
-    /**
-     * Whether the polygon turns the same way at every corner, measured against its own plane normal.
-     * Done in 3D rather than on a 2D projection so it needs no basis of its own; a collinear corner
-     * (zero cross) is tolerated, since it makes either diagonal equally valid.
-     */
+    /** Whether the polygon turns the same way at every corner, measured against its plane normal. */
     private static boolean isConvex(float[][] p, float[] normal) {
         int n = p.length;
         int sign = 0;

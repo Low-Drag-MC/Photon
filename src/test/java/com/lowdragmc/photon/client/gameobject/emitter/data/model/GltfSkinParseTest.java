@@ -14,17 +14,9 @@ import java.util.Base64;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Reading a skinned, animated glTF. {@code SkinDeformerTest} pins the maths this feeds; these pin the
- * decisions the <b>file format</b> forces, each of which is silent when wrong:
- *
- * <ul>
- *   <li>a skinned mesh's own node transform is ignored — applying it puts the model at twice its offset;</li>
- *   <li>a joint's non-joint ancestors are still part of the hierarchy — dropping one arrives rotated;</li>
- *   <li>{@code JOINTS_0} indexes the skin's joint list, not the nodes — confusing them animates with the
- *       wrong bone;</li>
- *   <li>inverse bind matrices are {@code MAT4} accessors — rejecting them leaves an identity bind pose,
- *       which is right only for a model authored at the origin.</li>
- * </ul>
+ * Reading a skinned, animated glTF — the decisions the file format forces, each silent when wrong: a
+ * skinned mesh's node transform is ignored, a joint's non-joint ancestors stay in the hierarchy,
+ * {@code JOINTS_0} indexes the skin's joint list, and inverse bind matrices are {@code MAT4} accessors.
  */
 class GltfSkinParseTest {
 

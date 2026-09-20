@@ -7,16 +7,12 @@ import javax.annotation.Nullable;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * The injection contract: a provider hands over a topology once and a pose per revision, and everything
- * downstream keys off those two facts. Both halves are load-bearing and neither fails loudly —
- * a topology that changes identity per frame rebuilds every GL buffer once a frame, and a revision that
- * does not change when the geometry did leaves the old pose on screen forever.
+ * The injection contract: a topology once, a pose per revision. Neither half fails loudly — a topology
+ * that changes identity per frame rebuilds every GL buffer once a frame, and a revision that does not
+ * change when the geometry did leaves the old pose on screen forever.
  *
- * <p>These drive {@link DynamicMeshCache} rather than {@link DynamicMeshSource}: constructing an
- * {@code IModelSource} needs a frozen Minecraft registry (its dispatch codec is a static field on the
- * interface), which a headless test has none of. The source's own contract — equality by provider
- * identity, so emitters batch together iff they read the same geometry — is asserted in-client by
- * {@code DynamicMeshScenario}.</p>
+ * <p>Drives {@link DynamicMeshCache} rather than {@link DynamicMeshSource}, which needs a frozen
+ * registry; the source's own contract is asserted by {@code DynamicMeshScenario}.</p>
  */
 class DynamicMeshTest {
 

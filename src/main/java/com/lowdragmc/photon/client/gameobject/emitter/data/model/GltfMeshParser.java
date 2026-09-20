@@ -45,12 +45,10 @@ import java.util.List;
  * Materials, textures, cameras and morph targets are ignored — Photon has its own material system, and
  * the rest is not geometry.</p>
  *
- * <p><b>Skins and animations</b> are read into a {@link SkinnedModel} by {@link #parseModel}; a caller
- * that only wants geometry uses {@code parse} and pays for none of it. Two things about a skinned mesh
- * differ from a static one, both because the spec says so: its node's own transform is <b>ignored</b>
- * (the joint matrices carry it), and the joint hierarchy is <b>kept</b> rather than baked, along with
- * every ancestor of every joint — the armature is routinely parked under a node holding an up-axis
- * conversion. Morph-target ({@code weights}) channels are skipped rather than approximated.</p>
+ * <p><b>Skins and animations</b> are read by {@link #parseModel}. Two things differ for a skinned mesh,
+ * both per spec: its node's own transform is ignored (the joint matrices carry it), and the joint
+ * hierarchy is kept rather than baked, along with every ancestor of every joint. Morph-target
+ * ({@code weights}) channels are skipped.</p>
  *
  * <p><b>Tangents.</b> glTF is the first format Photon reads that can carry them, and its convention is
  * already ours: {@code TANGENT} is a {@code vec4}, {@code xyz} the unit tangent and {@code w} the
@@ -214,21 +212,14 @@ public final class GltfMeshParser {
             return roots;
         }
 
-        /**
-         * Walk the hierarchy, composing transforms so each primitive is emitted in scene space.
-         *
-         * <p>⚠️ {@code skin} is inherited down the tree only in the sense that a node carrying one applies
-         * it to its own mesh; a child's mesh is not skinned by its parent's skin. Passing it as a
-         * parameter rather than reading it inside {@code readMesh} keeps that explicit.</p>
-         */
+        /** Walk the hierarchy, composing transforms so each primitive is emitted in scene space. */
         private void visitNode(JsonArray nodes, int index, Matrix4f parent, int depth, int inheritedSkin) {
             if (depth > MAX_NODE_DEPTH || index < 0 || index >= nodes.size()) return;
             var node = nodes.get(index).getAsJsonObject();
             var world = new Matrix4f(parent).mul(localTransform(node));
             if (node.has("mesh")) {
                 int skin = node.has("skin") ? node.get("skin").getAsInt() : -1;
-                // glTF 3.7.3: the node's own global transform MUST be ignored for a skinned mesh — the
-                // joint matrices carry it. Baking it as well would apply the armature's placement twice.
+                // glTF 3.7.3: a skinned mesh's node transform MUST be ignored; the joints carry it
                 readMesh(node.get("mesh").getAsInt(), skin >= 0 ? new Matrix4f() : world, skin);
             }
             var children = node.getAsJsonArray("children");
@@ -242,12 +233,9 @@ public final class GltfMeshParser {
         // ---- skeleton ----------------------------------------------------------------------------
 
         /**
-         * Build the joint hierarchy from every {@code skin} in the file, before any geometry is read so
-         * per-vertex joint indices can be resolved as they are parsed.
-         *
-         * <p>⚠️ Every <b>ancestor</b> of a joint goes in too, joint or not. A joint's world transform is
-         * the product of the whole chain above it, and exporters routinely park an armature under a node
-         * that carries the up-axis conversion — drop that node and the entire model arrives rotated.</p>
+         * Build the joint hierarchy before any geometry is read, so per-vertex joint indices resolve as
+         * they are parsed. ⚠️ Every ancestor of a joint goes in too, joint or not: exporters park
+         * armatures under a node carrying the up-axis conversion, and dropping it rotates the model.
          */
         private void buildSkeleton(JsonArray nodes) {
             var skins = array("skins");
@@ -286,7 +274,7 @@ public final class GltfMeshParser {
                 if (slot >= 0) jointSlotOfNode.put(node, remap[slot]);
             }
 
-            // inverse bind matrices are per SKIN, so they are applied after the slots exist
+            // per SKIN, so applied after the slots exist
             var affine = new float[Skeleton.FLOATS_PER_MATRIX];
             for (var element : skins) {
                 var skin = element.getAsJsonObject();
@@ -317,11 +305,7 @@ public final class GltfMeshParser {
             }
         }
 
-        /**
-         * A node's local transform as translation / rotation / scale. A node that gave a full
-         * {@code matrix} instead is decomposed — legal for a joint as long as nothing animates it, and
-         * refusing would reject files that are otherwise fine.
-         */
+        /** A node's local TRS; a full {@code matrix} is decomposed rather than rejected. */
         private static void nodeTrs(JsonObject node, float[] out) {
             if (node.has("matrix")) {
                 var matrix = localTransform(node);
@@ -383,9 +367,7 @@ public final class GltfMeshParser {
             var target = channel.getAsJsonObject("target");
             if (target == null || !target.has("node") || !target.has("path")) return null;
             int slot = jointSlotOfNode == null ? -1 : jointSlotOfNode.get(target.get("node").getAsInt());
-            // A channel targeting a node no skin uses has nothing to move; `weights` (morph targets) is a
-            // path we do not implement, and silently sampling it into a TRS slot would corrupt the pose.
-            if (slot < 0) return null;
+            if (slot < 0) return null; // a channel targeting a node no skin uses has nothing to move
             var path = switch (target.get("path").getAsString()) {
                 case "translation" -> AnimationClip.Path.TRANSLATION;
                 case "rotation" -> AnimationClip.Path.ROTATION;
@@ -413,20 +395,14 @@ public final class GltfMeshParser {
             if (times == null || values == null || times.length == 0) return null;
             int expected = times.length * components
                     * (interpolation == AnimationClip.Interpolation.CUBICSPLINE ? 3 : 1);
-            if (values.length < expected) return null; // malformed; a short read would sample garbage
+            if (values.length < expected) return null; // a short read would sample garbage
             return new AnimationClip.Channel(slot, path, interpolation, times, values);
         }
 
         // ---- per-vertex skin bookkeeping ---------------------------------------------------------
 
-        /**
-         * Pad the per-vertex skin arrays out to {@code vertexCount} with zero weights, which
-         * {@link MeshSkin} reads as "rigid, leave this vertex alone".
-         *
-         * <p>Called around every primitive so the arrays stay index-aligned with the mesh's vertices no
-         * matter which primitives were skinned — a file mixing the two is ordinary, and a misalignment
-         * here would move the wrong vertices.</p>
-         */
+        /** Pad with zero weights, which {@link MeshSkin} reads as rigid. Keeps the arrays aligned with
+         *  the mesh's vertices when only some primitives are skinned. */
         private void padSkinTo(int vertexCount) {
             while (skinJoints.size() < vertexCount * MeshSkin.INFLUENCES) {
                 skinJoints.add(0);
@@ -502,12 +478,8 @@ public final class GltfMeshParser {
             }
         }
 
-        /**
-         * The skeleton slot for each of a skin's joints, or null when this mesh is not skinned. glTF's
-         * {@code JOINTS_0} indexes into the SKIN's joint list, not into the nodes, so this indirection has
-         * to happen somewhere -- getting it wrong moves a vertex with the wrong bone, which reads as a
-         * model that explodes on the first frame of animation.
-         */
+        /** ⚠️ {@code JOINTS_0} indexes the SKIN's joint list, not the nodes. Getting this wrong moves
+         *  each vertex with the wrong bone. */
         @Nullable
         private int[] skinJointSlots(int skinIndex) {
             if (skinIndex < 0 || jointSlotOfNode == null) return null;
@@ -539,9 +511,7 @@ public final class GltfMeshParser {
             float[] normals = attributeOf(attributes, "NORMAL", 3, vertexCount);
             float[] uvs = attributeOf(attributes, "TEXCOORD_0", 2, vertexCount);
             float[] tangents = attributeOf(attributes, "TANGENT", 4, vertexCount);
-            // JOINTS_0 goes through the same float accessor path as everything else: the values are small
-            // integers (unsigned byte or short), which a float carries exactly, and it avoids a second
-            // decode path for one attribute.
+            // small integers, which a float carries exactly, so no second decode path
             float[] jointIndices = jointSlots == null ? null
                     : attributeOf(attributes, "JOINTS_0", 4, vertexCount);
             float[] jointWeights = jointIndices == null ? null
@@ -562,10 +532,7 @@ public final class GltfMeshParser {
                 return;
             }
 
-            // ⭐ The file's own vertices and indices are kept as they are. That numbering is what a
-            // skinned glTF's JOINTS_0/WEIGHTS_0 are addressed by, so throwing it away — which is what
-            // expanding every triangle into its own three corners used to do — is what would make
-            // attaching a skin stream impossible later, quite apart from costing 7.7x the vertices.
+            // the file's own numbering is kept: it is what JOINTS_0/WEIGHTS_0 are addressed by
             int base = -1;
             for (int v = 0; v < vertexCount; v++) {
                 int index = addVertex(v, positions, normals, uvs, world, normalMatrix);
@@ -589,11 +556,7 @@ public final class GltfMeshParser {
             }
         }
 
-        /**
-         * A primitive that shipped without {@code NORMAL}: the normal is Newell's of the <b>face</b>,
-         * which is a property no two faces can share, so this one primitive is de-indexed and its
-         * triangles each get three vertices of their own. Rare, and rarely large.
-         */
+        /** No {@code NORMAL} means a per-FACE normal, which no two faces can share, so de-index. */
         private void readUnindexed(int[] indices, int vertexCount, float[] positions, float[] uvs,
                                    float[] tangents, Matrix4f world, Matrix3f normalMatrix,
                                    boolean mirrored, float handedness, @Nullable float[] jointIndices,
@@ -651,13 +614,8 @@ public final class GltfMeshParser {
                     (tangents[vertex * 4 + 3] < 0f ? -1f : 1f) * handedness);
         }
 
-        /**
-         * Resolve one vertex's four influences into skeleton slots and record them.
-         *
-         * <p>Weights are renormalized. glTF requires them to sum to 1 and quantized exports routinely miss
-         * by a fraction; left alone that fraction scales the vertex towards or away from the origin, which
-         * looks like a model that breathes. An all-zero set is left alone and read as "rigid".</p>
-         */
+        /** ⚠️ Weights are renormalized: quantized exports miss the required sum of 1, and that
+         *  fraction scales the vertex, which looks like a model that breathes. */
         private void addSkin(int vertex, int sourceVertex, float[] jointIndices, float[] weights,
                              int[] jointSlots) {
             int at = sourceVertex * MeshSkin.INFLUENCES;
@@ -910,9 +868,8 @@ public final class GltfMeshParser {
                 case "VEC2" -> 2;
                 case "VEC3" -> 3;
                 case "VEC4" -> 4;
-                // MAT4 is how inverse bind matrices arrive. Without it readAccessor rejected them for a
-                // component-count mismatch and every skin fell back to an identity bind pose — which is
-                // correct for a model authored at the origin and silently wrong for every other one.
+                // ⚠️ inverse bind matrices arrive as MAT4; without this every skin silently fell back
+                // to an identity bind pose
                 case "MAT4" -> 16;
                 default -> -1;
             };

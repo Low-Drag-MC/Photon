@@ -25,24 +25,15 @@ import java.io.File;
 import java.util.Objects;
 
 /**
- * A glTF model that <b>plays one of its own animations</b>: the skinned counterpart of
- * {@link GltfModelSource}, and the first source whose geometry changes while it is drawn.
+ * A glTF model playing one of its own animations: an ordinary authored model source that is also an
+ * {@link IDynamicMesh}.
  *
- * <p>It is an ordinary authored, saved model source — pick a {@code .glb}, pick a clip — and it is also an
- * {@link IDynamicMesh}, which is how the changing geometry reaches the render backend and the emission
- * shape. Nothing else in Photon has to know the difference.</p>
+ * <p>The pose follows the <b>timeline</b> in the editor (so scrubbing scrubs the animation) and the
+ * level's clock in the world. Every emitter on the same file and clip reads the same instant, so they
+ * share one deformation ({@link AnimatedPose}) and one render pass.</p>
  *
- * <h2>The clock</h2>
- *
- * <p>In the editor the pose follows the <b>timeline</b>, so scrubbing the playhead scrubs the animation and
- * a paused scene holds its pose. In the world it follows the level's clock. Either way every emitter using
- * the same file and clip reads the same instant, which is what lets them share one deformation
- * ({@link AnimatedPose}) and one render pass.</p>
- *
- * <p>⚠️ Which also means <b>every instance is in lockstep</b>. A swarm of these all flap together, because
- * there is one clock and not one per particle. A per-particle phase is a different mechanism — the pose
- * would have to exist at many instants at once, which for a thousand particles is not something a CPU
- * deformation or a shared buffer can do.</p>
+ * <p>⚠️ Which means every instance is in lockstep — one clock, not one per particle. A swarm all flap
+ * together; per-particle phase needs the pose to exist at many instants at once.</p>
  */
 @OnlyIn(Dist.CLIENT)
 @LDLRegisterClient(name = "animated_gltf_model", registry = "photon:model_source")
@@ -55,11 +46,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     @Getter
     @Configurable(name = "GltfModelSource.flipV", tips = "photon.model_source.gltf_model.flipV.tips")
     private boolean flipV = false;
-    /**
-     * Which of the file's animations to play, by name; empty means the first one. A name rather than an
-     * index because an index silently plays the wrong clip after the artist reorders an export, and a
-     * missing name is diagnosable where a missing index is not.
-     */
+    /** By name, empty meaning the first; an index would silently follow a reordered export. */
     @Getter
     @Configurable(name = "AnimatedGltfModelSource.animation",
             tips = "photon.model_source.animated_gltf_model.animation.tips")
@@ -73,16 +60,10 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
             tips = "photon.model_source.animated_gltf_model.loop.tips")
     private boolean loop = true;
 
-    /** Hands back the identical mesh until the pose changes; see {@link DynamicMeshCache}. */
     private final DynamicMeshCache meshCache = new DynamicMeshCache();
 
-    /**
-     * Pins the clock, so a test can ask for a named instant instead of whatever the world is at.
-     *
-     * <p>A <b>test seam</b>, and it exists for the reason the pose-skipping does: whether the deformation
-     * ran this frame or was reused is invisible in the picture, so the only way to assert it is to hold the
-     * clock still and watch the revision not move. {@code null} restores the real clock.</p>
-     */
+    /** Test seam: whether a deformation ran is invisible in the picture, so asserting reuse means
+     *  holding the clock still and watching the revision not move. Null restores the real clock. */
     @Nullable
     private static volatile Float pinnedClock;
 
@@ -129,7 +110,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         return new PhotonMeshCache.GltfKey(modelLocation, flipV);
     }
 
-    /** The parsed file, shared with {@link GltfModelSource} — one parse serves both sources. */
+    /** Shared with {@link GltfModelSource}: one parse serves both. */
     private SkinnedModel model() {
         return PhotonMeshCache.INSTANCE.getModel(key(), k -> load());
     }
@@ -139,10 +120,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         return meshCache.resolve(this);
     }
 
-    /**
-     * Only a model that can actually be posed is dynamic. A file with no skin, or one that failed to load,
-     * behaves as an ordinary static mesh from here on rather than as a dynamic one that never changes.
-     */
+    /** Only a model that can be posed is dynamic; an unskinned or failed one is an ordinary mesh. */
     @Override
     @Nullable
     public IDynamicMesh asDynamic() {
@@ -174,17 +152,10 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         var model = model();
         if (!model.isAnimated()) return null;
         var clip = animation.isEmpty() ? model.clipAt(0) : model.clip(animation);
-        // speed and loop go into the slot because they decide the instant; see AnimatedPose.Key
         return AnimatedPose.of(model, clip, clipTime(clip), speed, loop);
     }
 
-    /**
-     * Where in the clip we are, in seconds.
-     *
-     * <p>A non-looping clip holds its last frame, which is what the sampler does anyway when asked past
-     * the end — the clamp here is so the cache key stops changing once it has, and the deformation stops
-     * being redone for a pose that cannot change again.</p>
-     */
+    /** Where in the clip we are, in seconds. Clamping a non-looping clip stops the pose being redone. */
     private float clipTime(@Nullable AnimationClip clip) {
         float editor = pinnedClock != null ? pinnedClock : PhotonParticleManager.editorAnimationSeconds();
         float seconds;
@@ -268,9 +239,6 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
                     }).show(mui.ui.rootElement);
         }).layout(layout -> layout.alignSelf(AlignItems.CENTER)));
 
-        // The file's clip names, so the animation field does not have to be typed from memory. Read from
-        // the parsed model, so it is empty until the model loads — which is also the answer to "why is
-        // nothing listed", i.e. the file has no animations.
         var clips = new Configurator().addInlineChild(new Button()
                 .setOnClick(event -> {
                     var names = model().clipNames();
@@ -286,10 +254,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         father.addConfigurators(buttonConfigurator, clips, reloadButton);
     }
 
-    /**
-     * ⚠️ Equality covers every field that changes the <b>geometry</b>, which includes the clock's inputs:
-     * two emitters differing only in {@code speed} are at different poses and must not share a render pass.
-     */
+    /** ⚠️ Covers the clock's inputs too: two sources differing only in speed are at different poses. */
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;

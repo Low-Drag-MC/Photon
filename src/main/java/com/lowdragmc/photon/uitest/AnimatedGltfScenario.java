@@ -24,13 +24,8 @@ import java.util.List;
 
 /**
  * A glTF model playing its own animation, end to end through the registry and the resource manager.
- *
- * <p>The parsing and the skinning maths are unit-tested; what only a client can show is the chain:
- * registry entry -> resource manager -> parsed skin -> posed geometry -> the mesh a render pass and an
- * emission shape read. And one thing that is invisible even here, which is why the clock is pinned: that
- * a pose already computed is <b>reused</b> rather than recomputed. Whether the deformation ran is not
- * something a picture can show, so it is asserted by holding the clock still and watching the revision
- * fail to move.</p>
+ * The clock is pinned because whether a pose was reused rather than recomputed is not something a
+ * picture can show — only a revision that fails to move.
  */
 @LDLRegisterClient(name = "animated_gltf", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
@@ -69,7 +64,6 @@ public class AnimatedGltfScenario implements UIScenario {
             }
         })
 
-        // The whole point of the revision: work that has already been done is not done again.
         .step("holding the clock still reuses the pose", ctx -> {
             var location = write("hold.glb", glb(skinnedGltf()));
             var source = new AnimatedGltfModelSource(location);
@@ -117,8 +111,7 @@ public class AnimatedGltfScenario implements UIScenario {
             }
         })
 
-        // An emission shape reads the same source. What must not happen is a full rebuild of the sampling
-        // geometry per pose: the edges and triangles hold the vertex objects, so they move in place.
+        // the edges and triangles hold the vertex objects, so they move in place rather than rebuild
         .step("an emission shape follows the animation without rebuilding", ctx -> {
             var location = write("shape.glb", glb(skinnedGltf()));
             var source = new AnimatedGltfModelSource(location);
@@ -146,7 +139,6 @@ public class AnimatedGltfScenario implements UIScenario {
             }
         })
 
-        // One parse serves both sources, which is only true because they share a cache key.
         .step("a static source reads the same file without a second parse", ctx -> {
             var location = write("shared.glb", glb(skinnedGltf()));
             var animated = new AnimatedGltfModelSource(location);

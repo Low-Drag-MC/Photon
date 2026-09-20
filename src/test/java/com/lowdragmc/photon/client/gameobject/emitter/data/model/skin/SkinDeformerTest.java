@@ -8,12 +8,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Linear blend skinning, asserted against arithmetic worked out by hand.
- *
- * <p>Every failure mode here is the same one: the model still draws, and it draws wrong. A transposed
- * matrix, a TRS composed in the other order, an inverse bind matrix applied twice or not at all — none of
- * them throws, and all of them look like an exploding character. So the assertions are on exact numbers
- * for poses simple enough to compute on paper.</p>
+ * Linear blend skinning against arithmetic worked out by hand. Every failure mode here is the same one:
+ * the model still draws, and it draws wrong.
  */
 class SkinDeformerTest {
 
@@ -214,12 +210,8 @@ class SkinDeformerTest {
         assertEquals(1f, length, 1e-5f, "normals stay unit");
     }
 
-    /**
-     * ⭐ The shape path and the render path must agree. An emission shape deforms one sampled point
-     * ({@link SkinDeformer#deformPoint}) while the renderer deforms every vertex; if the two disagree,
-     * particles spawn off the surface they were supposed to spawn on, by an amount that looks like a
-     * physics bug rather than a skinning one.
-     */
+    /** The shape path deforms one point and the renderer deforms every vertex; if they disagree,
+     *  particles spawn off the surface in a way that looks like a physics bug. */
     @Test
     void deformPointAgreesWithDeformingTheWholeMesh() {
         var builder = new Skeleton.Builder();

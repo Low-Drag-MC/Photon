@@ -6,12 +6,9 @@ import net.neoforged.api.distmarker.OnlyIn;
 import java.util.List;
 
 /**
- * One animation: a set of channels, each driving one joint's translation, rotation or scale over time.
- * glTF's {@code animation}, with its samplers' keyframes kept as they were authored.
- *
- * <p>{@link #sample} writes into a TRS array the caller has already filled with the skeleton's rest pose,
- * because <b>a clip only says what it animates</b>. A walk cycle that touches nothing but the legs leaves
- * the arms at rest, and a channel-driven-only array would leave them at the origin.</p>
+ * One glTF animation: channels driving joint translation, rotation or scale over time.
+ * {@link #sample} writes into a TRS array the caller pre-filled with the rest pose, because a clip only
+ * says what it animates.
  */
 @OnlyIn(Dist.CLIENT)
 public final class AnimationClip {
@@ -21,9 +18,8 @@ public final class AnimationClip {
         ROTATION(4, 3),
         SCALE(3, 7);
 
-        /** Components per keyframe value. */
         final int components;
-        /** Offset of this path inside a joint's {@link Skeleton#FLOATS_PER_TRS} floats. */
+        /** Offset inside a joint's {@link Skeleton#FLOATS_PER_TRS} floats. */
         final int trsOffset;
 
         Path(int components, int trsOffset) {
@@ -35,15 +31,11 @@ public final class AnimationClip {
     public enum Interpolation {
         LINEAR,
         STEP,
-        /** Keyframe values come as {@code (inTangent, value, outTangent)} triples; the spec's Hermite basis. */
+        /** Values come as {@code (inTangent, value, outTangent)} triples. */
         CUBICSPLINE
     }
 
-    /**
-     * @param joint  index into the {@link Skeleton}
-     * @param times  keyframe times in seconds, ascending
-     * @param values {@code times.length * path.components} floats, or three times that for CUBICSPLINE
-     */
+    /** {@code values} is {@code times.length * path.components} floats, or three times that for CUBICSPLINE. */
     public record Channel(int joint, Path path, Interpolation interpolation, float[] times, float[] values) {
     }
 
@@ -67,7 +59,6 @@ public final class AnimationClip {
         return name;
     }
 
-    /** Seconds from the first keyframe to the last; {@code 0} for a clip that does not move. */
     public float duration() {
         return duration;
     }
@@ -78,10 +69,7 @@ public final class AnimationClip {
 
     /**
      * Overwrite {@code trs} with this clip's pose at {@code time} (seconds), leaving every joint and
-     * every component no channel touches exactly as it was.
-     *
-     * @param trs {@link Skeleton#jointCount()} x {@link Skeleton#FLOATS_PER_TRS} floats, pre-filled with
-     *            the rest pose
+     * component no channel touches alone.
      */
     public void sample(float time, float[] trs) {
         for (var channel : channels) {
@@ -98,8 +86,7 @@ public final class AnimationClip {
         int keys = times.length;
         if (keys == 0) return;
 
-        // A clip shorter than the query, or a query before it starts, holds the end it ran into. glTF
-        // says to clamp; looping is the caller's business because only it knows the clip is looping.
+        // glTF clamps outside the clip; looping is the caller's business
         if (keys == 1 || time <= times[0]) {
             copyValue(channel, 0, out, outOff, components);
             return;
@@ -130,7 +117,6 @@ public final class AnimationClip {
         }
     }
 
-    /** Index of the first keyframe strictly after {@code time}; only called when one exists. */
     private static int upperBound(float[] times, float time) {
         int low = 0, high = times.length - 1;
         while (low < high) {
@@ -142,7 +128,6 @@ public final class AnimationClip {
     }
 
     private static void copyValue(Channel channel, int key, float[] out, int outOff, int components) {
-        // CUBICSPLINE stores (inTangent, value, outTangent); the value is the middle third
         int stride = channel.interpolation == Interpolation.CUBICSPLINE ? components * 3 : components;
         int off = key * stride + (channel.interpolation == Interpolation.CUBICSPLINE ? components : 0);
         for (int c = 0; c < components; c++) {
@@ -151,18 +136,16 @@ public final class AnimationClip {
     }
 
     /**
-     * The spec's cubic Hermite: {@code p(t) = (2t³-3t²+1)v0 + (t³-2t²+t)·span·b0 + (-2t³+3t²)v1 +
-     * (t³-t²)·span·a1}, where {@code b0} is the previous key's out-tangent and {@code a1} the next key's
-     * in-tangent. ⚠️ The tangents are scaled by the <b>interval</b>, which is the part that is easy to
-     * drop and produces an animation that overshoots in proportion to its frame spacing.
+     * The spec's cubic Hermite. ⚠️ The tangents are scaled by the keyframe interval; dropping that makes
+     * the animation overshoot in proportion to its frame spacing.
      */
     private static void cubicSpline(Channel channel, int prev, int next, float t, float span,
                                     float[] out, int outOff, int components) {
         int stride = components * 3;
         var v = channel.values;
-        int p0 = prev * stride + components;        // value
-        int b0 = prev * stride + components * 2;    // out-tangent
-        int a1 = next * stride;                     // in-tangent
+        int p0 = prev * stride + components;
+        int b0 = prev * stride + components * 2;
+        int a1 = next * stride;
         int p1 = next * stride + components;
 
         float t2 = t * t, t3 = t2 * t;
@@ -176,16 +159,12 @@ public final class AnimationClip {
         }
     }
 
-    /**
-     * Spherical linear interpolation, the shorter way round. glTF specifies slerp for a rotation channel;
-     * a component-wise lerp would make a joint's speed vary across the arc and would collapse a 180 degree
-     * turn into a shortcut through the origin.
-     */
+    /** Slerp along the short arc, as glTF specifies for a rotation channel. */
     private static void slerp(float[] values, int a, int b, float t, float[] out, int outOff) {
         float ax = values[a], ay = values[a + 1], az = values[a + 2], aw = values[a + 3];
         float bx = values[b], by = values[b + 1], bz = values[b + 2], bw = values[b + 3];
         float dot = ax * bx + ay * by + az * bz + aw * bw;
-        if (dot < 0f) { // take the short arc: q and -q are the same rotation
+        if (dot < 0f) { // q and -q are the same rotation
             bx = -bx;
             by = -by;
             bz = -bz;
@@ -193,8 +172,7 @@ public final class AnimationClip {
             dot = -dot;
         }
         float s0, s1;
-        if (dot > 0.9995f) {
-            // nearly parallel: slerp degenerates, and lerp+normalize is both stable and indistinguishable
+        if (dot > 0.9995f) { // nearly parallel: slerp degenerates, lerp+normalize is indistinguishable
             s0 = 1f - t;
             s1 = t;
         } else {
@@ -210,9 +188,8 @@ public final class AnimationClip {
     }
 
     /**
-     * ⚠️ Rotations are renormalized after sampling, not before composing. A cubic-spline channel does not
-     * produce unit quaternions even from unit keyframes, and {@link Skeleton#fromTrs} assumes unit — the
-     * symptom of skipping this is a limb that subtly grows and shrinks as it swings.
+     * ⚠️ After sampling, not before composing: a cubic-spline channel does not produce unit quaternions
+     * even from unit keyframes, and {@link Skeleton#fromTrs} assumes unit.
      */
     private static void normalizeRotations(float[] trs) {
         for (int off = Path.ROTATION.trsOffset; off + 3 < trs.length; off += Skeleton.FLOATS_PER_TRS) {

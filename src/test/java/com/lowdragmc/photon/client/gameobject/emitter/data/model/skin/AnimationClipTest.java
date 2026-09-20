@@ -81,11 +81,7 @@ class AnimationClipTest {
         assertEquals(1f, trs[Skeleton.FLOATS_PER_TRS + 7], 1e-5f);
     }
 
-    /**
-     * ⚠️ Rotation channels slerp, and take the <b>short</b> arc. A component-wise lerp would vary the
-     * joint's angular speed across the arc; taking the long way round would make a limb swing backwards
-     * through a half turn to reach a pose a few degrees away.
-     */
+    /** ⚠️ Rotation channels slerp along the short arc; the long way round swings a limb backwards. */
     @Test
     void rotationTakesTheShortArcAndStaysUnit() {
         // 0 degrees to 180 degrees about +Y, but the second keyframe is written as the NEGATED quaternion
@@ -110,10 +106,7 @@ class AnimationClipTest {
         assertEquals(Math.cos(Math.toRadians(22.5)), w, 1e-3f);
     }
 
-    /**
-     * The spec's cubic Hermite, with tangents scaled by the keyframe interval. Dropping that scale
-     * produces an animation whose overshoot grows with the frame spacing — plausible-looking, and wrong.
-     */
+    /** ⚠️ Tangents are scaled by the keyframe interval; dropping that grows overshoot with spacing. */
     @Test
     void cubicSplineMatchesTheSpecsHermiteBasis() {
         // one component is enough to pin the basis; values are (inTangent, value, outTangent) per key

@@ -13,13 +13,11 @@ import static org.lwjgl.opengl.GL30.*;
 
 /**
  * GL-resource backend of {@link TileParticleRenderer}: billboard-quad or baked-model base
- * geometry plus the tile per-instance layout (pos/size/scale/rot/color/uv/light + custom data).
- * Buffer management and the draw call live in {@link InstancedRenderBackend}.
+ * geometry plus the tile per-instance layout. Buffers and the draw call live in
+ * {@link InstancedRenderBackend}.
  *
- * <p>In Model mode the mesh's three streams ({@link PhotonMesh}) become three static buffers, which is
- * the whole reason they are split: <b>only the geometry stream changes when a mesh deforms</b>, so a
- * dynamic mesh re-uploads that one and an external provider can supply it outright, while the UVs and
- * the tangents stay exactly where they were put.</p>
+ * <p>In Model mode the mesh's three streams become three static buffers, so a deforming mesh
+ * re-uploads only the geometry one and a provider can supply it outright.</p>
  */
 class ParticleInstanceRenderer extends InstancedRenderBackend {
 
@@ -27,15 +25,13 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     /** Effective renderer runtime (slot-or-config per field); drives render-mode-dependent geometry +
      *  layout. Custom GPU data still comes from the config. */
     private final ParticleRendererSetting.Runtime renderer;
-    /** Topology baked into the current static buffers (identity compare; see {@link PhotonMesh#topology()}).
-     *  A dynamic mesh hands out a new instance per pose, so comparing the MESH would rebuild every frame —
-     *  the topology is what the index buffer, the attribute stream and the VAO actually depend on. */
+    /** ⚠️ The topology, not the mesh: a dynamic mesh is a new instance per pose and comparing that
+     *  would rebuild every frame. */
     @Nullable
     private PhotonMesh builtTopology;
     /** Geometry revision currently in the geometry buffer; a change means re-upload, not rebuild. */
     private long builtRevision;
-    /** The provider's buffer this VAO points at, or 0 when the geometry buffer is ours. Rebinding is a
-     *  static rebuild (cheap — pointers only), re-uploading is not possible: we do not own it. */
+    /** The provider's buffer this VAO points at, or 0 when the geometry buffer is ours. */
     private int builtGlBuffer;
     private long builtGlOffset;
     private boolean builtGlPackedNormals;
@@ -47,10 +43,8 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     /** Whether the current static geometry carries a tangent; a change against {@link #wantsTangent}
      *  forces a rebuild (the tangent stream exists or it does not). */
     private boolean builtWithTangent;
-    /** Shade / useBlockUV as the attribute stream was baked with them. Both are runtime-overridable and
-     *  timeline-animatable, and both are folded into that stream, so both have to be able to invalidate
-     *  it — before this was tracked, animating either did nothing until some other change forced a
-     *  rebuild. */
+    /** Shade / useBlockUV as the attribute stream was baked with them; both are animatable, and
+     *  before this was tracked animating either did nothing. */
     private boolean builtShade;
     private boolean builtUseBlockUV;
 
@@ -69,11 +63,8 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         return renderer.getModelSource().asDynamic();
     }
 
-    /**
-     * Whether the static streams have to be rebuilt from scratch — the model was replaced or
-     * hot-reloaded, a bake input changed, or the provider is pointing us at a different buffer.
-     * <b>Not</b> true for a mesh that merely deformed; that is {@link #geometryStale()}.
-     */
+    /** The model was replaced, a bake input changed, or the provider moved us to another buffer.
+     *  Not true for a mesh that merely deformed — that is {@link #geometryStale()}. */
     boolean staticGeometryStale() {
         if (renderer.getRenderMode() != ParticleRendererSetting.Mode.Model) {
             return false; // the billboard quad depends on nothing
@@ -93,21 +84,13 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
                 || dynamic.glPackedNormals() != builtGlPackedNormals);
     }
 
-    /**
-     * Whether the geometry buffer holds an older pose than the source has. Only ever true for a mesh we
-     * upload: a provider's own buffer is deformed in place by whoever owns it, so there is nothing for
-     * this side to notice or to do.
-     */
+    /** Only ever true for a mesh we upload: a provider's own buffer is deformed in place by its owner. */
     boolean geometryStale() {
         return builtModelMode && builtGlBuffer == 0
                 && renderer.getModelSource().getMesh().geometryRevision() != builtRevision;
     }
 
-    /**
-     * Re-upload the geometry stream (and the tangents, if this pass uses them) in place. Everything else
-     * — the index buffer, the UVs, the VAO, the instance data, the buffer textures — is untouched,
-     * which is the entire reason the streams are split.
-     */
+    /** Re-upload the geometry stream in place; the index buffer, UVs, VAO and instance data stay. */
     void updateGeometry() {
         if (!isInitialized() || builtGlBuffer != 0) return;
         var mesh = renderer.getModelSource().getMesh();
@@ -154,19 +137,13 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
     }
 
     /**
-     * The mesh's streams, one buffer each.
+     * MIRRORED FROM particle.glsl's PARTICLE_MODEL_INSTANCE block: loc 0 = position and loc 2 = normal
+     * from the geometry buffer, loc 1 = {@code (u, v, shade)} from the attribute buffer, loc 3 = the
+     * tangent. Shade rides in the attribute vec3's z because 4..8 are per-instance and 9+ are the
+     * channels a hand-written shader declares.
      *
-     * <p>MIRRORED FROM the PARTICLE_MODEL_INSTANCE block of particle.glsl (keep in lockstep):
-     * location 0 = position and location 2 = normal out of the geometry buffer, location 1 =
-     * {@code (u, v, shade)} out of the attribute buffer, location 3 = the tangent out of its own.
-     * Shade rides in the attribute vec3's z rather than taking a location of its own because
-     * locations 4..8 are the per-instance attributes and 9+ are the additional-data channels a
-     * hand-written shader declares — inserting anything here would shift those out from under it.</p>
-     *
-     * <p>⚠️ The model pivot is deliberately NOT baked in. It is applied per instance (see
-     * {@link TileParticleRenderer#uploadInstances}) so these buffers hold nothing but the mesh: that is
-     * what lets the geometry buffer be replaced wholesale by a dynamic mesh, and it also fixes a pivot
-     * animation doing nothing, since a pivot change never invalidated the bake.</p>
+     * <p>⚠️ The model pivot is applied per instance, not baked, so these buffers hold nothing but the
+     * mesh — which is what lets a provider replace the geometry one.</p>
      */
     private void createModelGeometry(InstanceResource resource) {
         var source = renderer.getModelSource();
@@ -175,17 +152,15 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         int vertexCount = mesh.vertexCount();
 
         // ---- geometry: position 3 + normal 3 ----------------------------------------------------
-        // Either a buffer of ours that we upload into, or — when a provider deformed on the GPU — the
-        // provider's own buffer, bound straight in. A buffer object is untyped in GL, so the SSBO a
-        // compute pass wrote is a perfectly good vertex buffer, and nothing is copied or read back.
+        // ours, or the provider's own buffer bound straight in: a buffer object is untyped in GL, so
+        // the SSBO a compute pass wrote is a perfectly good vertex buffer
         var dynamic = dynamic();
         builtGlBuffer = dynamic == null ? 0 : dynamic.glBuffer();
         if (builtGlBuffer != 0) {
             builtGlOffset = dynamic.glByteOffset();
             builtGlPackedNormals = dynamic.glPackedNormals();
             glBindBuffer(GL_ARRAY_BUFFER, builtGlBuffer);
-            // packed: position 3 floats + normal as 4 signed normalized bytes = 16 bytes a vertex, the
-            // layout a compute skinning pass usually already writes. The shader sees a vec3 regardless.
+            // packed = 16B a vertex, the layout a compute skinning pass already writes
             int stride = builtGlPackedNormals ? 3 * Float.BYTES + 4 : PhotonMesh.FLOATS_PER_GEOMETRY * Float.BYTES;
             glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, builtGlOffset);
             glEnableVertexAttribArray(0);
@@ -232,10 +207,8 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         glVertexAttribPointer(1, 3, GL_FLOAT, false, PhotonMesh.FLOATS_PER_ATTRIBUTE * Float.BYTES, 0);
         glEnableVertexAttribArray(1);
 
-        // ---- tangents, only when the emitter asked for them -------------------------------------
-        // The array is generated on first access, so a tangent-free emitter never pays for it. When it
-        // is off, location 3 must be left DISABLED rather than pointing at a buffer that no longer
-        // exists — the enable bit is VAO state and survives a rebuild.
+        // ⚠️ when off, location 3 must be left DISABLED rather than pointing at a deleted buffer:
+        // the enable bit is VAO state and survives a rebuild
         glDisableVertexAttribArray(3);
         if (wantsTangent) {
             resource.tangentVbo = glGenBuffers();

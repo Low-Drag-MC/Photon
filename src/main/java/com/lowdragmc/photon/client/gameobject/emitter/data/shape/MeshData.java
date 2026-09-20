@@ -88,24 +88,17 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
     }
 
     /**
-     * Re-derive the sampling geometry when the source's <b>topology</b> changed, and refresh the vertex
-     * positions when only its pose did.
+     * Rebuild on a topology change, refresh the positions on a pose change.
      *
-     * <p>⭐ The split is what makes emitting from an animated model affordable. A dynamic source hands out
-     * a new mesh every time it moves, and rebuilding the edge and triangle lists for each of those would
-     * allocate four objects a vertex, once a frame. It is not necessary: {@link Edge} and {@link Triangle}
-     * hold <b>references</b> to the very {@code Vector3f} objects in {@link #vertices}, so writing new
-     * coordinates into those in place moves every edge and every triangle with them, allocating nothing.</p>
+     * <p>{@link Edge} and {@link Triangle} hold references to the {@code Vector3f}s in
+     * {@link #vertices}, so writing new coordinates in place moves them all and allocates nothing —
+     * otherwise an animated model would rebuild four objects a vertex, a frame.</p>
      *
-     * <p>⚠️ Edge lengths and triangle areas are therefore the <b>rest pose's</b>, and stay that way: they
-     * are the sampling weights, and recomputing them per pose would put the O(n) work straight back. So a
-     * stretched limb receives the particles its unstretched self would have. Unity's skinned-mesh sampling
-     * has the same bias, and the alternative costs more than it is worth.</p>
+     * <p>⚠️ Lengths and areas stay the rest pose's: they are the sampling weights, and recomputing them
+     * per pose puts the O(n) back. So a stretched limb gets its unstretched share, as in Unity.</p>
      *
-     * <p>⚠️ A parallel-sim worker can read these positions while another thread is writing them, so a
-     * particle spawned on the frame a pose changes can land on a position mixing the two. It is a
-     * fraction of one frame of motion on one particle; locking the sampler against the writer would cost
-     * every spawn on every emitter.</p>
+     * <p>⚠️ A parallel-sim worker can read a position while another thread writes it, so a particle
+     * spawned on the frame a pose changes can land between the two.</p>
      */
     private void ensureLoaded() {
         var mesh = source.getMesh();
@@ -136,23 +129,15 @@ public final class MeshData implements INBTSerializable<CompoundTag>, IConfigura
     }
 
     /**
-     * Derive the sampling geometry from the mesh's indexed triangles.
-     *
-     * <p>⚠️ Two sampling weights moved when the mesh format started welding vertices, and both moved
-     * towards what Unity does. <b>Vertex</b> emission now picks uniformly among <i>distinct</i>
-     * vertices, where it used to see one copy per face corner and so favoured high-valence vertices
-     * (a sphere's poles). <b>Edge</b> emission now counts a shared edge once, where it used to count
-     * it once per adjoining face. A baked JSON model is unaffected either way: its faces genuinely
-     * share no corners.</p>
+     * ⚠️ Two weights moved when the format started welding, both towards Unity's answer: Vertex
+     * emission picks among distinct vertices (no valence bias), Edge counts a shared edge once.
      */
     private void rebuildFrom(PhotonMesh mesh) {
         double sumLength = 0;
         double sumArea = 0;
         var geometry = mesh.geometry();
         var indices = mesh.indices();
-        // One Vector3f per vertex, shared by every edge and triangle referencing it — the shape
-        // samplers only ever read them, and a welded mesh would otherwise allocate the same point
-        // once per face that touches it.
+        // one Vector3f per vertex, shared by every edge and triangle referencing it
         var points = new Vector3f[mesh.vertexCount()];
         for (int v = 0; v < points.length; v++) {
             int off = PhotonMesh.geometryOffset(v);

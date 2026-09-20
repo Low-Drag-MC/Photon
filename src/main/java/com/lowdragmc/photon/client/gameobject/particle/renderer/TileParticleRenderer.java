@@ -104,10 +104,8 @@ public class TileParticleRenderer {
             while (triangle < mesh.triangleCount()) {
                 int i = triangle * 3;
                 int va = indices[i], vb = indices[i + 1], vc = indices[i + 2];
-                // ⚠️ This draws into a QUADS-mode buffer, so every primitive is four vertices. A pair
-                // the source authored as one quad is emitted as that quad (its second triangle is
-                // (c, d, a), so the d it adds is the one index in the middle); a lone triangle repeats
-                // its last corner, the degenerate form every Photon render path already tolerates.
+                // ⚠️ a QUADS-mode buffer, so four vertices a primitive: an authored quad goes out
+                // whole (its second triangle is (c, d, a)), a lone triangle repeats its last corner
                 if (mesh.quadPaired(triangle)) {
                     int vd = indices[i + 4];
                     putMeshVertex(transform, normalMat, buffer, mesh, va, pivot, shade, remapUV, r, g, b, a, light);
@@ -172,8 +170,7 @@ public class TileParticleRenderer {
         }
     }
 
-    /** Scratch for {@link #putMeshVertex}; the CPU path is render-thread only, and a large mesh would
-     *  otherwise allocate two JOML objects per emitted corner. */
+    /** Scratch; render-thread only, and a large mesh would otherwise allocate two per corner. */
     private final Vector4f meshPos = new Vector4f();
     private final Vector3f meshNormal = new Vector3f();
     /** Scratch for the per-instance model pivot; see {@link #uploadInstances}. */
@@ -221,11 +218,7 @@ public class TileParticleRenderer {
         instanceBackend.setWantsTangent(wantsTangent);
     }
 
-    /**
-     * Tell a live-geometry provider that this frame's draw read from it — its cue to keep the allocation
-     * its buffer or its pose lives in. Photon has no other way to say it is still interested, and the
-     * provider's own drawing is not evidence: an emitter outlives whatever spawned it.
-     */
+    /** Tell a provider this frame's draw read from it — its cue to keep the allocation alive. */
     private void notifyDynamicMesh() {
         var dynamic = renderer.getModelSource().asDynamic();
         if (dynamic != null) {
@@ -245,13 +238,9 @@ public class TileParticleRenderer {
                 // layout differs too, so everything goes
                 instanceBackend.dispose();
             } else if (instanceBackend.staticGeometryStale()) {
-                // the model was replaced or hot-reloaded, the attribute stream's inputs changed, or a
-                // provider moved us to another buffer — base mesh only, the instance VBO and the buffer
-                // textures stay
                 instanceBackend.rebuildStaticGeometry();
             } else if (instanceBackend.geometryStale()) {
-                // same model, new pose: overwrite the geometry stream and nothing else
-                instanceBackend.updateGeometry();
+                instanceBackend.updateGeometry(); // same model, new pose
             }
         }
         if (renderMode == ParticleRendererSetting.Mode.Model) {
@@ -282,10 +271,9 @@ public class TileParticleRenderer {
             if (renderMode == ParticleRendererSetting.Mode.Model) {
                 var quaternion = computeModelQuaternion(particle, rotation, camera, partialTicks);
                 float scaleX = scale.x * size.x, scaleY = scale.y * size.y, scaleZ = scale.z * size.z;
-                // ⚠️ The pivot is applied here rather than baked into the mesh, which is what keeps the
-                // static geometry buffer free of renderer settings — a dynamic mesh can then replace it
-                // outright. The shader computes rot * (aPos * iScale) + iPos, so a pivot that was baked
-                // as aPos + pivot is exactly rot * (pivot * iScale) added to iPos.
+                // ⚠️ applied here rather than baked, so the geometry buffer holds nothing but the
+                // mesh. The shader does rot * (aPos * iScale) + iPos, so a baked aPos + pivot is
+                // exactly rot * (pivot * iScale) added to iPos.
                 var pivot = renderer.getModelPivot();
                 if (pivot.x != 0f || pivot.y != 0f || pivot.z != 0f) {
                     var offset = quaternion.transform(

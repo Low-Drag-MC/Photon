@@ -13,51 +13,22 @@ import javax.annotation.Nullable;
 import java.util.List;
 
 /**
- * Immutable geometry shared by every {@link IModelSource}: <b>indexed triangles</b> over three
- * parallel vertex streams, plus the index buffer and the per-face bookkeeping the CPU draw path
- * needs.
+ * Immutable geometry shared by every {@link IModelSource}: indexed triangles over three vertex
+ * streams — geometry (position + normal), attribute (uv + shade) and tangent.
  *
- * <h2>Three streams, split by what changes them</h2>
+ * <p>The streams are split because an external provider can only supply the geometry one: a skinning
+ * pass produces positions and normals and does not have the UVs. Unreal splits its skeletal vertex
+ * buffers the same way.</p>
  *
- * <pre>
- *   geometry    position 3 + normal 3     6 floats   &lt;- the only thing a deformation rewrites
- *   attribute   uv 2 + shade 1            3 floats   &lt;- never deformed, never per-instance
- *   tangent     tangent 3 + handedness 1  4 floats   &lt;- the source's own, or generated on demand
- * </pre>
+ * <p>Vertices are welded by whatever the source format already knows: glTF keeps the file's own
+ * indices (the numbering its {@code JOINTS_0}/{@code WEIGHTS_0} use), OBJ welds by the
+ * {@code v/vt/vn} triplet, baked JSON welds nothing.</p>
  *
- * <p>The saving in bytes is not the point. The point is that an <b>external provider can supply the
- * geometry stream alone</b> — a skinning pass produces positions and normals and physically does not
- * have the UVs — so a dynamic mesh replaces one stream and leaves the other two untouched. Unreal
- * splits its skeletal vertex buffers the same way and for the same reason
- * ({@code FSkeletalMeshLODRenderData} embeds {@code FStaticMeshVertexBuffers} verbatim and adds a
- * skin-weight buffer beside it). Interleaving everything into one array — which is what this class
- * used to do — makes zero-copy injection impossible, because the provider would have to hand back
- * data it does not own and cannot know.
+ * <p>⚠️ {@link #quadPaired(int)} exists because the CPU draw path draws into a QUADS-mode buffer: it
+ * emits {@code a,b,c,c} for a triangle, and would emit two of those for an authored quad.</p>
  *
- * <h2>Indexed triangles, not degenerate quads</h2>
- *
- * <p>This class used to store every face as a quad, a triangle being a quad whose fourth corner
- * repeats its third. That cost three ways, all of them per frame and per particle instance: 4 vertex
- * shader invocations per triangle instead of 3, one zero-area primitive per triangle through setup
- * and culling, and — because nothing was ever welded — a glTF's 2600 shared vertices expanded into
- * 20000 corners, which is 7.7x the skinning and upload work a deformation would have to do.
- *
- * <p>So faces are triangles in {@link #indices()} and vertices are welded by whatever the source
- * format already knows: glTF keeps the file's own index buffer (which is also the numbering its
- * {@code JOINTS_0}/{@code WEIGHTS_0} are keyed by), OBJ welds by the {@code v/vt/vn} triplet, and a
- * baked JSON model welds nothing because its faces genuinely share no corners.
- *
- * <p>⚠️ <b>{@link #quadPaired(int)} exists because the CPU draw path draws into a QUADS-mode
- * buffer.</b> Vanilla's {@code VertexConsumer} for Photon's render types wants four vertices per
- * primitive, so that path emits {@code a,b,c,c} for a triangle — and would emit <i>two</i> degenerate
- * quads for what the author drew as one quad, doubling the vertex work for every block-model particle
- * on the default (non-instanced) path. A source that authored real quads records them here and the
- * CPU path emits them unsplit.
- *
- * <p>Positions are in <b>centered model space</b> — a JSON block model's 0..1 cube is stored as
- * -0.5..0.5, OBJ and glTF positions are the raw author space (origin = pivot). Consumers compare
- * instances by identity to detect cache invalidation ({@link PhotonMeshCache} hands out a new
- * instance after reload).
+ * <p>Positions are in centered model space — a JSON block model's 0..1 cube is -0.5..0.5, OBJ and
+ * glTF are raw author space. Consumers compare instances by identity to detect invalidation.</p>
  */
 @OnlyIn(Dist.CLIENT)
 public final class PhotonMesh {
@@ -77,30 +48,16 @@ public final class PhotonMesh {
     private final float[] geometry;
     /** vertexCount * {@link #FLOATS_PER_ATTRIBUTE}. */
     private final float[] attributes;
-    /**
-     * vertexCount * {@link #FLOATS_PER_SPRITE}, or <b>empty</b> when the source's UVs are already
-     * raw 0..1 — which is every source but baked JSON. Empty means "identity", so the raw-UV
-     * sources neither store nor remap anything.
-     */
+    /** Empty when the UVs are already raw 0..1, which is every source but baked JSON. */
     private final float[] spriteBounds;
     /** triangleCount * 3 vertex indices. */
     private final int[] indices;
     /** triangleCount: this triangle and the next are the two halves of one authored quad. */
     private final boolean[] quadPaired;
-    /**
-     * vertexCount * {@link #FLOATS_PER_TANGENT}, the source's own when it supplied them (glTF's
-     * {@code TANGENT}), otherwise derived from the UVs on first {@link #tangents()} and memoized —
-     * only the model render path asks, and only when the emitter's Tangent setting is on, so a mesh
-     * used purely for emission shapes never pays for it.
-     */
+    /** The source's own (glTF's {@code TANGENT}) or derived from the UVs on first {@link #tangents()}. */
     @Nullable
     private volatile float[] tangents;
-    /**
-     * The mesh this one's topology came from — {@code this} for a freshly built mesh, the original for
-     * every {@link #withGeometry} derivative. Two meshes share a topology iff their {@link #topology()}
-     * is the same object, which is what lets a dynamic mesh hand out a new instance per frame without
-     * every identity-compare consumer concluding the model was replaced.
-     */
+    /** {@code this} for a built mesh, the original for a {@link #withGeometry} derivative. */
     private final PhotonMesh topology;
     /** Which revision of that topology's geometry this instance holds; see {@link #withGeometry}. */
     private final long geometryRevision;
@@ -130,21 +87,13 @@ public final class PhotonMesh {
     }
 
     /**
-     * This mesh's geometry replaced, sharing every stream that a deformation does not touch — the
-     * indices, the UVs, the shade and the sprite bounds are the same arrays, not copies.
+     * This mesh's geometry replaced, sharing every stream a deformation does not touch. The result
+     * reports the same {@link #topology()}, so consumers keep their cached buffers and re-read only
+     * the geometry — the mechanism behind {@link IDynamicMesh}.
      *
-     * <p>The result reports the same {@link #topology()}, so a consumer that caches per topology (the
-     * index buffer, the attribute stream, the VAO itself) keeps what it has and only re-reads the
-     * geometry. That is the whole mechanism behind {@link IDynamicMesh}.</p>
-     *
-     * @param geometry {@link #FLOATS_PER_GEOMETRY} floats per vertex, {@link #vertexCount()} of them
-     * @param tangents the deformed tangents, or {@code null} to derive them from this geometry on
-     *                 demand. ⚠️ Deriving is a weld-map rebuild over the whole mesh, so a dynamic mesh
-     *                 that is drawn with the Tangent setting on should supply them — the correct
-     *                 deformed tangent is the bind-pose one carried through the same deformation, which
-     *                 the provider knows and this class cannot.
-     * @param revision must differ from the previous revision of the same topology whenever the contents
-     *                 do; consumers upload when it changes and skip when it does not
+     * @param tangents the deformed tangents, or null to derive them. ⚠️ Deriving is a weld-map rebuild
+     *                 over the whole mesh, so a dynamic mesh drawn with tangents should supply them.
+     * @param revision must differ whenever the contents do
      */
     public PhotonMesh withGeometry(float[] geometry, @Nullable float[] tangents, long revision) {
         if (geometry.length != this.geometry.length) {
@@ -155,10 +104,7 @@ public final class PhotonMesh {
         return new PhotonMesh(this, geometry, tangents, revision);
     }
 
-    /**
-     * The mesh whose topology this one shares. Compare by identity to ask "is this still the same
-     * model", as opposed to "is this still the same pose".
-     */
+    /** Compare by identity for "still the same model", as opposed to "still the same pose". */
     public PhotonMesh topology() {
         return topology;
     }
@@ -197,21 +143,13 @@ public final class PhotonMesh {
         return indices;
     }
 
-    /**
-     * Whether triangle {@code triangle} and {@code triangle + 1} are one authored quad — read only
-     * by the CPU draw path, see the class javadoc.
-     */
+    /** Whether this triangle and the next are one authored quad; read only by the CPU draw path. */
     public boolean quadPaired(int triangle) {
         return quadPaired[triangle];
     }
 
-    /**
-     * Per-vertex {@code tx,ty,tz,w}; the shader rebuilds the bitangent as {@code cross(N, T) * w}.
-     * The source's own tangents when it supplied them (glTF), otherwise generated on first call and
-     * memoized. The generation is pure and depends only on final fields, so two threads racing to
-     * fill the cache produce identical arrays — a benign race, no lock needed, and the instance
-     * stays observably immutable.
-     */
+    /** Per-vertex {@code tx,ty,tz,w}; the shader rebuilds the bitangent as {@code cross(N, T) * w}.
+     *  Generated on first call; two threads racing produce identical arrays, so no lock. */
     public float[] tangents() {
         var cached = tangents;
         if (cached == null) {
@@ -280,21 +218,10 @@ public final class PhotonMesh {
     }
 
     /**
-     * Accumulates vertices and triangles. Two ways in, because the sources differ in what they
-     * already know:
-     *
-     * <ul>
-     *   <li><b>Welded</b> — {@link #vertex} returns an index, {@link #triangle(int, int, int)}
-     *       references it. glTF and OBJ take this path: they carry an indexing of their own and
-     *       throwing it away is what used to cost 7.7x.</li>
-     *   <li><b>Unwelded</b> — {@link #triangle(float[], float[], float[], float)} and
-     *       {@link #quad} add fresh vertices per face. Baked JSON takes this path; its faces share
-     *       no corners, so welding them would only cost a hash lookup each.</li>
-     * </ul>
-     *
-     * <p>{@link #sprite} and {@link #tangent} apply to the vertices of the most recently added face,
-     * which is what keeps the per-face formats (a JSON quad's atlas sprite) from having to thread an
-     * index around.
+     * Accumulates vertices and triangles, welded ({@link #vertex} returns an index — glTF and OBJ) or
+     * unwelded ({@link #triangle(float[], float[], float[], float)} adds fresh vertices — baked JSON,
+     * whose faces share no corners anyway). {@link #sprite} and {@link #tangent} apply to the last
+     * face added.
      */
     public static final class Builder {
         private final FloatArrayList geometry = new FloatArrayList();
@@ -311,11 +238,7 @@ public final class PhotonMesh {
         /** How many vertices got an author-supplied tangent — all or nothing, see {@link #build()}. */
         private int taggedTangents;
 
-        /**
-         * Adds one vertex and returns its index. Sprite bounds default to the identity
-         * {@code 0,0,1,1} and the tangent to a sentinel that {@link #build()} discards unless every
-         * vertex overrode it.
-         */
+        /** Adds one vertex and returns its index. */
         public int vertex(float x, float y, float z, float u, float v,
                           float nx, float ny, float nz, float shade) {
             int index = attributes.size() / FLOATS_PER_ATTRIBUTE;
@@ -349,11 +272,7 @@ public final class PhotonMesh {
             return this;
         }
 
-        /**
-         * One authored quad over already-added vertices, as the triangle pair {@code a,b,c} +
-         * {@code c,d,a} — the same split the index buffer has always used — flagged so the CPU path
-         * can put it back together ({@link PhotonMesh#quadPaired}).
-         */
+        /** An authored quad as the pair {@code a,b,c} + {@code c,d,a}, flagged for the CPU path. */
         public Builder quad(int a, int b, int c, int d) {
             indices.add(a);
             indices.add(b);
@@ -396,12 +315,7 @@ public final class PhotonMesh {
             return this;
         }
 
-        /**
-         * Index of the first vertex of the face added last by one of the fresh-vertex overloads, or
-         * {@code -1} when the last face referenced existing vertices. Lets a caller reach back at the
-         * vertices it just implicitly created — {@link #tangent} needs an index and the unwelded
-         * overloads do not hand one out.
-         */
+        /** First vertex of the last fresh-vertex face, or -1; {@link #tangent} needs an index. */
         public int lastFaceStart() {
             return lastFaceStart;
         }
@@ -409,7 +323,7 @@ public final class PhotonMesh {
         /** The atlas sprite the last face's UVs came from. Raw-UV sources never call this. */
         public Builder sprite(float u0, float v0, float u1, float v1) {
             if (lastFaceCount == 0) {
-                return this; // no face to attach it to; don't allocate an all-identity array either
+                return this;
             }
             anySprite = true;
             for (int i = 0; i < lastFaceCount; i++) {
@@ -422,12 +336,7 @@ public final class PhotonMesh {
             return this;
         }
 
-        /**
-         * An author-supplied tangent for one vertex — glTF's {@code TANGENT}, whose {@code vec4}
-         * (unit tangent + handedness) is already Photon's convention. A mesh whose primitives
-         * disagree about {@code TANGENT} falls back to generating the whole array, see
-         * {@link #build()}.
-         */
+        /** glTF's {@code TANGENT}, whose vec4 is already Photon's convention. All or nothing. */
         public Builder tangent(int vertex, float tx, float ty, float tz, float w) {
             int off = tangentOffset(vertex);
             tangents.set(off, tx);
@@ -448,8 +357,6 @@ public final class PhotonMesh {
                 return EMPTY;
             }
             int vertexCount = attributes.size() / FLOATS_PER_ATTRIBUTE;
-            // all or nothing: one primitive without TANGENT makes the whole mesh generate, which is
-            // also what the glTF spec asks implementations to do
             var supplied = taggedTangents == vertexCount ? tangents.toFloatArray() : null;
             return new PhotonMesh(geometry.toFloatArray(), attributes.toFloatArray(),
                     anySprite ? spriteBounds.toFloatArray() : new float[0],

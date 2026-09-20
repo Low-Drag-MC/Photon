@@ -14,27 +14,10 @@ import org.jetbrains.annotations.Nullable;
 import static org.lwjgl.opengl.GL30.*;
 
 /**
- * Injecting live geometry ({@link IDynamicMesh}) through the pieces a headless test cannot reach.
- *
- * <p>{@code DynamicMeshTest} already pins the revision bookkeeping. Three things are left, and each of
- * them fails in a way no screenshot would show:</p>
- *
- * <ul>
- *   <li><b>The source loads at all.</b> {@code IModelSource}'s dispatch codec is a static field on the
- *       interface, so constructing any implementation needs a frozen registry — which is why the unit test
- *       drives the cache and not the source.</li>
- *   <li><b>Batching splits by provider.</b> The render-pass key runs through {@code MeshData.equals}. Get
- *       it wrong one way and two characters share one buffer, so one of them animates with the other's
- *       pose; wrong the other way and every emitter on one character pays for the deformation again.</li>
- *   <li><b>A buffer someone else owns really can back our vertex attributes.</b> That is the claim the
- *       whole zero-copy path rests on — that a buffer object is untyped in GL, so an SSBO a compute pass
- *       wrote is bindable as a vertex buffer, in both the float and the packed-normal layout. A driver
- *       that refused would do it with a GL error and an empty screen.</li>
- * </ul>
- *
- * <p>⚠️ What this does <b>not</b> cover: an emitter actually drawing a deforming model frame by frame.
- * That needs a live render pass, and the branch it would exercise (re-upload the geometry stream rather
- * than rebuild the buffers) is invisible in the picture either way — it is cost, not pixels.</p>
+ * Injecting live geometry through the pieces a headless test cannot reach: that the source loads at all
+ * (its dispatch codec needs a frozen registry), that batching splits by provider (get it wrong and two
+ * characters share one buffer), and that a buffer someone else owns can really back our vertex
+ * attributes in both layouts — the claim the whole zero-copy path rests on.
  */
 @LDLRegisterClient(name = "dynamic_mesh", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
@@ -120,7 +103,7 @@ public class DynamicMeshScenario implements UIScenario {
                     "moved", "identical geometry");
         })
 
-        // The pass key holds a MeshData, so this is the comparison that decides who batches with whom.
+        // the pass key holds a MeshData, so this decides who batches with whom
         .step("batching splits by provider, not by shape", ctx -> {
             var provider = new Sliding();
             var mine = new MeshData(new DynamicMeshSource(provider));
@@ -144,7 +127,7 @@ public class DynamicMeshScenario implements UIScenario {
             ctx.check("onDrawn is the keep-alive hook", provider.drawn == 2, 2, provider.drawn);
         })
 
-        // The zero-copy claim. Both layouts, set up exactly as ParticleInstanceRenderer does.
+        // both layouts, set up exactly as ParticleInstanceRenderer does
         .step("a foreign GL buffer backs the geometry attributes", ctx -> {
             if (!RenderSystem.isOnRenderThread()) {
                 ctx.check("this step needs the render thread", false, "render thread", "another thread");
@@ -198,8 +181,6 @@ public class DynamicMeshScenario implements UIScenario {
             }
         })
 
-        // A mesh emission shape reads vertices on the CPU, so a GPU-only provider has nothing to give it.
-        // It must come out empty rather than sampling the rest pose and looking almost right.
         .step("a GPU-only provider still resolves to its rest pose on the CPU side", ctx -> {
             var topology = new PhotonMesh.Builder()
                     .triangle(new float[]{0, 0, 0, 0, 0, 0, 0, 1},

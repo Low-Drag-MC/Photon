@@ -33,11 +33,8 @@ abstract class InstancedRenderBackend {
         protected int attributeVbo = -1;
         protected int tangentVbo = -1;
         protected int instanceVbo = -1;
-        /**
-         * Whether {@link #createStaticGeometry} has run for the current buffers. Not inferred from
-         * {@code modelVbo != -1} any more: a backend can source its geometry from a buffer it does not
-         * own (see {@code IDynamicMesh}), and would then be rebuilt every single frame.
-         */
+        /** ⚠️ Not inferred from {@code modelVbo != -1}: a backend can source geometry from a buffer
+         *  it does not own, and would then rebuild every frame. */
         protected boolean staticCreated;
         // optional per-point buffer texture (vertex pulling), see pointTexelsPerPoint()
         protected int pointTbo = -1;
@@ -314,17 +311,12 @@ abstract class InstancedRenderBackend {
     }
 
     /**
-     * Re-create the base mesh alone — the static streams and the index buffer — keeping the VAO, the
-     * instance VBO and every buffer texture.
-     *
-     * <p>Call this when the geometry changed but the <b>layouts</b> did not: a hot-reloaded model, a
-     * re-baked attribute stream, a mesh that deformed. {@link #dispose()} would also work and is what
-     * this replaces, but it drops the instance VBO (re-allocated at {@code maxParticles}) and all three
-     * TBOs with it — affordable once on a reload, not once a frame for a mesh that animates.</p>
+     * Re-create the base mesh alone, keeping the VAO, the instance VBO and every buffer texture — for
+     * when the geometry changed but the layouts did not. {@link #dispose()} drops the instance VBO and
+     * all three TBOs with it, which is affordable on a reload and not once a frame.
      *
      * <p>⚠️ The instance attribute pointers survive because {@code glVertexAttribPointer} captures the
-     * buffer that was bound when <i>it</i> ran: re-specifying locations 0..3 against new buffers cannot
-     * disturb 4..8, which still reference {@code instanceVbo}.</p>
+     * buffer bound when it ran, so re-specifying 0..3 cannot disturb 4..8.</p>
      */
     public void rebuildStaticGeometry() {
         if (resource == null || !initialized) return;

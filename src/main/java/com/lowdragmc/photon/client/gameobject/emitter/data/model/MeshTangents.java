@@ -9,25 +9,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Per-vertex tangent generation for {@link PhotonMesh} — Lengyel's method (the classic
- * "Computing Tangent Space Basis Vectors", the same construction MikkTSpace is built on).
+ * Per-vertex tangent generation — Lengyel's method. Only glTF can carry its own, so OBJ and JSON always
+ * land here, as does a glTF primitive without {@code TANGENT}.
  *
- * <p>Only glTF can carry a tangent of its own, and only when the exporter wrote one: the Wavefront spec
- * is {@code v}/{@code vt}/{@code vn} only, and a {@code BakedQuad} stores nothing but a byte-packed face
- * normal. So OBJ and JSON always land here, as does a glTF primitive without {@code TANGENT} — which is
- * what that spec asks implementations to do anyway.</p>
+ * <p>Contributions accumulate into weld groups and are orthonormalized against the vertex's normal, so
+ * smooth geometry gets a continuous frame rather than one tangent per face.</p>
  *
- * <p>Each triangle contributes {@code dP/du} and {@code dP/dv}; contributions are accumulated into
- * <b>weld groups</b> and only then orthonormalized against the vertex's own normal, so smooth-shaded
- * geometry (sphere, capsule, cylinder) gets a continuous frame instead of one hard tangent per face.
- * The result is {@code (tx, ty, tz, w)} per vertex, where {@code w} is the handedness the shader needs
- * to rebuild the bitangent as {@code cross(N, T) * w}.</p>
- *
- * <p>⚠️ <b>One tangent per vertex, so a vertex shared by two mirrored UV islands gets one frame</b> —
- * the first island that claims it. Splitting the vertex is the correct fix and is the exporter's job:
- * glTF itself stores one {@code TANGENT} per vertex, so a model that needs the split ships with it
- * already done. A loader that split vertices would change the vertex count out from under the index
- * buffer, which is why MikkTSpace is a mesh <i>processor</i> and this is not.</p>
+ * <p>⚠️ One tangent per vertex, so a vertex shared by two mirrored UV islands gets one frame. Splitting
+ * it is the exporter's job — glTF stores one {@code TANGENT} per vertex too.</p>
  */
 @OnlyIn(Dist.CLIENT)
 final class MeshTangents {
@@ -44,18 +33,10 @@ final class MeshTangents {
     }
 
     /**
-     * Vertices that share a position, a normal <b>and</b> a UV-winding sign average together.
+     * Vertices sharing a position, a normal and a UV-winding sign average together — which welds
+     * <i>beyond</i> the index buffer, keeping a smooth surface continuous across primitives.
      *
-     * <p>Position and normal are keyed on exact bits rather than a quantization bucket: both OBJ and
-     * baked-JSON geometry produce bit-identical floats for shared vertices (the same decimal token, or
-     * the same int unpacked twice), and a bucket would split neighbours that straddle a boundary. Note
-     * that this welds <i>beyond</i> the index buffer: two vertices the source kept apart (different
-     * glTF primitives, a JSON model's adjacent faces) still average, which is what keeps a smooth
-     * surface's tangent continuous across them.</p>
-     *
-     * <p>{@code sign} is the sign of the triangle's UV-area determinant. Two faces meeting at the same
-     * position/normal with <b>mirrored</b> UVs carry opposite-facing tangents; averaging them cancels
-     * to zero. Keying on the sign keeps mirrored islands in separate groups.</p>
+     * <p>{@code sign} keeps mirrored UV islands apart; averaging them would cancel to zero.</p>
      */
     private record WeldKey(int px, int py, int pz, int nx, int ny, int nz, int sign) {
     }
@@ -149,10 +130,7 @@ final class MeshTangents {
         return out;
     }
 
-    /**
-     * One triangle's contribution. A zero-area UV triangle carries no parameterization, so it is
-     * skipped entirely — its vertices still get a group (an empty one) and fall back in pass 2.
-     */
+    /** One triangle's contribution; a zero-area UV triangle is skipped and falls back in pass 2. */
     private static void accumulate(float[] geometry, float[] uv, int a, int b, int c,
                                    Map<WeldKey, Integer> groups, int[] groupOf, boolean[] claimed,
                                    FloatArrayList accT, FloatArrayList accB) {
@@ -197,10 +175,8 @@ final class MeshTangents {
                                    FloatArrayList accT, FloatArrayList accB, boolean degenerate,
                                    float tx, float ty, float tz, float bx, float by, float bz) {
         int g = group(geometry, PhotonMesh.geometryOffset(vertex), sign, groups, accT, accB);
-        // First triangle with a real UV gradient wins the vertex; a degenerate one only fills a vertex
-        // nobody has claimed. Two consequences, both wanted: a UV-degenerate face cannot steal a vertex
-        // away from a good one, and a vertex shared by mirrored UV islands (two good groups, one
-        // vertex) resolves the same way no matter what geometry is appended after it.
+        // first triangle with a real UV gradient wins, so the result does not depend on what is
+        // appended afterwards
         if (!claimed[vertex]) {
             groupOf[vertex] = g;
             claimed[vertex] = !degenerate;
@@ -238,14 +214,8 @@ final class MeshTangents {
         return Float.floatToIntBits(f == 0f ? 0f : f);
     }
 
-    /**
-     * One vertex's UV remapped into its sprite's 0..1 space, written to {@code out[slot*2]}. The
-     * atlas -> sprite remap is a positive per-axis scale, so it cannot rotate a tangent — but it does
-     * scale one, and welding vertices off differently-sized sprites would then average vectors of
-     * mismatched magnitude. Normalizing here makes generation independent of {@code useBlockUV} and of
-     * the sprite's atlas footprint. Raw-UV sources record no sprite bounds at all, so this is an
-     * identity for them.
-     */
+    /** One vertex's UV in its sprite's 0..1 space, so welding across differently-sized sprites does
+     *  not average vectors of mismatched magnitude. Identity for raw-UV sources. */
     private static void normalizedUV(float[] attributes, float[] sprites, int vertex, float[] out, int slot) {
         int off = PhotonMesh.attributeOffset(vertex);
         float u = attributes[off];
@@ -265,11 +235,7 @@ final class MeshTangents {
         out[slot * 2 + 1] = v;
     }
 
-    /**
-     * An arbitrary unit vector perpendicular to the normal, for vertices with no usable UV gradient —
-     * an OBJ face with no {@code vt} (every corner defaults to {@code (0,0)}) is the common case, not a
-     * rare one. Picks the basis axis least aligned with the normal, matching {@code ObjMeshParser.earClip}.
-     */
+    /** A unit vector perpendicular to the normal, for vertices with no usable UV gradient. */
     private static void fallbackTangent(float nx, float ny, float nz, float[] out, int o) {
         float ax = Math.abs(nx) > 0.9f ? 0f : 1f;
         float ay = Math.abs(nx) > 0.9f ? 1f : 0f;
