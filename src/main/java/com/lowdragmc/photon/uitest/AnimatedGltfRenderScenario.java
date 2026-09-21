@@ -112,7 +112,9 @@ public class AnimatedGltfRenderScenario implements UIScenario {
     }
 
     /** The fixture lives in the test source set, off the client run's classpath, so read it off disk. */
-    private static byte[] readFixture() {
+    /** Package-visible: {@link EditorModelInstanceScenario} stages the same fixture, and the list of
+     *  candidate paths is a function of where the client's working directory is, not of the scenario. */
+    static byte[] readFixture() {
         var classpath = AnimatedGltfRenderScenario.class.getResourceAsStream("/assets/photon/models/fox.glb");
         if (classpath != null) {
             try (var in = classpath) {
