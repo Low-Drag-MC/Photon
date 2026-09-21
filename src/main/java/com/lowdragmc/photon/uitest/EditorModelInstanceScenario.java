@@ -24,12 +24,10 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
-import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
 import com.lowdragmc.photon.gui.editor.FXProject;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 
 import java.io.File;
@@ -189,35 +187,10 @@ public class EditorModelInstanceScenario implements UIScenario {
         return held + "_" + (perParticle ? "perparticle" : "lockstep") + (instanced ? "_inst" : "_cpu");
     }
 
-    /**
-     * Repoint a builtin library mesh at the animated glTF source, so a {@link ResourceMeshSource} over it
-     * resolves to the same thing an imported glb would. Cheaper and more direct than driving the import
-     * dialog, and it is the reference indirection — not the import — that this covers.
-     */
-    private static void hijackLibraryMesh(TestContext ctx) {
-        // ⚠️ Discovered, not hardcoded: a BuiltinPath built by hand does not resolve, and which meshes the
-        // library holds is the resource providers' business, not this scenario's.
-        var entries = MeshResource.INSTANCE.getResourceInstance().listAllResources();
-        ctx.log("library meshes: " + entries.stream().map(e -> String.valueOf(e.getKey())).toList());
-        var entry = entries.stream().filter(e -> e.getValue() != null).findFirst().orElse(null);
-        ctx.require("the library holds at least one mesh", entry != null);
-        ctx.put("libraryPath", entry.getKey());
-        ctx.put("libraryOriginalSource", entry.getValue().getSource());
-        entry.getValue().setSource(animatedSource(false));
-        ctx.put("libraryMesh", entry.getValue());
-    }
-
+    /** ⚠️ Called exactly once; see the note in {@link #define}. Everything after is a live mutation. */
     private static void loadProject(TestContext ctx, boolean perParticle, boolean instanced) {
-        loadProject(ctx, perParticle, instanced, false);
-    }
-
-    private static void loadProject(TestContext ctx, boolean perParticle, boolean instanced,
-                                    boolean reference) {
         var project = new FXProject();
-        var path = ctx.<IResourcePath>get("libraryPath");
-        if (reference) ctx.require("the library mesh was hijacked first", path != null);
-        project.getFx().getFxData().objects().add(
-                emitter(perParticle, instanced, reference ? path : null));
+        project.getFx().getFxData().objects().add(emitter(perParticle, instanced));
         editor(ctx).loadProject(project, null);
         ctx.put("project", project);
         aimSceneCamera(ctx);
@@ -317,8 +290,7 @@ public class EditorModelInstanceScenario implements UIScenario {
         return source;
     }
 
-    private static ParticleEmitter emitter(boolean perParticle, boolean instanced,
-                                           @Nullable IResourcePath reference) {
+    private static ParticleEmitter emitter(boolean perParticle, boolean instanced) {
         var emitter = new ParticleEmitter();
         var config = emitter.config;
         config.setDuration(200);
@@ -336,9 +308,7 @@ public class EditorModelInstanceScenario implements UIScenario {
 
         var renderer = config.renderer;
         renderer.setRenderMode(ParticleRendererSetting.Mode.Model);
-        renderer.setModel(new MeshData(reference != null
-                ? new ResourceMeshSource(reference)
-                : animatedSource(perParticle)));
+        renderer.setModel(new MeshData(animatedSource(perParticle)));
         renderer.setUseGPUInstance(instanced);
         renderer.getMaterials().add(new MaterialSetting(new TextureMaterial(
                 ResourceLocation.parse("textures/block/white_concrete.png")))

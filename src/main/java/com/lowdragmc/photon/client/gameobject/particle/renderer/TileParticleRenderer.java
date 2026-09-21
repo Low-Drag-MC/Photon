@@ -202,6 +202,10 @@ public class TileParticleRenderer {
     private final Vector3f meshNormal = new Vector3f();
     /** Scratch for the per-instance model pivot; see {@link #uploadInstances}. */
     private final Vector3f instancePivot = new Vector3f();
+    /** The second half of {@link #poseBaseFor}'s answer, read by the {@link #putMeshVertex} calls that
+     *  follow it. Fields rather than a returned record: this is per particle, per frame. */
+    private float poseBlend;
+    private int poseNextBase;
     private final float[] unpackedNormal = new float[3];
 
     /**
@@ -209,6 +213,7 @@ public class TileParticleRenderer {
      * MIRRORED FROM the PHOTON_VAT block of particle.glsl — the same two channels, the same wrap.
      */
     private int poseBaseFor(@Nullable VertexAnimation animation, TileParticle particle, float partialTicks) {
+        poseBlend = 0f; // reset before the early return, so a stale blend cannot outlive its table
         if (animation == null) return -1;
         var phase = animation.phase();
         float p = phase[0] + particle.getMemRandom("instance_random") * phase[1]
@@ -221,10 +226,6 @@ public class TileParticleRenderer {
         poseNextBase = (frame + 1 == animation.frames() ? 0 : frame + 1) * animation.vertexCount();
         return frame * animation.vertexCount();
     }
-
-    /** Set by {@link #poseBaseFor} for the vertex writes that follow it; render-thread only. */
-    private float poseBlend;
-    private int poseNextBase;
 
     private void putMeshVertex(Matrix4f transform, Matrix3f normalMat, VertexConsumer buffer,
                                ModelPass model, @Nullable float[] table, int poseBase, int vertex,

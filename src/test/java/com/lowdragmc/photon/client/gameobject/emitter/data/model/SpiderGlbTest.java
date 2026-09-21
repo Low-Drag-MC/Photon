@@ -30,13 +30,13 @@ class SpiderGlbTest {
         var model = spider();
         assertTrue(model.isAnimated(), "not animated at all");
         assertFalse(model.clips().isEmpty(), "no clips");
-        System.out.println("spider: " + model.mesh().vertexCount() + " vertices, "
-                + model.mesh().triangleCount() + " triangles, "
-                + Objects.requireNonNull(model.skeleton()).jointCount() + " joints, clips "
-                + model.clipNames());
+        assertEquals(3816, model.mesh().vertexCount());
+        assertEquals(43, Objects.requireNonNull(model.skeleton()).jointCount());
+        assertEquals(21, model.clips().size(), "21 clips, atk_1 first and idle among them");
+        assertTrue(model.clipNames().contains("idle"));
         for (var clip : model.clips()) {
-            System.out.println("  clip '" + clip.name() + "' duration " + clip.duration()
-                    + " channels " + clip.channels().size());
+            assertTrue(clip.duration() > 0f, clip.name() + " has no duration");
+            assertFalse(clip.channels().isEmpty(), clip.name() + " drives nothing");
         }
     }
 
@@ -46,8 +46,8 @@ class SpiderGlbTest {
         var model = spider();
         int frames = 30;
         long texels = (long) frames * model.mesh().vertexCount();
-        System.out.println("texels needed " + texels + " of " + VertexAnimationBake.MAX_TEXELS
-                + "  (" + texels * VertexAnimationBake.FLOATS_PER_TEXEL * 4 / 1024 / 1024 + " MB)");
+        assertTrue(texels < VertexAnimationBake.MAX_TEXELS,
+                texels + " texels is past the " + VertexAnimationBake.MAX_TEXELS + " cap");
         var table = VertexAnimationBake.bake(model, model.clipAt(0), frames);
         assertNotNull(table, "the bake refused, so the draw falls back to the undeformed mesh");
     }
@@ -66,7 +66,6 @@ class SpiderGlbTest {
             if (i % VertexAnimationBake.FLOATS_PER_TEXEL == 3) continue;
             widest = Math.max(widest, Math.abs(table[i] - table[(frames / 2) * stride + i]));
         }
-        System.out.println("widest move between frame 0 and frame " + frames / 2 + ": " + widest);
         assertTrue(widest > 1.0e-4f, "every frame is the same pose");
     }
 
@@ -90,7 +89,6 @@ class SpiderGlbTest {
         for (int i = 0; i < atZero.length; i++) {
             widest = Math.max(widest, Math.abs(atZero[i] - halfway[i]));
         }
-        System.out.println("shared-clock move over half the clip: " + widest);
         assertTrue(widest > 1.0e-4f, "the deformer does not move it either");
     }
 }
