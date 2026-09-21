@@ -309,10 +309,18 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         return path.substring(slash + 1, dot > slash ? dot : path.length());
     }
 
+    /**
+     * Always the shared-clock pose, per-particle phase or not.
+     *
+     * <p>⚠️ It used to hand back {@link #topology()} under {@link #perParticlePhase}, on the reasoning that
+     * the shader replaces every position anyway. But {@code getMesh()} is what the editor's mesh preview
+     * and the emission shape read, and neither of them is the vertex shader — so ticking the box made both
+     * of them show the bind pose, which for a rigged character is a T-pose. The per-particle frames are an
+     * override the VAT draw applies on top of this, not a replacement for it.</p>
+     */
     @Override
     public PhotonMesh getMesh() {
-        // with a baked table the rest pose IS the mesh; the shader replaces the position per vertex
-        return perParticlePhase ? topology() : meshCache.resolve(this);
+        return meshCache.resolve(this);
     }
 
     /**

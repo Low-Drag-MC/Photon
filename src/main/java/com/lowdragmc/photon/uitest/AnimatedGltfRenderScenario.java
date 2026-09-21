@@ -235,6 +235,57 @@ public class AnimatedGltfRenderScenario implements UIScenario {
         ctx.check("the swarm started", executor.getRuntime() != null, "a runtime", "null");
         ctx.check("it baked a pose table", source.vertexAnimation() != null, "a table", "null");
         ctx.check("and stopped deforming on the CPU", source.asDynamic() == null, "not dynamic", "dynamic");
+        assertThePoseActuallyMoves(ctx, source);
+    }
+
+    /**
+     * ⚠️ The three ways a baked table draws a model that never moves, none of which log anything: the
+     * phase does not follow the clock, the table is the rest pose repeated (which is what an unresolved
+     * clip name bakes), or every particle lands on one frame. Asserting a table merely exists missed all
+     * three.
+     */
+    private static void assertThePoseActuallyMoves(TestContext ctx, AnimatedGltfModelSource source) {
+        try {
+            AnimatedGltfModelSource.pinClock(0f);
+            var animation = source.vertexAnimation();
+            ctx.require("the table survived pinning the clock", animation != null);
+            float atZero = animation.phase()[0];
+            float randomWeight = animation.phase()[1];
+
+            AnimatedGltfModelSource.pinClock(0.37f);
+            source.vertexAnimation();
+            float later = animation.phase()[0];
+            ctx.check("the phase follows the clock", Math.abs(later - atZero) > 1.0e-4f,
+                    "a different phase at a different time", atZero + " both times");
+
+            ctx.check("the per-particle random is weighted in", randomWeight > 0f,
+                    "> 0 so two particles differ", randomWeight);
+
+            // the table itself: frame 0 and the middle frame must not be the same vertices, or the model
+            // is pinned to whatever pose was baked into every row
+            var table = animation.table();
+            int stride = animation.vertexCount() * 4;
+            int middle = animation.frames() / 2;
+            float widest = 0f;
+            for (int i = 0; i < stride; i++) {
+                widest = Math.max(widest, Math.abs(table[i] - table[middle * stride + i]));
+            }
+            ctx.check("frame 0 and the middle frame are different poses", widest > 1.0e-3f,
+                    "a moved vertex", "identical rows — a rest-pose bake");
+
+            // and the phase actually spreads: the CPU and the shader both do fract(phase + random)
+            int frames = animation.frames();
+            int atRandomZero = (int) (fract(later) * frames);
+            int atRandomHalf = (int) (fract(later + 0.5f) * frames);
+            ctx.check("two particles half a turn apart land on different frames",
+                    atRandomZero != atRandomHalf, "different frames", atRandomZero + " for both");
+        } finally {
+            AnimatedGltfModelSource.pinClock(null);
+        }
+    }
+
+    private static float fract(float value) {
+        return value - (float) Math.floor(value);
     }
 
     private static void stopFox(TestContext ctx) {
