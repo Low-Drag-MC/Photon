@@ -14,6 +14,7 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.EmissionSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.UIResourceMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.AnimatedGltfModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.IModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.ResourceMeshSource;
@@ -22,6 +23,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
+import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
@@ -138,6 +140,33 @@ public class EditorModelInstanceScenario implements UIScenario {
                     ctx -> compareCaptures(ctx, held));
         }
 
+        // ⚠️ A material whose library reference does not resolve falls back to IMaterial.MISSING, which is
+        // not exotic — any project carrying a stale reference has one. It used to ignore the
+        // MaterialContext and hand back a vanilla program with no per-instance attributes, so the CPU path
+        // drew correctly and instancing drew every model untransformed at the origin.
+        s.step("give the emitter a material reference that does not resolve",
+                        EditorModelInstanceScenario::useUnresolvableMaterial)
+                .frames(12)
+                .step("missing material, instancing off", ctx -> setInstanced(ctx, false))
+                .frames(12)
+                .screenshot("missing_material_cpu")
+                .step("missing material, instancing on", ctx -> setInstanced(ctx, true))
+                .frames(12)
+                .screenshot("missing_material_inst")
+                .step("a missing material renders the same either way", ctx -> {
+                    var cpu = ScreenshotCompare.load(ctx, "missing_material_cpu");
+                    var instanced = ScreenshotCompare.load(ctx, "missing_material_inst");
+                    if (cpu == null || instanced == null) {
+                        ctx.check("both captures were written", false, "two images", "missing one");
+                        return;
+                    }
+                    var drawn = cpu.diff(ScreenshotCompare.load(ctx, "empty"), 24, SCENE);
+                    ctx.check("the missing material still draws something",
+                            drawn.count() > MIN_DRAWN_PIXELS, "> " + MIN_DRAWN_PIXELS + " px",
+                            drawn.count());
+                    agree(ctx, "a missing material survives GPU instancing", cpu, instanced);
+                });
+
         s.teardown("unpin the clock", ctx -> AnimatedGltfModelSource.pinClock(null))
                 .teardown("give the library mesh its own source back", ctx -> {
                     var meshData = ctx.<MeshData>get("libraryMesh");
@@ -237,6 +266,23 @@ public class EditorModelInstanceScenario implements UIScenario {
             }
         }
         ctx.require("the project still holds the emitter", found);
+    }
+
+    private static void setInstanced(TestContext ctx, boolean instanced) {
+        forEachEmitter(ctx, emitter -> emitter.config.renderer.setUseGPUInstance(instanced));
+        editor(ctx).reloadEffect();
+    }
+
+    /** A library reference to a material that is not there, which resolves to {@code IMaterial.MISSING}. */
+    private static void useUnresolvableMaterial(TestContext ctx) {
+        forEachEmitter(ctx, emitter -> {
+            var materials = emitter.config.renderer.getMaterials();
+            materials.clear();
+            materials.add(new MaterialSetting(new UIResourceMaterial(
+                    new BuiltinPath("no-such-material")))
+                    .setDepthMask(true).setCull(true));
+        });
+        editor(ctx).reloadEffect();
     }
 
     /** Flip both switches on the emitter that is already playing, the way the inspector does. */
