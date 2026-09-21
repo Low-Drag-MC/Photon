@@ -15,7 +15,9 @@ import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.AnimatedGltfModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.GltfModelSource;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.IModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.ObjModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
@@ -121,7 +123,11 @@ public class MeshResource extends Resource<MeshData> {
             // an obj/glTF is parsed straight off the pack when the mesh is first drawn — no bakery, no
             // reload. The location keeps its extension, that is how those sources open it.
             ResourceFileImport.resolveOrImport(context.getOwner(), file, "models", location -> {
-                var source = gltf ? new GltfModelSource(location) : new ObjModelSource(location);
+                if (gltf) {
+                    context.complete(new MeshData(gltfSourceFor(location)));
+                    return;
+                }
+                var source = new ObjModelSource(location);
                 // the path is normally fresh, but re-importing a file already in the pack could hit a
                 // cached failure from an earlier load attempt
                 source.invalidate();
@@ -136,6 +142,20 @@ public class MeshResource extends Resource<MeshData> {
             context.complete(new MeshData(new JsonModelSource(modelLocationOf(location))));
             Minecraft.getInstance().reloadResourcePacks();
         }, context::cancel);
+    }
+
+    /**
+     * What an imported glTF becomes: the <b>animated</b> source when the file has a skeleton and a clip,
+     * the static one otherwise. A rigged file then plays as soon as it is dropped in, instead of arriving
+     * as a static mesh that has to be switched over by hand.
+     *
+     * <p>The parse this costs is cached under the file's own key, so the first draw reuses it.</p>
+     */
+    public static IModelSource gltfSourceFor(ResourceLocation location) {
+        var animated = new AnimatedGltfModelSource(location);
+        // a re-import of a file already in the pack could otherwise hit a cached failure
+        animated.invalidate();
+        return animated.hasAnimation() ? animated : new GltfModelSource(location);
     }
 
     /**

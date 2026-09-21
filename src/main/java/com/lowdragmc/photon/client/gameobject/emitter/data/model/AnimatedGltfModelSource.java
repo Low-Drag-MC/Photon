@@ -308,6 +308,15 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         return perParticlePhase ? topology() : meshCache.resolve(this);
     }
 
+    /**
+     * Whether the file has a skeleton AND something to play on it — what the importer decides between
+     * this source and the static one on.
+     */
+    public boolean hasAnimation() {
+        var model = model();
+        return model.isAnimated() && !model.clips().isEmpty();
+    }
+
     /** Every clip this source can play: the model's own plus whatever the animation files added. */
     public List<String> getClipNames() {
         return model().clipNames();

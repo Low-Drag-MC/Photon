@@ -196,6 +196,28 @@ public class AnimatedGltfScenario implements UIScenario {
             }
         })
 
+        // the decision the Mesh resource importer makes when a .glb is dropped in
+        .step("importing a rigged glb picks the animated source", ctx -> {
+            var rigged = write("import_rigged.glb", glb(skinnedGltf()));
+            var source = com.lowdragmc.photon.gui.editor.resource.MeshResource.gltfSourceFor(rigged);
+            ctx.check("a file with a skeleton and a clip imports animated",
+                    source instanceof AnimatedGltfModelSource, "AnimatedGltfModelSource",
+                    source.getClass().getSimpleName());
+
+            var donor = write("import_donor.glb", glb(animationOnlyGltf()));
+            var noMesh = com.lowdragmc.photon.gui.editor.resource.MeshResource.gltfSourceFor(donor);
+            ctx.check("a file with no mesh is not worth animating",
+                    noMesh instanceof GltfModelSource, "GltfModelSource", noMesh.getClass().getSimpleName());
+        })
+
+        .step("importing a plain glb stays static", ctx -> {
+            var plain = write("import_plain.glb", glb(staticGltf()));
+            var source = com.lowdragmc.photon.gui.editor.resource.MeshResource.gltfSourceFor(plain);
+            ctx.check("no skeleton, no reason to animate it",
+                    source instanceof GltfModelSource, "GltfModelSource", source.getClass().getSimpleName());
+            ctx.check("and it still loads", !source.getMesh().isEmpty(), "non-empty", "empty");
+        })
+
         .step("a static source reads the same file without a second parse", ctx -> {
             var location = write("shared.glb", glb(skinnedGltf()));
             var animated = new AnimatedGltfModelSource(location);
@@ -328,6 +350,25 @@ public class AnimatedGltfScenario implements UIScenario {
                   ],
                   "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 32}],
                   "buffers": [{"byteLength": 32, "uri": "data:application/octet-stream;base64,%s"}]
+                }
+                """.formatted(Base64.getEncoder().encodeToString(bytes.array()));
+    }
+
+    /** One unrigged triangle: nothing for an importer to animate. */
+    private static String staticGltf() {
+        var bytes = ByteBuffer.allocate(36).order(ByteOrder.LITTLE_ENDIAN);
+        float[][] positions = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}};
+        for (var p : positions) for (float f : p) bytes.putFloat(f);
+        return """
+                {
+                  "asset": {"version": "2.0"},
+                  "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+                  "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}],
+                  "accessors": [
+                    {"bufferView": 0, "byteOffset": 0, "componentType": 5126, "count": 3, "type": "VEC3"}
+                  ],
+                  "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 36}],
+                  "buffers": [{"byteLength": 36, "uri": "data:application/octet-stream;base64,%s"}]
                 }
                 """.formatted(Base64.getEncoder().encodeToString(bytes.array()));
     }
