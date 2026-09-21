@@ -111,11 +111,18 @@ public class AnimatedGltfRenderScenario implements UIScenario {
                 });
     }
 
-    /** The fixture lives in the test source set, off the client run's classpath, so read it off disk. */
-    /** Package-visible: {@link EditorModelInstanceScenario} stages the same fixture, and the list of
-     *  candidate paths is a function of where the client's working directory is, not of the scenario. */
+    /**
+     * The fixtures live in the test source set, off the client run's classpath, so they are read off disk.
+     * Package-visible because {@link EditorModelInstanceScenario} stages one too, and where to look is a
+     * function of the client's working directory rather than of any one scenario.
+     */
     static byte[] readFixture() {
-        var classpath = AnimatedGltfRenderScenario.class.getResourceAsStream("/assets/photon/models/fox.glb");
+        return readFixture("fox.glb");
+    }
+
+    static byte[] readFixture(String fileName) {
+        var classpath = AnimatedGltfRenderScenario.class
+                .getResourceAsStream("/assets/photon/models/" + fileName);
         if (classpath != null) {
             try (var in = classpath) {
                 return in.readAllBytes();
@@ -124,9 +131,9 @@ public class AnimatedGltfRenderScenario implements UIScenario {
             }
         }
         for (String candidate : List.of(
-                "src/test/resources/assets/photon/models/fox.glb",
-                "../src/test/resources/assets/photon/models/fox.glb",
-                "../../src/test/resources/assets/photon/models/fox.glb")) {
+                "src/test/resources/assets/photon/models/" + fileName,
+                "../src/test/resources/assets/photon/models/" + fileName,
+                "../../src/test/resources/assets/photon/models/" + fileName)) {
             var path = Path.of(candidate);
             if (Files.isRegularFile(path)) {
                 try {

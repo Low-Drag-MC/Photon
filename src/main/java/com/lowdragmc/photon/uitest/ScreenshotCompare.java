@@ -77,12 +77,20 @@ final class ScreenshotCompare {
         return width + "x" + height;
     }
 
-    /** @param threshold per-channel difference, 0..255, below which two pixels count as the same */
-    Diff diff(ScreenshotCompare other, int threshold) {
+    /**
+     * ⚠️ Always pass the scene rectangle. The editor draws a live stats box — playback time, CPU time,
+     * FPS — inside the scene view, and a whole-window diff measures that counter ticking rather than
+     * anything rendered. An earlier version of this compared two FPS readouts and reported agreement.
+     *
+     * @param threshold per-channel difference, 0..255, below which two pixels count as the same
+     */
+    Diff diff(ScreenshotCompare other, int threshold, Region region) {
         int count = 0;
         int minX = width, minY = height, maxX = -1, maxY = -1;
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
+        int x0 = Math.max(0, region.left()), x1 = Math.min(width, region.right());
+        int y0 = Math.max(0, region.top()), y1 = Math.min(height, region.bottom());
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
                 int a = pixels[y * width + x];
                 int b = other.pixels[y * width + x];
                 int dr = Math.abs(((a >> 16) & 0xFF) - ((b >> 16) & 0xFF));
@@ -96,12 +104,18 @@ final class ScreenshotCompare {
                 maxY = Math.max(maxY, y);
             }
         }
+        int boxWidth = maxX < 0 ? 0 : maxX - minX + 1;
+        int boxHeight = maxY < 0 ? 0 : maxY - minY + 1;
         var box = maxX < 0 ? "none"
-                : "x[%d..%d] y[%d..%d] %dx%d".formatted(minX, maxX, minY, maxY,
-                maxX - minX + 1, maxY - minY + 1);
-        return new Diff(count, (double) count / (width * (long) height), box);
+                : "x[%d..%d] y[%d..%d] %dx%d".formatted(minX, maxX, minY, maxY, boxWidth, boxHeight);
+        long area = Math.max(1L, (long) (x1 - x0) * (y1 - y0));
+        return new Diff(count, (double) count / area, box, boxWidth, boxHeight);
     }
 
-    record Diff(int count, double fraction, String box) {
+    record Diff(int count, double fraction, String box, int width, int height) {
+    }
+
+    /** A window rectangle, in pixels. */
+    record Region(int left, int top, int right, int bottom) {
     }
 }
