@@ -40,10 +40,32 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
     // region builtin material
     @LDLRegisterClient(name = "missing", registry = "photon:material", manual = true)
     final class MissingMaterial implements IMaterial {
+        /**
+         * ⚠️ A material MUST honour the {@link MaterialContext}. This one used to return vanilla's
+         * {@code rendertype_solid} and ignore it, which draws correctly on the CPU path — the vertices
+         * arrive already transformed — and catastrophically under GPU instancing, where the transform
+         * lives in per-instance attributes that a vanilla program does not declare. Every model then drew
+         * untransformed at the origin, enormous. Delegating to a real material keeps the missing-texture
+         * look and compiles the right variant for whatever pass is drawing.
+         */
+        @Nullable
+        private TextureMaterial fallback;
+
+        private TextureMaterial fallback() {
+            if (fallback == null) {
+                fallback = new TextureMaterial(MissingTextureAtlasSprite.getLocation());
+            }
+            return fallback;
+        }
+
         @Override
         public ShaderInstance begin(MaterialContext context) {
-            RenderSystem.setShaderTexture(0, MissingTextureAtlasSprite.getTexture().getId());
-            return GameRenderer.getRendertypeSolidShader();
+            return fallback().begin(context);
+        }
+
+        @Override
+        public void end(MaterialContext context) {
+            fallback().end(context);
         }
 
         @Override

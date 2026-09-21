@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -152,6 +153,29 @@ abstract class InstancedRenderBackend {
         dataSamplerUnit = top - 1;
         customSamplerUnit = top - 2;
         vatSamplerUnit = top - 3;
+    }
+
+    /** Logged once: a stride mismatch repeats every frame, and one line is enough to name it. */
+    private boolean strideReported;
+
+    /**
+     * How many floats the upload actually wrote, against the stride the VAO's attribute pointers were
+     * built with. They have to agree exactly.
+     *
+     * <p>⚠️ When they do not, nothing throws and nothing looks obviously broken in the code — every
+     * per-instance attribute simply reads from the wrong offset, so scale picks up a light value or a
+     * colour and the models draw enormous and misplaced. That is a very hard symptom to reason back from,
+     * hence the check.</p>
+     */
+    void checkInstanceStride(int floatsWritten, int instanceCount) {
+        if (strideReported || instanceCount <= 0) return;
+        int expected = instanceFloats() * instanceCount;
+        if (floatsWritten == expected) return;
+        strideReported = true;
+        Photon.LOGGER.error("[instancing] wrote {} floats for {} instances but the layout declares {} "
+                        + "per instance ({} total). Every per-instance attribute after the mismatch reads "
+                        + "from the wrong offset.",
+                floatsWritten, instanceCount, instanceFloats(), expected);
     }
 
     /** The unit {@link #VAT_SAMPLER} binds to, for a subclass that has a table to bind. */

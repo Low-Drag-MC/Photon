@@ -398,6 +398,7 @@ public class TileParticleRenderer {
         if (customBuffer != null) {
             instanceBackend.endCustomUpload(customBuffer);
         }
+        instanceBackend.checkInstanceStride(buffer.position(), instanceCount);
         instanceBackend.endUpload(buffer, instanceCount);
         return instanceCount > 0;
     }
