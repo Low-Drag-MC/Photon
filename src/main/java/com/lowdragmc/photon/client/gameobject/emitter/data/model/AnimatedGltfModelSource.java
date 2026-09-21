@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
@@ -28,12 +29,13 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.NotNull;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -46,10 +48,8 @@ import java.util.function.Supplier;
  *
  * <p>The pose follows the <b>timeline</b> in the editor (so scrubbing scrubs the animation) and the
  * level's clock in the world. Every emitter on the same file and clip reads the same instant, so they
- * share one deformation ({@link AnimatedPose}) and one render pass.</p>
- *
- * <p>⚠️ Which means every instance is in lockstep — one clock, not one per particle. A swarm all flap
- * together; per-particle phase needs the pose to exist at many instants at once.</p>
+ * share one deformation ({@link AnimatedPose}) and one render pass — which also means every particle is
+ * in lockstep. {@link #perParticlePhase} trades that for a baked table the shader indexes per instance.</p>
  */
 @OnlyIn(Dist.CLIENT)
 @LDLRegisterClient(name = "animated_gltf_model", registry = "photon:model_source")
@@ -123,8 +123,12 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     /** Baked on demand and thrown away with the model; see {@link #vertexAnimation()}. */
     @Nullable
     private VertexAnimation vertexAnimation;
+    /** What {@link #vertexAnimation} was baked from, as fields rather than a key object — this is
+     *  compared once a frame on the render path. */
     @Nullable
-    private Object bakedFor;
+    private SkinnedModel bakedModel;
+    private String bakedAnimation = "";
+    private int bakedFrames;
 
     /** Test seam: whether a deformation ran is invisible in the picture, so asserting reuse means
      *  holding the clock still and watching the revision not move. Null restores the real clock. */
@@ -192,7 +196,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
             vertexAnimation.dispose();
             vertexAnimation = null;
         }
-        bakedFor = null;
+        bakedModel = null;
     }
 
     /**
@@ -207,13 +211,13 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         if (!perParticlePhase) return null;
         var model = model();
         if (!model.isAnimated()) return null;
-        var clip = animation.isEmpty() ? model.clipAt(0) : model.clip(animation);
-        var key = java.util.List.of(model, String.valueOf(animation), frames);
-        if (vertexAnimation != null && key.equals(bakedFor)) {
+        if (vertexAnimation != null && bakedModel == model
+                && bakedAnimation.equals(animation) && bakedFrames == frames) {
             refreshPhase(model); // the clock moved even though the table did not
             return vertexAnimation;
         }
         dropBake();
+        var clip = animation.isEmpty() ? model.clipAt(0) : model.clip(animation);
         var table = VertexAnimationBake.bake(model, clip, frames);
         if (table == null) {
             Photon.LOGGER.warn("could not bake {} frames of {} — too large, or nothing to pose",
@@ -221,7 +225,9 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
             return null;
         }
         vertexAnimation = new VertexAnimation(table, model.mesh().vertexCount(), frames);
-        bakedFor = key;
+        bakedModel = model;
+        bakedAnimation = animation;
+        bakedFrames = frames;
         refreshPhase(model);
         return vertexAnimation;
     }
@@ -275,6 +281,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         }
         var clips = new ArrayList<>(base.clips());
         for (var file : animationFiles) {
+            if (file.equals(modelLocation)) continue; // its clips are already in base.clips()
             var source = PhotonMeshCache.INSTANCE.getModel(
                     new PhotonMeshCache.GltfKey(file, flipV), k -> load(file));
             if (source.skeleton() == null || source.clips().isEmpty()) {
@@ -354,6 +361,16 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         return pose == null ? null : pose.geometry();
     }
 
+    /** Asked for only when a pass actually draws with tangents; see {@link PhotonMesh#tangents()}. */
+    @Override
+    @Nullable
+    public float[] tangents() {
+        var model = model();
+        var pose = pose();
+        if (pose == null) return null;
+        return pose.tangents(model, animation.isEmpty() ? model.clipAt(0) : model.clip(animation));
+    }
+
     @Nullable
     private AnimatedPose pose() {
         var model = model();
@@ -375,7 +392,9 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
                     .getGameTimeDeltaPartialTick(false)) / 20f;
         }
         seconds *= speed;
-        if (clip == null) return 0f;
+        // an infinite speed makes the modulo NaN, which never equals the last pose's time and so
+        // re-deforms the model into nothing, every frame, forever
+        if (clip == null || !Float.isFinite(seconds)) return 0f;
         float duration = clip.duration();
         if (duration <= 0f) return 0f;
         if (!loop) {
@@ -436,8 +455,10 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         }
     }
 
+    /** A new row starts on the model's own file: inert (see {@link #combine}) rather than a path that
+     *  does not resolve and logs a failed load the moment the row appears. */
     private ResourceLocation addDefaultAnimationFile() {
-        return Photon.id("models/missing.glb");
+        return modelLocation;
     }
 
     private Configurator createAnimationFileConfigurator(Supplier<ResourceLocation> getter,
@@ -468,14 +489,18 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
                 PhotonMeshCache.INSTANCE.trackFile(new PhotonMeshCache.GltfKey(location, flipV), file);
             }
             return model;
+        } catch (FileNotFoundException e) {
+            // a source whose file has not been picked yet; a stack trace says nothing extra
+            Photon.LOGGER.warn("glTF {} does not exist", location);
+            return SkinnedModel.EMPTY;
         } catch (Exception e) {
             Photon.LOGGER.warn("Failed to load glTF {}", location, e);
-            return SkinnedModel.staticModel(PhotonMesh.EMPTY);
+            return SkinnedModel.EMPTY;
         }
     }
 
     /** The glb/gltf picker, shared by the model field and every animation-file row. */
-    private static void showGlbDialog(Object root, Consumer<ResourceLocation> onPicked) {
+    private static void showGlbDialog(UIElement root, Consumer<ResourceLocation> onPicked) {
         Dialog.showFileDialog("photon.gui.editor.tips.select_gltf", LDLib2.getAssetsDir(), true,
                 node -> {
                     if (!node.getKey().isFile()) return true; // allow directories
@@ -486,7 +511,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
                         var location = IModelSource.getAssetLocationFromFile(r);
                         if (location != null) onPicked.accept(location);
                     }
-                }).show((com.lowdragmc.lowdraglib2.gui.ui.UIElement) root);
+                }).show(root);
     }
 
     @Override

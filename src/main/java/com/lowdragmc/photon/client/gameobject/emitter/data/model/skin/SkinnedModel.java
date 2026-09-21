@@ -12,6 +12,10 @@ import java.util.List;
 public record SkinnedModel(PhotonMesh mesh, @Nullable MeshSkin skin, @Nullable Skeleton skeleton,
                            List<AnimationClip> clips) {
 
+    /** The stand-in for a model that failed or is not loadable yet. Shared, so callers keying a cache on
+     *  the model instance do not see a different "nothing" every frame. */
+    public static final SkinnedModel EMPTY = staticModel(PhotonMesh.EMPTY);
+
     public static SkinnedModel staticModel(PhotonMesh mesh) {
         return new SkinnedModel(mesh, null, null, List.of());
     }

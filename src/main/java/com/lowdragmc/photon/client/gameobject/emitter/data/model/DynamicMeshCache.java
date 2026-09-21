@@ -26,7 +26,7 @@ final class DynamicMeshCache {
         var geometry = dynamic.geometry();
         var mesh = geometry == null
                 ? topology
-                : topology.withGeometry(geometry, dynamic.tangents(), revision);
+                : topology.withGeometry(geometry, dynamic::tangents, revision);
         current = mesh;
         return mesh;
     }

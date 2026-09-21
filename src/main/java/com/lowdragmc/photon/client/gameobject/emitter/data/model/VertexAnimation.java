@@ -4,7 +4,7 @@ import com.lowdragmc.photon.client.AutoCloseCleaner;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.BufferUtils;
+import org.lwjgl.system.MemoryUtil;
 
 import java.lang.ref.Cleaner;
 
@@ -82,11 +82,16 @@ public final class VertexAnimation {
             resource = new Resource();
             cleanable = AutoCloseCleaner.registerRenderThread(this, resource);
             resource.buffer = glGenBuffers();
-            var staging = BufferUtils.createFloatBuffer(table.length);
-            staging.put(table).flip();
-            glBindBuffer(GL_TEXTURE_BUFFER, resource.buffer);
-            glBufferData(GL_TEXTURE_BUFFER, staging, GL_STATIC_DRAW);
-            glBindBuffer(GL_TEXTURE_BUFFER, 0);
+            // the table can be tens of megabytes, so the staging copy is freed rather than left to the GC
+            var staging = MemoryUtil.memAllocFloat(table.length);
+            try {
+                staging.put(table).flip();
+                glBindBuffer(GL_TEXTURE_BUFFER, resource.buffer);
+                glBufferData(GL_TEXTURE_BUFFER, staging, GL_STATIC_DRAW);
+                glBindBuffer(GL_TEXTURE_BUFFER, 0);
+            } finally {
+                MemoryUtil.memFree(staging);
+            }
 
             resource.texture = glGenTextures();
             glBindTexture(GL_TEXTURE_BUFFER, resource.texture);

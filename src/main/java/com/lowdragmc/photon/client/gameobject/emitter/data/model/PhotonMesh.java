@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.model;
 
+import com.lowdragmc.photon.Photon;
 import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
@@ -11,6 +12,7 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Immutable geometry shared by every {@link IModelSource}: indexed triangles over three vertex
@@ -57,6 +59,10 @@ public final class PhotonMesh {
     /** The source's own (glTF's {@code TANGENT}) or derived from the UVs on first {@link #tangents()}. */
     @Nullable
     private volatile float[] tangents;
+    /** A deforming source's tangents for this pose, asked for only if something draws with them — the
+     *  fallback is a weld-map rebuild over the whole mesh, which is not a per-frame price. */
+    @Nullable
+    private final Supplier<float[]> deformedTangents;
     /** {@code this} for a built mesh, the original for a {@link #withGeometry} derivative. */
     private final PhotonMesh topology;
     /** Which revision of that topology's geometry this instance holds; see {@link #withGeometry}. */
@@ -70,18 +76,20 @@ public final class PhotonMesh {
         this.indices = indices;
         this.quadPaired = quadPaired;
         this.tangents = suppliedTangents;
+        this.deformedTangents = null;
         this.topology = this;
         this.geometryRevision = 0L;
     }
 
     /** Derivative constructor: same topology, different geometry. */
-    private PhotonMesh(PhotonMesh topology, float[] geometry, @Nullable float[] tangents, long revision) {
+    private PhotonMesh(PhotonMesh topology, float[] geometry, @Nullable Supplier<float[]> tangents,
+                       long revision) {
         this.geometry = geometry;
         this.attributes = topology.attributes;
         this.spriteBounds = topology.spriteBounds;
         this.indices = topology.indices;
         this.quadPaired = topology.quadPaired;
-        this.tangents = tangents;
+        this.deformedTangents = tangents;
         this.topology = topology.topology;
         this.geometryRevision = revision;
     }
@@ -91,11 +99,13 @@ public final class PhotonMesh {
      * reports the same {@link #topology()}, so consumers keep their cached buffers and re-read only
      * the geometry — the mechanism behind {@link IDynamicMesh}.
      *
-     * @param tangents the deformed tangents, or null to derive them. ⚠️ Deriving is a weld-map rebuild
-     *                 over the whole mesh, so a dynamic mesh drawn with tangents should supply them.
+     * @param tangents asked for this pose's deformed tangents, at most once and only if something draws
+     *                 with them; null, or a null result, derives them from the UVs instead. ⚠️ Deriving
+     *                 is a weld-map rebuild over the whole mesh, so a dynamic mesh drawn with tangents
+     *                 should supply them.
      * @param revision must differ whenever the contents do
      */
-    public PhotonMesh withGeometry(float[] geometry, @Nullable float[] tangents, long revision) {
+    public PhotonMesh withGeometry(float[] geometry, @Nullable Supplier<float[]> tangents, long revision) {
         if (geometry.length != this.geometry.length) {
             throw new IllegalArgumentException("geometry stream is " + geometry.length
                     + " floats but this topology has " + vertexCount() + " vertices ("
@@ -153,7 +163,11 @@ public final class PhotonMesh {
     public float[] tangents() {
         var cached = tangents;
         if (cached == null) {
-            cached = MeshTangents.generate(this);
+            var supplied = deformedTangents == null ? null : deformedTangents.get();
+            // a wrong-length array from an external provider would be read past the end of, in a
+            // glBufferSubData; deriving instead is wrong-looking, not unsafe
+            cached = supplied != null && supplied.length == vertexCount() * FLOATS_PER_TANGENT
+                    ? supplied : MeshTangents.generate(this);
             tangents = cached;
         }
         return cached;
@@ -357,10 +371,64 @@ public final class PhotonMesh {
                 return EMPTY;
             }
             int vertexCount = attributes.size() / FLOATS_PER_ATTRIBUTE;
+            dropUnreferenceableFaces(vertexCount);
+            if (quadPaired.isEmpty()) {
+                return EMPTY;
+            }
             var supplied = taggedTangents == vertexCount ? tangents.toFloatArray() : null;
             return new PhotonMesh(geometry.toFloatArray(), attributes.toFloatArray(),
                     anySprite ? spriteBounds.toFloatArray() : new float[0],
                     indices.toIntArray(), quadPaired.toBooleanArray(), supplied);
+        }
+
+        /**
+         * Drop any face naming a vertex the mesh does not have. A file can say so, and these indices go
+         * straight into a GL element buffer — where out of range is an out-of-bounds read on the GPU
+         * rather than an exception. Paired halves of a quad go together, or the pair flag would mark the
+         * wrong face.
+         */
+        private void dropUnreferenceableFaces(int vertexCount) {
+            boolean clean = true;
+            for (int i = 0; i < indices.size(); i++) {
+                int index = indices.getInt(i);
+                if (index < 0 || index >= vertexCount) {
+                    clean = false;
+                    break;
+                }
+            }
+            if (clean) {
+                return;
+            }
+
+            var keptIndices = new IntArrayList(indices.size());
+            var keptPaired = new BooleanArrayList(quadPaired.size());
+            int dropped = 0;
+            int face = 0;
+            while (face < quadPaired.size()) {
+                int faces = quadPaired.getBoolean(face) && face + 1 < quadPaired.size() ? 2 : 1;
+                boolean ok = true;
+                for (int i = face * 3; ok && i < (face + faces) * 3 && i < indices.size(); i++) {
+                    int index = indices.getInt(i);
+                    ok = index >= 0 && index < vertexCount;
+                }
+                if (ok) {
+                    for (int f = 0; f < faces; f++) {
+                        keptIndices.add(indices.getInt((face + f) * 3));
+                        keptIndices.add(indices.getInt((face + f) * 3 + 1));
+                        keptIndices.add(indices.getInt((face + f) * 3 + 2));
+                        keptPaired.add(quadPaired.getBoolean(face + f));
+                    }
+                } else {
+                    dropped += faces;
+                }
+                face += faces;
+            }
+            Photon.LOGGER.warn("dropped {} of {} faces naming a vertex outside 0..{}",
+                    dropped, quadPaired.size(), vertexCount - 1);
+            indices.clear();
+            indices.addAll(keptIndices);
+            quadPaired.clear();
+            quadPaired.addAll(keptPaired);
         }
     }
 }

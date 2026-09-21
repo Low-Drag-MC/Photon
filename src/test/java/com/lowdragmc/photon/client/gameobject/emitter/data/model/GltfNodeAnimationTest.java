@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.model;
 
-import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.MeshSkin;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.SkinDeformer;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.SkinnedModel;
 import org.junit.jupiter.api.Test;

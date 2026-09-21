@@ -57,20 +57,44 @@ public final class SkinDeformer {
      * {@code out} is {@code rest.vertexCount() * }{@link PhotonMesh#FLOATS_PER_GEOMETRY} floats.
      */
     public void deform(PhotonMesh rest, MeshSkin skin, float[] out) {
+        deform(rest, skin, out, null, null);
+    }
+
+    /**
+     * As {@link #deform(PhotonMesh, MeshSkin, float[])}, also carrying the tangent frame through the
+     * same blend — deriving it from the deformed UVs instead costs a weld-map rebuild per pose.
+     *
+     * @param restTangents the rest pose's {@code tx,ty,tz,w}, or null to skip tangents entirely
+     * @param outTangents  where to write them; {@code rest.vertexCount() * }{@link PhotonMesh#FLOATS_PER_TANGENT}
+     */
+    public void deform(PhotonMesh rest, MeshSkin skin, float[] out,
+                       @Nullable float[] restTangents, @Nullable float[] outTangents) {
         var source = rest.geometry();
         var joints = skin.joints();
         var weights = skin.weights();
         int vertexCount = Math.min(rest.vertexCount(), skin.vertexCount());
         int jointCount = skeleton.jointCount();
+        int tangentFloats = vertexCount * PhotonMesh.FLOATS_PER_TANGENT;
+        boolean withTangents = restTangents != null && outTangents != null
+                && restTangents.length >= tangentFloats && outTangents.length >= tangentFloats;
 
         for (int vertex = 0; vertex < vertexCount; vertex++) {
             int g = vertex * PhotonMesh.FLOATS_PER_GEOMETRY;
+            int t = vertex * PhotonMesh.FLOATS_PER_TANGENT;
             int w = vertex * MeshSkin.INFLUENCES;
             float px = source[g], py = source[g + 1], pz = source[g + 2];
             float nx = source[g + 3], ny = source[g + 4], nz = source[g + 5];
+            float ax = 0f, ay = 0f, az = 0f;
+            if (withTangents) {
+                ax = restTangents[t];
+                ay = restTangents[t + 1];
+                az = restTangents[t + 2];
+                outTangents[t + 3] = restTangents[t + 3]; // handedness is not something a pose changes
+            }
 
             float ox = 0f, oy = 0f, oz = 0f;
             float mx = 0f, my = 0f, mz = 0f;
+            float sx = 0f, sy = 0f, sz = 0f;
             boolean skinned = false;
             for (int i = 0; i < MeshSkin.INFLUENCES; i++) {
                 float weight = weights[w + i];
@@ -92,6 +116,12 @@ public final class SkinDeformer {
                 mx += weight * (m0 * nx + m1 * ny + m2 * nz);
                 my += weight * (m4 * nx + m5 * ny + m6 * nz);
                 mz += weight * (m8 * nx + m9 * ny + m10 * nz);
+
+                if (withTangents) {
+                    sx += weight * (m0 * ax + m1 * ay + m2 * az);
+                    sy += weight * (m4 * ax + m5 * ay + m6 * az);
+                    sz += weight * (m8 * ax + m9 * ay + m10 * az);
+                }
             }
 
             if (!skinned) {
@@ -101,6 +131,11 @@ public final class SkinDeformer {
                 out[g + 3] = nx;
                 out[g + 4] = ny;
                 out[g + 5] = nz;
+                if (withTangents) {
+                    outTangents[t] = ax;
+                    outTangents[t + 1] = ay;
+                    outTangents[t + 2] = az;
+                }
                 continue;
             }
 
@@ -118,50 +153,20 @@ public final class SkinDeformer {
                 out[g + 4] = ny;
                 out[g + 5] = nz;
             }
-        }
-    }
 
-    /**
-     * Skin one point rather than a whole mesh: sample the rest pose, then carry just that point through.
-     * O(1) a particle instead of O(vertices) a frame.
-     *
-     * @param out written as {@code x, y, z}
-     */
-    public void deformPoint(MeshSkin skin, int a, int b, int c, float wa, float wb, float wc,
-                            float px, float py, float pz, float[] out) {
-        float ox = 0f, oy = 0f, oz = 0f;
-        float total = 0f;
-        var joints = skin.joints();
-        var weights = skin.weights();
-        int jointCount = skeleton.jointCount();
-        int[] corners = {a, b, c};
-        float[] barycentric = {wa, wb, wc};
-
-        for (int corner = 0; corner < 3; corner++) {
-            int vertex = corners[corner];
-            if (vertex < 0 || vertex >= skin.vertexCount()) continue;
-            float share = barycentric[corner];
-            int w = vertex * MeshSkin.INFLUENCES;
-            for (int i = 0; i < MeshSkin.INFLUENCES; i++) {
-                float weight = weights[w + i] * share;
-                if (weight == 0f) continue;
-                int joint = joints[w + i];
-                if (joint < 0 || joint >= jointCount) continue;
-                int m = joint * Skeleton.FLOATS_PER_MATRIX;
-                ox += weight * (skinMatrices[m] * px + skinMatrices[m + 1] * py + skinMatrices[m + 2] * pz + skinMatrices[m + 3]);
-                oy += weight * (skinMatrices[m + 4] * px + skinMatrices[m + 5] * py + skinMatrices[m + 6] * pz + skinMatrices[m + 7]);
-                oz += weight * (skinMatrices[m + 8] * px + skinMatrices[m + 9] * py + skinMatrices[m + 10] * pz + skinMatrices[m + 11]);
-                total += weight;
+            if (withTangents) {
+                float tlen2 = sx * sx + sy * sy + sz * sz;
+                if (tlen2 > 1.0e-12f && Float.isFinite(tlen2)) {
+                    float inv = 1f / (float) Math.sqrt(tlen2);
+                    outTangents[t] = sx * inv;
+                    outTangents[t + 1] = sy * inv;
+                    outTangents[t + 2] = sz * inv;
+                } else {
+                    outTangents[t] = ax;
+                    outTangents[t + 1] = ay;
+                    outTangents[t + 2] = az;
+                }
             }
-        }
-        if (total == 0f) {
-            out[0] = px;
-            out[1] = py;
-            out[2] = pz;
-        } else {
-            out[0] = ox;
-            out[1] = oy;
-            out[2] = oz;
         }
     }
 }

@@ -1,7 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
-import com.lowdragmc.photon.client.gameobject.emitter.data.model.DynamicMeshSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.VertexAnimation;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.VertexAnimationBake;
@@ -58,17 +57,43 @@ public class TileParticleRenderer {
         if (renderer.getRenderMode() == ParticleRendererSetting.Mode.None) {
             return;
         }
+        ModelPass model = null;
         if (renderer.getRenderMode() == ParticleRendererSetting.Mode.Model) {
             notifyDynamicMesh();
+            model = modelPass();
         }
         for (var particle : particles) {
             if (particle instanceof TileParticle tileParticle && tileParticle.getDelay() <= 0) {
-                renderParticle(buffer, tileParticle, camera, partialTicks);
+                renderParticle(buffer, tileParticle, camera, partialTicks, model);
             }
         }
     }
 
-    private void renderParticle(@Nonnull VertexConsumer buffer, TileParticle particle, Camera camera, float partialTicks) {
+    /**
+     * What the model branch needs that does not vary per particle. Resolving it per particle costs a mesh
+     * cache lookup each time — and for an animated source a pose lookup and a clip-by-name scan.
+     *
+     * @param table the baked poses, or null to draw {@code mesh}'s own geometry
+     */
+    private record ModelPass(PhotonMesh mesh, boolean remapUV, boolean shade, Vector3f pivot,
+                             @Nullable VertexAnimation animation, @Nullable float[] table) {
+    }
+
+    private ModelPass modelPass() {
+        var source = renderer.getModelSource();
+        var mesh = source.getMesh();
+        var animation = source.vertexAnimation();
+        // a table baked for a different vertex count would be indexed past its end; the rest pose is the
+        // safe reading of "these two disagree"
+        boolean usable = animation != null && animation.vertexCount() == mesh.vertexCount();
+        return new ModelPass(mesh,
+                source.hasAtlasUV() && !renderer.isUseBlockUV() && mesh.spriteBounds().length > 0,
+                renderer.isShade(), renderer.getModelPivot(),
+                usable ? animation : null, usable ? animation.table() : null);
+    }
+
+    private void renderParticle(@Nonnull VertexConsumer buffer, TileParticle particle, Camera camera,
+                                float partialTicks, @Nullable ModelPass model) {
         var vec3 = camera.getPosition();
 
         var localPos = particle.getSimPos(partialTicks).mulPosition(particle.getSpaceTransform());
@@ -89,21 +114,16 @@ public class TileParticleRenderer {
 
         var size = particle.getRealSize(partialTicks);
 
-        if (renderMode == ParticleRendererSetting.Mode.Model) {
+        if (model != null) { // non-null exactly in Model mode; see renderQueue
             // mesh positions are already in centered model space (PhotonMesh convention)
             var transform = new Matrix4f().translate(x, y, z)
                     .rotate(computeModelQuaternion(particle, rotation, camera, partialTicks))
                     .scale(size.mul(particle.getSpaceScale()));
-            // draw 3d model
-            var source = renderer.getModelSource();
-            var mesh = source.getMesh();
-            var remapUV = source.hasAtlasUV() && !renderer.isUseBlockUV() && mesh.spriteBounds().length > 0;
-            var shade = renderer.isShade();
-            var pivot = renderer.getModelPivot();
+            var mesh = model.mesh();
             // ⚠️ A baked pose table is not only the instanced path's business: GPU instancing is off by
             // default, and without this a per-particle-phase model drew its rest pose and never moved.
-            int poseBase = poseBaseFor(source.vertexAnimation(), particle, partialTicks);
-            var table = poseBase < 0 ? null : source.vertexAnimation().table();
+            int poseBase = poseBaseFor(model.animation(), particle, partialTicks);
+            var table = poseBase < 0 ? null : model.table();
             // the normal matrix depends on the particle, not the face — it used to be rebuilt per quad
             var normalMat = transform.normal(new Matrix3f());
             var indices = mesh.indices();
@@ -115,16 +135,16 @@ public class TileParticleRenderer {
                 // whole (its second triangle is (c, d, a)), a lone triangle repeats its last corner
                 if (mesh.quadPaired(triangle)) {
                     int vd = indices[i + 4];
-                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, va, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vb, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vc, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vd, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, model, table, poseBase, va, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, model, table, poseBase, vb, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, model, table, poseBase, vc, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, model, table, poseBase, vd, r, g, b, a, light);
                     triangle += 2;
                 } else {
-                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, va, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vb, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vc, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vc, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, model, table, poseBase, va, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, model, table, poseBase, vb, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, model, table, poseBase, vc, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, model, table, poseBase, vc, r, g, b, a, light);
                     triangle++;
                 }
             }
@@ -199,10 +219,10 @@ public class TileParticleRenderer {
     }
 
     private void putMeshVertex(Matrix4f transform, Matrix3f normalMat, VertexConsumer buffer,
-                               PhotonMesh mesh, @Nullable float[] table, int poseBase, int vertex,
-                               Vector3f pivot, boolean shade,
-                               boolean remapUV, float red, float green, float blue, float alpha,
-                               int light) {
+                               ModelPass model, @Nullable float[] table, int poseBase, int vertex,
+                               float red, float green, float blue, float alpha, int light) {
+        var mesh = model.mesh();
+        var pivot = model.pivot();
         var geometry = mesh.geometry();
         var attributes = mesh.attributes();
         int g = PhotonMesh.geometryOffset(vertex);
@@ -210,7 +230,7 @@ public class TileParticleRenderer {
 
         float u = attributes[at];
         float v = attributes[at + 1];
-        if (remapUV) {
+        if (model.remapUV()) {
             var bounds = mesh.spriteBounds();
             int s = PhotonMesh.spriteOffset(vertex);
             float u0 = bounds[s], v0 = bounds[s + 1];
@@ -218,7 +238,7 @@ public class TileParticleRenderer {
             if (uw != 0f) u = (u - u0) / uw;
             if (vh != 0f) v = (v - v0) / vh;
         }
-        float brightness = shade ? attributes[at + 2] : 1f;
+        float brightness = model.shade() ? attributes[at + 2] : 1f;
 
         if (table != null) {
             int texel = (poseBase + vertex) * VertexAnimationBake.FLOATS_PER_TEXEL;

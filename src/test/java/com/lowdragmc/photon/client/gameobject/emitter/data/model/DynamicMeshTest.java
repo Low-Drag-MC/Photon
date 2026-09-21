@@ -89,6 +89,67 @@ class DynamicMeshTest {
         assertEquals(base.triangleCount(), posed.triangleCount());
     }
 
+    /**
+     * Deriving tangents rebuilds a weld map over the whole mesh, so it must not happen for the passes —
+     * nearly all of them — that never draw with tangents.
+     */
+    @Test
+    void aPoseDoesNotAskForTangentsUntilSomethingDrawsWithThem() {
+        var provider = new SlidingTriangle();
+        var asked = new int[1];
+        var mesh = provider.topology().withGeometry(provider.geometry(), () -> {
+            asked[0]++;
+            return null;
+        }, 1);
+
+        assertEquals(0, asked[0], "building the pose asked already");
+        mesh.geometry();
+        mesh.indices();
+        assertEquals(0, asked[0], "drawing without tangents asked anyway");
+
+        mesh.tangents();
+        assertEquals(1, asked[0]);
+        mesh.tangents();
+        assertEquals(1, asked[0], "asked twice for one pose");
+    }
+
+    /** A provider handing over the wrong number of tangents would be read past the end of in an upload. */
+    @Test
+    void tangentsOfTheWrongLengthAreDerivedInstead() {
+        var provider = new SlidingTriangle();
+        var mesh = provider.topology().withGeometry(provider.geometry(),
+                () -> new float[]{1, 0, 0, 1}, 1);
+        assertEquals(mesh.vertexCount() * PhotonMesh.FLOATS_PER_TANGENT, mesh.tangents().length);
+    }
+
+    /** These indices go into a GL element buffer, where out of range reads off the end on the GPU. */
+    @Test
+    void aFaceNamingAVertexThatIsNotThereIsDropped() {
+        var builder = new PhotonMesh.Builder();
+        for (int i = 0; i < 3; i++) {
+            builder.vertex(i, 0, 0, 0, 0, 0, 0, 1, 1);
+        }
+        var mesh = builder
+                .triangle(0, 1, 2)
+                .triangle(0, 1, 9)
+                .triangle(0, -1, 2)
+                .build();
+        assertEquals(1, mesh.triangleCount(), "only the in-range face survives");
+        assertArrayEquals(new int[]{0, 1, 2}, mesh.indices());
+    }
+
+    /** Both halves of a quad go, or the surviving half keeps a pair flag pointing at another face. */
+    @Test
+    void droppingHalfAQuadDropsTheWholeQuad() {
+        var builder = new PhotonMesh.Builder();
+        for (int i = 0; i < 4; i++) {
+            builder.vertex(i, 0, 0, 0, 0, 0, 0, 1, 1);
+        }
+        var mesh = builder.quad(0, 1, 2, 7).triangle(0, 1, 2).build();
+        assertEquals(1, mesh.triangleCount());
+        assertFalse(mesh.quadPaired(0), "the survivor is the lone triangle, not half a quad");
+    }
+
     @Test
     void aGeometryStreamOfTheWrongLengthIsRejected() {
         var base = new PhotonMesh.Builder()

@@ -210,76 +210,70 @@ class SkinDeformerTest {
         assertEquals(1f, length, 1e-5f, "normals stay unit");
     }
 
-    /** The shape path deforms one point and the renderer deforms every vertex; if they disagree,
-     *  particles spawn off the surface in a way that looks like a physics bug. */
+    /** A rotated joint turns the tangent frame with it, or a normal-mapped model lights as if it never
+     *  moved — which reads as the animation not affecting the surface at all. */
     @Test
-    void deformPointAgreesWithDeformingTheWholeMesh() {
-        var builder = new Skeleton.Builder();
-        builder.joint(0, -1, "parent", yRotationTrs(37), 0);
-        builder.joint(1, 0, "child", translationTrs(0.5f, 1.5f, -0.25f), 0);
-        builder.inverseBind(0, translationMatrix(0, -1, 0), 0);
-        builder.inverseBind(1, translationMatrix(-0.5f, 0, 0), 0);
-        var out = new Skeleton[1];
-        builder.sortInto(out);
+    void theTangentFrameTurnsWithTheJoint() {
+        var skeleton = oneJoint(yRotationTrs(90), IDENTITY_MATRIX);
+        var mesh = triangle(new float[]{0, 0, 0}, new float[]{1, 0, 0}, new float[]{0, 1, 0});
+        int vertices = mesh.vertexCount();
 
+        var restTangents = new float[vertices * PhotonMesh.FLOATS_PER_TANGENT];
+        for (int v = 0; v < vertices; v++) {
+            int t = v * PhotonMesh.FLOATS_PER_TANGENT;
+            restTangents[t] = 1f;      // +X
+            restTangents[t + 3] = -1f; // and a handedness a pose must not touch
+        }
+
+        var deformer = new SkinDeformer(skeleton);
+        deformer.pose(null, 0f);
+        var out = new float[vertices * PhotonMesh.FLOATS_PER_GEOMETRY];
+        var outTangents = new float[restTangents.length];
+        deformer.deform(mesh, boundTo(vertices, 0), out, restTangents, outTangents);
+
+        for (int v = 0; v < vertices; v++) {
+            int t = v * PhotonMesh.FLOATS_PER_TANGENT;
+            assertEquals(0f, outTangents[t], 1e-5f, "vertex " + v + " tangent x");
+            assertEquals(0f, outTangents[t + 1], 1e-5f, "vertex " + v + " tangent y");
+            assertEquals(-1f, outTangents[t + 2], 1e-5f, "+X rotated 90 about +Y is -Z");
+            assertEquals(-1f, outTangents[t + 3], "handedness is not a pose's business");
+        }
+    }
+
+    /** The three-argument form is what everything that does not draw with tangents calls. */
+    @Test
+    void deformingWithoutTangentsMatchesDeformingWithThem() {
+        var skeleton = oneJoint(yRotationTrs(37), translationMatrix(0, -1, 0));
         var mesh = triangle(new float[]{0, 0, 0}, new float[]{2, 0, 0}, new float[]{0, 3, 1});
         int vertices = mesh.vertexCount();
-        var joints = new int[vertices * MeshSkin.INFLUENCES];
-        var weights = new float[vertices * MeshSkin.INFLUENCES];
-        for (int v = 0; v < vertices; v++) {
-            int at = v * MeshSkin.INFLUENCES;
-            joints[at] = 0;
-            joints[at + 1] = 1;
-            // a different blend per vertex, so a deformPoint that ignored the barycentric share would
-            // still be wrong at an interior point even if it happened to be right at a corner
-            weights[at] = 0.25f + 0.25f * v;
-            weights[at + 1] = 1f - weights[at];
-        }
-        var skin = new MeshSkin(joints, weights);
+        var skin = boundTo(vertices, 0);
 
-        var deformer = new SkinDeformer(out[0]);
+        var deformer = new SkinDeformer(skeleton);
         deformer.pose(null, 0f);
-        var geometry = new float[vertices * PhotonMesh.FLOATS_PER_GEOMETRY];
-        deformer.deform(mesh, skin, geometry);
+        var withoutTangents = new float[vertices * PhotonMesh.FLOATS_PER_GEOMETRY];
+        deformer.deform(mesh, skin, withoutTangents);
 
-        var indices = mesh.indices();
-        int a = indices[0], b = indices[1], c = indices[2];
-        var point = new float[3];
+        var withTangents = new float[withoutTangents.length];
+        deformer.deform(mesh, skin, withTangents,
+                new float[vertices * PhotonMesh.FLOATS_PER_TANGENT],
+                new float[vertices * PhotonMesh.FLOATS_PER_TANGENT]);
 
-        // at a corner the barycentric weight is entirely that corner's
-        deformer.deformPoint(skin, a, b, c, 1f, 0f, 0f,
-                mesh.geometry()[PhotonMesh.geometryOffset(a)],
-                mesh.geometry()[PhotonMesh.geometryOffset(a) + 1],
-                mesh.geometry()[PhotonMesh.geometryOffset(a) + 2], point);
-        int at = PhotonMesh.geometryOffset(a);
-        assertEquals(geometry[at], point[0], 1e-5f, "corner x");
-        assertEquals(geometry[at + 1], point[1], 1e-5f, "corner y");
-        assertEquals(geometry[at + 2], point[2], 1e-5f, "corner z");
+        assertArrayEquals(withoutTangents, withTangents, 0f);
+    }
 
-        // and at the centroid it must equal deforming each corner and averaging, since blend skinning
-        // is linear in the position
-        float third = 1f / 3f;
-        var rest = mesh.geometry();
-        float cx = third * (rest[PhotonMesh.geometryOffset(a)] + rest[PhotonMesh.geometryOffset(b)]
-                + rest[PhotonMesh.geometryOffset(c)]);
-        float cy = third * (rest[PhotonMesh.geometryOffset(a) + 1] + rest[PhotonMesh.geometryOffset(b) + 1]
-                + rest[PhotonMesh.geometryOffset(c) + 1]);
-        float cz = third * (rest[PhotonMesh.geometryOffset(a) + 2] + rest[PhotonMesh.geometryOffset(b) + 2]
-                + rest[PhotonMesh.geometryOffset(c) + 2]);
-        deformer.deformPoint(skin, a, b, c, third, third, third, cx, cy, cz, point);
-
-        // the expected value: average of the three corners' skinning, each applied to the CENTROID
-        var perCorner = new float[3];
-        float ex = 0, ey = 0, ez = 0;
-        for (int corner : new int[]{a, b, c}) {
-            deformer.deformPoint(skin, corner, corner, corner, 1f, 0f, 0f, cx, cy, cz, perCorner);
-            ex += third * perCorner[0];
-            ey += third * perCorner[1];
-            ez += third * perCorner[2];
-        }
-        assertEquals(ex, point[0], 1e-4f, "centroid x");
-        assertEquals(ey, point[1], 1e-4f, "centroid y");
-        assertEquals(ez, point[2], 1e-4f, "centroid z");
+    /** Mismatched lengths skip tangents rather than throwing mid-frame. */
+    @Test
+    void tangentArraysThatDoNotFitAreSkipped() {
+        var skeleton = oneJoint(IDENTITY_TRS, IDENTITY_MATRIX);
+        var mesh = triangle(new float[]{0, 0, 0}, new float[]{1, 0, 0}, new float[]{0, 1, 0});
+        int vertices = mesh.vertexCount();
+        var deformer = new SkinDeformer(skeleton);
+        deformer.pose(null, 0f);
+        var out = new float[vertices * PhotonMesh.FLOATS_PER_GEOMETRY];
+        var tooShort = new float[4];
+        assertDoesNotThrow(() -> deformer.deform(mesh, boundTo(vertices, 0), out, tooShort, tooShort));
+        assertDoesNotThrow(() -> deformer.deform(mesh, boundTo(vertices, 0), out, null,
+                new float[vertices * PhotonMesh.FLOATS_PER_TANGENT]));
     }
 
     @Test

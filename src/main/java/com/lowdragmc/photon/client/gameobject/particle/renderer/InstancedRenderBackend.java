@@ -144,9 +144,10 @@ abstract class InstancedRenderBackend {
     private static void resolveSamplerUnits() {
         if (pointSamplerUnit >= 0) return;
         int limit = GlStateManager._getInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
-        // 16 is the GL 3.3 floor and comfortably above MC's 0-11; clamp so a stingy driver cannot
-        // hand us an out-of-range unit, and keep a floor so we never collide with MC's own range.
-        int top = Math.max(14, Math.min(limit, 16)) - 1;
+        // 16 is the GL 3.3 floor, and the four units below it are exactly the four above MC's own 0-11.
+        // The floor is 16 rather than the count we need: dipping lower would collide with MC's range,
+        // which samples two targets from one unit in one program — undefined, and invisible until it is not.
+        int top = Math.max(16, Math.min(limit, 16)) - 1;
         pointSamplerUnit = top;
         dataSamplerUnit = top - 1;
         customSamplerUnit = top - 2;

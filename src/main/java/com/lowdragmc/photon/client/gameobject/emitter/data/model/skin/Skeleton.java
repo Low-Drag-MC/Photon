@@ -98,15 +98,6 @@ public final class Skeleton {
         out[outOff + 11] = tz;
     }
 
-    public static void identity(float[] out, int outOff) {
-        for (int i = 0; i < FLOATS_PER_MATRIX; i++) {
-            out[outOff + i] = 0f;
-        }
-        out[outOff] = 1f;
-        out[outOff + 5] = 1f;
-        out[outOff + 10] = 1f;
-    }
-
     /** glTF stores a 4x4 column-major; this is the same transform as an affine 3x4 row-major. */
     public static void fromColumnMajor4x4(float[] out, int outOff, float[] columnMajor, int inOff) {
         for (int r = 0; r < 3; r++) {

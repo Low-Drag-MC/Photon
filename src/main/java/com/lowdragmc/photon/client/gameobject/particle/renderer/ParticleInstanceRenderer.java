@@ -1,6 +1,5 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
-import com.lowdragmc.photon.client.gameobject.emitter.data.model.DynamicMeshSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.IDynamicMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.VertexAnimation;
@@ -137,10 +136,6 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         }
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         builtRevision = mesh.geometryRevision();
-    }
-
-    boolean wantsTangent() {
-        return wantsTangent;
     }
 
     void setWantsTangent(boolean wantsTangent) {

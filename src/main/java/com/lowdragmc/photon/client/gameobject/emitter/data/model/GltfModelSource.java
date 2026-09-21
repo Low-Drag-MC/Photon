@@ -20,6 +20,7 @@ import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.util.Objects;
 
 /**
@@ -105,9 +106,13 @@ public class GltfModelSource implements IModelSource {
                 PhotonMeshCache.INSTANCE.trackFile(key(), file);
             }
             return model;
+        } catch (FileNotFoundException e) {
+            // a source whose file has not been picked yet; a stack trace says nothing extra
+            Photon.LOGGER.warn("glTF model {} does not exist", modelLocation);
+            return SkinnedModel.EMPTY;
         } catch (Exception e) {
             Photon.LOGGER.warn("Failed to load glTF model {}", modelLocation, e);
-            return SkinnedModel.staticModel(PhotonMesh.EMPTY);
+            return SkinnedModel.EMPTY;
         }
     }
 

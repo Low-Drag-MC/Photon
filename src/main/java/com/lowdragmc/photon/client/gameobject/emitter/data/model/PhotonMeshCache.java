@@ -70,7 +70,7 @@ public final class PhotonMeshCache implements ResourceManagerReloadListener {
      */
     public SkinnedModel getModel(Object key, Function<Object, @Nullable SkinnedModel> loader) {
         var model = models.computeIfAbsent(key, loader);
-        return model == null ? SkinnedModel.staticModel(PhotonMesh.EMPTY) : model;
+        return model == null ? SkinnedModel.EMPTY : model;
     }
 
     /** Watch the disk file backing {@code key}; {@link #pollFileChanges()} invalidates the entry when it changes. */
