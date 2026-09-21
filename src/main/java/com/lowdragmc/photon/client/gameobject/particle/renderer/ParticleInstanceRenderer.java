@@ -87,7 +87,7 @@ class ParticleInstanceRenderer extends InstancedRenderBackend {
         int params = glGetUniformLocation(shader.getId(), "PhotonVatParams");
         if (params >= 0) {
             var phase = animation.phase();
-            glUniform3f(params, phase[0], phase[1], phase[2]);
+            glUniform4f(params, phase[0], phase[1], phase[2], phase[3]);
         }
     }
 

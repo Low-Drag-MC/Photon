@@ -43,10 +43,12 @@ layout(location = 3) in vec4 aTangent; // xyz = tangent (dP/du), w = handedness
 // animation without anything being deformed per frame. MIRRORED FROM VertexAnimationBake.
 uniform samplerBuffer PhotonVat;
 uniform ivec2 PhotonVatSize;   // x = vertices a frame, y = frames
-// (shared clip position, weight on the per-particle random, weight on the particle's own t) — the two
-// weights are how "a flock, each at its own offset" and "plays once over a lifetime" are the same
-// expression rather than two shader variants
-uniform vec3 PhotonVatParams;
+// xyz = (shared clip position, weight on the per-particle random, weight on the particle's own t) — the
+// two weights are how "a flock, each at its own offset" and "plays once over a lifetime" are the same
+// expression rather than two shader variants.
+// w = blend between adjacent baked frames (0 = snap). A uniform branch rather than another define: it is
+// coherent across the whole draw, and a define here would double the VAT program permutations.
+uniform vec4 PhotonVatParams;
 #endif
 
 layout(location = 4) in vec3 iPos;
@@ -260,10 +262,22 @@ ParticleData getParticleData() {
     float photonVatPhase = fract(PhotonVatParams.x
             + photonVatData.x * PhotonVatParams.y
             + photonVatData.y * PhotonVatParams.z);
-    int photonVatFrame = clamp(int(photonVatPhase * float(PhotonVatSize.y)), 0, PhotonVatSize.y - 1);
+    float photonVatCursor = photonVatPhase * float(PhotonVatSize.y);
+    int photonVatFrame = clamp(int(photonVatCursor), 0, PhotonVatSize.y - 1);
     vec4 photonVatTexel = texelFetch(PhotonVat, photonVatFrame * PhotonVatSize.x + gl_VertexID);
     vec3 photonPos = photonVatTexel.xyz;
     vec3 photonNormal = photon_unpack_normal(photonVatTexel.w);
+    if (PhotonVatParams.w > 0.5) {
+        // frame f was baked at duration * f / frames, so the frame after the last one IS the first — the
+        // wrap is what makes a looping clip continuous rather than stuttering once per cycle
+        int photonVatNext = photonVatFrame + 1 == PhotonVatSize.y ? 0 : photonVatFrame + 1;
+        vec4 photonVatTexelNext = texelFetch(PhotonVat, photonVatNext * PhotonVatSize.x + gl_VertexID);
+        float photonVatBlend = photonVatCursor - floor(photonVatCursor);
+        photonPos = mix(photonPos, photonVatTexelNext.xyz, photonVatBlend);
+        // the packed normals cannot be mixed as scalars; unpack both, then renormalise the blend
+        photonNormal = normalize(mix(photonNormal,
+                photon_unpack_normal(photonVatTexelNext.w), photonVatBlend));
+    }
 #else
     vec3 photonPos = aPos;
     vec3 photonNormal = aNormal;

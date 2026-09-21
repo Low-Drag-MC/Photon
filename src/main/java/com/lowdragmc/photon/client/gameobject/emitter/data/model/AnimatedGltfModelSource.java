@@ -106,6 +106,19 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
             tips = "photon.model_source.animated_gltf_model.frames.tips")
     @ConfigNumber(range = {2, 240})
     private int frames = 30;
+    /**
+     * Blend between adjacent baked frames instead of snapping to the nearest.
+     *
+     * <p>The trade runs both ways, which is why it is a switch rather than a decision made here. Blending
+     * costs a second texel fetch and a normalize per vertex; snapping costs {@link #frames}, and the table
+     * is {@code frames × vertices × 16} bytes. A long clip at a low frame count is visibly stepped — 30
+     * frames of a four-second clip is seven poses a second — so blending is usually the cheaper way to
+     * buy smoothness.</p>
+     */
+    @Getter
+    @Configurable(name = "AnimatedGltfModelSource.interpolate",
+            tips = "photon.model_source.animated_gltf_model.interpolate.tips")
+    private boolean interpolate = true;
     @Getter
     @Configurable(name = "AnimatedGltfModelSource.phaseSource",
             tips = "photon.model_source.animated_gltf_model.phaseSource.tips")
@@ -191,6 +204,11 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         this.phaseSource = phaseSource;
     }
 
+    @ConfigSetter(field = "interpolate")
+    public void setInterpolate(boolean interpolate) {
+        this.interpolate = interpolate;
+    }
+
     private void dropBake() {
         if (vertexAnimation != null) {
             vertexAnimation.dispose();
@@ -235,12 +253,12 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     private void refreshPhase(SkinnedModel model) {
         if (vertexAnimation == null) return;
         if (phaseSource == PhaseSource.Lifetime) {
-            vertexAnimation.setPhase(0f, 0f, 1f);
+            vertexAnimation.setPhase(0f, 0f, 1f, interpolate);
             return;
         }
         var clip = animation.isEmpty() ? model.clipAt(0) : model.clip(animation);
         float duration = clip == null ? 0f : clip.duration();
-        vertexAnimation.setPhase(duration <= 0f ? 0f : clipTime(clip) / duration, 1f, 0f);
+        vertexAnimation.setPhase(duration <= 0f ? 0f : clipTime(clip) / duration, 1f, 0f, interpolate);
     }
 
     /** The base file's own key, shared with {@link GltfModelSource}: one parse serves both. */
@@ -437,6 +455,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         copy.perParticlePhase = perParticlePhase;
         copy.frames = frames;
         copy.phaseSource = phaseSource;
+        copy.interpolate = interpolate;
         return copy;
     }
 
@@ -565,12 +584,12 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
                 && Objects.equals(modelLocation, that.modelLocation)
                 && animationFiles.equals(that.animationFiles)
                 && perParticlePhase == that.perParticlePhase && frames == that.frames
-                && phaseSource == that.phaseSource;
+                && phaseSource == that.phaseSource && interpolate == that.interpolate;
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(modelLocation, flipV, animation, speed, loop, animationFiles,
-                perParticlePhase, frames, phaseSource);
+                perParticlePhase, frames, phaseSource, interpolate);
     }
 }

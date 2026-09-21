@@ -214,9 +214,17 @@ public class TileParticleRenderer {
         float p = phase[0] + particle.getMemRandom("instance_random") * phase[1]
                 + particle.getT(partialTicks) * phase[2];
         p -= (float) Math.floor(p);
-        int frame = Math.max(0, Math.min((int) (p * animation.frames()), animation.frames() - 1));
+        float cursor = p * animation.frames();
+        int frame = Math.max(0, Math.min((int) cursor, animation.frames() - 1));
+        // the blend and the following frame, for putMeshVertex; see the PHOTON_VAT block of particle.glsl
+        poseBlend = animation.interpolates() ? cursor - (float) Math.floor(cursor) : 0f;
+        poseNextBase = (frame + 1 == animation.frames() ? 0 : frame + 1) * animation.vertexCount();
         return frame * animation.vertexCount();
     }
+
+    /** Set by {@link #poseBaseFor} for the vertex writes that follow it; render-thread only. */
+    private float poseBlend;
+    private int poseNextBase;
 
     private void putMeshVertex(Matrix4f transform, Matrix3f normalMat, VertexConsumer buffer,
                                ModelPass model, @Nullable float[] table, int poseBase, int vertex,
@@ -243,8 +251,20 @@ public class TileParticleRenderer {
         if (table != null) {
             int texel = (poseBase + vertex) * VertexAnimationBake.FLOATS_PER_TEXEL;
             VertexAnimationBake.unpackNormal(table[texel + 3], unpackedNormal);
-            meshPos.set(table[texel] + pivot.x, table[texel + 1] + pivot.y, table[texel + 2] + pivot.z, 1.0F);
-            meshNormal.set(unpackedNormal[0], unpackedNormal[1], unpackedNormal[2]);
+            float px = table[texel], py = table[texel + 1], pz = table[texel + 2];
+            float nx = unpackedNormal[0], ny = unpackedNormal[1], nz = unpackedNormal[2];
+            if (poseBlend > 0f) {
+                int next = (poseNextBase + vertex) * VertexAnimationBake.FLOATS_PER_TEXEL;
+                VertexAnimationBake.unpackNormal(table[next + 3], unpackedNormal);
+                px += (table[next] - px) * poseBlend;
+                py += (table[next + 1] - py) * poseBlend;
+                pz += (table[next + 2] - pz) * poseBlend;
+                nx += (unpackedNormal[0] - nx) * poseBlend;
+                ny += (unpackedNormal[1] - ny) * poseBlend;
+                nz += (unpackedNormal[2] - nz) * poseBlend;
+            }
+            meshPos.set(px + pivot.x, py + pivot.y, pz + pivot.z, 1.0F);
+            meshNormal.set(nx, ny, nz);
         } else {
             meshPos.set(geometry[g] + pivot.x, geometry[g + 1] + pivot.y, geometry[g + 2] + pivot.z, 1.0F);
             meshNormal.set(geometry[g + 3], geometry[g + 4], geometry[g + 5]);
