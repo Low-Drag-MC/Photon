@@ -3,6 +3,8 @@ package com.lowdragmc.photon.client.gameobject.particle.renderer;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.DynamicMeshSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.VertexAnimation;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.VertexAnimationBake;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.FacingMode;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.FacingOrientationHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
@@ -21,6 +23,7 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Collection;
 
@@ -97,6 +100,10 @@ public class TileParticleRenderer {
             var remapUV = source.hasAtlasUV() && !renderer.isUseBlockUV() && mesh.spriteBounds().length > 0;
             var shade = renderer.isShade();
             var pivot = renderer.getModelPivot();
+            // ⚠️ A baked pose table is not only the instanced path's business: GPU instancing is off by
+            // default, and without this a per-particle-phase model drew its rest pose and never moved.
+            int poseBase = poseBaseFor(source.vertexAnimation(), particle, partialTicks);
+            var table = poseBase < 0 ? null : source.vertexAnimation().table();
             // the normal matrix depends on the particle, not the face — it used to be rebuilt per quad
             var normalMat = transform.normal(new Matrix3f());
             var indices = mesh.indices();
@@ -108,16 +115,16 @@ public class TileParticleRenderer {
                 // whole (its second triangle is (c, d, a)), a lone triangle repeats its last corner
                 if (mesh.quadPaired(triangle)) {
                     int vd = indices[i + 4];
-                    putMeshVertex(transform, normalMat, buffer, mesh, va, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, vb, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, vc, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, vd, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, va, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vb, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vc, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vd, pivot, shade, remapUV, r, g, b, a, light);
                     triangle += 2;
                 } else {
-                    putMeshVertex(transform, normalMat, buffer, mesh, va, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, vb, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, vc, pivot, shade, remapUV, r, g, b, a, light);
-                    putMeshVertex(transform, normalMat, buffer, mesh, vc, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, va, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vb, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vc, pivot, shade, remapUV, r, g, b, a, light);
+                    putMeshVertex(transform, normalMat, buffer, mesh, table, poseBase, vc, pivot, shade, remapUV, r, g, b, a, light);
                     triangle++;
                 }
             }
@@ -175,9 +182,25 @@ public class TileParticleRenderer {
     private final Vector3f meshNormal = new Vector3f();
     /** Scratch for the per-instance model pivot; see {@link #uploadInstances}. */
     private final Vector3f instancePivot = new Vector3f();
+    private final float[] unpackedNormal = new float[3];
+
+    /**
+     * Where this particle's pose starts in the baked table, in texels, or {@code -1} when there is none.
+     * MIRRORED FROM the PHOTON_VAT block of particle.glsl — the same two channels, the same wrap.
+     */
+    private int poseBaseFor(@Nullable VertexAnimation animation, TileParticle particle, float partialTicks) {
+        if (animation == null) return -1;
+        var phase = animation.phase();
+        float p = phase[0] + particle.getMemRandom("instance_random") * phase[1]
+                + particle.getT(partialTicks) * phase[2];
+        p -= (float) Math.floor(p);
+        int frame = Math.max(0, Math.min((int) (p * animation.frames()), animation.frames() - 1));
+        return frame * animation.vertexCount();
+    }
 
     private void putMeshVertex(Matrix4f transform, Matrix3f normalMat, VertexConsumer buffer,
-                               PhotonMesh mesh, int vertex, Vector3f pivot, boolean shade,
+                               PhotonMesh mesh, @Nullable float[] table, int poseBase, int vertex,
+                               Vector3f pivot, boolean shade,
                                boolean remapUV, float red, float green, float blue, float alpha,
                                int light) {
         var geometry = mesh.geometry();
@@ -197,10 +220,17 @@ public class TileParticleRenderer {
         }
         float brightness = shade ? attributes[at + 2] : 1f;
 
-        var pos = transform.transform(meshPos.set(geometry[g] + pivot.x, geometry[g + 1] + pivot.y,
-                geometry[g + 2] + pivot.z, 1.0F));
-        var normal = meshNormal.set(geometry[g + 3], geometry[g + 4], geometry[g + 5])
-                .mul(normalMat).normalize();
+        if (table != null) {
+            int texel = (poseBase + vertex) * VertexAnimationBake.FLOATS_PER_TEXEL;
+            VertexAnimationBake.unpackNormal(table[texel + 3], unpackedNormal);
+            meshPos.set(table[texel] + pivot.x, table[texel + 1] + pivot.y, table[texel + 2] + pivot.z, 1.0F);
+            meshNormal.set(unpackedNormal[0], unpackedNormal[1], unpackedNormal[2]);
+        } else {
+            meshPos.set(geometry[g] + pivot.x, geometry[g + 1] + pivot.y, geometry[g + 2] + pivot.z, 1.0F);
+            meshNormal.set(geometry[g + 3], geometry[g + 4], geometry[g + 5]);
+        }
+        var pos = transform.transform(meshPos);
+        var normal = meshNormal.mul(normalMat).normalize();
 
         buffer.addVertex(pos.x, pos.y, pos.z);
         buffer.setColor(red * brightness, green * brightness, blue * brightness, alpha);

@@ -92,10 +92,15 @@ public class AnimatedGltfRenderScenario implements UIScenario {
 
         // Per-particle phase: one baked table, every particle at its own frame. The point of the capture
         // is that the poses DIFFER between particles, which no numeric check states as plainly.
-        s.step("play a swarm with per-particle phase", AnimatedGltfRenderScenario::startSwarm)
-                .frames(6)
-                .screenshot("fox_swarm_random")
-                .step("stop the swarm", AnimatedGltfRenderScenario::stopFox);
+        // ⚠️ both paths: GPU instancing is off by default, and the CPU one reads the same baked table
+        for (boolean instanced : List.of(false, true)) {
+            String tag = instanced ? "instanced" : "cpu";
+            s.step("play a swarm with per-particle phase (" + tag + ")",
+                            ctx -> startSwarm(ctx, instanced))
+                    .frames(6)
+                    .screenshot("fox_swarm_" + tag)
+                    .step("stop the swarm (" + tag + ")", AnimatedGltfRenderScenario::stopFox);
+        }
 
         s.teardown("unpin the clock", ctx -> AnimatedGltfModelSource.pinClock(null))
                 .teardown("stop any effect", AnimatedGltfRenderScenario::stopFox)
@@ -188,7 +193,7 @@ public class AnimatedGltfRenderScenario implements UIScenario {
     }
 
     /** Twelve of them, spread out, each at its own point in the clip. */
-    private static void startSwarm(TestContext ctx) {
+    private static void startSwarm(TestContext ctx, boolean instanced) {
         stopFox(ctx);
         var emitter = new ParticleEmitter();
         var config = emitter.config;
@@ -212,7 +217,7 @@ public class AnimatedGltfRenderScenario implements UIScenario {
         var renderer = config.renderer;
         renderer.setRenderMode(ParticleRendererSetting.Mode.Model);
         renderer.setModel(new MeshData(source));
-        renderer.setUseGPUInstance(true);
+        renderer.setUseGPUInstance(instanced);
         renderer.getMaterials().add(new com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting(
                 new com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial(
                         ResourceLocation.parse("textures/block/white_concrete.png")))

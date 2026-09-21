@@ -53,6 +53,11 @@ public final class VertexAnimation {
         this.frames = frames;
     }
 
+    /** The baked poses, for the CPU draw path — the instanced one reads {@link #texture()} instead. */
+    public float[] table() {
+        return table;
+    }
+
     public int vertexCount() {
         return vertexCount;
     }
