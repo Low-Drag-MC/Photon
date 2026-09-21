@@ -116,6 +116,10 @@ public class RenderPassPipeline extends BufferBuilder {
     @Nullable
     private static HDRTarget SCENE_SAMPLER;
     private static boolean IS_SCENE_SAMPLER_DIRTY = true;
+    /** Full-screen scene copies taken since launch. The copy is pull-based (see
+     *  {@link #getSceneSamplers()}); this is how {@code soft_particle} states that a frame wanting none
+     *  takes none. */
+    private static int sceneSamplerCopies;
 
     public static Comparator<PhotonFXRenderPass> makeRenderPassComparator() {
         return (passOne, passTwo) -> {
@@ -883,6 +887,7 @@ public class RenderPassPipeline extends BufferBuilder {
         SCENE_SAMPLER = resize(SCENE_SAMPLER, DRAW_TARGET.width, DRAW_TARGET.height, true);
         SCENE_SAMPLER.copyDepthAndColorFrom(mainTarget);
         IS_SCENE_SAMPLER_DIRTY = false;
+        sceneSamplerCopies++;
         DRAW_TARGET.bindWrite(false);
         return SCENE_SAMPLER;
     }
@@ -909,5 +914,11 @@ public class RenderPassPipeline extends BufferBuilder {
         SCENE_SAMPLER = resize(SCENE_SAMPLER, DRAW_TARGET.width, DRAW_TARGET.height, true);
         SCENE_SAMPLER.copyDepthAndColorFrom(DRAW_TARGET);
         IS_SCENE_SAMPLER_DIRTY = false;
+        sceneSamplerCopies++;
+    }
+
+    /** See {@link #sceneSamplerCopies}. */
+    public static int sceneSamplerCopies() {
+        return sceneSamplerCopies;
     }
 }

@@ -1,6 +1,7 @@
 #version 150
 
 #moj_import <fog.glsl>
+#moj_import <photon:soft_particle.glsl>
 
 uniform sampler2D Sampler0;
 
@@ -31,5 +32,5 @@ void main() {
     } else {
         color.rgb *= HDR.rgb;
     }
-    fragColor = linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
+    fragColor = photon_soft_particle(linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor));
 }

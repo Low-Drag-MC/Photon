@@ -3,7 +3,8 @@
     "fragment": "photon:sprite_hdr_particle",
     "samplers": [
         { "name": "Sampler0" },
-        { "name": "Sampler2" }
+        { "name": "Sampler2" },
+        { "name": "SamplerSceneDepth" }
     ],
     "uniforms": [
         { "name": "ModelViewMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
@@ -16,6 +17,8 @@
         { "name": "DiscardThreshold", "type": "float", "count": 1, "values": [ 0.01 ] },
         { "name": "HDR", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 1.0 ] },
         { "name": "HDRMode", "type": "int", "count": 1, "values": [ 0 ] },
-        { "name": "U_SpriteUV", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 1.0 ] }
+        { "name": "U_SpriteUV", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "U_InverseProjectionMatrix", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "SoftParticleParams", "type": "float", "count": 4, "values": [ 1.0, 1.0, 0.0, 0.0 ] }
     ]
 }
