@@ -269,8 +269,10 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             case Vector4f v -> material.setUniform(name, v);
             case RenderTypeGraphTypes.GradientValue gradient -> material.setGradient(name, gradient);
             case RenderTypeGraphTypes.CurveValue curve -> material.setCurve(name, curve);
-            case RenderTypeGraphTypes.Sampler2DValue sampler ->
-                    material.setTexture(name, Identifier.tryParse(sampler.location()));
+            // setSampler, NOT setTexture: the inspector row edits the WHOLE Sampler2DValue (texture +
+            // filter/address/mipmap), and setTexture deliberately keeps the params the graph baked —
+            // which silently dropped a wrap mode picked here. An unparseable location changes nothing.
+            case RenderTypeGraphTypes.Sampler2DValue sampler -> material.setSampler(name, sampler);
             default -> { }
         }
     }

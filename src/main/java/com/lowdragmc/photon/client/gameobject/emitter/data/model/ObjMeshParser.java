@@ -5,7 +5,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A tiny standalone Wavefront <b>.obj</b> parser — vertex positions, UVs and normals, everything
@@ -28,13 +30,24 @@ public final class ObjMeshParser {
         return parseText(new String(in.readAllBytes(), StandardCharsets.UTF_8), flipV);
     }
 
-    /** Parse OBJ text into a mesh of degenerate-quad triangles. Package-visible for tests. */
+    /**
+     * One welded vertex; the {@code v/vt/vn} triplet is OBJ's own indexing, so this needs no tolerance.
+     *
+     * <p>⚠️ {@code normal} is the resolved normal's identity, not the {@code vn} index: a corner with no
+     * {@code vn} takes its face's polygon normal, so those carry {@code -(face + 2)}.</p>
+     */
+    private record VertexKey(int position, int uv, int normal) {
+    }
+
+    /** Parse OBJ text into an indexed triangle mesh. Package-visible for tests. */
     static PhotonMesh parseText(String text, boolean flipV) {
         List<float[]> positions = new ArrayList<>();
         List<float[]> uvs = new ArrayList<>();
         List<float[]> normals = new ArrayList<>();
         List<int[]> faceVerts = new ArrayList<>(); // reused per face: {posIdx, uvIdx, nrmIdx} (0-based, -1 = none)
+        Map<VertexKey, Integer> welded = new HashMap<>();
         var builder = new PhotonMesh.Builder();
+        int face = 0;
 
         for (String raw : text.split("\\r?\\n")) {
             String line = raw.trim();
@@ -54,7 +67,7 @@ public final class ObjMeshParser {
                         int[] ref = ref(tok[i], positions.size(), uvs.size(), normals.size());
                         if (ref != null) faceVerts.add(ref);
                     }
-                    triangulate(faceVerts, positions, uvs, normals, flipV, builder);
+                    triangulate(faceVerts, positions, uvs, normals, flipV, builder, welded, face++);
                 }
                 default -> {
                     // ignore o/g/s/usemtl/mtllib/l/p/etc.
@@ -66,7 +79,8 @@ public final class ObjMeshParser {
 
     /** Triangulate one (already-resolved) face via ear-clipping; fan fallback if it fails. */
     private static void triangulate(List<int[]> face, List<float[]> positions, List<float[]> uvs,
-                                    List<float[]> normals, boolean flipV, PhotonMesh.Builder builder) {
+                                    List<float[]> normals, boolean flipV, PhotonMesh.Builder builder,
+                                    Map<VertexKey, Integer> welded, int faceIndex) {
         int n = face.size();
         if (n < 3) return;
         float[][] p = new float[n][];
@@ -75,31 +89,65 @@ public final class ObjMeshParser {
             if (p[i] == null) return; // invalid face — skip whole face
         }
         float[] polyN = polygonNormal(p);
+        // before any triangulation: the polygon normal has to exist before a vn-less corner is keyed
+        int[] v = new int[n];
+        for (int i = 0; i < n; i++) {
+            v[i] = weld(builder, welded, face.get(i), p[i], uvs, normals, flipV, polyN, faceIndex);
+        }
         if (n == 3) {
-            emitTri(face, p, uvs, normals, flipV, polyN, 0, 1, 2, builder);
+            builder.triangle(v[0], v[1], v[2]);
+            return;
+        }
+        // ⚠️ convex only: Builder.quad splits on the a-c diagonal, which for a reflex corner at a
+        // or c lies outside the polygon
+        if (n == 4 && isConvex(p, polyN)) {
+            builder.quad(v[0], v[1], v[2], v[3]);
             return;
         }
         int[] order = earClip(p, polyN);
         if (order == null) { // degenerate / self-intersecting — fall back to a simple fan
-            for (int i = 1; i + 1 < n; i++) emitTri(face, p, uvs, normals, flipV, polyN, 0, i, i + 1, builder);
+            for (int i = 1; i + 1 < n; i++) builder.triangle(v[0], v[i], v[i + 1]);
             return;
         }
         for (int i = 0; i + 2 < order.length; i += 3) {
-            emitTri(face, p, uvs, normals, flipV, polyN, order[i], order[i + 1], order[i + 2], builder);
+            builder.triangle(v[order[i]], v[order[i + 1]], v[order[i + 2]]);
         }
     }
 
-    private static void emitTri(List<int[]> face, float[][] p, List<float[]> uvs, List<float[]> normals,
-                                boolean flipV, float[] polyN, int a, int b, int c,
-                                PhotonMesh.Builder builder) {
-        builder.triangle(
-                vertex(p[a], uvOf(face.get(a)[1], uvs, flipV), normal(normals, face.get(a)[2], polyN)),
-                vertex(p[b], uvOf(face.get(b)[1], uvs, flipV), normal(normals, face.get(b)[2], polyN)),
-                vertex(p[c], uvOf(face.get(c)[1], uvs, flipV), normal(normals, face.get(c)[2], polyN)));
+    /** The welded index of one face corner, adding the vertex on first sight. */
+    private static int weld(PhotonMesh.Builder builder, Map<VertexKey, Integer> welded, int[] corner,
+                            float[] p, List<float[]> uvs, List<float[]> normals, boolean flipV,
+                            float[] polyN, int faceIndex) {
+        int vn = corner[2];
+        var key = new VertexKey(corner[0], corner[1], vn >= 0 && vn < normals.size() ? vn : -(faceIndex + 2));
+        var existing = welded.get(key);
+        if (existing != null) {
+            return existing;
+        }
+        float[] uv = uvOf(corner[1], uvs, flipV);
+        float[] n = normal(normals, vn, polyN);
+        int index = builder.vertex(p[0], p[1], p[2], uv[0], uv[1], n[0], n[1], n[2], 1f);
+        welded.put(key, index);
+        return index;
     }
 
-    private static float[] vertex(float[] p, float[] uv, float[] n) {
-        return new float[]{p[0], p[1], p[2], uv[0], uv[1], n[0], n[1], n[2]};
+    /** Whether the polygon turns the same way at every corner, measured against its plane normal. */
+    private static boolean isConvex(float[][] p, float[] normal) {
+        int n = p.length;
+        int sign = 0;
+        for (int i = 0; i < n; i++) {
+            float[] prev = p[(i + n - 1) % n], cur = p[i], next = p[(i + 1) % n];
+            float ax = cur[0] - prev[0], ay = cur[1] - prev[1], az = cur[2] - prev[2];
+            float bx = next[0] - cur[0], by = next[1] - cur[1], bz = next[2] - cur[2];
+            float turn = (ay * bz - az * by) * normal[0]
+                    + (az * bx - ax * bz) * normal[1]
+                    + (ax * by - ay * bx) * normal[2];
+            if (Math.abs(turn) < 1.0e-9f) continue;
+            int s = turn < 0f ? -1 : 1;
+            if (sign == 0) sign = s;
+            else if (sign != s) return false;
+        }
+        return true;
     }
 
     // ---- ear clipping (3D polygon projected onto its best-fit plane) -------------------------

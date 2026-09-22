@@ -32,9 +32,11 @@ import com.lowdragmc.photon.client.gameobject.particle.renderer.TrailParticleRen
 import com.lowdragmc.photon.client.render.PhotonCameraUtils;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonViewSettings;
+import com.lowdragmc.photon.client.render.PhotonVatUniforms;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
@@ -756,24 +758,47 @@ public class ParticleEmitter extends Emitter {
         // only a mesh has tangents). It selects the instanced VARIANT, so the base mesh, the VAO layout and
         // every material/sub-pass pipeline of this group are built from one decision and cannot disagree.
         var tangent = model && runtime().renderer.isTangent();
+        // A baked pose table puts every particle at its own frame of the animation, which the vertex stage
+        // can only do from a table — so like the tangent it selects the VARIANT, not a bind-time flag.
+        var vat = model ? extractRenderer.vertexAnimation() : null;
         GpuBuffer vertices;
         int indexCount;
+        // the mesh's OWN triangle indices for a model (it welds, so the shared sequential-quad pattern
+        // would read the wrong corners); null = the shared quads, which is right for the tile quad
+        GpuBuffer indices = null;
+        GpuBuffer vatTable = null;
+        GpuBufferSlice vatInfo = null;
         if (model) {
             vertices = extractRenderer.modelMeshBuffer(tangent);
             indexCount = extractRenderer.modelIndexCount();
-            if (vertices == null || indexCount == 0) {
+            indices = extractRenderer.modelIndexBuffer();
+            if (vertices == null || indices == null || indexCount == 0) {
                 return false; // no mesh — CPU path renders the fallback
+            }
+            if (vat != null) {
+                vatTable = vat.buffer();
+                if (vatTable == null) {
+                    vat = null; // the table could not be uploaded — draw the rest pose rather than nothing
+                } else {
+                    vatInfo = PhotonVatUniforms.sliceFor(PhotonVatUniforms.Values.of(
+                            vat.vertexCount(), vat.frames(), vat.phase()));
+                }
             }
         } else {
             vertices = PhotonWorldRenderState.tileQuad();
             indexCount = 6;
         }
         var floats = model ? TileParticleRenderer.MODEL_INSTANCE_FLOATS : TileParticleRenderer.INSTANCE_FLOATS;
+        var variant = !model ? PhotonPipelines.InstancedVariant.TILE
+                : vat != null
+                ? (tangent ? PhotonPipelines.InstancedVariant.MODEL_VAT_TANGENT
+                           : PhotonPipelines.InstancedVariant.MODEL_VAT)
+                : (tangent ? PhotonPipelines.InstancedVariant.MODEL_TANGENT
+                           : PhotonPipelines.InstancedVariant.MODEL);
         return bakeInstancedGroup(settings, out, camera, runtime().renderer, config.additionalGPUDataSetting,
-                model ? (tangent ? PhotonPipelines.InstancedVariant.MODEL_TANGENT
-                                 : PhotonPipelines.InstancedVariant.MODEL)
-                      : PhotonPipelines.InstancedVariant.TILE,
-                BaseMesh.quads(vertices, indexCount), tileCount * floats, 0, new Vector3f(),
+                variant,
+                new BaseMesh(vertices, indexCount, indices, vatTable, vatInfo),
+                tileCount * floats, 0, new Vector3f(),
                 (instances, points, data, custom) -> {
                     var count = 0;
                     var setting = config.additionalGPUDataSetting;

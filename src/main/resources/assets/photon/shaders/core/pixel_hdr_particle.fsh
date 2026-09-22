@@ -2,6 +2,7 @@
 
 #moj_import <fog.glsl>
 #moj_import <minecraft:dynamictransforms.glsl>
+#moj_import <photon:soft_particle.glsl>
 
 uniform sampler2D Sampler0;
 
@@ -11,6 +12,7 @@ layout(std140) uniform PhotonMaterial {
     float DiscardThreshold;
     int HDRMode;
     float Bits;
+    vec4 SoftParticleParams; // distance, power, alphaOnly, enabled
 };
 
 
@@ -33,5 +35,5 @@ void main() {
     } else {
         color.rgb *= HDR.rgb;
     }
-    fragColor = apply_fog(color, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, FogColor);
+    fragColor = photon_soft_particle(apply_fog(color, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, FogColor), SoftParticleParams);
 }

@@ -5,6 +5,7 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.AdditionalGPUDataSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
@@ -391,11 +392,28 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
      * them (a duplicated ring costs ~1.8x the vertex-shader invocations).
      */
     public record BaseMesh(GpuBuffer vertices, int indexCount,
-                           @Nullable GpuBuffer indices) {
+                           @Nullable GpuBuffer indices,
+                           @Nullable GpuBuffer vat, @Nullable GpuBufferSlice vatInfo) {
         public static BaseMesh quads(GpuBuffer vertices, int indexCount) {
-            return new BaseMesh(vertices, indexCount, null);
+            return new BaseMesh(vertices, indexCount, null, null, null);
+        }
+
+        public BaseMesh(GpuBuffer vertices, int indexCount, @Nullable GpuBuffer indices) {
+            this(vertices, indexCount, indices, null, null);
+        }
+
+        /** This mesh posed from a baked pose table — {@code MODEL_VAT}/{@code MODEL_VAT_TANGENT}. */
+        public BaseMesh withVat(@Nullable GpuBuffer vat, @Nullable GpuBufferSlice vatInfo) {
+            return new BaseMesh(vertices, indexCount, indices, vat, vatInfo);
         }
     }
+
+    /** What the {@code PHOTON_VAT} vertex stage fetches to build its per-particle phase — the
+     *  per-particle random and the particle's own t, out of {@code PhotonData} slot 0. MIRRORED FROM
+     *  the PHOTON_VAT block of {@code particle.glsl}. */
+    private static final long VAT_PHASE_CHANNELS = PhotonGpuChannels.maskOf(
+            PhotonGpuChannels.Kind.TILE_MODEL,
+            List.of("addition_gpu_data.random", "addition_gpu_data.t"));
 
     private transient PhotonInstanceRing[] instanceRings;
     private transient PhotonInstanceRing[] pointRings;
@@ -572,7 +590,10 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         // A shadergraph reads whatever channels its nodes ask for, with no emitter toggle declaring them,
         // so the pass auto-enables their union (1.21 PhotonFXRenderPass.drawInstanced does exactly this,
         // right here — after the path is already decided; it is not part of choosing GPU vs CPU).
-        var materialMask = shaderGraphChannelMask(renderer.getMaterials());
+        // ⚠️ A VAT draw reads the random and t out of the same records whether or not any material asked
+        // for them — its pipeline declares PhotonData, and a declared texel buffer must be bound.
+        var materialMask = shaderGraphChannelMask(renderer.getMaterials())
+                | (variant.usesVat() ? VAT_PHASE_CHANNELS : 0L);
         setting.setMaterialMask(materialMask);
         setting.setCustomDataMaterialUsed(shaderGraphUsesCustomData(renderer.getMaterials()));
         // The user-toggled channels / custom-data streams ride as a divisor-1 attribute tail inside the
@@ -621,6 +642,12 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                     : dRing.write(data, order, count, setting.dataTexels() * 4);
             PhotonWorldRenderState.trackInstanceRing(dRing);
         }
+        if (variant.usesVat() && dataBuffer == null) {
+            // Not optional for a VAT pipeline: it DECLARES PhotonData (that is where the phase's random
+            // and t come from), and 26.1 fails the draw outright on a declared-but-unbound uniform. Give
+            // the group back to the CPU path, which poses from the same table via poseBaseFor.
+            return false;
+        }
         GpuBuffer customBuffer = null;
         if (recordsComplete(custom, count, setting.customDataTexels(), "PhotonCustomData")) {
             custom.flip();
@@ -662,7 +689,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                         new PhotonRenderTypes.PhotonDrawInfo.Programs(pipeline),
                         new PhotonWorldRenderState.InstancedGeometry(
                                 mesh.vertices(), mesh.indexCount(), mesh.indices(),
-                                instanceBuffer, count, pointBuffer, dataBuffer, customBuffer, layout),
+                                instanceBuffer, count, pointBuffer, dataBuffer, customBuffer, layout,
+                                mesh.vat(), mesh.vatInfo()),
                         new PhotonWorldRenderState.DrawBindings(
                                 info.bindings().textures(), slices.get(m),
                                 customUniforms == null ? null : customUniforms.slice(),
@@ -679,8 +707,10 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                     new PhotonWorldRenderState.InstancedGeometry(
                             mesh.vertices(), mesh.indexCount(), mesh.indices(),
                             instanceBuffer, count, pointBuffer,
-                            null, null, // the overlay's own shader reads no additional data
-                            layout),
+                            // the overlay's own shader reads no additional data — but a VAT variant's
+                            // vertex stage still poses from the table, so those two ride along
+                            dataBuffer, null,
+                            layout, mesh.vat(), mesh.vatInfo()),
                     new PhotonWorldRenderState.DrawBindings(
                             Map.of("Sampler0", Photon.id("textures/particle/white.png")),
                             PhotonMaterialUniforms.sliceFor(

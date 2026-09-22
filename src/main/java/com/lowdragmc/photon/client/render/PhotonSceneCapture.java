@@ -88,8 +88,20 @@ public final class PhotonSceneCapture {
 
     /** Copy {@code target}'s depth into the owned capture texture and return its view. */
     public static GpuTextureView captureDepth(GpuTextureView target) {
+        depthCaptures++;
         return DEPTH.capture(target);
     }
+
+    /** Full-screen depth copies taken since launch. The copy is DEMAND-DRIVEN — the drain only takes one
+     *  when some job in the frame declared a {@code SamplerSceneDepth} binding — and this is how
+     *  {@code soft_particle} states that a frame wanting none takes none. Read by
+     *  {@code SoftParticleScenario}; the 26.1 analogue of 1.21's
+     *  {@code RenderPassPipeline.sceneSamplerCopies()}. */
+    public static int depthCaptures() {
+        return depthCaptures;
+    }
+
+    private static int depthCaptures;
 
     /** The most recent color capture, or null before the first one. Lets an off-screen renderer with no
      *  scene of its own (the material previews) show real content instead of a blank stand-in. */

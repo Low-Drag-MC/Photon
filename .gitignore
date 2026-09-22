@@ -29,3 +29,10 @@ CLAUDE.md
 /tools
 /.claude-tmp
 /.gradle-user-home
+
+# Unity VFX -> Photon port scaffolding (the ported assets are the deliverable, not this)
+/src/main/java/com/lowdragmc/photon/vfx_port/
+
+runclient.log
+uitest.log
+all.log

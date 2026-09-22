@@ -23,6 +23,11 @@ uniform samplerBuffer PhotonCustomData;
 
 #elif defined(PARTICLE_MODEL_INSTANCE)
 
+// ⚠️ MIRRORED FROM PhotonInstancedDrawState.MODEL / MODEL_TANGENT and from what
+// TileParticleRenderer.modelMeshBuffer writes. 1.21 handed the mesh over as THREE separate buffers (one
+// per PhotonMesh stream) and packed brightness into aUV.z; 26.1 interleaves the streams into ONE base
+// mesh buffer, so brightness has a location of its own. Reading aUV.z here would read a component the
+// VAO does not bind — which GL fills with 0, and every model renders black.
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec2 aUV;
 #ifdef PHOTON_TANGENT
@@ -36,6 +41,22 @@ layout(location = 3) in vec4 aTangent; // xyz = tangent (dP/du), w = handedness
 // hand-written shader written against the old layout still links.
 layout(location = 2) in vec3 aNormal;
 layout(location = 3) in float aBrightness;
+#endif
+
+#ifdef PHOTON_VAT
+// A baked pose table: one texel per vertex per frame, so every particle can be at its own frame of the
+// animation without anything being deformed per frame. MIRRORED FROM VertexAnimationBake.
+uniform samplerBuffer PhotonVat;
+// 26.1 has no free-standing uniforms — these are a std140 block. MIRRORED FROM PhotonVatUniforms.
+layout(std140) uniform PhotonVatInfo {
+    ivec2 PhotonVatSize;   // x = vertices a frame, y = frames
+    // xyz = (shared clip position, weight on the per-particle random, weight on the particle's own t) —
+    // the two weights are how "a flock, each at its own offset" and "plays once over a lifetime" are the
+    // same expression rather than two shader variants.
+    // w = blend between adjacent baked frames (0 = snap). A uniform branch rather than another define: it
+    // is coherent across the whole draw, and a define here would double the VAT program permutations.
+    vec4 PhotonVatParams;
+};
 #endif
 
 layout(location = 4) in vec3 iPos;
@@ -137,6 +158,24 @@ in vec3 Normal;
  */
 #define PHOTON_NO_TANGENT vec4(1.0, 0.0, 0.0, 1.0)
 
+/**
+ * A normal out of one float, octahedral at 12 bits a component — MIRRORED FROM
+ * VertexAnimationBake.packNormal, whose sign convention is `>= 0 ? 1 : -1` and not sign(), which
+ * answers zero at zero.
+ */
+vec3 photon_unpack_normal(float encoded) {
+    // ⚠️ NOT named `packed`: that is a reserved word in GLSL, and the compiler reports it as
+    // "abstract parameters not allowed" plus a cascade of undefined variables
+    float qy = mod(encoded, 4096.0);
+    float qx = floor(encoded / 4096.0);
+    vec2 e = vec2(qx, qy) / 4095.0 * 2.0 - 1.0;
+    vec3 n = vec3(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
+    if (n.z < 0.0) {
+        n.xy = (1.0 - abs(n.yx)) * vec2(n.x >= 0.0 ? 1.0 : -1.0, n.y >= 0.0 ? 1.0 : -1.0);
+    }
+    return normalize(n);
+}
+
 /** Any unit vector perpendicular to n, for a dP/du that collapsed (a zero-length segment). */
 vec3 photon_any_perpendicular(vec3 n) {
     vec3 axis = abs(n.x) > 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
@@ -222,17 +261,51 @@ ParticleData getParticleData() {
 #elif defined(PARTICLE_MODEL_INSTANCE)
 
     mat3 rotMat = quatToMat(iRot);
-    // aPos is already in centered model space (PhotonMesh convention)
-    data.Position = (rotMat * (aPos * iScale)) + iPos;
+#ifdef PHOTON_VAT
+    // gl_VertexID is the value read out of the index buffer, which is the mesh vertex number the table
+    // was baked against
+    // ⚠️ fetched inline rather than through photon_data_random()/photon_data_t(), which are declared
+    // further down this file than getParticleData — slot 0 xy, LOCKSTEP with those accessors
+    vec4 photonVatData = texelFetch(PhotonData, gl_InstanceID * PHOTON_DATA_TEXELS);
+    float photonVatPhase = fract(PhotonVatParams.x
+            + photonVatData.x * PhotonVatParams.y
+            + photonVatData.y * PhotonVatParams.z);
+    float photonVatCursor = photonVatPhase * float(PhotonVatSize.y);
+    int photonVatFrame = clamp(int(photonVatCursor), 0, PhotonVatSize.y - 1);
+    vec4 photonVatTexel = texelFetch(PhotonVat, photonVatFrame * PhotonVatSize.x + gl_VertexID);
+    vec3 photonPos = photonVatTexel.xyz;
+    vec3 photonNormal = photon_unpack_normal(photonVatTexel.w);
+    if (PhotonVatParams.w > 0.5) {
+        // frame f was baked at duration * f / frames, so the frame after the last one IS the first — the
+        // wrap is what makes a looping clip continuous rather than stuttering once per cycle
+        int photonVatNext = photonVatFrame + 1 == PhotonVatSize.y ? 0 : photonVatFrame + 1;
+        vec4 photonVatTexelNext = texelFetch(PhotonVat, photonVatNext * PhotonVatSize.x + gl_VertexID);
+        float photonVatBlend = photonVatCursor - floor(photonVatCursor);
+        photonPos = mix(photonPos, photonVatTexelNext.xyz, photonVatBlend);
+        // the packed normals cannot be mixed as scalars; unpack both, then renormalise the blend
+        photonNormal = normalize(mix(photonNormal,
+                photon_unpack_normal(photonVatTexelNext.w), photonVatBlend));
+    }
+#else
+    vec3 photonPos = aPos;
+    vec3 photonNormal = aNormal.xyz;
+#endif
+    // aPos is already in centered model space (PhotonMesh convention); the model pivot is folded into
+    // iPos on the CPU (TileParticleRenderer.fillInstancesModel), so the mesh buffer holds only the mesh
+    data.Position = (rotMat * (photonPos * iScale)) + iPos;
     data.UV = aUV;
     // vanilla UV2 order is (block, sky); java packs sky<<20 | block<<4
     data.LightUV = ivec2(iLight & 0xFFFF, (iLight >> 16) & 0xFFFF);
     // object space: the mesh's own centered model-space vertex + normal
-    data.ObjectPosition = aPos;
+    data.ObjectPosition = photonPos;
 #ifdef PHOTON_TANGENT
     data.Color = vec4(iColor.rgb * aNormal.w, iColor.a);
-    data.Normal = normalize(rotMat * aNormal.xyz);
-    data.ObjectNormal = aNormal.xyz;
+#else
+    data.Color = vec4(iColor.rgb * aBrightness, iColor.a);
+#endif
+    data.Normal = normalize(rotMat * photonNormal);
+    data.ObjectNormal = photonNormal;
+#ifdef PHOTON_TANGENT
     // Like Normal above, the tangent is ROTATED but not scaled — iScale is deliberately left out of
     // both (a long-standing simplification; the CPU path uses a real normal matrix). The frame therefore
     // lives in the mesh's own unscaled space and keeps the mesh's own handedness. Flipping w for a
@@ -242,10 +315,7 @@ ParticleData getParticleData() {
     data.Tangent = vec4(normalize(rotMat * aTangent.xyz), aTangent.w);
     data.ObjectTangent = aTangent;
 #else
-    data.Color = vec4(iColor.rgb * aBrightness, iColor.a);
-    data.Normal = normalize(rotMat * aNormal);
-    data.ObjectNormal = aNormal;
-    // the emitter's Tangent setting is off, so no tangent data was uploaded
+    // the emitter's Tangent setting is off, so no tangent stream was uploaded
     data.Tangent = PHOTON_NO_TANGENT;
     data.ObjectTangent = data.Tangent;
 #endif

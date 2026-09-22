@@ -73,6 +73,27 @@ public final class ResourceMeshSource implements IModelSource {
         return source != null && source.hasAtlasUV();
     }
 
+    /** A reference to an animated mesh is animated; the reference itself adds nothing either way. */
+    @Override
+    @Nullable
+    public IDynamicMesh asDynamic() {
+        var source = resolveRaw();
+        return source == null ? null : source.asDynamic();
+    }
+
+    /**
+     * ⚠️ Every capability of the referenced source has to be forwarded, not just the geometry. Dropping
+     * this one left the draw on the non-VAT shader variant with no per-particle frames uploaded, so an
+     * <b>imported</b> glb — which is always wrapped in one of these — played one pose for every particle
+     * while an inline source spread them correctly.
+     */
+    @Override
+    @Nullable
+    public VertexAnimation vertexAnimation() {
+        var source = resolveRaw();
+        return source == null ? null : source.vertexAnimation();
+    }
+
     @Override
     public IModelSource copy() {
         return new ResourceMeshSource(getResourcePath());

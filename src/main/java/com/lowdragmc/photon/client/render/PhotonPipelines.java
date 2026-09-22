@@ -48,20 +48,88 @@ public final class PhotonPipelines {
      *  tangent). See {@link InstancedVariant#MODEL_TANGENT}. */
     public static final String TANGENT_DEFINE = "PHOTON_TANGENT";
 
+    /**
+     * Compiles the depth fade into a material's fragment stage — {@code photon:soft_particle.glsl} is a
+     * no-op function without it. MIRRORED IN that file.
+     * <p>
+     * A define rather than a branch on a uniform, because the branch is not the cost: the SAMPLER is. A
+     * pipeline that declares {@code SamplerSceneDepth} must have it bound at every draw, and what binds it
+     * is the drain noticing a job asked for it — which is also what makes the drain take a full-screen
+     * depth copy that frame. Declaring it unconditionally would put that copy on every frame with any
+     * particle in it, so the whole "a frame nothing wants one in pays nothing" property of 1.21's
+     * pull-based capture lives or dies on this being a separate variant.
+     */
+    public static final String SOFT_PARTICLE_DEFINE = "PHOTON_SOFT";
+
+    /** Poses the model from the baked pose table rather than the mesh buffer's own positions.
+     *  See {@link InstancedVariant#MODEL_VAT}; MIRRORED IN {@code photon:particle.glsl}. */
+    public static final String VAT_DEFINE = "PHOTON_VAT";
+
+    /** Whether {@code key} asks for the fade, and the stage that would read it is the material's own —
+     *  the wireframe overlay replaces the fragment stage with {@code core/inverse}, which has no fade and
+     *  would leave {@code SamplerSceneDepth} declared but never bound. */
+    private static boolean usesSoftParticles(ParticlePipelineKey key) {
+        return key.softParticles() && !key.wireframe();
+    }
+
+    /**
+     * Declare what a VAT-posed vertex stage reads: the baked pose table (declared RGBA8 and remapped to
+     * RGBA32F by {@code GlConstMixin}, exactly as PhotonPoints is) and the block describing it.
+     * <p>
+     * ⚠️ Also {@code PhotonData}. Every instanced branch of {@code particle.glsl} DECLARES that sampler,
+     * but only a stage that actually reads it links it as an active uniform — which is why the mask and
+     * plain-HDR pipelines get away without declaring it. The VAT block reads slot 0 (the per-particle
+     * random and t that make up the phase), so for these variants it becomes active in EVERY stage, and a
+     * declared-but-unbound uniform fails the draw. {@code Emitter.bakeInstancedGroup} forces those two
+     * channels on for the same reason — "declared" has to imply "bound".
+     */
+    private static void applyVat(RenderPipeline.Builder builder, @Nullable InstancedVariant variant) {
+        if (variant != null && variant.usesVat()) {
+            builder.withUniform("PhotonVat", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8)
+                    .withUniform("PhotonVatInfo", UniformType.UNIFORM_BUFFER)
+                    .withUniform("PhotonData", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
+        }
+    }
+
+    /** Declare what the fade reads: the scene depth capture and the block carrying the inverse projection
+     *  it reconstructs eye depth through. Both are bound by the drain / the preview renderer. */
+    private static void applySoftParticles(RenderPipeline.Builder builder, ParticlePipelineKey key) {
+        if (usesSoftParticles(key)) {
+            builder.withShaderDefine(SOFT_PARTICLE_DEFINE)
+                    .withSampler(PhotonShaderCompiler.SCENE_DEPTH)
+                    .withUniform("PhotonEngine", UniformType.UNIFORM_BUFFER);
+        }
+    }
+
     /** The state that selects a pipeline variant: MaterialSetting blend/cull/depth + the emitter's
      *  primitive mode (quads for tiles/beams, TRIANGLE_STRIP for trails, TRIANGLES for ara-trails)
      *  + the editor wireframe overlay flag. Blend null = no blending; it does NOT decide when the draw
      *  happens — that is {@code RendererSetting.Layer} / {@link PhotonStage}, per emitter. */
     public record ParticlePipelineKey(@Nullable BlendFunction blend, int blendEquation,
                                       boolean cull, boolean depthTest,
-                                      boolean depthMask, VertexFormat.Mode mode, boolean wireframe) {
+                                      boolean depthMask, VertexFormat.Mode mode, boolean wireframe,
+                                      boolean softParticles) {
         public static final ParticlePipelineKey DEFAULT = new ParticlePipelineKey(
-                BlendFunction.TRANSLUCENT, BLEND_EQUATION_ADD, true, true, false, VertexFormat.Mode.QUADS, false);
+                BlendFunction.TRANSLUCENT, BLEND_EQUATION_ADD, true, true, false, VertexFormat.Mode.QUADS,
+                false, false);
+
+        public ParticlePipelineKey(@Nullable BlendFunction blend, int blendEquation,
+                                   boolean cull, boolean depthTest,
+                                   boolean depthMask, VertexFormat.Mode mode, boolean wireframe) {
+            this(blend, blendEquation, cull, depthTest, depthMask, mode, wireframe, false);
+        }
 
         /** The editor wireframe overlay: unculled, undepth-tested lines over the same geometry. */
         public static ParticlePipelineKey wireframe(VertexFormat.Mode mode) {
             return new ParticlePipelineKey(BlendFunction.TRANSLUCENT, BLEND_EQUATION_ADD,
-                    false, false, false, mode, true);
+                    false, false, false, mode, true, false);
+        }
+
+        /** This key with the soft-particle fade compiled in — a MATERIAL property, unlike the rest of the
+         *  key, which is the emitter's {@code MaterialSetting}. See {@link #SOFT_PARTICLE_DEFINE}. */
+        public ParticlePipelineKey withSoftParticles(boolean soft) {
+            return soft == softParticles ? this : new ParticlePipelineKey(
+                    blend, blendEquation, cull, depthTest, depthMask, mode, wireframe, soft);
         }
     }
 
@@ -157,6 +225,7 @@ public final class PhotonPipelines {
                             k.depthMask()))
                     .withCull(k.cull())
                     .withVertexFormat(PARTICLE_FORMAT, k.mode());
+            applySoftParticles(builder, k);
             return build(builder, k.wireframe());
         });
     }
@@ -183,6 +252,24 @@ public final class PhotonPipelines {
          */
         MODEL_TANGENT(List.of("PARTICLE_MODEL_INSTANCE", TANGENT_DEFINE),
                 instancedFormat("PhotonModelVertexTangent"), false, true, true,
+                PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstancedDrawState.MODEL_TANGENT),
+        /**
+         * {@link #MODEL} posed from a baked pose table ({@code PhotonVat}) instead of the mesh buffer's own
+         * positions, so every particle can sit at its own frame of the animation. Separate variants for the
+         * same reason the tangent has them: the define changes what the vertex stage reads, and in 26.1 that
+         * is a pipeline, not a bind-time choice — so the material pass, the mask sub-pass and the wireframe
+         * overlay all derive from one decision and cannot disagree.
+         * <p>
+         * The BASE mesh layout is unchanged from {@link #MODEL}/{@link #MODEL_TANGENT} (the table supplies
+         * position and normal; uv/brightness/tangent still come from the buffer), so the same
+         * {@code PhotonInstancedDrawState} layouts serve. The format name still differs, because the VAO
+         * must not be shared with a non-VAT draw of the same mesh.
+         */
+        MODEL_VAT(List.of("PARTICLE_MODEL_INSTANCE", VAT_DEFINE),
+                instancedFormat("PhotonModelVertexVat"), false, true, true,
+                PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstancedDrawState.MODEL),
+        MODEL_VAT_TANGENT(List.of("PARTICLE_MODEL_INSTANCE", VAT_DEFINE, TANGENT_DEFINE),
+                instancedFormat("PhotonModelVertexVatTangent"), false, true, true,
                 PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstancedDrawState.MODEL_TANGENT),
         TRAIL(List.of("TRAIL_INSTANCE"), instancedFormat("PhotonTrailCorner"), true, false, false,
                 PhotonGpuChannels.Kind.TRAIL, PhotonInstancedDrawState.TRAIL),
@@ -214,6 +301,13 @@ public final class PhotonPipelines {
          *  the base location of the attribute tail. */
         public final PhotonGpuChannels.Kind kind;
         public final PhotonInstancedDrawState.Layout layout;
+
+        /** Whether the vertex stage poses from the baked table, which is what makes every pipeline built
+         *  for this variant declare {@code PhotonVat} + {@code PhotonVatInfo}. Derived from the defines so
+         *  a new VAT variant cannot forget to say so. */
+        public boolean usesVat() {
+            return defines.contains(VAT_DEFINE);
+        }
 
         InstancedVariant(List<String> defines, VertexFormat format, boolean usesPoints,
                          boolean usesCustomData, boolean positionAtRecordHead, PhotonGpuChannels.Kind kind,
@@ -264,6 +358,8 @@ public final class PhotonPipelines {
             if (ik.variant().usesPoints) {
                 builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
             }
+            applyVat(builder, ik.variant());
+            applySoftParticles(builder, k);
             return build(builder, k.wireframe());
         });
     }
@@ -300,6 +396,7 @@ public final class PhotonPipelines {
                 if (mk.variant().usesPoints) {
                     builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
                 }
+                applyVat(builder, mk.variant());
             }
             return builder.build();
         });
@@ -339,6 +436,7 @@ public final class PhotonPipelines {
             if (ik.variant().usesPoints) {
                 builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
             }
+            applyVat(builder, ik.variant());
             k.defines().entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
                     .forEach(e -> builder.withShaderDefine(e.getKey(), e.getValue()));
@@ -420,10 +518,13 @@ public final class PhotonPipelines {
                 if (variant.usesPoints) {
                     builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
                 }
+                applyVat(builder, variant);
                 // Additional GPU data — declared ONLY when the generated GLSL reads it, because a declared
                 // uniform must be bound at draw. The emitter's want-decision uses the same graph flags
                 // (unioned across the pass's materials), so "declared" always implies "bound".
-                if (usedChannelMask != 0L) {
+                // applyVat already declared it for a VAT variant — declaring it twice would be a
+                // duplicate uniform on the pipeline
+                if (usedChannelMask != 0L && !variant.usesVat()) {
                     builder.withUniform("PhotonData", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
                 }
                 if (usesCustomData && variant.usesCustomData) {

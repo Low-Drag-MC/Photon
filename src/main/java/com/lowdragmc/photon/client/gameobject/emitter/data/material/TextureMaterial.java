@@ -61,6 +61,9 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     protected HDRMode hdrMode = HDRMode.ADDITIVE;
     @Configurable(name = "TextureMaterial.pixelArt", subConfigurable = true)
     protected final PixelArt pixelArt = new PixelArt();
+    @Configurable(name = "TextureMaterial.softParticles", subConfigurable = true)
+    @Getter
+    protected final SoftParticles softParticles = new SoftParticles();
 
     public TextureMaterial() {
     }
@@ -77,6 +80,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
         mat.hdrMode = hdrMode;
         mat.pixelArt.setEnable(pixelArt.isEnable());
         mat.pixelArt.bits = pixelArt.bits;
+        mat.softParticles.copyFrom(softParticles);
         return mat;
     }
 
@@ -92,7 +96,8 @@ public class TextureMaterial extends ShaderInstanceMaterial {
                         // premultiplied + opaque: the fsh applies HDR.rgb directly now, so the intensity
                         // has to be folded in here and the alpha pinned (it means nothing for an offset)
                         hdr.toVector4fOpaque(), discardThreshold, hdrMode.mode,
-                        pixelArt.isEnable() ? Math.max(pixelArt.bits, 1) : 0));
+                        pixelArt.isEnable() ? Math.max(pixelArt.bits, 1) : 0,
+                        softParticles.params()));
     }
 
 

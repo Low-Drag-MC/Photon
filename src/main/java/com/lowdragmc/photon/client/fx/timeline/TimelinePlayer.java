@@ -44,7 +44,11 @@ public class TimelinePlayer {
     private final Set<UUID> lastSpeedControlled = new HashSet<>();
     @Nullable
     private IEffectExecutor effect;
-    private long localTime = 0;
+    /**
+     * The master clock, in ticks. <b>Fractional</b>, because a playback can run at a rate other
+     * than 1 ({@link FXRuntime#setRate}); every track samples at a {@code double} time already.
+     */
+    private double localTime = 0;
     /** Content end of the current playback, snapshotted from {@link Timeline#getDuration()} in
      *  {@link #begin} (in-world data never changes mid-play; the editor re-begins on every replay). */
     private double duration = 0;
@@ -94,8 +98,20 @@ public class TimelinePlayer {
 
     /** Advance the master clock by one tick. */
     public void tick() {
+        tick(1f);
+    }
+
+    /**
+     * Advance the master clock by one tick of playback, scaled by the runtime's rate — 0 freezes
+     * the timeline where it is, 2 moves it two ticks per game tick ({@link FXRuntime#setRate}).
+     *
+     * <p>The evaluation happens at the time <i>before</i> the step, as the unscaled version did, so
+     * content exactly at {@code 0} is applied before anything ticks and content at the duration is
+     * evaluated before {@link #isFinished()} turns true.
+     */
+    public void tick(float rate) {
         evaluate(localTime);
-        localTime++;
+        localTime += Math.max(0f, rate);
     }
 
     /**
@@ -174,7 +190,7 @@ public class TimelinePlayer {
         this.editorPreview = editorPreview;
     }
 
-    private void evaluate(long time) {
+    private void evaluate(double time) {
         lastEvalTime = time;
         var leaves = timeline.leafTracks(false);
         var controlled = controlledObjectIds(leaves);

@@ -443,11 +443,10 @@ public final class RenderGraphExecutor {
     static void stageValue(RenderTypeGraphMaterial material, CompiledShaderGraph compiled,
                            String name, Object value) {
         switch (value) {
-            case RenderTypeGraphTypes.Sampler2DValue sampler -> {
-                if (LDLib2.isValidResourceLocation(sampler.location())) {
-                    material.setTexture(name, Identifier.parse(sampler.location()));
-                }
-            }
+            // setSampler, NOT setTexture: the inspector row edits the WHOLE Sampler2DValue (texture +
+            // filter/address/mipmap), and setTexture deliberately keeps the params the graph baked —
+            // which silently dropped a wrap mode picked here. An unparseable location changes nothing.
+            case RenderTypeGraphTypes.Sampler2DValue sampler -> material.setSampler(name, sampler);
             case RenderTypeGraphTypes.GradientValue gradient -> material.setGradient(name, gradient);
             case RenderTypeGraphTypes.CurveValue curve -> material.setCurve(name, curve);
             case Vector2f v -> material.setUniform(name, v);

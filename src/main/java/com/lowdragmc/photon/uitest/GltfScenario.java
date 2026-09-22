@@ -59,7 +59,7 @@ public class GltfScenario implements UIScenario {
             var location = write("embedded.gltf", triangleGltf(true).getBytes(StandardCharsets.UTF_8));
             var mesh = load(ctx, location, "embedded .gltf");
             if (mesh == null) return;
-            ctx.check("one triangle arrived", mesh.quadCount() == 1, 1, mesh.quadCount());
+            ctx.check("one triangle arrived", mesh.triangleCount() == 1, 1, mesh.triangleCount());
             // -X with w = -1 is what the fixture says and what UV generation would never produce
             ctx.check("the file's tangent survived the whole chain", mesh.tangents()[0] == -1f,
                     -1f, mesh.tangents()[0]);
@@ -72,7 +72,7 @@ public class GltfScenario implements UIScenario {
             var location = write("binary.glb", glb(triangleGltf(true)));
             var mesh = load(ctx, location, "binary .glb");
             if (mesh == null) return;
-            ctx.check("one triangle arrived from the glb", mesh.quadCount() == 1, 1, mesh.quadCount());
+            ctx.check("one triangle arrived from the glb", mesh.triangleCount() == 1, 1, mesh.triangleCount());
             ctx.check("the glb's tangent survived", mesh.tangents()[0] == -1f, -1f, mesh.tangents()[0]);
         })
 

@@ -7,23 +7,18 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Per-corner tangent generation for {@link PhotonMesh} — Lengyel's method (the classic
- * "Computing Tangent Space Basis Vectors", the same construction MikkTSpace is built on).
+ * Per-vertex tangent generation — Lengyel's method. Only glTF can carry its own, so OBJ and JSON always
+ * land here, as does a glTF primitive without {@code TANGENT}.
  *
- * <p>Only glTF can carry a tangent of its own, and only when the exporter wrote one: the Wavefront spec
- * is {@code v}/{@code vt}/{@code vn} only, and a {@code BakedQuad} stores nothing but a byte-packed face
- * normal. So OBJ and JSON always land here, as does a glTF primitive without {@code TANGENT} — which is
- * what that spec asks implementations to do anyway.</p>
+ * <p>Contributions accumulate into weld groups and are orthonormalized against the vertex's normal, so
+ * smooth geometry gets a continuous frame rather than one tangent per face.</p>
  *
- * <p>Each triangle contributes {@code dP/du} and {@code dP/dv}; contributions are accumulated into
- * <b>weld groups</b> and only then orthonormalized against the corner's own normal, so smooth-shaded
- * geometry (sphere, capsule, cylinder) gets a continuous frame instead of one hard tangent per face.
- * The result is {@code (tx, ty, tz, w)} per corner, where {@code w} is the handedness the shader needs
- * to rebuild the bitangent as {@code cross(N, T) * w}.</p>
+ * <p>⚠️ One tangent per vertex, so a vertex shared by two mirrored UV islands gets one frame. Splitting
+ * it is the exporter's job — glTF stores one {@code TANGENT} per vertex too.</p>
  */
 final class MeshTangents {
 
-    /** Floats per corner in the generated array: tangent xyz + handedness. */
+    /** Floats per vertex in the generated array: tangent xyz + handedness. */
     static final int FLOATS_PER_TANGENT = 4;
 
     /** UV-area determinants below this are treated as "no UV parameterization" (see {@link #fallbackTangent}). */
@@ -35,60 +30,56 @@ final class MeshTangents {
     }
 
     /**
-     * Corners that share a position, a normal <b>and</b> a UV-winding sign average together.
+     * Vertices sharing a position, a normal and a UV-winding sign average together — which welds
+     * <i>beyond</i> the index buffer, keeping a smooth surface continuous across primitives.
      *
-     * <p>Position and normal are keyed on exact bits rather than a quantization bucket: both OBJ and
-     * baked-JSON geometry produce bit-identical floats for shared corners (the same decimal token, or
-     * the same int unpacked twice), and a bucket would split neighbours that straddle a boundary.</p>
-     *
-     * <p>{@code sign} is the sign of the triangle's UV-area determinant. Two faces meeting at the same
-     * position/normal with <b>mirrored</b> UVs carry opposite-facing tangents; averaging them cancels
-     * to zero. Keying on the sign keeps mirrored islands in separate groups.</p>
+     * <p>{@code sign} keeps mirrored UV islands apart; averaging them would cancel to zero.</p>
      */
     private record WeldKey(int px, int py, int pz, int nx, int ny, int nz, int sign) {
     }
 
     /**
-     * @param vertices     the mesh's interleaved corners, {@link PhotonMesh#FLOATS_PER_VERTEX} floats each
-     * @param spriteBounds per-quad {@code u0,v0,u1,v1}; UVs are normalized by these before differentiating
-     *                     so atlas-baked quads weigh in comparably to raw-UV ones
-     * @param quadCount    number of quads (a triangle is a degenerate quad, corner 3 == corner 2)
-     * @return {@code quadCount * 4 * 4} floats: {@code tx,ty,tz,w} per corner
+     * @param mesh the mesh to derive from; its {@link PhotonMesh#indices()} drive the iteration and its
+     *             {@link PhotonMesh#spriteBounds()} normalize the UVs so atlas-baked faces weigh in
+     *             comparably to raw-UV ones
+     * @return {@code vertexCount * 4} floats: {@code tx,ty,tz,w} per vertex
      */
-    static float[] generate(float[] vertices, float[] spriteBounds, int quadCount) {
-        int cornerCount = quadCount * 4;
-        float[] out = new float[cornerCount * FLOATS_PER_TANGENT];
-        if (quadCount == 0) {
+    static float[] generate(PhotonMesh mesh) {
+        int vertexCount = mesh.vertexCount();
+        float[] out = new float[vertexCount * FLOATS_PER_TANGENT];
+        if (vertexCount == 0) {
             return out;
         }
+        var geometry = mesh.geometry();
+        var attributes = mesh.attributes();
+        var sprites = mesh.spriteBounds();
+        var indices = mesh.indices();
 
         // ---- pass 1: accumulate dP/du and dP/dv per weld group -------------------------------
         Map<WeldKey, Integer> groups = new HashMap<>();
-        int[] groupOf = new int[cornerCount];
+        int[] groupOf = new int[vertexCount];
         Arrays.fill(groupOf, -1);
+        // whether groupOf came from a triangle with a real UV gradient; see contribute()
+        boolean[] claimed = new boolean[vertexCount];
         FloatArrayList accT = new FloatArrayList(); // 3 floats per group
         FloatArrayList accB = new FloatArrayList();
 
-        // Sprite-normalized UVs of the quad currently being processed (4 corners x u,v).
-        float[] uv = new float[8];
-        for (int quad = 0; quad < quadCount; quad++) {
-            normalizedUVs(vertices, spriteBounds, quad, uv);
-            accumulate(vertices, uv, quad, 0, 1, 2, groups, groupOf, accT, accB);
-            if (!isDegenerate(vertices, quad)) {
-                accumulate(vertices, uv, quad, 2, 3, 0, groups, groupOf, accT, accB);
-            } else {
-                // Corner 3 is a bitwise copy of corner 2, so it welds into the same group; assigning it
-                // here keeps every corner mapped without contributing a zero-area triangle.
-                groupOf[quad * 4 + 3] = groupOf[quad * 4 + 2];
-            }
+        // one triangle's sprite-normalized UVs (3 corners x u,v), reused
+        float[] uv = new float[6];
+        for (int i = 0; i + 2 < indices.length; i += 3) {
+            int a = indices[i], b = indices[i + 1], c = indices[i + 2];
+            normalizedUV(attributes, sprites, a, uv, 0);
+            normalizedUV(attributes, sprites, b, uv, 1);
+            normalizedUV(attributes, sprites, c, uv, 2);
+            accumulate(geometry, uv, a, b, c, groups, groupOf, claimed, accT, accB);
         }
 
-        // ---- pass 2: orthonormalize each corner against its own normal ------------------------
-        for (int corner = 0; corner < cornerCount; corner++) {
-            int off = corner * PhotonMesh.FLOATS_PER_VERTEX;
+        // ---- pass 2: orthonormalize each vertex against its own normal ------------------------
+        for (int vertex = 0; vertex < vertexCount; vertex++) {
+            int off = PhotonMesh.geometryOffset(vertex);
             // JSON normals arrive byte-quantized (packed / 127) and are never renormalized, so the
             // Gram-Schmidt projection below needs a unit normal of its own making.
-            float nx = vertices[off + 5], ny = vertices[off + 6], nz = vertices[off + 7];
+            float nx = geometry[off + 3], ny = geometry[off + 4], nz = geometry[off + 5];
             float nLen = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
             if (nLen < DEGENERATE_TANGENT) {
                 nx = 0f;
@@ -100,7 +91,13 @@ final class MeshTangents {
                 nz /= nLen;
             }
 
-            int g = Math.max(groupOf[corner], 0) * 3;
+            int o = PhotonMesh.tangentOffset(vertex);
+            if (groupOf[vertex] < 0) {
+                // a vertex no triangle references at all
+                fallbackTangent(nx, ny, nz, out, o);
+                continue;
+            }
+            int g = groupOf[vertex] * 3;
             float tx = accT.getFloat(g), ty = accT.getFloat(g + 1), tz = accT.getFloat(g + 2);
             // Gram-Schmidt: drop whatever part of the accumulated tangent leans along the normal.
             float dot = nx * tx + ny * ty + nz * tz;
@@ -108,7 +105,6 @@ final class MeshTangents {
             ty -= ny * dot;
             tz -= nz * dot;
 
-            int o = corner * FLOATS_PER_TANGENT;
             float tLen = (float) Math.sqrt(tx * tx + ty * ty + tz * tz);
             if (tLen < DEGENERATE_TANGENT) {
                 fallbackTangent(nx, ny, nz, out, o);
@@ -131,27 +127,23 @@ final class MeshTangents {
         return out;
     }
 
-    /**
-     * One triangle's contribution. UVs are the quad's sprite-normalized pair; positions come straight
-     * from the interleaved array. A zero-area UV triangle carries no parameterization, so it is skipped
-     * entirely — its corners still get a group (an empty one) and fall back in pass 2.
-     */
-    private static void accumulate(float[] vertices, float[] uv, int quad, int a, int b, int c,
-                                   Map<WeldKey, Integer> groups, int[] groupOf,
+    /** One triangle's contribution; a zero-area UV triangle is skipped and falls back in pass 2. */
+    private static void accumulate(float[] geometry, float[] uv, int a, int b, int c,
+                                   Map<WeldKey, Integer> groups, int[] groupOf, boolean[] claimed,
                                    FloatArrayList accT, FloatArrayList accB) {
-        int oa = PhotonMesh.vertexOffset(quad, a);
-        int ob = PhotonMesh.vertexOffset(quad, b);
-        int oc = PhotonMesh.vertexOffset(quad, c);
+        int oa = PhotonMesh.geometryOffset(a);
+        int ob = PhotonMesh.geometryOffset(b);
+        int oc = PhotonMesh.geometryOffset(c);
 
-        float e1x = vertices[ob] - vertices[oa];
-        float e1y = vertices[ob + 1] - vertices[oa + 1];
-        float e1z = vertices[ob + 2] - vertices[oa + 2];
-        float e2x = vertices[oc] - vertices[oa];
-        float e2y = vertices[oc + 1] - vertices[oa + 1];
-        float e2z = vertices[oc + 2] - vertices[oa + 2];
+        float e1x = geometry[ob] - geometry[oa];
+        float e1y = geometry[ob + 1] - geometry[oa + 1];
+        float e1z = geometry[ob + 2] - geometry[oa + 2];
+        float e2x = geometry[oc] - geometry[oa];
+        float e2y = geometry[oc + 1] - geometry[oa + 1];
+        float e2z = geometry[oc + 2] - geometry[oa + 2];
 
-        float du1 = uv[b * 2] - uv[a * 2], dv1 = uv[b * 2 + 1] - uv[a * 2 + 1];
-        float du2 = uv[c * 2] - uv[a * 2], dv2 = uv[c * 2 + 1] - uv[a * 2 + 1];
+        float du1 = uv[2] - uv[0], dv1 = uv[3] - uv[1];
+        float du2 = uv[4] - uv[0], dv2 = uv[5] - uv[1];
 
         float det = du1 * dv2 - du2 * dv1;
         boolean degenerate = Math.abs(det) < DEGENERATE_UV;
@@ -170,22 +162,21 @@ final class MeshTangents {
 
         // three explicit calls rather than a loop over a temp array: this runs per triangle, and a
         // 100k-tri mesh would otherwise allocate 100k throwaway int[3]s
-        contribute(vertices, quad, a, sign, groups, groupOf, accT, accB, degenerate, tx, ty, tz, bx, by, bz);
-        contribute(vertices, quad, b, sign, groups, groupOf, accT, accB, degenerate, tx, ty, tz, bx, by, bz);
-        contribute(vertices, quad, c, sign, groups, groupOf, accT, accB, degenerate, tx, ty, tz, bx, by, bz);
+        contribute(geometry, a, sign, groups, groupOf, claimed, accT, accB, degenerate, tx, ty, tz, bx, by, bz);
+        contribute(geometry, b, sign, groups, groupOf, claimed, accT, accB, degenerate, tx, ty, tz, bx, by, bz);
+        contribute(geometry, c, sign, groups, groupOf, claimed, accT, accB, degenerate, tx, ty, tz, bx, by, bz);
     }
 
-    private static void contribute(float[] vertices, int quad, int corner, int sign,
-                                   Map<WeldKey, Integer> groups, int[] groupOf,
+    private static void contribute(float[] geometry, int vertex, int sign,
+                                   Map<WeldKey, Integer> groups, int[] groupOf, boolean[] claimed,
                                    FloatArrayList accT, FloatArrayList accB, boolean degenerate,
                                    float tx, float ty, float tz, float bx, float by, float bz) {
-        int g = group(vertices, PhotonMesh.vertexOffset(quad, corner), sign, groups, accT, accB);
-        int i = quad * 4 + corner;
-        // A corner shared by both of a quad's triangles is visited twice. A UV-degenerate triangle
-        // contributes nothing, so it must not steal the corner away from a good one it already joined —
-        // otherwise the output would depend on which triangle came first.
-        if (!degenerate || groupOf[i] < 0) {
-            groupOf[i] = g;
+        int g = group(geometry, PhotonMesh.geometryOffset(vertex), sign, groups, accT, accB);
+        // first triangle with a real UV gradient wins, so the result does not depend on what is
+        // appended afterwards
+        if (!claimed[vertex]) {
+            groupOf[vertex] = g;
+            claimed[vertex] = !degenerate;
         }
         if (degenerate) return;
         int acc = g * 3;
@@ -197,11 +188,11 @@ final class MeshTangents {
         accB.set(acc + 2, accB.getFloat(acc + 2) + bz);
     }
 
-    /** The weld group for a corner, allocating (and zero-filling) a fresh accumulator on first sight. */
-    private static int group(float[] vertices, int off, int sign, Map<WeldKey, Integer> groups,
+    /** The weld group for a vertex, allocating (and zero-filling) a fresh accumulator on first sight. */
+    private static int group(float[] geometry, int off, int sign, Map<WeldKey, Integer> groups,
                              FloatArrayList accT, FloatArrayList accB) {
-        var key = new WeldKey(bits(vertices[off]), bits(vertices[off + 1]), bits(vertices[off + 2]),
-                bits(vertices[off + 5]), bits(vertices[off + 6]), bits(vertices[off + 7]), sign);
+        var key = new WeldKey(bits(geometry[off]), bits(geometry[off + 1]), bits(geometry[off + 2]),
+                bits(geometry[off + 3]), bits(geometry[off + 4]), bits(geometry[off + 5]), sign);
         var existing = groups.get(key);
         if (existing != null) {
             return existing;
@@ -220,32 +211,28 @@ final class MeshTangents {
         return Float.floatToIntBits(f == 0f ? 0f : f);
     }
 
-    /**
-     * The quad's UVs remapped into its sprite's 0..1 space. The atlas -> sprite remap is a positive
-     * per-axis scale, so it cannot rotate a tangent — but it does scale one, and welding corners off
-     * differently-sized sprites would then average vectors of mismatched magnitude. Normalizing here
-     * makes generation independent of {@code useBlockUV} and of the sprite's atlas footprint. Raw-UV
-     * (OBJ) sources record {@code 0,0,1,1}, so this is an identity for them.
-     */
-    private static void normalizedUVs(float[] vertices, float[] spriteBounds, int quad, float[] out) {
-        float u0 = spriteBounds[quad * 4];
-        float v0 = spriteBounds[quad * 4 + 1];
-        float uw = spriteBounds[quad * 4 + 2] - u0;
-        float vh = spriteBounds[quad * 4 + 3] - v0;
-        if (uw == 0f) uw = 1f;
-        if (vh == 0f) vh = 1f;
-        for (int corner = 0; corner < 4; corner++) {
-            int off = PhotonMesh.vertexOffset(quad, corner);
-            out[corner * 2] = (vertices[off + 3] - u0) / uw;
-            out[corner * 2 + 1] = (vertices[off + 4] - v0) / vh;
+    /** One vertex's UV in its sprite's 0..1 space, so welding across differently-sized sprites does
+     *  not average vectors of mismatched magnitude. Identity for raw-UV sources. */
+    private static void normalizedUV(float[] attributes, float[] sprites, int vertex, float[] out, int slot) {
+        int off = PhotonMesh.attributeOffset(vertex);
+        float u = attributes[off];
+        float v = attributes[off + 1];
+        if (sprites.length > 0) {
+            int s = PhotonMesh.spriteOffset(vertex);
+            float u0 = sprites[s];
+            float v0 = sprites[s + 1];
+            float uw = sprites[s + 2] - u0;
+            float vh = sprites[s + 3] - v0;
+            if (uw == 0f) uw = 1f;
+            if (vh == 0f) vh = 1f;
+            u = (u - u0) / uw;
+            v = (v - v0) / vh;
         }
+        out[slot * 2] = u;
+        out[slot * 2 + 1] = v;
     }
 
-    /**
-     * An arbitrary unit vector perpendicular to the normal, for corners with no usable UV gradient —
-     * an OBJ face with no {@code vt} (every corner defaults to {@code (0,0)}) is the common case, not a
-     * rare one. Picks the basis axis least aligned with the normal, matching {@code ObjMeshParser.earClip}.
-     */
+    /** A unit vector perpendicular to the normal, for vertices with no usable UV gradient. */
     private static void fallbackTangent(float nx, float ny, float nz, float[] out, int o) {
         float ax = Math.abs(nx) > 0.9f ? 0f : 1f;
         float ay = Math.abs(nx) > 0.9f ? 1f : 0f;
@@ -264,14 +251,5 @@ final class MeshTangents {
             out[o + 2] = tz / len;
         }
         out[o + 3] = 1f;
-    }
-
-    /** Mirrors {@link PhotonMesh#isTriangle(int)} on the raw array: corner 3 repeats corner 2. */
-    private static boolean isDegenerate(float[] vertices, int quad) {
-        int c2 = PhotonMesh.vertexOffset(quad, 2);
-        int c3 = PhotonMesh.vertexOffset(quad, 3);
-        return vertices[c2] == vertices[c3]
-                && vertices[c2 + 1] == vertices[c3 + 1]
-                && vertices[c2 + 2] == vertices[c3 + 2];
     }
 }

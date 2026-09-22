@@ -151,7 +151,18 @@ public final class PhotonWorldRenderState {
                                     GpuBuffer instances, int instanceCount,
                                     @Nullable GpuBuffer points,
                                     @Nullable GpuBuffer data, @Nullable GpuBuffer customData,
-                                    PhotonInstancedDrawState.Layout layout) {
+                                    PhotonInstancedDrawState.Layout layout,
+                                    @Nullable GpuBuffer vat, @Nullable GpuBufferSlice vatInfo) {
+
+        /** No baked pose table — every variant but {@code MODEL_VAT}/{@code MODEL_VAT_TANGENT}. */
+        public InstancedGeometry(GpuBuffer vertices, int indexCount, @Nullable GpuBuffer indices,
+                                 GpuBuffer instances, int instanceCount,
+                                 @Nullable GpuBuffer points,
+                                 @Nullable GpuBuffer data, @Nullable GpuBuffer customData,
+                                 PhotonInstancedDrawState.Layout layout) {
+            this(vertices, indexCount, indices, instances, instanceCount, points, data, customData,
+                    layout, null, null);
+        }
     }
 
     /**
@@ -773,6 +784,7 @@ public final class PhotonWorldRenderState {
         if (job.geometry().points() != null) {
             renderPass.setUniform("PhotonPoints", job.geometry().points());
         }
+        bindVat(renderPass, job.geometry());
         renderPass.setVertexBuffer(0, job.geometry().vertices());
         renderPass.setIndexBuffer(draw.indices().buffer(), draw.indices().type());
         PhotonInstancedDrawState.begin(job.geometry().layout(), job.geometry().instances(),
@@ -793,6 +805,15 @@ public final class PhotonWorldRenderState {
     /** The base mesh's own index buffer when it has one (the ara tube ring shares vertices between
      *  adjacent section edges, which the shared quad pattern can't express), else the shared quads. */
     private record Indices(GpuBuffer buffer, VertexFormat.IndexType type) {
+    }
+
+    /** The baked pose table + the block describing it, for a MODEL_VAT draw. Both or neither: the
+     *  pipeline declares them together, and 26.1 fails a draw that leaves either unbound. */
+    private static void bindVat(RenderPass renderPass, InstancedGeometry geometry) {
+        if (geometry.vat() != null && geometry.vatInfo() != null) {
+            renderPass.setUniform("PhotonVat", geometry.vat());
+            renderPass.setUniform("PhotonVatInfo", geometry.vatInfo());
+        }
     }
 
     private static Indices indicesFor(InstancedGeometry geometry) {
@@ -861,6 +882,7 @@ public final class PhotonWorldRenderState {
             if (job.geometry().points() != null) {
                 renderPass.setUniform("PhotonPoints", job.geometry().points());
             }
+            bindVat(renderPass, job.geometry());
             // additional GPU data (the shadergraph photon_data_*() / photon_custom_data() accessors);
             // present only when a material on the pass reads it, and then every variant's pipeline that
             // declares it is drawn from this same job

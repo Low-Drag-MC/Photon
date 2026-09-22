@@ -12,6 +12,7 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.render.PhotonMaterialUniforms;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -34,6 +35,9 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
     protected HDRColor hdr = HDRColor.black();
     @Configurable(name = "TextureMaterial.hdrMode")
     protected TextureMaterial.HDRMode hdrMode = TextureMaterial.HDRMode.ADDITIVE;
+    @Configurable(name = "TextureMaterial.softParticles", subConfigurable = true)
+    @Getter
+    protected final SoftParticles softParticles = new SoftParticles();
 
     /** 26.1: sprite sets live on {@code ParticleResources} (AT'd public in our accesstransformer.cfg). */
     @Nullable
@@ -60,14 +64,15 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
                     MissingTextureAtlasSprite.getLocation(),
                     fragment, setting.pipelineKey(mode),
                     PhotonMaterialUniforms.Values.of(
-                            emission, discardThreshold, hdrMode.mode, 0));
+                            emission, discardThreshold, hdrMode.mode, 0, softParticles.params()));
         }
         var sprite = spriteSet.get(0, 1);
         return MaterialRenderTypes.hdrParticle(
                 sprite.atlasLocation(), fragment, setting.pipelineKey(mode),
                 PhotonMaterialUniforms.Values.ofSprite(
                         emission, discardThreshold, hdrMode.mode,
-                        sprite.getU0(), sprite.getV0(), sprite.getU1(), sprite.getV1()));
+                        sprite.getU0(), sprite.getV0(), sprite.getU1(), sprite.getV1(),
+                        softParticles.params()));
     }
 
     @Override

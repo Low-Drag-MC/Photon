@@ -13,10 +13,12 @@ import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.LoadingOverlay;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.SkinnedModel;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.util.Objects;
 
 /**
@@ -61,9 +63,16 @@ public class GltfModelSource implements IModelSource {
         return new PhotonMeshCache.GltfKey(modelLocation, flipV);
     }
 
+    /**
+     * The bind-pose geometry.
+     *
+     * <p>Goes through the <b>model</b> cache under the same key {@link AnimatedGltfModelSource} uses, so a
+     * file referenced by both a static and an animated source is parsed once rather than twice. This
+     * source then ignores everything but the mesh.</p>
+     */
     @Override
     public PhotonMesh getMesh() {
-        return PhotonMeshCache.INSTANCE.get(key(), k -> load());
+        return PhotonMeshCache.INSTANCE.getModel(key(), k -> load()).mesh();
     }
 
     @Override
@@ -80,23 +89,27 @@ public class GltfModelSource implements IModelSource {
 
     /** {@code null} = "can't load right now, don't cache" (retry next call); see {@link PhotonMeshCache#get}. */
     @Nullable
-    private PhotonMesh load() {
+    private SkinnedModel load() {
         // mid-reload the resource manager is swapping; caching EMPTY now would blank the mesh until the
         // next invalidation, so retry afterwards instead (mirrors ObjModelSource).
         if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
             return null;
         }
         try (var in = Minecraft.getInstance().getResourceManager().open(modelLocation)) {
-            var mesh = GltfMeshParser.parse(in, flipV);
+            var model = GltfMeshParser.parseModel(in, flipV);
             // track the editable disk copy (if any) so pollFileChanges can hot-reload it
             var file = new File(LDLib2.getAssetsDir(), modelLocation.getNamespace() + "/" + modelLocation.getPath());
             if (file.isFile()) {
                 PhotonMeshCache.INSTANCE.trackFile(key(), file);
             }
-            return mesh;
+            return model;
+        } catch (FileNotFoundException e) {
+            // a source whose file has not been picked yet; a stack trace says nothing extra
+            Photon.LOGGER.warn("glTF model {} does not exist", modelLocation);
+            return SkinnedModel.EMPTY;
         } catch (Exception e) {
             Photon.LOGGER.warn("Failed to load glTF model {}", modelLocation, e);
-            return PhotonMesh.EMPTY;
+            return SkinnedModel.EMPTY;
         }
     }
 

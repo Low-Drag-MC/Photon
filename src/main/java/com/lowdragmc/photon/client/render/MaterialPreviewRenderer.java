@@ -497,7 +497,11 @@ public final class MaterialPreviewRenderer {
             pass.setUniform("DynamicTransforms", dynamicTransforms);
             var materialSlice = PhotonMaterialUniforms.sliceFor(renderType);
             if (materialSlice != null) pass.setUniform("PhotonMaterial", materialSlice);
+            // custom shaders register their own slice; a soft-particle material declares the block without
+            // registering (it only reads U_InverseProjectionMatrix), so fall back to the frame's own —
+            // same rule as PhotonWorldRenderState.drawRun
             var engineSlice = PhotonEngineUniforms.sliceFor(renderType);
+            if (engineSlice == null) engineSlice = PhotonEngineUniforms.currentSlice();
             if (engineSlice != null) pass.setUniform("PhotonEngine", engineSlice);
             var custom = info.bindings().customUniforms();
             var customSlice = custom == null ? null : custom.slice();

@@ -51,6 +51,16 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
      * and needs the answer without a reference to anything.
      */
     private static boolean editorSceneRendering = false;
+    /**
+     * The editor-scene manager {@link #editorSceneRendering} is true for, so a clock read from deep
+     * inside a draw can reach the timeline that owns it — see {@link #editorAnimationSeconds()}.
+     * Set and cleared in lockstep with the flag, which means it spans the bake and the drain too, not
+     * just extraction: an animated model is posed on whichever of those first asks for its mesh.
+     */
+    @Nullable
+    private static PhotonParticleManager renderingManager = null;
+    /** The partial tick the current frame is being drawn at, for clocks read mid-render. */
+    private float lastPartialTick;
 
     public static boolean isEditorSceneRendering() {
         return editorSceneRendering;
@@ -95,6 +105,20 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
 
     public long getRealTime() {
         return time + timeOffset;
+    }
+
+    /**
+     * Seconds on the <b>timeline's</b> clock while an editor scene is the thing being rendered, or a
+     * negative number when it is not (i.e. in the world).
+     *
+     * <p>What an animated model poses itself at in the editor, and deliberately the timeline's time
+     * rather than the world's: scrubbing the playhead has to scrub the animation with it, or the author
+     * is looking at a pose that belongs to no frame they can reach. {@link #getTime(float)} already
+     * freezes the partial while paused, so a paused scene holds its pose.</p>
+     */
+    public static float editorAnimationSeconds() {
+        var manager = renderingManager;
+        return manager == null ? -1f : manager.getTime(manager.lastPartialTick) / 20f;
     }
 
     public float getRealTime(float pPartialTicks) {
@@ -195,6 +219,8 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
             PhotonEngineUniforms.updateViewport(targetWidth, targetHeight);
         }
         editorSceneRendering = true;
+        renderingManager = this;
+        lastPartialTick = partialTicks;
         try {
             super.render(storage, cameraRenderState, camera, frustum, isPlaying ? partialTicks : 0);
         } finally {
@@ -245,6 +271,7 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
             }
         } finally {
             editorSceneRendering = false;
+            renderingManager = null;
         }
         // the scene's target and clock are gone — anything drawn after this is the world's again
         KGEngineUniforms.clearScreenSizeOverride();

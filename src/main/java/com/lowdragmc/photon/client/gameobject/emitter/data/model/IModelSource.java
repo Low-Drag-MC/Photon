@@ -19,14 +19,14 @@ import java.io.File;
 import java.util.function.Supplier;
 
 /**
- * Where a particle model's geometry comes from: a baked JSON model ({@link JsonModelSource}), a
- * runtime-parsed OBJ file ({@link ObjModelSource}) or a glTF 2.0 file ({@link GltfModelSource}). The
- * registry itself is the format extension point — a new loader is just another
- * {@code @LDLRegisterClient} implementation, which is exactly how glTF was added. Both the
- * mesh emission shape ({@code MeshData}) and the Model render mode ({@code ParticleRendererSetting})
- * consume sources through {@link #getMesh()}, which resolves via the shared {@link PhotonMeshCache}.
- * Implementations must implement {@code equals}/{@code hashCode} over all mesh-affecting config
- * fields — render-pass batching and {@code MeshData} equality depend on it.
+ * Where a particle model's geometry comes from. The registry is the format extension point. Both the
+ * mesh emission shape and the Model render mode consume sources through {@link #getMesh()}.
+ *
+ * <p>⚠️ Implementations must implement {@code equals}/{@code hashCode} over all mesh-affecting fields —
+ * render-pass batching depends on it.</p>
+ *
+ * <p>Geometry that changes while it is drawn arrives through {@link DynamicMeshSource} wrapping an
+ * {@link IDynamicMesh}, or from a source that is one ({@link AnimatedGltfModelSource}).</p>
  */
 public interface IModelSource extends IConfigurable, IPersistedSerializable, ILDLRegisterClient<IModelSource, Supplier<IModelSource>> {
     Codec<IModelSource> CODEC = PhotonRegistries.MODEL_SOURCES.optionalCodec().dispatch(ILDLRegisterClient::getRegistryHolderOptional,
@@ -66,6 +66,28 @@ public interface IModelSource extends IConfigurable, IPersistedSerializable, ILD
 
     /** The source's geometry via the shared cache; {@link PhotonMesh#EMPTY} when unavailable. */
     PhotonMesh getMesh();
+
+    /**
+     * The live-geometry provider behind this source, or null when its geometry is static. How the render
+     * backend learns a mesh can change under it.
+     *
+     * <p>⚠️ May go from non-null to null and back: an animated model whose file has not loaded yet has
+     * nothing to pose.</p>
+     */
+    @Nullable
+    default IDynamicMesh asDynamic() {
+        return null;
+    }
+
+    /**
+     * The baked pose table this source draws with, or null when it poses on the CPU (or not at all).
+     * Non-null puts the draw on the {@code PHOTON_VAT} shader variant, where the position comes from
+     * the table and every particle can be at its own frame.
+     */
+    @Nullable
+    default VertexAnimation vertexAnimation() {
+        return null;
+    }
 
     /** Drop this source's cache entry so the next {@link #getMesh()} reloads. */
     void invalidate();

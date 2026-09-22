@@ -20,6 +20,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.mojang.blaze3d.vertex.*;
 import dev.vfyjxf.taffy.style.AlignItems;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
@@ -90,51 +91,83 @@ public final class MeshData implements IConfigurable, IPersistedSerializable {
         triangleSumArea = 0;
     }
 
+    /**
+     * Rebuild on a topology change, refresh the positions on a pose change.
+     *
+     * <p>{@link Edge} and {@link Triangle} hold references to the {@code Vector3f}s in
+     * {@link #vertices}, so writing new coordinates in place moves them all and allocates nothing —
+     * otherwise an animated model would rebuild four objects a vertex, a frame.</p>
+     *
+     * <p>⚠️ Lengths and areas stay the rest pose's: they are the sampling weights, and recomputing them
+     * per pose puts the O(n) back. So a stretched limb gets its unstretched share, as in Unity.</p>
+     *
+     * <p>⚠️ A parallel-sim worker can read a position while another thread writes it, so a particle
+     * spawned on the frame a pose changes can land between the two.</p>
+     */
     private void ensureLoaded() {
         var mesh = source.getMesh();
         if (mesh == derivedFrom) return;
         synchronized (this) {
             if (mesh == derivedFrom) return; // rebuilt by a parallel-sim worker meanwhile
-            vertices.clear();
-            edges.clear();
-            triangles.clear();
-            rebuildFrom(mesh);
+            var previous = derivedFrom;
+            if (previous != null && previous.topology() == mesh.topology()
+                    && previous.vertexCount() == mesh.vertexCount()) {
+                refreshPositions(mesh);
+            } else {
+                vertices.clear();
+                edges.clear();
+                triangles.clear();
+                rebuildFrom(mesh);
+            }
             derivedFrom = mesh;
         }
     }
 
+    /** Move the existing sampling geometry onto a new pose of the same topology. */
+    private void refreshPositions(PhotonMesh mesh) {
+        var geometry = mesh.geometry();
+        for (int vertex = 0; vertex < vertices.size(); vertex++) {
+            int off = PhotonMesh.geometryOffset(vertex);
+            vertices.get(vertex).set(geometry[off], geometry[off + 1], geometry[off + 2]);
+        }
+    }
+
+    /**
+     * ⚠️ Two weights moved when the format started welding, both towards Unity's answer: Vertex
+     * emission picks among distinct vertices (no valence bias), Edge counts a shared edge once.
+     */
     private void rebuildFrom(PhotonMesh mesh) {
         double sumLength = 0;
         double sumArea = 0;
-        var data = mesh.vertices();
-        var points = new Vector3f[4];
-        for (int quad = 0; quad < mesh.quadCount(); quad++) {
-            // degenerate quads (corner 3 == corner 2) are real triangles: 3 vertices, 3 edges, 1
-            // triangle — so duplicate corners/edges don't skew the weighted sampling
-            boolean triangle = mesh.isTriangle(quad);
-            int corners = triangle ? 3 : 4;
-            for (int corner = 0; corner < corners; corner++) {
-                int off = PhotonMesh.vertexOffset(quad, corner);
-                points[corner] = new Vector3f(data[off], data[off + 1], data[off + 2]);
-                this.vertices.add(points[corner]);
-            }
-            if (triangle) {
-                sumLength += addEdge(points[0], points[1]);
-                sumLength += addEdge(points[1], points[2]);
-                sumLength += addEdge(points[2], points[0]);
-                sumArea += addTriangle(points[0], points[1], points[2]);
-            } else {
-                sumLength += addEdge(points[0], points[1]);
-                sumLength += addEdge(points[1], points[2]);
-                sumLength += addEdge(points[2], points[3]);
-                sumLength += addEdge(points[3], points[0]);
-                sumLength += addEdge(points[1], points[3]);
-                sumArea += addTriangle(points[0], points[1], points[2]);
-                sumArea += addTriangle(points[2], points[3], points[0]);
-            }
+        var geometry = mesh.geometry();
+        var indices = mesh.indices();
+        // one Vector3f per vertex, shared by every edge and triangle referencing it
+        var points = new Vector3f[mesh.vertexCount()];
+        for (int v = 0; v < points.length; v++) {
+            int off = PhotonMesh.geometryOffset(v);
+            points[v] = new Vector3f(geometry[off], geometry[off + 1], geometry[off + 2]);
+            this.vertices.add(points[v]);
+        }
+        var seen = new LongOpenHashSet();
+        for (int i = 0; i + 2 < indices.length; i += 3) {
+            int a = indices[i], b = indices[i + 1], c = indices[i + 2];
+            if (a >= points.length || b >= points.length || c >= points.length) continue;
+            sumLength += addEdgeOnce(seen, points, a, b);
+            sumLength += addEdgeOnce(seen, points, b, c);
+            sumLength += addEdgeOnce(seen, points, c, a);
+            sumArea += addTriangle(points[a], points[b], points[c]);
         }
         this.edgeSumLength = sumLength;
         this.triangleSumArea = sumArea;
+    }
+
+    /** Adds the edge unless an adjoining triangle already contributed it; returns the length added. */
+    private double addEdgeOnce(LongOpenHashSet seen, Vector3f[] points, int a, int b) {
+        long key = a < b ? ((long) a << 32) | b : ((long) b << 32) | a;
+        if (!seen.add(key)) {
+            return 0;
+        }
+        return addEdge(points[a], points[b]);
     }
 
     public List<Vector3f> getVertices() {

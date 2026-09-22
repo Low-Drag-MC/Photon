@@ -21,6 +21,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
 import com.lowdragmc.lowdraglib2.gui.ui.event.CommandEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.lowdraglib2.gui.util.DrawerHelperClient;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
@@ -48,6 +49,7 @@ import com.lowdragmc.photon.gui.editor.view.timeline.TrackEditor;
 import com.lowdragmc.photon.gui.editor.view.timeline.TrackUIState;
 import dev.vfyjxf.taffy.style.AlignItems;
 import dev.vfyjxf.taffy.style.FlexDirection;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
@@ -288,15 +290,39 @@ public class FXTimelineView extends View implements TimelineContext {
             layout.flexDirection(FlexDirection.ROW);
             layout.gapAll(2);
         });
-        playButton.setText("photon.gui.editor.timeline.play").setOnClick(e -> togglePlay());
-        playButton.setId("timeline.play").layout(layout -> layout.width(46))
-                .addEventListener(UIEvents.TICK, e -> playButton.text.setText(Component.translatable(
-                        isPlaying() ? "photon.gui.editor.timeline.pause" : "photon.gui.editor.timeline.play")));
-        var stopButton = new Button().setText("photon.gui.editor.timeline.stop").setOnClick(e -> stop());
-        stopButton.setId("timeline.stop").layout(layout -> layout.width(46));
+        // the play icon IS the state, so a DynamicTexture rather than a TICK listener swapping it
+        transportButton(playButton, "timeline.play",
+                DynamicTexture.of(() -> isPlaying() ? PhotonIcons.TRANSPORT_PAUSE : PhotonIcons.TRANSPORT_PLAY),
+                "photon.gui.editor.timeline.play.tip", this::togglePlay);
+        var toStart = transportButton(new Button(), "timeline.stop", PhotonIcons.TRANSPORT_TO_START,
+                "photon.gui.editor.timeline.stop.tip", this::stop);
+        var stepBack = transportButton(new Button(), "timeline.stepBack", PhotonIcons.TRANSPORT_STEP_BACK,
+                "photon.gui.editor.timeline.step_back.tip", () -> stepFrames(-1));
+        var stepForward = transportButton(new Button(), "timeline.stepForward", PhotonIcons.TRANSPORT_STEP_FORWARD,
+                "photon.gui.editor.timeline.step_forward.tip", () -> stepFrames(1));
+        var toEnd = transportButton(new Button(), "timeline.toEnd", PhotonIcons.TRANSPORT_TO_END,
+                "photon.gui.editor.timeline.to_end.tip", this::jumpToEnd);
         // empty flex filler pushes the mode toggles to the right of the (capped-width) time field
         var spacer = new UIElement().setId("timeline.transportSpacer").layout(layout -> layout.flex(1));
-        return bar.addChildren(playButton, stopButton, createTimeField(), spacer, createEndModeToggle(), createWrapModeToggle());
+        return bar.addChildren(toStart, stepBack, playButton, stepForward, toEnd,
+                createTimeField(), spacer, createEndModeToggle(), createWrapModeToggle());
+    }
+
+    /** One square icon-only transport button, sized off the bar's height. */
+    private Button transportButton(Button button, String id, IGuiTexture icon, String tooltip, Runnable action) {
+        // __white_icon__: themes with light buttons re-tint the glyph off this class
+        button.noText().addPreIcon(icon).setOnClick(e -> action.run()).addClass("__white_icon__");
+        button.setId(id).layout(layout -> layout.aspectRatio(1).heightPercent(100))
+                .style(style -> style.tooltips(tooltip));
+        return button;
+    }
+
+    /** Park the playhead on the end of the blue content-extent bar. */
+    private void jumpToEnd() {
+        var contentMax = contentMaxTick();
+        if (contentMax <= 0) return;
+        fxEditor.sceneView.particleManager.pause();
+        fxEditor.sceneView.simulateTo(Math.round(contentMax));
     }
 
     /** Editable current-time field (seconds): tracks the playhead live, jumps the playhead on blur. */
@@ -783,7 +809,13 @@ public class FXTimelineView extends View implements TimelineContext {
             var mx = origin + (float) ((t - scrollTicks) * scale);
             if (mx < x || mx > x + width) continue;
             DrawerHelperClient.drawSolidRect(graphics, mx, y, 1, height, ColorPattern.GRAY.color);
-            DrawerHelperClient.drawText(graphics, String.valueOf(Math.round(t)), mx + 2, y + 3, 1f, ColorPattern.WHITE.color);
+            // the guard above places the tick LINE only; the label runs on from mx + 2. Dropping it
+            // beats overflowing the ruler, which would paint the digits over the panels either side.
+            var label = String.valueOf(Math.round(t));
+            var labelX = mx + 2;
+            if (rulerLabelFits(label, labelX, x, width)) {
+                DrawerHelperClient.drawText(graphics, label, labelX, y + 3, 1f, ColorPattern.WHITE.color);
+            }
         }
         drawContentExtent(graphics, x, y, width, height);
         drawPlayhead(graphics, x, y, width, height, graphics.partialTick);
@@ -799,6 +831,12 @@ public class FXTimelineView extends View implements TimelineContext {
         var endX = Math.min(x + width, origin + (float) ((contentMax - scrollTicks) * scale));
         if (endX <= startX) return;
         DrawerHelperClient.drawSolidRect(graphics, startX, y + height - 1, endX - startX, 1, ColorPattern.BLUE.color);
+    }
+
+    /** Whether a ruler label drawn at {@code labelX} fits inside {@code [x, x + width)} — its WIDTH
+     *  being the point, where the visibility guard used to consider only the 1px tick line. */
+    public static boolean rulerLabelFits(String label, float labelX, float x, float width) {
+        return labelX >= x && labelX + Minecraft.getInstance().font.width(label) <= x + width;
     }
 
     private double niceInterval(double raw) {
@@ -1637,7 +1675,15 @@ public class FXTimelineView extends View implements TimelineContext {
 
     // ------------------------------------------------------------------ transport / preview / keys
 
-    private boolean isPlaying() { return fxEditor.sceneView.particleManager.isPlaying(); }
+    public boolean isPlaying() { return fxEditor.sceneView.particleManager.isPlaying(); }
+
+    /** Nudge the playhead by {@code delta} ticks, pausing first. Discrete rather than key-repeat:
+     *  stepping backwards replays from 0, since a particle sim cannot run in reverse. */
+    public void stepFrames(int delta) {
+        var pm = fxEditor.sceneView.particleManager;
+        pm.pause();
+        fxEditor.sceneView.simulateTo(Math.max(0, pm.getTime() + delta));
+    }
 
     /** Signals fire only during live forward playback — keep the player gated to {@link #isPlaying()} so
      *  scrub/preview replays (which re-run from tick 0) never spam listeners. */
@@ -1652,13 +1698,15 @@ public class FXTimelineView extends View implements TimelineContext {
         }
     }
 
-    private void togglePlay() {
+    /** Play/pause the editor preview. Public so the keymap can drive it. */
+    public void togglePlay() {
         var pm = fxEditor.sceneView.particleManager;
         if (pm.isPlaying()) pm.pause();
         else pm.play();
     }
 
-    private void stop() {
+    /** Pause and rewind the preview to the start. Public so the keymap can drive it. */
+    public void stop() {
         var pm = fxEditor.sceneView.particleManager;
         pm.pause();
         fxEditor.sceneView.reset();

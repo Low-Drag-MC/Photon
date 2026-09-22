@@ -42,7 +42,18 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
             return IGuiTexture.MISSING_TEXTURE;
         }
 
-        // 1.21 bound the missing checkerboard in begin() — keep broken materials visibly broken
+        /**
+         * 1.21 bound the missing checkerboard in {@code begin()} — keep broken materials visibly broken.
+         * <p>
+         * ⚠️ PHOTON's own RenderType, never a vanilla one. 1.21 returned {@code rendertype_solid} here,
+         * which draws correctly on the CPU path — the vertices arrive already transformed — and
+         * catastrophically under GPU instancing, where the transform lives in per-instance attributes a
+         * vanilla program does not declare, so every model drew untransformed at the origin and enormous.
+         * Going through {@code MaterialRenderTypes} is what makes the instanced variant derivable:
+         * {@code Emitter.bakeInstancedGroup} re-derives the pipeline from this type's
+         * {@code InstancedRecipe}, which a foreign RenderType has none of (and the group then falls back
+         * to the CPU path rather than drawing wrongly).
+         */
         @Override
         public RenderType getRenderType(MaterialSetting setting, VertexFormat.Mode mode) {
             return MaterialRenderTypes.hdrParticle(MissingTextureAtlasSprite.getLocation(),

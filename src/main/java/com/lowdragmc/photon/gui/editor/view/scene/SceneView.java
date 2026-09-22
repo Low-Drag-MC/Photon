@@ -269,6 +269,12 @@ public class SceneView extends View implements FXSceneOptions {
 
     public class ParticleSceneEditor extends SceneEditor {
 
+        /** Whether the fly camera is being driven right now (right mouse held). Exposed for the
+         *  keymap: the gizmo shortcuts sit on W/A/S/D/Q/E, which the fly controls also poll. */
+        public boolean isCameraMoving() {
+            return isCameraMoving;
+        }
+
 
         public SceneView sceneView() {
             return SceneView.this;

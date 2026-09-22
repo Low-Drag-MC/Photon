@@ -151,6 +151,17 @@ public class TileParticle implements IParticle {
         setRotation(initialRotation);
         setColor(initialColor);
         update(1f);
+        // update() skips the pure visual recomputes during a timeline seek, on the promise that the
+        // seek's last two full ticks redo them. A particle with a START DELAY never reaches them:
+        // updateTick returns early for the whole delay, so the frame it first becomes visible on --
+        // the one right after the delay hits 0 -- still carries the raw birth values, with every
+        // over-lifetime curve unapplied. Redo them here, where it is correct for every path.
+        if (PhotonParticleManager.isFastSimulation()) {
+            updateColor();
+            updateSize();
+            updateRotation();
+            updateLight();
+        }
         updateOrigin();
 
         if (runtime.trails.isEnable() && emitter instanceof ParticleEmitter particleEmitter) {

@@ -1,12 +1,15 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
 import com.lowdragmc.photon.client.render.PhotonMaterialUniforms;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonRenderTypes;
+import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.resources.Identifier;
 
 import java.util.List;
@@ -51,20 +54,37 @@ public final class MaterialRenderTypes {
     public static RenderType hdrParticle(Identifier texture, Identifier fragmentShader,
                                          PhotonPipelines.ParticlePipelineKey pipelineKey,
                                          PhotonMaterialUniforms.Values uniforms) {
-        return CACHE.computeIfAbsent(new Key(texture, fragmentShader, pipelineKey, uniforms), key -> {
+        // the fade is a property of the MATERIAL, but it compiles into the fragment stage, so it has to
+        // reach the pipeline through the key — and it must agree with the uniforms, or the pipeline would
+        // declare a sampler the drain was never asked to bind
+        var key0 = pipelineKey.withSoftParticles(uniforms.usesSoftParticles());
+        return CACHE.computeIfAbsent(new Key(texture, fragmentShader, key0, uniforms), key -> {
             var setup = RenderSetup.builder(PhotonPipelines.hdrParticle(key.fragmentShader(), key.pipelineKey()))
                     .withTexture("Sampler0", key.texture())
                     .useLightmap();
+            // what the drain fills from this frame's capture; demand-driven, so a frame with no soft
+            // material in it takes no depth copy at all
+            var sceneSamplers = key.uniforms().usesSoftParticles()
+                    ? List.of(PhotonShaderCompiler.SCENE_DEPTH) : List.<String>of();
+            // Photon's own drain and the preview renderer rebind these from the live capture; the
+            // vanilla RenderSetup path still needs SOMETHING bound for every sampler the pipeline
+            // declares, hence the placeholder (same shape as PhotonRenderTypes.createCustomShader).
+            sceneSamplers.forEach(name -> setup.withTexture(name, MissingTextureAtlasSprite.getLocation()));
             // NB: no sortOnUpload() — 26.1 only honours it in MultiBufferSource.BufferSource, which no
             // Photon draw path goes through (RenderType.draw doesn't sort either). Back-to-front sorting
             // is RendererSetting.SortMode, applied by PhotonDistanceSort in the bake.
             var renderType = RenderType.create("photon_hdr_particle", setup.createRenderSetup());
             PhotonMaterialUniforms.associate(renderType, key.uniforms());
+            if (key.uniforms().usesSoftParticles()) {
+                // the fade reads U_InverseProjectionMatrix out of the PhotonEngine block, so RenderTypeMixin
+                // has to bind it on the vanilla RenderType.draw path too
+                PhotonEngineUniforms.register(renderType);
+            }
             PhotonRenderTypes.registerDrawInfo(renderType, new PhotonRenderTypes.PhotonDrawInfo(
                     new PhotonRenderTypes.PhotonDrawInfo.Programs(
                             PhotonPipelines.hdrParticle(key.fragmentShader(), key.pipelineKey())),
                     new PhotonRenderTypes.PhotonDrawInfo.Bindings(
-                            Map.of("Sampler0", key.texture()), List.of(), null, null),
+                            Map.of("Sampler0", key.texture()), sceneSamplers, null, null),
                     new PhotonRenderTypes.PhotonDrawInfo.InstancedRecipe(
                             key.pipelineKey(), key.fragmentShader(), null)));
             return renderType;
