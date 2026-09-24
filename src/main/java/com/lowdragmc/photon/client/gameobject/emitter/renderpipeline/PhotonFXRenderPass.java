@@ -3,7 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 
 /**
  * M0 stub (original in git history, 1.21 branch). In 1.21 one instance was the batching unit per
- * (renderer settings, VertexFormat.Mode, VertexFormat): CPU path via Tesselator→MeshData→VBO,
+ * (renderer settings, PrimitiveTopology, VertexFormat): CPU path via Tesselator→MeshData→VBO,
  * instanced path via the raw-GL backend, plus wireframe and mask sub-passes with dedicated
  * materials.
  * <p>

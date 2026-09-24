@@ -12,7 +12,7 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleRenderType;
-import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
@@ -205,7 +205,7 @@ public abstract class FXObject extends Particle implements IFXObject {
         var pos = transform.position();
         BlockPos blockPos = BlockPos.containing(pos.x, pos.y, pos.z);
         return this.realLevel.hasChunkAt(blockPos)
-                ? LevelRenderer.getLightCoords(this.realLevel, blockPos) : 0;
+                ? LightCoordsUtil.getLightCoords(this.realLevel, blockPos) : 0;
     }
 
     /**

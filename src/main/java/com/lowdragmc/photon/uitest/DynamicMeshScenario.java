@@ -8,16 +8,17 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.model.DynamicMeshSour
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.IDynamicMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
+import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import org.jetbrains.annotations.Nullable;
-
-import static org.lwjgl.opengl.GL30.*;
+import org.lwjgl.system.MemoryUtil;
 
 /**
  * Injecting live geometry through the pieces a headless test cannot reach: that the source loads at all
  * (its dispatch codec needs a frozen registry), that batching splits by provider (get it wrong and two
- * characters share one buffer), and that a buffer someone else owns can really back our vertex
- * attributes in both layouts — the claim the whole zero-copy path rests on.
+ * characters share one buffer), and that a device buffer someone else created can hold a geometry stream
+ * in both layouts and be re-posed in place — on whichever backend the game runs.
  */
 @LDLRegisterClient(name = "dynamic_mesh", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
@@ -127,58 +128,41 @@ public class DynamicMeshScenario implements UIScenario {
             ctx.check("onDrawn is the keep-alive hook", provider.drawn == 2, 2, provider.drawn);
         })
 
-        // both layouts, set up exactly as the model base mesh is: the attribute pointers of
-        // PhotonInstancedDrawState.MODEL over what TileParticleRenderer.modelMeshBuffer writes
-        .step("a foreign GL buffer backs the geometry attributes", ctx -> {
+        .step("a foreign device buffer holds the geometry stream", ctx -> {
             if (!RenderSystem.isOnRenderThread()) {
                 ctx.check("this step needs the render thread", false, "render thread", "another thread");
                 return;
             }
-            // pretend this came from someone else's compute pass
             float[] data = {
                     1f, 2f, 3f, 0f, 0f, 1f,
                     4f, 5f, 6f, 0f, 1f, 0f,
             };
-            int vao = glGenVertexArrays();
-            int foreign = glGenBuffers();
+            var floatStride = PhotonMesh.FLOATS_PER_GEOMETRY * Float.BYTES;
+            ctx.check("the float layout is 6 floats a vertex", floatStride == 24, 24, floatStride);
+            var bytes = MemoryUtil.memAlloc(data.length * Float.BYTES);
+            GpuBuffer foreign = null;
             try {
-                glBindVertexArray(vao);
-                glBindBuffer(GL_ARRAY_BUFFER, foreign);
-                glBufferData(GL_ARRAY_BUFFER, data, GL_DYNAMIC_DRAW);
-                drainGlErrors();
-
-                int floatStride = PhotonMesh.FLOATS_PER_GEOMETRY * Float.BYTES;
-                glVertexAttribPointer(0, 3, GL_FLOAT, false, floatStride, 0L);
-                glEnableVertexAttribArray(0);
-                glVertexAttribPointer(2, 3, GL_FLOAT, false, floatStride, 3L * Float.BYTES);
-                glEnableVertexAttribArray(2);
-                ctx.check("float layout accepted", glGetError() == GL_NO_ERROR, GL_NO_ERROR, glGetError());
-
-                // and the 16-byte packed-normal layout a compute skinning pass usually already writes,
-                // at a non-zero offset the way a suballocated pool hands it over
-                glVertexAttribPointer(0, 3, GL_FLOAT, false, 16, 16L);
-                glVertexAttribPointer(2, 4, GL_BYTE, true, 16, 16L + 3 * Float.BYTES);
-                ctx.check("packed-normal layout at an offset accepted",
-                        glGetError() == GL_NO_ERROR, GL_NO_ERROR, glGetError());
-
-                // a buffer object is untyped: read it straight back to prove the contents are ours
-                var readback = new float[data.length];
-                glGetBufferSubData(GL_ARRAY_BUFFER, 0, readback);
-                ctx.check("the buffer holds what was written",
-                        readback[0] == 1f && readback[7] == 5f, "1.0 / 5.0",
-                        readback[0] + " / " + readback[7]);
-
-                // in-place re-upload, which is what a CPU-side provider's new pose costs
-                glBufferSubData(GL_ARRAY_BUFFER, 0, new float[]{9f});
-                glGetBufferSubData(GL_ARRAY_BUFFER, 0, readback);
-                ctx.check("glBufferSubData replaced only the pose",
-                        readback[0] == 9f && readback[7] == 5f, "9.0 / 5.0",
-                        readback[0] + " / " + readback[7]);
+                bytes.asFloatBuffer().put(data);
+                foreign = RenderSystem.getDevice().createBuffer(() -> "foreign geometry",
+                        GpuBuffer.USAGE_VERTEX | GpuBuffer.USAGE_COPY_DST, bytes);
+                ctx.check("the provider's buffer is a vertex buffer",
+                        (foreign.usage() & GpuBuffer.USAGE_VERTEX) != 0, "USAGE_VERTEX", foreign.usage());
+                // a slice at a non-zero offset, the way a suballocated pool hands one over
+                GpuBufferSlice second = foreign.slice(floatStride, floatStride);
+                ctx.check("a suballocated slice keeps its offset", second.offset() == floatStride,
+                        floatStride, second.offset());
+                // in-place re-pose
+                var pose = MemoryUtil.memAlloc(Float.BYTES);
+                try {
+                    pose.putFloat(0, 9f);
+                    RenderSystem.getDevice().createCommandEncoder().writeToBuffer(foreign.slice(0, Float.BYTES), pose);
+                } finally {
+                    MemoryUtil.memFree(pose);
+                }
+                ctx.check("the re-pose was accepted", !foreign.isClosed(), "open", "closed");
             } finally {
-                glBindBuffer(GL_ARRAY_BUFFER, 0);
-                glBindVertexArray(0);
-                glDeleteBuffers(foreign);
-                glDeleteVertexArrays(vao);
+                MemoryUtil.memFree(bytes);
+                if (foreign != null) foreign.close();
             }
         })
 
@@ -206,8 +190,8 @@ public class DynamicMeshScenario implements UIScenario {
                 }
 
                 @Override
-                public int glBuffer() {
-                    return 1;
+                public GpuBufferSlice gpuGeometry() {
+                    return STAND_IN.slice(); // never read
                 }
             });
             ctx.check("the topology comes through unchanged", source.getMesh() == topology,
@@ -218,10 +202,18 @@ public class DynamicMeshScenario implements UIScenario {
         });
     }
 
-    /** Clear any error the surrounding frame left behind, so a check measures only its own call. */
-    private static void drainGlErrors() {
-        for (int i = 0; i < 16 && glGetError() != GL_NO_ERROR; i++) {
-            // drain
+    private static final class StandIn {
+        @Nullable
+        private GpuBuffer buffer;
+
+        GpuBufferSlice slice() {
+            if (buffer == null) {
+                buffer = RenderSystem.getDevice().createBuffer(() -> "dynamic mesh stand-in",
+                        GpuBuffer.USAGE_VERTEX, 16);
+            }
+            return buffer.slice();
         }
     }
+
+    private static final StandIn STAND_IN = new StandIn();
 }

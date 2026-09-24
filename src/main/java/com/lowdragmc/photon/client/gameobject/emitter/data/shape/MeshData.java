@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.shape;
 
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.client.scene.WorldSceneRenderer;
+import com.lowdragmc.lowdraglib2.client.utils.RenderUtils;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
@@ -22,7 +23,6 @@ import com.mojang.blaze3d.vertex.*;
 import dev.vfyjxf.taffy.style.AlignItems;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import lombok.Getter;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -384,16 +384,15 @@ public final class MeshData implements IConfigurable, IPersistedSerializable {
         scene.setCameraYawAndPitch(-135, 25);
     }
 
-    // 26.1: immediate Tesselator+BufferUploader draws are gone — batch through the shared buffer
-    // source with the vanilla lines render type (blend/depth/width owned by the pipeline).
+    // drawn through LDLib2's immediate path with the vanilla lines render type
     public void drawLineFrames(PoseStack poseStack) {
         var edges = getEdges();
         if (edges.isEmpty()) return;
-        var pose = poseStack.last();
-        var mat = pose.pose();
-        var bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
-        var buffer = bufferSource.getBuffer(RenderTypes.lines());
+        RenderUtils.drawImmediate(RenderTypes.lines(), buffer -> emitLineFrames(poseStack, buffer, edges));
+    }
 
+    private static void emitLineFrames(PoseStack poseStack, VertexConsumer buffer, List<Edge> edges) {
+        var mat = poseStack.last().pose();
         for (var edge : edges) {
             var a = edge.a;
             var b = edge.b;
@@ -409,8 +408,6 @@ public final class MeshData implements IConfigurable, IPersistedSerializable {
             buffer.addVertex(mat, a.x + 0.5f, a.y + 0.5f, a.z + 0.5f).setColor(-1).setNormal(poseStack.last(), f, f1, f2).setLineWidth(10);
             buffer.addVertex(mat, b.x + 0.5f, b.y + 0.5f, b.z + 0.5f).setColor(-1).setNormal(poseStack.last(), f, f1, f2).setLineWidth(10);
         }
-
-        bufferSource.endBatch();
     }
 
     @Override

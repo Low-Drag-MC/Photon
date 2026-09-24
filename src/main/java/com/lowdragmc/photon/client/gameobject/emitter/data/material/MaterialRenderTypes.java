@@ -1,12 +1,11 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
 import com.lowdragmc.photon.client.render.PhotonMaterialUniforms;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonRenderTypes;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
@@ -66,20 +65,11 @@ public final class MaterialRenderTypes {
             // material in it takes no depth copy at all
             var sceneSamplers = key.uniforms().usesSoftParticles()
                     ? List.of(PhotonShaderCompiler.SCENE_DEPTH) : List.<String>of();
-            // Photon's own drain and the preview renderer rebind these from the live capture; the
-            // vanilla RenderSetup path still needs SOMETHING bound for every sampler the pipeline
-            // declares, hence the placeholder (same shape as PhotonRenderTypes.createCustomShader).
+            // placeholders; Photon binds the live captures
             sceneSamplers.forEach(name -> setup.withTexture(name, MissingTextureAtlasSprite.getLocation()));
-            // NB: no sortOnUpload() — 26.1 only honours it in MultiBufferSource.BufferSource, which no
-            // Photon draw path goes through (RenderType.draw doesn't sort either). Back-to-front sorting
-            // is RendererSetting.SortMode, applied by PhotonDistanceSort in the bake.
+            // no sortOnUpload(): sorting is RendererSetting.SortMode
             var renderType = RenderType.create("photon_hdr_particle", setup.createRenderSetup());
             PhotonMaterialUniforms.associate(renderType, key.uniforms());
-            if (key.uniforms().usesSoftParticles()) {
-                // the fade reads U_InverseProjectionMatrix out of the PhotonEngine block, so RenderTypeMixin
-                // has to bind it on the vanilla RenderType.draw path too
-                PhotonEngineUniforms.register(renderType);
-            }
             PhotonRenderTypes.registerDrawInfo(renderType, new PhotonRenderTypes.PhotonDrawInfo(
                     new PhotonRenderTypes.PhotonDrawInfo.Programs(
                             PhotonPipelines.hdrParticle(key.fragmentShader(), key.pipelineKey())),
@@ -93,7 +83,7 @@ public final class MaterialRenderTypes {
 
     /** The editor wireframe overlay for one primitive mode: unculled/undepth-tested lines over the
      *  same baked geometry (white texture, vertex colors carry through; discard disabled). */
-    public static RenderType wireframe(VertexFormat.Mode mode) {
+    public static RenderType wireframe(PrimitiveTopology mode) {
         return hdrParticle(Photon.id("textures/particle/white.png"),
                 PhotonPipelines.ParticlePipelineKey.wireframe(mode),
                 new PhotonMaterialUniforms.Values(0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0));

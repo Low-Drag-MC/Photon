@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
@@ -13,7 +14,6 @@ import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import dev.vfyjxf.taffy.style.AlignItems;
@@ -55,7 +55,7 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
          * to the CPU path rather than drawing wrongly).
          */
         @Override
-        public RenderType getRenderType(MaterialSetting setting, VertexFormat.Mode mode) {
+        public RenderType getRenderType(MaterialSetting setting, PrimitiveTopology mode) {
             return MaterialRenderTypes.hdrParticle(MissingTextureAtlasSprite.getLocation(),
                     setting.pipelineKey(mode));
         }
@@ -84,7 +84,7 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
      *  select the pipeline variant), or null when it can't render this geometry — an unresolved
      *  resource, a failed shader compile, or a mode the material has no vertex stage for. */
     @Nullable
-    default RenderType getRenderType(MaterialSetting setting, VertexFormat.Mode mode) {
+    default RenderType getRenderType(MaterialSetting setting, PrimitiveTopology mode) {
         return null;
     }
 

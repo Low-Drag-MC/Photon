@@ -12,7 +12,7 @@ import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
-import net.minecraft.client.renderer.MultiBufferSource;
+import com.lowdragmc.lowdraglib2.client.utils.RenderUtils;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
@@ -43,12 +43,11 @@ public interface IShape extends IConfigurable, IPersistedSerializable, ILDLRegis
 
     void nextPosVel(TileParticle particle, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale);
 
-    // 26.1: immediate Tesselator+BufferUploader draws are gone — route through the scene's buffer
-    // source with the vanilla lines render type (blend/depth/width owned by the pipeline).
-    default void drawGuideLines(PoseStack poseStack, MultiBufferSource bufferSource, float partialTicks, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
+    // drawn through LDLib2's immediate path with the vanilla lines render type
+    default void drawGuideLines(PoseStack poseStack, RenderUtils.ImmediateDraw draw, float partialTicks, IParticleEmitter emitter, Vector3f position, Vector3f rotation, Vector3f scale) {
         var edges = getGuideLines(emitter, position, rotation, scale);
         if (edges.isEmpty()) return;
-        var buffer = bufferSource.getBuffer(RenderTypes.lines());
+        var buffer = draw.getBuffer(RenderTypes.lines());
         RenderBufferUtils.drawEdges(poseStack, buffer, edges, ColorPattern.YELLOW.color, 5);
     }
 

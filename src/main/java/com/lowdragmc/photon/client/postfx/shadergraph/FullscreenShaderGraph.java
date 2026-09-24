@@ -12,6 +12,7 @@ import com.lowdragmc.kilagraph.rendertype.nodes.fog.TotalFogValueNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.fragment.FragmentAlphaBlock;
 import com.lowdragmc.kilagraph.rendertype.nodes.fragment.FragmentAlphaDiscardBlock;
 import com.lowdragmc.kilagraph.rendertype.nodes.fragment.FragmentBaseColorBlock;
+import com.lowdragmc.kilagraph.rendertype.nodes.fragment.FragmentColorTargetBlock;
 import com.lowdragmc.kilagraph.rendertype.nodes.fragment.FragmentEmissionBlock;
 import com.lowdragmc.kilagraph.rendertype.nodes.input.NormalNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.input.PositionNode;
@@ -19,6 +20,7 @@ import com.lowdragmc.kilagraph.rendertype.nodes.input.VertexColorNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.input.ViewDirectionNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.input.fragment.CylindricalDistanceFragmentInputNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.input.fragment.SphericalDistanceFragmentInputNode;
+import com.lowdragmc.kilagraph.rendertype.nodes.input.vertex.InstanceDataNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.input.vertex.InstanceIdNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.input.vertex.VertexAttributeInputNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.input.vertex.VertexIdNode;
@@ -100,7 +102,7 @@ public class FullscreenShaderGraph extends RenderTypeGraph {
             VertexModelPositionBlock.class, VertexModelNormalBlock.class,
             VaryingCustomFloatBlock.class, VaryingCustomVec2Block.class,
             VaryingCustomVec3Block.class, VaryingCustomVec4Block.class,
-            VertexIdNode.class, InstanceIdNode.class,
+            VertexIdNode.class, InstanceIdNode.class, InstanceDataNode.class,
             // vertex-format-bound inputs (only Position exists on the quad) — and Fresnel/ProjectionFromPosition
             // build on a surface normal / a vertex position, neither of which a blit quad has
             VertexColorNode.class, PositionNode.class, NormalNode.class, ViewDirectionNode.class,
@@ -125,9 +127,9 @@ public class FullscreenShaderGraph extends RenderTypeGraph {
             // pure-function rule: scene textures come through declared inputs, not implicit capture
             SceneColorNode.class, SceneDepthNode.class, ScreenNode.class, ScreenPositionNode.class,
             GlobalsUboNode.class,
-            // particle-pipeline fragment blocks — FullscreenOutputBlock is the single output
+            // particle-pipeline fragment blocks; FullscreenOutputBlock is the single output
             FragmentBaseColorBlock.class, FragmentAlphaBlock.class,
-            FragmentEmissionBlock.class, FragmentAlphaDiscardBlock.class
+            FragmentEmissionBlock.class, FragmentAlphaDiscardBlock.class, FragmentColorTargetBlock.class
     );
 
     /**

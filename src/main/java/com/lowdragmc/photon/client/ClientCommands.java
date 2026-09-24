@@ -56,7 +56,7 @@ public class ClientCommands {
                             .shouldCloseOnEsc(false)
                             .shouldCloseOnKeyInventory(false);
                     var screen = new ModularUIScreen(ui, Component.empty());
-                    minecraft.setScreen(screen);
+                    minecraft.setScreenAndShow(screen);
                     return 1;
                 }),
                 // post-effect smoke test: keeps requesting the effect every frame until "clear".

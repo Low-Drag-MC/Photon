@@ -5,12 +5,9 @@
   "compatibilityLevel": "JAVA_21",
   "plugin": "com.lowdragmc.photon.core.mixins.PhotonMixinPlugin",
   "client": [
-    "GlConstMixin",
     "GlobalSettingsUniformMixin",
     "ParticleEngineMixin",
-    "RenderTypeMixin",
-    "SubmitNodeStorageMixin",
-    "VertexArrayCacheMixin",
+    "ShaderManagerMixin",
     "accessor.ParticleEngineAccessor",
     "iris.BlendOverrideAccessors$BlendModeOverrideAccessor",
     "iris.BlendOverrideAccessors$BufferBlendOverrideAccessor",

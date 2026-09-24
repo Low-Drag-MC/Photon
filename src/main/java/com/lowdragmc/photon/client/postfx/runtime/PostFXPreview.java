@@ -3,12 +3,12 @@ package com.lowdragmc.photon.client.postfx.runtime;
 import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.render.PhotonFramebufferBlit;
+import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
+import com.mojang.blaze3d.GpuFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.texture.AbstractTexture;
@@ -95,20 +95,25 @@ public final class PostFXPreview {
             colorCapture = PostFXTargetPool.acquire(width, height);
             if (colorCapture == null) return;
         }
-        PhotonFramebufferBlit.color(cleanScene, colorCapture.view());
+        PhotonFullscreenPass.copy("Photon postfx preview capture", cleanScene, colorCapture.view(), null);
 
-        // depth matters: two of the shipped passes (outline, dof_composite) read it, and without a copy
-        // their preview would fall back to the untouched scene
-        if (cleanDepth == null) return;
+        // outline and dof_composite read depth; it can only be copied, so no COPY_SRC means no depth preview
+        if (cleanDepth == null || (cleanDepth.texture().usage() & GpuTexture.USAGE_COPY_SRC) == 0) return;
+        if (depthCapture != null && depthCapture.getFormat() != cleanDepth.texture().getFormat()) {
+            depthCaptureView.close();
+            depthCapture.close();
+            depthCapture = null;
+            depthCaptureView = null;
+        }
         if (depthCapture == null) {
-            // the SOURCE's format, not a fixed one: a depth glBlitFramebuffer requires the two formats
-            // to match exactly, and a mismatch fails silently (the preview would just show stale depth)
+            // a texture copy requires matching formats
             depthCapture = RenderSystem.getDevice().createTexture(() -> "Photon postfx preview depth",
-                    GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT,
+                    GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_COPY_DST,
                     cleanDepth.texture().getFormat(), width, height, 1, 1);
             depthCaptureView = RenderSystem.getDevice().createTextureView(depthCapture);
         }
-        PhotonFramebufferBlit.depth(cleanDepth.texture(), depthCapture, width, height);
+        RenderSystem.getDevice().createCommandEncoder()
+                .copyTextureToTexture(cleanDepth.texture(), depthCapture, 0, 0, 0, 0, 0, width, height);
     }
 
     /** Run the requested effect over the capture. {@code RenderFrameEvent.Pre} only — no pass is open. */
@@ -139,7 +144,7 @@ public final class PostFXPreview {
             // initializer below would then assign the fields to themselves instead of these
             var color = device.createTexture(() -> "Photon postfx preview",
                     GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT,
-                    TextureFormat.RGBA8, width, height, 1, 1);
+                    GpuFormat.RGBA8_UNORM, width, height, 1, 1);
             var colorView = device.createTextureView(color);
             var id = Photon.id("postfx_preview");
             Minecraft.getInstance().getTextureManager().register(id, new AbstractTexture() {{
@@ -149,7 +154,7 @@ public final class PostFXPreview {
             }});
             result = new Result(colorView, id, width, height);
         }
-        PhotonFramebufferBlit.color(view, result.view());
+        PhotonFullscreenPass.copy("Photon postfx preview", view, result.view(), null);
     }
 
     /**

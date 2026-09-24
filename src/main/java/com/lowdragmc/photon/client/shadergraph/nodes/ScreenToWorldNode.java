@@ -46,8 +46,7 @@ import java.util.List;
  *
  * <p>{@code rawDepth} is an explicit input on purpose: in the particle graph wire it from Scene Depth
  * (<b>Raw</b> sampling, same uv), and in a fullscreen pass from the pass's depth input sampler — a
- * fullscreen graph never samples the scene implicitly. {@code rawDepth == 1} (sky / nothing drawn) maps to
- * the far plane, where the reconstruction is numerically wild: branch on it if that matters.</p>
+ * fullscreen graph never samples the scene implicitly. Reverse-Z: {@code rawDepth == 0} is the far plane.</p>
  */
 @NodeAttribute(name = "photon_screen_to_world", group = "photon_scene",
         graphTypes = {ShaderGraph.class, PhotonShaderFunctionGraph.class, FullscreenShaderGraph.class})
@@ -69,7 +68,8 @@ public class ScreenToWorldNode extends ShaderNode {
     @Override
     public void onDefinePorts(IPortDefinitionContext context) {
         context.addInputPort("uv", RenderTypeGraphTypes.VEC2).withoutConfigurator();
-        context.addInputPort("rawDepth", TypeHandles.FLOAT).withDefaultValue(1.0f);
+        // reverse-Z far plane
+        context.addInputPort("rawDepth", TypeHandles.FLOAT).withDefaultValue(0.0f);
         context.addOutputPort("position", RenderTypeGraphTypes.VEC3);
     }
 
@@ -86,11 +86,11 @@ public class ScreenToWorldNode extends ShaderNode {
         String iView = ctx.transformField(
                 PhotonFullscreenCompiler.isCompiling() ? "IViewMat" : "IModelViewMat", GlslType.MAT4).code();
 
-        // uv -> NDC. The capture is sized after the target being drawn into, so the screen uv is already
-        // relative to the rect being projected into and no U_ViewPort remap belongs here.
+        // uv -> NDC; DepthZRemap maps window depth to the device's NDC depth range
         String screenUv = ctx.temp(GlslType.VEC2, uv.code()).code();
+        String zRemap = ctx.transformField("DepthZRemap", GlslType.VEC2).code();
         String clip = ctx.temp(GlslType.VEC4, "vec4(" + screenUv + " * 2.0 - 1.0, "
-                + rawDepth + " * 2.0 - 1.0, 1.0)").code();
+                + rawDepth + " * " + zRemap + ".x + " + zRemap + ".y, 1.0)").code();
         // The inverse projection yields homogeneous view coords: the w must be divided out (perspective).
         String viewH = ctx.temp(GlslType.VEC4, iProj + " * " + clip).code();
         String cameraRelative = ctx.temp(GlslType.VEC3,
@@ -120,7 +120,8 @@ public class ScreenToWorldNode extends ShaderNode {
     public String glslExample() {
         return """
                 vec4 clip = vec4(uv * 2.0 - 1.0,
-                                 rawDepth * 2.0 - 1.0, 1.0);
+                                 rawDepth * DepthZRemap.x
+                                     + DepthZRemap.y, 1.0);
                 vec4 h = IProjMat * clip;
                 vec3 p = (IViewMat
                        * vec4(h.xyz / h.w, 1.0)).xyz;

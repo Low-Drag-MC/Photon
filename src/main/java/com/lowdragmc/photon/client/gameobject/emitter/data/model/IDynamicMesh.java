@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.model;
 
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -9,19 +10,12 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>The contract: {@link #topology()} is the unchanging half and should be the same instance every
  * frame; {@link #revision()} changes when and only when the geometry's contents do, and is the entire
- * basis on which work is skipped; {@link #geometry()} or {@link #glBuffer()} supplies that revision's
+ * basis on which work is skipped; {@link #geometry()} or {@link #gpuGeometry()} supplies that revision's
  * positions and normals in {@link PhotonMesh#geometry()}'s layout, in the topology's vertex order.</p>
  *
- * <p>A GPU provider's buffer is bound directly as Photon's geometry stream — no copy, no readback. A
- * buffer object is untyped in GL, so an SSBO a compute pass wrote is bindable as a vertex buffer.</p>
- *
- * <p>⚠️ The GL path cannot feed an emission shape: that samples vertices on the CPU, and the point of
- * the GL path is that they never come back. A provider wanting both supplies {@link #geometry()} too.</p>
- *
- * <p>⚠️ Photon binds {@link #glBuffer()} and reads it later in the frame. The provider must keep that
- * buffer alive and that offset meaning the same vertices while it keeps answering with the same
- * revision — a suballocator recycling a slice under us produces another model's vertices, silently.
- * {@link #onDrawn()} is the hook to pin the allocation with.</p>
+ * <p>{@link #gpuGeometry()} is a backend-neutral {@link GpuBufferSlice} created with {@code USAGE_VERTEX}.
+ * ⚠️ No renderer binds it yet, and it cannot feed an emission shape; supply {@link #geometry()} too. The slice
+ * must stay valid while the revision is unchanged ({@link #onDrawn()} pins it).</p>
  */
 public interface IDynamicMesh {
 
@@ -42,7 +36,7 @@ public interface IDynamicMesh {
     /**
      * This revision's deformed tangents, or null to derive them from the UVs.
      *
-     * <p>⚠️ Deriving rebuilds a weld map over the whole mesh per revision. ⚠️ Ignored on the GL path,
+     * <p>⚠️ Deriving rebuilds a weld map over the whole mesh per revision. ⚠️ Ignored on the GPU path,
      * which supplies positions and normals only — a pass drawn with tangents then gets the rest pose's
      * frame.</p>
      */
@@ -51,18 +45,13 @@ public interface IDynamicMesh {
         return null;
     }
 
-    /** A GL buffer holding this revision's geometry stream, or {@code 0} for none. */
-    default int glBuffer() {
-        return 0;
+    @Nullable
+    default GpuBufferSlice gpuGeometry() {
+        return null;
     }
 
-    default long glByteOffset() {
-        return 0L;
-    }
-
-    /** Whether {@link #glBuffer()} packs each normal as four signed bytes (16B a vertex) rather than
-     *  three floats. Only the attribute pointer changes; the shader sees a vec3 either way. */
-    default boolean glPackedNormals() {
+    /** Whether {@link #gpuGeometry()} packs normals as four signed bytes (16B a vertex) instead of floats. */
+    default boolean gpuPackedNormals() {
         return false;
     }
 

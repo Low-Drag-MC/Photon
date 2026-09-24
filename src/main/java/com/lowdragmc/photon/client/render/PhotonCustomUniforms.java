@@ -2,19 +2,15 @@ package com.lowdragmc.photon.client.render;
 
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.buffers.Std140Builder;
 import com.mojang.blaze3d.systems.RenderSystem;
-import net.minecraft.client.renderer.rendertype.RenderType;
-import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryUtil;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The live {@code PhotonCustomMaterial} std140 block for ONE custom-shader material instance —
@@ -25,6 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * (block members are global scope, so user code reads them unchanged).
  */
 public final class PhotonCustomUniforms implements AutoCloseable {
+
+    public static final String UBO_NAME = "PhotonCustomMaterial";
 
     /** GLSL types a custom material uniform may have (std140 scalar/vector/matrix subset). */
     public enum Type {
@@ -55,6 +53,8 @@ public final class PhotonCustomUniforms implements AutoCloseable {
 
     /** Name-sorted fields (MUST mirror the converter's block emission order). */
     private final List<Field> fields;
+    /** Each field's std140 byte offset, parallel to {@link #fields}. */
+    private final int[] offsets;
     private final Map<String, float[]> values = new HashMap<>();
     private final int byteSize;
 
@@ -65,27 +65,37 @@ public final class PhotonCustomUniforms implements AutoCloseable {
 
     public PhotonCustomUniforms(List<Field> fields) {
         this.fields = List.copyOf(fields);
-        this.byteSize = std140Size(this.fields);
+        this.offsets = new int[this.fields.size()];
+        var end = 0;
+        for (int i = 0; i < this.fields.size(); i++) {
+            var type = this.fields.get(i).type();
+            offsets[i] = align(end, alignment(type));
+            end = offsets[i] + size(type);
+        }
+        this.byteSize = Math.max(16, align(end, 16));
     }
 
-    /** std140: scalars 4B@4, vec2 8B@8, vec3/vec4 16B@16, mat4 64B@16; block padded to 16. */
-    private static int std140Size(List<Field> fields) {
-        var offset = 0;
-        for (var field : fields) {
-            var size = switch (field.type()) {
-                case FLOAT, INT -> 4;
-                case VEC2 -> 8;
-                case VEC3, VEC4 -> 16;
-                case MAT4 -> 64;
-            };
-            var align = switch (field.type()) {
-                case FLOAT, INT -> 4;
-                case VEC2 -> 8;
-                default -> 16;
-            };
-            offset = (offset + align - 1) / align * align + size;
-        }
-        return Math.max(16, (offset + 15) / 16 * 16);
+    /** std140: a scalar after a vec3 packs into its fourth component, so offsets are computed, not built. */
+    private static int size(Type type) {
+        return switch (type) {
+            case FLOAT, INT -> 4;
+            case VEC2 -> 8;
+            case VEC3 -> 12;
+            case VEC4 -> 16;
+            case MAT4 -> 64;
+        };
+    }
+
+    private static int alignment(Type type) {
+        return switch (type) {
+            case FLOAT, INT -> 4;
+            case VEC2 -> 8;
+            case VEC3, VEC4, MAT4 -> 16;
+        };
+    }
+
+    private static int align(int offset, int alignment) {
+        return (offset + alignment - 1) / alignment * alignment;
     }
 
     public boolean isEmpty() {
@@ -120,27 +130,22 @@ public final class PhotonCustomUniforms implements AutoCloseable {
         if (!dirty) {
             return;
         }
-        ByteBuffer bytes = MemoryUtil.memAlloc(byteSize);
+        // calloc: padding is uploaded too
+        ByteBuffer bytes = MemoryUtil.memCalloc(byteSize);
         try {
-            var builder = Std140Builder.intoBuffer(bytes);
-            for (var field : fields) {
+            for (int f = 0; f < fields.size(); f++) {
+                var field = fields.get(f);
                 var v = values.getOrDefault(field.name(), new float[0]);
-                switch (field.type()) {
-                    case FLOAT -> builder.putFloat(at(v, 0));
-                    case INT -> builder.putInt((int) at(v, 0));
-                    case VEC2 -> builder.putVec2(at(v, 0), at(v, 1));
-                    case VEC3 -> builder.putVec3(at(v, 0), at(v, 1), at(v, 2));
-                    case VEC4 -> builder.putVec4(at(v, 0), at(v, 1), at(v, 2), at(v, 3));
-                    case MAT4 -> {
-                        var m = new float[16];
-                        for (int i = 0; i < 16; i++) {
-                            m[i] = at(v, i);
-                        }
-                        builder.putMat4f(new Matrix4f().set(m));
+                var offset = offsets[f];
+                if (field.type() == Type.INT) {
+                    bytes.putInt(offset, (int) at(v, 0));
+                } else {
+                    // column-major for mat4, which is also how 1.21 JSON listed matrix values
+                    for (int i = 0; i < field.type().components; i++) {
+                        bytes.putFloat(offset + i * Float.BYTES, at(v, i));
                     }
                 }
             }
-            bytes.rewind();
             RenderSystem.getDevice().createCommandEncoder().writeToBuffer(buffer.slice(), bytes);
             dirty = false;
         } finally {
@@ -159,28 +164,6 @@ public final class PhotonCustomUniforms implements AutoCloseable {
 
     private static float at(float[] v, int i) {
         return i < v.length ? v[i] : 0f;
-    }
-
-    // ---- RenderType association (vanilla-phase draws bind via RenderTypeMixin) -------------------
-
-    private static final Map<RenderType, PhotonCustomUniforms>
-            BY_RENDER_TYPE = new ConcurrentHashMap<>();
-
-    public static void register(RenderType renderType,
-                                PhotonCustomUniforms uniforms) {
-        BY_RENDER_TYPE.put(renderType, uniforms);
-    }
-
-    /** Drop a dead RenderType's association (shader invalidation — prevents registry leaks). */
-    public static void unregister(RenderType renderType) {
-        BY_RENDER_TYPE.remove(renderType);
-    }
-
-    /** The slice to bind as {@code PhotonCustomMaterial} for this RenderType's draw, or null. */
-    @Nullable
-    public static GpuBufferSlice sliceFor(RenderType renderType) {
-        var uniforms = BY_RENDER_TYPE.get(renderType);
-        return uniforms == null ? null : uniforms.slice();
     }
 
     @Override

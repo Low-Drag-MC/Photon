@@ -128,6 +128,11 @@ public final class IrisCompat {
         return BRIDGE.isBlendLocked();
     }
 
+    /** @see IrisBridge#runWithoutPackPrograms */
+    public static void runWithoutPackPrograms(Runnable work) {
+        BRIDGE.runWithoutPackPrograms(work);
+    }
+
     public static void unlockDepthColorIfLocked() {
         BRIDGE.unlockDepthColorIfLocked();
     }

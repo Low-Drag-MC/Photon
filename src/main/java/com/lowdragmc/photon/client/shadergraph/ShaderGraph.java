@@ -6,6 +6,8 @@ import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler;
 import com.lowdragmc.kilagraph.rendertype.format.VertexFormatPresets;
 import com.lowdragmc.kilagraph.rendertype.nodes.input.VertexColorNode;
+import com.lowdragmc.kilagraph.rendertype.nodes.fragment.FragmentColorTargetBlock;
+import com.lowdragmc.kilagraph.rendertype.nodes.input.vertex.InstanceDataNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.input.vertex.VertexAttributeInputNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.texture.TextureNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.vertex.VertexPositionBlock;
@@ -41,10 +43,14 @@ public class ShaderGraph extends RenderTypeGraph {
      * {@code glPosition} block (it would bypass Photon's fixed particle transform — Photon takes the standard
      * {@code ProjMat · ModelViewMat · getParticleData().Position} path, plus KilaGraph's default model-space
      * {@code VertexModelPositionBlock}/{@code VertexModelNormalBlock} for world-position/normal offset).
+     * <p>
+     * KilaGraph's instancing and extra colour targets are excluded too: Photon never binds them.
      */
     private static final Set<Class<? extends Node>> EXCLUDED_NODES = Set.of(
             VertexAttributeInputNode.class,
-            VertexPositionBlock.class
+            VertexPositionBlock.class,
+            InstanceDataNode.class,
+            FragmentColorTargetBlock.class
     );
 
     /**

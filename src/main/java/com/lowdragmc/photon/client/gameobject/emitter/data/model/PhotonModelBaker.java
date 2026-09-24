@@ -92,15 +92,15 @@ final class PhotonModelBaker {
      * Single-use per {@link #bake} call: it memoizes the resolved parent chain, which is only valid
      * for one bake, and it is never shared across threads.
      */
-    private static final class Baker implements ModelBaker, ModelBaker.Interner, MaterialBaker {
+    private static final class Baker implements ModelBaker, ModelBaker.Interner {
         private final Map<Identifier, ResolvedModel> resolved = new HashMap<>();
         /** Ids currently on the resolve stack — how a cyclic {@code parent} is detected. */
         private final Set<Identifier> resolving = new HashSet<>();
         private final Map<SharedOperationKey<Object>, Object> operations = new HashMap<>();
+        /** Built first: its missing sprite is the atlas probe, so an unready atlas fails the bake here. */
+        private final LiveAtlasMaterials materials = new LiveAtlasMaterials();
         @Nullable
         private BlockStateModelPart missingPart;
-        @Nullable
-        private Material.Baked missingMaterial;
 
         // --- ModelBaker ---
 
@@ -161,14 +161,14 @@ final class PhotonModelBaker {
         @Override
         public BlockStateModelPart missingBlockModelPart() {
             if (missingPart == null) {
-                missingPart = new SimpleModelWrapper(QuadCollection.EMPTY, true, missing());
+                missingPart = new SimpleModelWrapper(QuadCollection.EMPTY, true, materials.missing);
             }
             return missingPart;
         }
 
         @Override
         public MaterialBaker materials() {
-            return this;
+            return materials;
         }
 
         @Override
@@ -202,9 +202,25 @@ final class PhotonModelBaker {
         public BakedQuad.MaterialInfo materialInfo(BakedQuad.MaterialInfo material) {
             return material;
         }
+    }
 
-        // --- MaterialBaker: the live atlas, where ModelManager's own baker uses the reload-time
-        // SpriteLoader.Preparations. Block atlas only — that is the one Photon's models live in. ---
+    /**
+     * The live atlas, where ModelManager's own baker uses the reload-time
+     * {@code SpriteLoader.Preparations}. Block atlas only — that is the one Photon's models live in.
+     * The base class memoizes per {@link Material}, which is all the dedup a single bake needs.
+     */
+    private static final class LiveAtlasMaterials extends MaterialBaker {
+        /** Shared: an OBJ with several untextured materials asks for this once per material. */
+        private final Material.Baked missing;
+
+        LiveAtlasMaterials() {
+            this(sprite(MissingTextureAtlasSprite.getLocation()));
+        }
+
+        private LiveAtlasMaterials(TextureAtlasSprite missingSprite) {
+            super(missingSprite);
+            this.missing = new Material.Baked(missingSprite, false);
+        }
 
         /**
          * Null-tolerant, unlike the {@link MaterialBaker} default. NeoForge's OBJ loader hands
@@ -216,25 +232,12 @@ final class PhotonModelBaker {
          */
         @Override
         public Material.Baked resolveSlot(TextureSlots slots, @Nullable String id, ModelDebugName name) {
-            return id == null ? missing() : MaterialBaker.super.resolveSlot(slots, id, name);
+            return id == null ? missing : super.resolveSlot(slots, id, name);
         }
 
         @Override
-        public Material.Baked get(Material material, ModelDebugName name) {
+        protected Material.Baked bake(Material material) {
             return new Material.Baked(sprite(material.sprite()), material.forceTranslucent());
-        }
-
-        @Override
-        public Material.Baked reportMissingReference(String reference, ModelDebugName name) {
-            return missing();
-        }
-
-        /** Shared: an OBJ with several untextured materials asks for this once per material. */
-        private Material.Baked missing() {
-            if (missingMaterial == null) {
-                missingMaterial = new Material.Baked(sprite(MissingTextureAtlasSprite.getLocation()), false);
-            }
-            return missingMaterial;
         }
 
         private static TextureAtlasSprite sprite(Identifier texture) {

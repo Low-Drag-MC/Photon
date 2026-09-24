@@ -201,10 +201,7 @@ class DynamicMeshTest {
                 return 42;
             }
 
-            @Override
-            public int glBuffer() {
-                return 9;
-            }
+            // geometry() stays null: the data lives on the GPU
         };
         assertSame(topology, cache.resolve(provider), "nothing to derive: the buffer is the renderer's business");
         assertSame(topology, cache.resolve(provider));

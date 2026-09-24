@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.trail;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
@@ -23,7 +24,6 @@ import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonViewSettings;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Camera;
 import net.minecraft.world.phys.AABB;
 import org.joml.Vector3f;
@@ -232,8 +232,8 @@ public class TrailEmitter extends Emitter {
     private transient TrailParticleRenderer extractRenderer;
 
     @Override
-    public VertexFormat.Mode geometryMode() {
-        return VertexFormat.Mode.TRIANGLE_STRIP; // 1.21 TrailConfig.RenderPass
+    public PrimitiveTopology geometryMode() {
+        return PrimitiveTopology.TRIANGLE_STRIP; // 1.21 TrailConfig.RenderPass
     }
 
     @Override

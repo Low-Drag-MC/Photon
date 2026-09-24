@@ -14,8 +14,7 @@ void main() {
     ParticleData data = getParticleData();
 
     vec3 pos = data.Position;
-#if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE) || defined(TRAIL_INSTANCE) \
- || defined(ARA_TRAIL_INSTANCE) || defined(ARA_TRAIL_TUBE_INSTANCE) || defined(BEAM_INSTANCE)
+#ifdef PHOTON_INSTANCED
     // editor scenes extract eye-relative; ModelOffset carries the delta back (zero in-world)
     pos += ModelOffset;
 #endif

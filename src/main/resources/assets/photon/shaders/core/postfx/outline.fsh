@@ -5,7 +5,7 @@
 //
 // The depth Sobel runs on RECIPROCAL distance (1/blocks). Its gradient is d(1/z) = dz/z^2, so
 // sensitivity falls off quadratically with distance — which is the same attenuation the raw depth
-// buffer already had (z_window ~= 1 - n/z, hence dz_window ~= n * d(1/z)); this just makes the
+// buffer already had (z_window ~= n/z under reverse-Z, hence dz_window ~= n * d(1/z)); this just makes the
 // hidden near-plane factor explicit so the threshold no longer moves when the projection does.
 //
 // Metric (linearised) depth was tried here and is WORSE: a silhouette against a distant background
@@ -43,9 +43,11 @@ float lumaAt(vec2 uv) {
 // applied to the threshold instead: a Sobel is linear and the factor is positive, so the comparison is
 // identical — but this way the per-tap divide disappears entirely (x/k -> x*(1/k) is not an
 // IEEE-preserving rewrite, so a driver is under no obligation to hoist it).
+//
+// Reverse-Z: z = ZNear*ZFar / (ZNear + d*(ZFar - ZNear)), so 2*ZNear*ZFar/z is linear in d.
 float invDepthScaledAt(vec2 uv) {
-    float ndc = texture(DepthSampler, uv).r * 2.0 - 1.0;
-    return ZFar + ZNear - ndc * (ZFar - ZNear);
+    float d = texture(DepthSampler, uv).r;
+    return 2.0 * (ZNear + d * (ZFar - ZNear));
 }
 
 void main() {

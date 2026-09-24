@@ -16,8 +16,7 @@ import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.Tesselator;
-import net.minecraft.client.renderer.MultiBufferSource;
+import com.lowdragmc.lowdraglib2.client.utils.RenderUtils;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import org.joml.Vector3f;
 import oshi.util.tuples.Pair;
@@ -228,7 +227,7 @@ public class ForceFieldObject extends FXObject {
     }
 
     @Override
-    public void drawEditorAfterWorld(SceneView.ParticleSceneEditor scene, MultiBufferSource bufferSource, float partialTicks) {
+    public void drawEditorAfterWorld(SceneView.ParticleSceneEditor scene, RenderUtils.ImmediateDraw draw, float partialTicks) {
         if (!scene.sceneView().isShapeVisible()) {
             return;
         }
@@ -237,20 +236,19 @@ public class ForceFieldObject extends FXObject {
         var rt = runtime();
         var endRange = rt.getEndRange();
         var startRange = Math.min(rt.getStartRange(), endRange);
-        drawRange(bufferSource, poseStack, ForceFieldGizmos.getGuideLines(config.getShape(), endRange), ColorPattern.YELLOW.color);
+        drawRange(draw, poseStack, ForceFieldGizmos.getGuideLines(config.getShape(), endRange), ColorPattern.YELLOW.color);
         if (startRange > 0) {
-            drawRange(bufferSource, poseStack, ForceFieldGizmos.getGuideLines(config.getShape(), startRange), ColorPattern.GRAY.color);
+            drawRange(draw, poseStack, ForceFieldGizmos.getGuideLines(config.getShape(), startRange), ColorPattern.GRAY.color);
         }
     }
 
-    // 26.1: immediate Tesselator+BufferUploader draws are gone — route through the scene's
-    // buffer source with the vanilla lines render type (blend/depth/width owned by the pipeline).
-    private static void drawRange(MultiBufferSource bufferSource, PoseStack poseStack,
+    // drawn through LDLib2's immediate path with the vanilla lines render type
+    private static void drawRange(RenderUtils.ImmediateDraw draw, PoseStack poseStack,
                                   List<Pair<Vector3f, Vector3f>> edges, int color) {
         if (edges.isEmpty()) {
             return;
         }
-        var buffer = bufferSource.getBuffer(RenderTypes.lines());
+        var buffer = draw.getBuffer(RenderTypes.lines());
         RenderBufferUtils.drawEdges(poseStack, buffer, edges, color, 5);
     }
 }

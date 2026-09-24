@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeFactory;
 import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeGraphMaterial;
@@ -31,7 +32,6 @@ import com.lowdragmc.photon.client.render.PhotonRenderTypes;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.lowdragmc.photon.client.shadergraph.runtime.ShaderGraphRuntime;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import dev.vfyjxf.taffy.style.AlignItems;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.core.HolderLookup;
@@ -42,7 +42,6 @@ import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
@@ -212,7 +211,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
      */
     @Override
     @Nullable
-    public RenderType getRenderType(MaterialSetting setting, VertexFormat.Mode mode) {
+    public RenderType getRenderType(MaterialSetting setting, PrimitiveTopology mode) {
         var entry = refreshEntry();
         if (entry == null || !entry.isValid() || entry.getCompiled() == null) {
             return null; // missing/broken graph: the material preview surfaces the compile error

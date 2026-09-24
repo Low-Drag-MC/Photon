@@ -94,6 +94,11 @@ public interface IrisBridge {
         return false;
     }
 
+    /** Runs {@code work} with pack-program substitution off: Photon draws its own programs into its own targets. */
+    default void runWithoutPackPrograms(Runnable work) {
+        work.run();
+    }
+
     default void unlockDepthColorIfLocked() {
     }
 

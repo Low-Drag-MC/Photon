@@ -3,7 +3,7 @@ package com.lowdragmc.photon.client.render;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
+import com.mojang.blaze3d.GpuFormat;
 import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
@@ -23,7 +23,8 @@ import java.util.Map;
  */
 public final class PhotonMaskTarget implements AutoCloseable {
 
-    private static final int USAGE = GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT;
+    private static final int USAGE = GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT
+            | GpuTexture.USAGE_COPY_DST;
 
     private static final Map<Long, PhotonMaskTarget> INSTANCES = new HashMap<>();
     private static long frameCounter;
@@ -33,7 +34,7 @@ public final class PhotonMaskTarget implements AutoCloseable {
 
     /**
      * The mask target for this size, cleared and depth-seeded if this is the frame's first use.
-     * {@code sceneDepth} supplies both the format (a depth blit needs matching formats) and the initial
+     * {@code sceneDepth} supplies both the format (a depth copy needs matching formats) and the initial
      * contents.
      */
     public static PhotonMaskTarget acquire(int width, int height, GpuTextureView sceneDepth) {
@@ -57,9 +58,9 @@ public final class PhotonMaskTarget implements AutoCloseable {
         return target;
     }
 
-    private static PhotonMaskTarget create(int width, int height, TextureFormat depthFormat) {
+    private static PhotonMaskTarget create(int width, int height, GpuFormat depthFormat) {
         var device = RenderSystem.getDevice();
-        var color = device.createTexture(() -> "Photon custom mask", USAGE, TextureFormat.RED8,
+        var color = device.createTexture(() -> "Photon custom mask", USAGE, PhotonPipelines.MASK_FORMAT,
                 Math.max(1, width), Math.max(1, height), 1, 1);
         var depth = device.createTexture(() -> "Photon custom depth", USAGE, depthFormat,
                 Math.max(1, width), Math.max(1, height), 1, 1);
@@ -93,13 +94,13 @@ public final class PhotonMaskTarget implements AutoCloseable {
     private final GpuTextureView colorView;
     private final GpuTexture depth;
     private final GpuTextureView depthView;
-    private final TextureFormat depthFormat;
+    private final GpuFormat depthFormat;
     private long lastUsedFrame;
     private long preparedFrame = -1;
     private long wroteFrame = -1;
     private boolean clearPending;
 
-    private PhotonMaskTarget(GpuTexture color, GpuTexture depth, TextureFormat depthFormat) {
+    private PhotonMaskTarget(GpuTexture color, GpuTexture depth, GpuFormat depthFormat) {
         var device = RenderSystem.getDevice();
         this.color = color;
         this.colorView = device.createTextureView(color);
@@ -114,7 +115,14 @@ public final class PhotonMaskTarget implements AutoCloseable {
     private void prepare(GpuTextureView sceneDepth) {
         wroteFrame = -1;
         clearPending = true;
-        PhotonFramebufferBlit.depth(sceneDepth.texture(), depth, color.getWidth(0), color.getHeight(0));
+        var source = sceneDepth.texture();
+        var encoder = RenderSystem.getDevice().createCommandEncoder();
+        if ((source.usage() & GpuTexture.USAGE_COPY_SRC) != 0) {
+            encoder.copyTextureToTexture(source, depth, 0, 0, 0, 0, 0, color.getWidth(0), color.getHeight(0));
+        } else {
+            // uncopyable scene: start at the far plane, so only flagged geometry occludes the mask
+            encoder.clearDepthTexture(depth, RenderSystem.DEFAULT_DEPTH_CLEAR_VALUE);
+        }
     }
 
     /** Whether the caller's pass must clear the ids — true exactly once per frame, for whichever

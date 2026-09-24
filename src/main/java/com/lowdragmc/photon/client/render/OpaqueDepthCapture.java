@@ -1,38 +1,23 @@
 package com.lowdragmc.photon.client.render;
 
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
 
 import javax.annotation.Nullable;
 
 /**
- * A snapshot of the frame's depth buffer taken <b>before</b> the translucent chunk layer — terrain,
- * entities, block entities and Photon's own opaque FX, but not water, glass or ice.
- *
- * <p>This is what {@link FXCompositeMode#LATE} depth-tests against. Testing against the live buffer is
- * what makes a water surface slice an effect in half: water is drawn before the particle pass and
- * writes depth, so every FX fragment behind it is rejected outright. Against the opaque snapshot the
- * effect stays whole and simply blends over the water.
- *
- * <p>Attaching the snapshot to the layer's draws has a second, quieter benefit: a material with
- * {@code depthMask} on then writes into this throwaway copy instead of MC's real depth buffer, so an
- * author can use depth writes for FX-vs-FX occlusion without the writes leaking into the clouds,
- * weather and hand rendered after us.
- *
- * <p><b>Demand-driven.</b> The copy is a full-screen depth blit, so it only runs on frames where
- * something actually asked for it — {@link #demand()} is called by the drain when a job resolves to
- * LATE, and the flag is read by the <i>next</i> frame's {@link #capture()} (the snapshot point comes
- * before the drain that would demand it). A world with no LATE effects pays nothing.
- *
- * <p>Render thread only, outside any open render pass.
+ * A snapshot of the frame's depth taken <b>before</b> the translucent chunk layer, which {@link FXCompositeMode#LATE}
+ * tests against so water cannot slice an effect in half. Depth writes of the layer also stay in this copy.
+ * <p>
+ * Demand-driven: {@link #demand()} is called while preparing the frame, before the snapshot seam of the same frame.
  */
 public final class OpaqueDepthCapture {
 
-    /** Attached as the layer's depth, and copied into by a blit. */
+    /** COPY_SRC: scene-depth materials in the layer sample a copy of this snapshot. */
     private static final int USAGE = GpuTexture.USAGE_RENDER_ATTACHMENT
-            | GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_COPY_DST;
+            | GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_COPY_SRC;
 
     @Nullable
     private static GpuTexture texture;
@@ -41,59 +26,55 @@ public final class OpaqueDepthCapture {
     private static int width;
     private static int height;
     @Nullable
-    private static TextureFormat format;
+    private static GpuFormat format;
 
-    /** Set while a job resolves to LATE; read and cleared by the next {@link #capture()}. */
     private static boolean demanded;
-    private static boolean capturedThisFrame;
+    /** A snapshot only stands in for the depth it was taken of (editor scenes have their own). */
+    @Nullable
+    private static GpuTexture capturedFrom;
 
     private OpaqueDepthCapture() {
     }
 
-    /** Ask for a snapshot from the next frame on. @see OpaqueDepthCapture */
     public static void demand() {
         demanded = true;
     }
 
-    /**
-     * Copy the current depth buffer, if anything asked for one. Called at the last seam before the
-     * translucent chunk layer.
-     */
+    /** Called at AfterOpaqueFeatures. */
     public static void capture() {
-        capturedThisFrame = false;
+        capturedFrom = null;
         if (!demanded) {
-            release(); // nothing has wanted one for a whole frame — stop holding a screen-sized texture
+            release();
             return;
         }
-        demanded = false; // re-armed by the drain each frame a LATE job is still present
-        // the depth of the surface being drawn into, not the game window's — with the frame redirected
-        // off-screen (a PIP visual layer, a UI in its own OS window) those differ, and snapshotting the
-        // window would test LATE fx against a depth buffer belonging to another frame entirely
+        demanded = false;
         var outputDepth = PhotonRenderOutput.depth();
         if (outputDepth == null) return;
         var source = outputDepth.texture();
+        if ((source.usage() & GpuTexture.USAGE_COPY_SRC) == 0) {
+            return; // the layer then tests against the live depth
+        }
         int w = source.getWidth(0);
         int h = source.getHeight(0);
         if (texture == null || w != width || h != height || source.getFormat() != format) {
             release();
             width = w;
             height = h;
-            // The SOURCE's format, not a fixed one: glBlitFramebuffer rejects a depth blit between
-            // differing formats, and silently — the copy would just keep whatever it had.
+            // a depth copy needs identical formats
             format = source.getFormat();
             var device = RenderSystem.getDevice();
             var declared = format;
             texture = device.createTexture(() -> "Photon opaque depth", USAGE, declared, w, h, 1, 1);
             view = device.createTextureView(texture);
         }
-        PhotonFramebufferBlit.depth(source, texture, w, h);
-        capturedThisFrame = true;
+        RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(source, texture, 0, 0, 0, 0, 0, w, h);
+        capturedFrom = source;
     }
 
-    /** The snapshot for this frame, or null when none was taken (nothing demanded one, or it failed). */
+    /** This frame's snapshot of {@code liveDepth}, or null. */
     @Nullable
-    public static GpuTextureView view() {
-        return capturedThisFrame ? view : null;
+    public static GpuTextureView view(GpuTextureView liveDepth) {
+        return capturedFrom != null && capturedFrom == liveDepth.texture() ? view : null;
     }
 
     private static void release() {

@@ -245,7 +245,8 @@ public final class PostEffectStack {
                                                @Nullable Set<String> cullGroups) {
         var shader = CustomShaderPass.get(cullGroups != null ? WEIGHT_MASK_MIX_SHADER : WEIGHT_MIX_SHADER);
         var mixed = PostFXTargetPool.acquire(inputs.width(), inputs.height());
-        if (shader == null || mixed == null) {
+        var pipeline = shader == null || mixed == null ? null : shader.pipeline(mixed.format().gpuFormat());
+        if (pipeline == null) {
             PostFXTargetPool.release(mixed);
             return null;
         }
@@ -267,7 +268,7 @@ public final class PostEffectStack {
         uniforms.set("MaskFilter", maskFilter);
         uniforms.upload();
         var boundMask = maskTexture;
-        PhotonFullscreenPass.draw("photonfx mix", shader.pipeline(), mixed.view(), pass -> {
+        PhotonFullscreenPass.draw("photonfx mix", pipeline, mixed.view(), pass -> {
             pass.bindTexture("SamplerA", chain, RenderGraphExecutor.linearClamp());
             pass.bindTexture("SamplerB", output.view(), RenderGraphExecutor.linearClamp());
             if (cullGroups != null) {
@@ -302,7 +303,8 @@ public final class PostEffectStack {
         var shader = CustomShaderPass.get(MASK_UNION_SHADER);
         var target = PostFXTargetPool.acquire(inputs.width(), inputs.height(), TargetFormat.R8);
         var mask = inputs.maskColor();
-        if (shader == null || target == null || mask == null) {
+        var pipeline = shader == null || target == null ? null : shader.pipeline(target.format().gpuFormat());
+        if (pipeline == null || mask == null) {
             PostFXTargetPool.release(target);
             return null;
         }
@@ -318,7 +320,7 @@ public final class PostEffectStack {
         uniforms.set("IdsB", ids[4], ids[5], ids[6], ids[7]);
         uniforms.set("IdCount", count);
         uniforms.upload();
-        PhotonFullscreenPass.draw("photonfx mask union", shader.pipeline(), target.view(), pass -> {
+        PhotonFullscreenPass.draw("photonfx mask union", pipeline, target.view(), pass -> {
             pass.bindTexture("MaskSampler", mask, RenderGraphExecutor.linearClamp());
             uniforms.bindTo(pass);
         });

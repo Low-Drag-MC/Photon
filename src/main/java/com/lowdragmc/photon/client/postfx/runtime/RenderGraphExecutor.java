@@ -5,7 +5,6 @@ import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
 import com.lowdragmc.kilagraph.rendertype.compiler.GlslType;
 import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeGraphMaterial;
 import com.lowdragmc.lowdraglib2.LDLib2;
-import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.postfx.shadergraph.PhotonFullscreenCompiler;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
@@ -26,8 +25,6 @@ import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-import org.lwjgl.opengl.GL46;
-import org.lwjgl.opengl.GL;
 
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -125,10 +122,6 @@ public final class RenderGraphExecutor {
         if (effect.passes().isEmpty()) return null; // no-op effect: chain passthrough
         var resources = sizeResources(effect, inputs);
 
-        boolean debugGroup = Platform.isDevEnv() && GL.getCapabilities().GL_KHR_debug;
-        if (debugGroup) {
-            GL46.glPushDebugGroup(GL46.GL_DEBUG_SOURCE_APPLICATION, 0, "photonfx:" + sourceName(effect));
-        }
         var targets = resources.targets();
         boolean succeeded = false;
         try {
@@ -167,7 +160,6 @@ public final class RenderGraphExecutor {
             for (var target : targets) {
                 PostFXTargetPool.release(target);
             }
-            if (debugGroup) GL46.glPopDebugGroup();
             // sourceKey() allocates; the set is empty in the normal case, so don't pay for it per frame
             if (succeeded && !LOGGED_FAILURES.isEmpty()) LOGGED_FAILURES.remove(sourceKey(effect));
         }
@@ -230,11 +222,12 @@ public final class RenderGraphExecutor {
                                                 float weight, Map<String, Object> params,
                                                 Resources resources, FrameInputs inputs) {
         var shaderPass = CustomShaderPass.get(pass.customShader());
-        if (shaderPass == null) {
+        var target = resources.targets()[pass.outputResource()];
+        var pipeline = shaderPass == null ? null : shaderPass.pipeline(target.format().gpuFormat());
+        if (pipeline == null) {
             logFailureOnce(effect, "custom shader '%s' failed to load (see log)".formatted(pass.customShader()));
             return false;
         }
-        var target = resources.targets()[pass.outputResource()];
         // defaults first: the json's own values are the baseline every dispatch starts from, so an
         // absent binding can never inherit the previous dispatch's value
         var uniforms = shaderPass.uniforms();
@@ -264,7 +257,7 @@ public final class RenderGraphExecutor {
         var placeholder = missingView();
 
         var linear = linearClamp();
-        PhotonFullscreenPass.draw("photonfx pass", shaderPass.pipeline(), target.view(), renderPass -> {
+        PhotonFullscreenPass.draw("photonfx pass", pipeline, target.view(), renderPass -> {
             // every pipeline-declared sampler must be bound at draw; a sampler the effect wired nothing
             // to (the compiler allows it) gets the missing texture rather than a stale unit
             for (var sampler : shaderPass.info().samplers()) {
@@ -285,14 +278,14 @@ public final class RenderGraphExecutor {
             logFailureOnce(effect, entry == null ? "missing pass graph" : entry.getErrorMessage());
             return false;
         }
+        var target = resources.targets()[pass.outputResource()];
         var material = entry.material();
-        var pipeline = entry.pipeline();
+        var pipeline = entry.pipeline(target.format().gpuFormat());
         var compiled = entry.getCompiled();
         if (material == null || pipeline == null || compiled == null) {
             logFailureOnce(effect, "pass shader failed to build (see log)");
             return false;
         }
-        var target = resources.targets()[pass.outputResource()];
 
         // graph defaults first (the same baseline reset the custom-shader flavor does), then this pass's
         // own bindings — inline constants, blended effect params, or the request weight

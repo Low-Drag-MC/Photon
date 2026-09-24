@@ -13,7 +13,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction
 import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.FlexWrap;
 import lombok.Getter;
-import com.mojang.logging.annotations.MethodsReturnNonnullByDefault;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -29,7 +28,6 @@ import java.util.stream.Collectors;
  * @implNote NumberFunctionConfigurator
  */
 @ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 public class NumberFunctionConfigurator extends ValueConfigurator<NumberFunction> {
     public final Button numberFunctionButton = new Button();
     @Getter

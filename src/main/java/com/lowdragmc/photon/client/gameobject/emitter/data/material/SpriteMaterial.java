@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigHDR;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
@@ -11,7 +12,6 @@ import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.render.PhotonMaterialUniforms;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.SpriteSet;
@@ -52,7 +52,7 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
     @Override
     public RenderType getRenderType(
             MaterialSetting setting,
-            VertexFormat.Mode mode) {
+            PrimitiveTopology mode) {
         var fragment = Photon.id("core/sprite_hdr_particle");
         var spriteSet = getSpriteSet();
         // premultiplied + opaque: the fsh applies HDR.rgb directly now, so the intensity has to be

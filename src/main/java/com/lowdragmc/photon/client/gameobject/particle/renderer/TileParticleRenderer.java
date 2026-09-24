@@ -7,7 +7,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.model.VertexAnimation
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.VertexAnimationBake;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.FacingMode;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.FacingOrientationHelper;
-import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
@@ -30,8 +29,8 @@ import java.util.Collection;
 
 /**
  * Renders {@link TileParticle}s: the single entry point for both the CPU vertex path
- * ({@link #renderQueue}) and the 26.1 GPU-instanced path ({@link #fillInstances} /
- * {@link #fillInstancesModel} + {@link #modelMeshBuffer}, drawn via {@code PhotonInstancedDrawState}).
+ * ({@link #renderQueue}) and the GPU-instanced path ({@link #fillInstances} /
+ * {@link #fillInstancesModel} + {@link #modelMeshBuffer}, laid out by {@code PhotonInstanceLayouts}).
  * Both paths share the same billboard/stretched/model orientation math, so they stay visually
  * identical by construction. The particle itself only holds data and simulation.
  */
@@ -339,8 +338,8 @@ public class TileParticleRenderer {
 
     /** Model base mesh in the instanced layout — 9 floats per vertex (pos3, uv2 optionally
      *  atlas-remapped, normal3, brightness1), or 13 with the emitter's Tangent setting on (normal widens
-     *  to vec4 with brightness in w, then tangent4); locations 0-3 are applied by
-     *  {@code PhotonInstancedDrawState.MODEL} / {@code MODEL_TANGENT}.
+     *  to vec4 with brightness in w, then tangent4); see {@code PhotonInstanceLayouts.MODEL} /
+     *  {@code MODEL_TANGENT}.
      *  <p>
      *  One vertex per MESH vertex and drawn through {@link #modelIndexBuffer}, not four-per-quad through
      *  the shared sequential-quad indices: {@link PhotonMesh} welds now (glTF keeps the file's own indices,

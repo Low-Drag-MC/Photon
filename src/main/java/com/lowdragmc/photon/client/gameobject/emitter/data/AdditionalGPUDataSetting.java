@@ -29,7 +29,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.render.PhotonInstancedDrawState;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
@@ -196,30 +195,35 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
         return floats + customDataCount() * 4;
     }
 
+    /** One attribute-tail slot at its 1.21 {@code location}, {@code offsetFloats} into the instance record. */
+    public record TailAttrib(int location, int floats, int offsetFloats) {
+    }
+
+    /** 26.2's vertex attribute cap across all bindings of a pipeline. */
+    public static final int MAX_VERTEX_ATTRIBUTES = 16;
+
     /**
-     * One divisor-1 attribute per enabled channel, sequentially from the kind's base location, in registry
-     * order (the legacy layout), then one {@code vec4} per custom-data stream after them — the 1.21
-     * {@code layoutAttribs} layout, expressed as C1 {@link PhotonInstancedDrawState.Attrib} entries instead
-     * of raw {@code glVertexAttribPointer} calls (26.1 drives VAOs through the engine; Photon's divisor
-     * attributes are applied by {@code VertexArrayCacheMixin}, not at layout time).
+     * One attribute per enabled channel, sequentially from the kind's base location, in registry order (the
+     * legacy layout), then one {@code vec4} per custom-data stream after them — the 1.21
+     * {@code layoutAttribs} layout. The tail sits at the end of each instance record.
      * <p>
      * {@code offsetFloats} is where the tail starts inside the instance record, i.e. the variant's base
      * stride. Rebuilds the upload plan {@link #uploadAttribs} follows, so layout and upload can't disagree.
      */
-    public List<PhotonInstancedDrawState.Attrib> planAttribs(int offsetFloats) {
+    public List<TailAttrib> planAttribs(int offsetFloats) {
         var kind = kind();
         var mask = attribMask();
         attribPlan.clear();
-        var attribs = new ArrayList<PhotonInstancedDrawState.Attrib>();
+        var attribs = new ArrayList<TailAttrib>();
 
-        int limit = PhotonInstancedDrawState.maxVertexAttribs();
+        int limit = MAX_VERTEX_ATTRIBUTES;
         int attribIndex = kind.baseAttribLocation;
         for (var channel : PhotonGpuChannels.CHANNELS) {
             if ((mask & channel.bit()) == 0 || !channel.supported().contains(kind) || !channel.uploadable()) continue;
             // The floats stay in the record either way — dropping only the DECLARATION keeps every later
             // channel's offset (and the stride the upload writes) unchanged.
             if (attribIndex < limit) {
-                attribs.add(new PhotonInstancedDrawState.Attrib(attribIndex, channel.floats(), false, offsetFloats));
+                attribs.add(new TailAttrib(attribIndex, channel.floats(), offsetFloats));
             } else {
                 warnAttribOverflow(kind, limit);
             }
@@ -233,7 +237,7 @@ public abstract class AdditionalGPUDataSetting extends ToggleGroup {
         lastCustomDataCount = customCount;
         for (int i = 0; i < customCount; i++) {
             if (attribIndex < limit) {
-                attribs.add(new PhotonInstancedDrawState.Attrib(attribIndex, 4, false, offsetFloats));
+                attribs.add(new TailAttrib(attribIndex, 4, offsetFloats));
             } else {
                 warnAttribOverflow(kind, limit);
             }

@@ -525,7 +525,7 @@ public class TileParticle implements IParticle {
         var level = emitter.getLevel();
         if (runtime.physics.isEnable() && runtime.physics.hasCollision() && level != null &&
                 (moveX != 0.0 || moveY != 0.0 || moveZ != 0.0) && moveX * moveX + moveY * moveY + moveZ * moveZ < MAXIMUM_COLLISION_VELOCITY_SQUARED) {
-            var vec3 = Entity.collideBoundingBox(null, new Vec3(moveX, moveY, moveZ), getRealBoundingBox(0), level, List.of());
+            var vec3 = Entity.collideBoundingBox((Entity) null, new Vec3(moveX, moveY, moveZ), getRealBoundingBox(0), level, List.of());
             moveX = (float) vec3.x;
             moveY = (float) vec3.y;
             moveZ = (float) vec3.z;

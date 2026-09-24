@@ -3,14 +3,10 @@ package com.lowdragmc.photon.client.postfx.runtime;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.postfx.graph.TargetFormat;
-import com.lowdragmc.photon.client.render.PhotonFloatTextures;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL30;
 
 import java.util.ArrayDeque;
 import java.util.HashMap;
@@ -25,19 +21,12 @@ import java.util.Set;
  * pyramid peaks at ~3 live targets. Free targets persist across frames (LIFO — the hottest target first)
  * and are destroyed after {@link #EVICT_AFTER_FRAMES} frames unused ({@link #endFrame}).
  *
- * <p>Float formats are allocated raw ({@link PhotonFloatTextures}) because 26.1's {@link TextureFormat}
- * still has no float colour formats — the same GL-backend-only debt {@code PhotonDrawTarget} carries, and
- * for the same reason: an effect chain running in RGBA8 would clamp away exactly the HDR the chain
- * exists to work on. An allocation that fails returns null and the caller passes the chain through
- * rather than silently degrading to LDR.</p>
- *
- * <p>Targets carry no {@code COPY_SRC}/{@code COPY_DST}: everything that moves pixels in or out of them
- * is either a fullscreen draw or {@code PhotonFramebufferBlit}, neither of which needs a usage flag
- * (see {@code PhotonDrawTarget} for why the engine copy path is avoided). Render thread only.</p>
+ * <p>A failed allocation returns null and the caller passes the chain through. Render thread only.</p>
  */
 public final class PostFXTargetPool {
 
-    private static final int USAGE = GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT;
+    private static final int USAGE = GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT
+            | GpuTexture.USAGE_COPY_SRC | GpuTexture.USAGE_COPY_DST;
 
     /** One pooled off-screen target. Identity-based (never a record): the pool tracks ownership. */
     public static final class Target implements AutoCloseable {
@@ -131,17 +120,12 @@ public final class PostFXTargetPool {
     @Nullable
     private static GpuTexture allocate(int width, int height, TargetFormat format) {
         var label = "photonfx_pool %dx%d %s".formatted(width, height, format.name());
-        return switch (format) {
-            case RGBA16F -> PhotonFloatTextures.createRgba16f(label, USAGE, width, height);
-            case RG16F -> PhotonFloatTextures.createHalfFloat(label, USAGE, width, height,
-                    GL30.GL_RG16F, GL30.GL_RG, TextureFormat.RGBA8);
-            case R16F -> PhotonFloatTextures.createHalfFloat(label, USAGE, width, height,
-                    GL30.GL_R16F, GL11.GL_RED, TextureFormat.RED8);
-            case RGBA8 -> RenderSystem.getDevice().createTexture(label, USAGE, TextureFormat.RGBA8,
-                    width, height, 1, 1);
-            case R8 -> RenderSystem.getDevice().createTexture(label, USAGE, TextureFormat.RED8,
-                    width, height, 1, 1);
-        };
+        try {
+            return RenderSystem.getDevice().createTexture(label, USAGE, format.gpuFormat(), width, height, 1, 1);
+        } catch (RuntimeException e) {
+            Photon.LOGGER.error("Photon post-effect target allocation failed", e);
+            return null;
+        }
     }
 
     /** Return {@code target} to the pool — legal (and intended) mid-frame, enabling aliasing. */
@@ -200,13 +184,7 @@ public final class PostFXTargetPool {
     }
 
     private static long byteSize(Target target) {
-        long bytesPerPixel = switch (target.format()) {
-            case RGBA16F -> 8;
-            case RGBA8, RG16F -> 4;
-            case R16F -> 2;
-            case R8 -> 1;
-        };
-        return (long) target.width() * target.height() * bytesPerPixel;
+        return (long) target.width() * target.height() * target.format().gpuFormat().blockSize();
     }
 
     private static long key(int width, int height, TargetFormat format) {

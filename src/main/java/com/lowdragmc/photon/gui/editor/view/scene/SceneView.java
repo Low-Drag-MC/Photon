@@ -3,6 +3,7 @@ package com.lowdragmc.photon.gui.editor.view.scene;
 import com.lowdragmc.lowdraglib2.client.scene.SceneRenderContext;
 import com.lowdragmc.lowdraglib2.client.scene.WorldSceneRenderer;
 import com.lowdragmc.lowdraglib2.client.utils.RenderBufferUtils;
+import com.lowdragmc.lowdraglib2.client.utils.RenderUtils;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.SceneEditor;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -30,9 +31,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.NotNull;
+import org.joml.Vector4f;
+import org.joml.Vector4fc;
 
 import java.util.List;
 
@@ -59,7 +63,8 @@ public class SceneView extends View implements FXSceneOptions {
         }
     }
     /** Opaque near-black backdrop for the scene view (ARGB). */
-    private static final int SCENE_BACKGROUND = 0xFF101418;
+    /** 0xFF101418 — 26.2 clears take a float colour. */
+    private static final Vector4fc SCENE_BACKGROUND = new Vector4f(0x10 / 255f, 0x14 / 255f, 0x18 / 255f, 1f);
 
     public final FXEditor fxEditor;
     public final ParticleSceneEditor sceneEditor;
@@ -231,7 +236,7 @@ public class SceneView extends View implements FXSceneOptions {
             var i = 0;
             for (int x = -sceneRange + 1; x < sceneRange; x++) {
                 for (int z = -sceneRange + 1; z < sceneRange; z++) {
-                    var blockState = (i % 2 == 0 ? Blocks.GRAY_CONCRETE : Blocks.LIGHT_GRAY_CONCRETE).defaultBlockState();
+                    var blockState = Blocks.CONCRETE.pick(i % 2 == 0 ? DyeColor.GRAY : DyeColor.LIGHT_GRAY).defaultBlockState();
                     level.setBlockAndUpdate(new BlockPos(x, 0, z), blockState);
                     i++;
                 }
@@ -280,22 +285,22 @@ public class SceneView extends View implements FXSceneOptions {
             return SceneView.this;
         }
 
-        // 26.1: renderAfterWorld takes the SceneRenderContext; immediate line draws route through
-        // its buffer source (blend/depth owned by the lines pipeline, width per-vertex).
+        // editor lines go through LDLib2's immediate draw, like its transform gizmo
         @Override
         protected void renderAfterWorld(SceneRenderContext ctx) {
             var partialTicks = ctx.partialTicks();
-            var bufferSource = ctx.bufferSource();
             if (fxObjectInfoView.getInspected() != null) {
-                fxObjectInfoView.getInspected().drawEditorAfterWorld(this, bufferSource, partialTicks);
-                if (isCullBoxVisible && fxObjectInfoView.getInspected() instanceof FXObject fxObject) {
-                    var cullBox = fxObject.getRenderBoundingBox(partialTicks);
-                    if (cullBox != AABB.INFINITE) {
-                        var buffer = bufferSource.getBuffer(RenderTypes.lines());
-                        RenderBufferUtils.drawCubeFrame(new PoseStack(), buffer,
-                                (float) cullBox.minX, (float) cullBox.minY, (float) cullBox.minZ,
-                                (float) cullBox.maxX, (float) cullBox.maxY, (float) cullBox.maxZ,
-                                1, 0.5f, 0.5f, 1, 3);
+                try (var draw = new RenderUtils.ImmediateDraw()) {
+                    fxObjectInfoView.getInspected().drawEditorAfterWorld(this, draw, partialTicks);
+                    if (isCullBoxVisible && fxObjectInfoView.getInspected() instanceof FXObject fxObject) {
+                        var cullBox = fxObject.getRenderBoundingBox(partialTicks);
+                        if (cullBox != AABB.INFINITE) {
+                            var buffer = draw.getBuffer(RenderTypes.lines());
+                            RenderBufferUtils.drawCubeFrame(new PoseStack(), buffer,
+                                    (float) cullBox.minX, (float) cullBox.minY, (float) cullBox.minZ,
+                                    (float) cullBox.maxX, (float) cullBox.maxY, (float) cullBox.maxZ,
+                                    1, 0.5f, 0.5f, 1, 3);
+                        }
                     }
                 }
             }

@@ -18,6 +18,8 @@ import java.util.Map;
  */
 public final class PhotonMaskUniforms {
 
+    public static final String UBO_NAME = "PhotonMask";
+
     /** {@code maskValue} is the group id in 0..1 ({@code id / 255}); {@code alphaCutoff} 0 = no clip. */
     public record Values(float maskValue, float alphaCutoff) {
     }

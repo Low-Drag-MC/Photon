@@ -14,19 +14,21 @@ import com.lowdragmc.photon.client.postfx.shadergraph.FullscreenShaderGraph;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * The shared compile cache for {@link FullscreenShaderGraph} resources — the fullscreen twin of
  * {@code ShaderGraphRuntime}: one {@link Entry} per graph resource path holding the compiled GLSL and
- * the single lazily-built GL program (fullscreen passes have no instancing variants). Every effect pass
- * referencing the same graph shares one entry; the executor stages its own values before each dispatch.
+ * its lazily-built pipelines, one per output format. Every effect pass referencing the same
+ * graph shares one entry; the executor stages its own values before each dispatch.
  *
  * <p>Staleness is detected by tag identity — the stored {@link CompoundTag} instance is replaced when
  * the resource is saved in the editor or reloaded from a pack. Render thread only.</p>
@@ -55,8 +57,7 @@ public final class FullscreenGraphRuntime {
          *  first dispatch; null when KilaGraph rejected the pipeline (logged there). */
         @Nullable
         private RenderTypeGraphMaterial material;
-        @Nullable
-        private RenderPipeline pipeline;
+        private final Map<GpuFormat, RenderPipeline> pipelines = new EnumMap<>(GpuFormat.class);
         private boolean materialFailed;
 
         private Entry(CompoundTag sourceTag, @Nullable FullscreenShaderGraph graph,
@@ -82,17 +83,18 @@ public final class FullscreenGraphRuntime {
                 material = RenderTypeFactory.createMaterial(compiled);
                 if (material == null) {
                     materialFailed = true; // KilaGraph logged why; don't retry every frame
-                } else {
-                    pipeline = PhotonPipelines.fullscreenGraph(compiled);
                 }
             }
             return material;
         }
 
-        /** The pipeline this pass draws with; null until (and unless) {@link #material()} succeeds. */
+        /** Null until {@link #material()} succeeds. */
         @Nullable
-        public RenderPipeline pipeline() {
-            return material() == null ? null : pipeline;
+        public RenderPipeline pipeline(GpuFormat format) {
+            if (material() == null || compiled == null) {
+                return null;
+            }
+            return pipelines.computeIfAbsent(format, f -> PhotonPipelines.fullscreenGraph(compiled, f));
         }
 
         private void close() {
@@ -100,7 +102,7 @@ public final class FullscreenGraphRuntime {
                 material.close(); // releases KilaGraph's refcount on the generated pipeline + GLSL
                 material = null;
             }
-            pipeline = null;
+            pipelines.clear();
         }
     }
 

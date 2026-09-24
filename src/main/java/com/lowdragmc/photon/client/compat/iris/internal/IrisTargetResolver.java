@@ -5,7 +5,6 @@ import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.compat.iris.IrisCompat;
 import com.lowdragmc.photon.client.compat.iris.IrisCompositeMode;
 import com.lowdragmc.photon.client.compat.iris.IrisFrameTarget;
-import com.lowdragmc.photon.client.render.PhotonFramebufferBlit;
 import com.lowdragmc.photon.core.mixins.iris.BlendOverrideAccessors;
 import com.lowdragmc.photon.core.mixins.iris.ExtendedShaderAccessor;
 import com.lowdragmc.photon.core.mixins.iris.FallbackShaderAccessor;
@@ -123,7 +122,7 @@ final class IrisTargetResolver {
         if (fbo == null) return fail("Iris has no framebuffer for " + key);
         lastFailure = null;
 
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = Minecraft.getInstance().gameRenderer.mainRenderTarget();
         int colorVersion = -1;
         int depthVersion = -1;
         if (mainTarget instanceof Blaze3dRenderTargetExt ext) {
@@ -284,7 +283,7 @@ final class IrisTargetResolver {
                     internalFormat, width, height, bufferWidth, bufferHeight, depthTexture, depthStencil,
                     depthVersion, primaryIsSceneColor, sceneColorTexture,
                     renderTargets == null ? depthTexture
-                            : PhotonFramebufferBlit.glId(renderTargets.getDepthTexture()),
+                            : IrisTextureBridge.glId(renderTargets.getDepthTexture()),
                     pipeline.isBeforeTranslucent, shaderKindOf(shader), key.name(),
                     key.getProgram() == null ? "?" : key.getProgram().getSourceName(),
                     isFloatFormat(internalFormat), accumulates, drawBufferCount, mode);
@@ -442,9 +441,9 @@ final class IrisTargetResolver {
                     .formatted(width, height, bufferWidth, bufferHeight)
                     + "(render scale or size.buffer.colortexN); FX may not line up");
         }
-        var mainDepthView = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+        var mainDepthView = Minecraft.getInstance().gameRenderer.mainRenderTarget().getDepthTextureView();
         int mainDepth = mainDepthView == null ? 0
-                : PhotonFramebufferBlit.glId(mainDepthView.texture());
+                : IrisTextureBridge.glId(mainDepthView.texture());
         if (depthTexture != 0 && mainDepth != 0 && depthTexture != mainDepth) {
             IrisCompat.degrade("DEPTH", "the pack's depth attachment (%d) is not MC's main depth (%d); "
                     .formatted(depthTexture, mainDepth) + "FX occlusion follows the pack's buffer");

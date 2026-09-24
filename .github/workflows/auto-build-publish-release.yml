@@ -248,11 +248,10 @@ jobs:
 
           loaders: |
             neoforge
-          # A curated compatibility claim, not a derivable fact — minecraft_version_range is [26.1, 26.1.2],
-          # so both patches are supported. Keep in step with LDLib2/KilaGraph, which list the same.
+          # A curated compatibility claim, not a derivable fact — minecraft_version_range is [26.2, 26.2].
+          # Keep in step with LDLib2/KilaGraph, which list the same.
           game-versions: |
-            26.1.1
-            26.1.2
+            26.2
           game-version-filter: none
           java: |
             ${{ env.JAVA_VERSION }}

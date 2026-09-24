@@ -11,7 +11,7 @@ public final class PhotonParticleRenderTypes {
 
     /** Every Photon FX object (emitters and helpers alike) lives in this single group; rendering is
      *  batched per material during extraction, not per group. */
-    public static final ParticleRenderType FX = new ParticleRenderType("photon:fx");
+    public static final ParticleRenderType FX = new ParticleRenderType("photon:fx", "PFX");
 
     private PhotonParticleRenderTypes() {
     }

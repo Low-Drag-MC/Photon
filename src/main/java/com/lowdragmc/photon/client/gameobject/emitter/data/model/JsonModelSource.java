@@ -71,7 +71,7 @@ public class JsonModelSource implements IModelSource {
     @Nullable
     private PhotonMesh bake() {
         // don't touch the resource manager mid-reload (null = retry later, not cached)
-        if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
+        if (Minecraft.getInstance().gui.overlay() instanceof LoadingOverlay) {
             return null;
         }
         var quads = PhotonModelBaker.bake(modelLocation);

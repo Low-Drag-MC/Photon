@@ -281,7 +281,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
      */
     @Nullable
     private SkinnedModel combine() {
-        if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
+        if (Minecraft.getInstance().gui.overlay() instanceof LoadingOverlay) {
             return null;
         }
         var base = PhotonMeshCache.INSTANCE.getModel(key(), k -> load(modelLocation));
@@ -506,7 +506,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     /** {@code null} = "can't load right now, don't cache" (retry next call); see {@link PhotonMeshCache#get}. */
     @Nullable
     private SkinnedModel load(Identifier location) {
-        if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
+        if (Minecraft.getInstance().gui.overlay() instanceof LoadingOverlay) {
             return null;
         }
         try (var in = Minecraft.getInstance().getResourceManager().open(location)) {

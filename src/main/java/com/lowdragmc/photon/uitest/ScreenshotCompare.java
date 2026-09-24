@@ -66,6 +66,19 @@ final class ScreenshotCompare {
         return newest;
     }
 
+    int width() {
+        return width;
+    }
+
+    int height() {
+        return height;
+    }
+
+    /** Packed RGB of one pixel (no alpha). */
+    int rgb(int x, int y) {
+        return pixels[y * width + x] & 0xFFFFFF;
+    }
+
     boolean sameSizeAs(ScreenshotCompare other) {
         return width == other.width && height == other.height;
     }

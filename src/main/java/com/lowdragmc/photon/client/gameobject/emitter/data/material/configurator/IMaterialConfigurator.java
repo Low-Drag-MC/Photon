@@ -14,7 +14,6 @@ import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Setter;
 import lombok.experimental.Accessors;
-import com.mojang.logging.annotations.MethodsReturnNonnullByDefault;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.function.Consumer;
@@ -22,7 +21,6 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 @ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 @Accessors(chain = true)
 public class IMaterialConfigurator extends ValueConfigurator<IMaterial> {
     public final UIElement preview = new UIElement();

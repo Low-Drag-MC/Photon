@@ -20,7 +20,6 @@ import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonSceneCapture;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.resources.Identifier;
 
 import java.util.List;
@@ -79,7 +78,8 @@ public class SoftParticleScenario implements UIScenario {
                         PhotonPipelines.hdrParticle(fragment, soft));
                 for (var variant : PhotonPipelines.InstancedVariant.values()) {
                     check(ctx, stage + " / " + String.join("+", variant.defines),
-                            PhotonPipelines.instancedHdrParticle(variant, fragment, soft));
+                            PhotonPipelines.instancedHdrParticle(
+                                    PhotonPipelines.InstancedGeometryKey.of(variant), fragment, soft));
                 }
             }
         })

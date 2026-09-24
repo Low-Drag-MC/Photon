@@ -92,7 +92,7 @@ public class GltfModelSource implements IModelSource {
     private SkinnedModel load() {
         // mid-reload the resource manager is swapping; caching EMPTY now would blank the mesh until the
         // next invalidation, so retry afterwards instead (mirrors ObjModelSource).
-        if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
+        if (Minecraft.getInstance().gui.overlay() instanceof LoadingOverlay) {
             return null;
         }
         try (var in = Minecraft.getInstance().getResourceManager().open(modelLocation)) {

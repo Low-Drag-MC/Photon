@@ -6,9 +6,7 @@ import com.lowdragmc.lowdraglib2.client.scene.SceneCameraContext;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
-import com.lowdragmc.photon.client.render.IPhotonFXCollector;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
-import com.lowdragmc.photon.client.render.PhotonStage;
 import com.lowdragmc.photon.client.render.PhotonTime;
 import com.lowdragmc.photon.client.render.PhotonViewSettings;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
@@ -84,10 +82,6 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
 
     private final long[] lastFrameTimes = new long[60];
     private int frameIndex = 0;
-    /** The collector this scene's particles submitted into this frame (its {@code SubmitNodeStorage}). */
-    @Nullable
-    private IPhotonFXCollector collector;
-
     /**
      * {@code options} is the editor's {@link SceneView} when this manager belongs to it, and anything
      * else — {@link FXSceneOptions#DEFAULT} will do — for an FX preview embedded in another mod's
@@ -141,9 +135,7 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
      *   <li>freeze the intra-tick partial while the timeline is paused — the raw game partial keeps
      *       sawtoothing 0→1 every game tick, which made {@code extractFrame}'s deltaTime oscillate
      *       (pause flicker) and per-frame interpolation jitter;</li>
-     *   <li>publish this scene's {@link PhotonViewSettings} on the collector its particles submit
-     *       into, so the deferred bake honours the {@link FXSceneOptions} toggles (wireframe/shaded/
-     *       bloom) for THIS view only — the world keeps drawing the same emitters plainly.</li>
+     *   <li>submit this scene's particles with its own {@link PhotonViewSettings}.</li>
      * </ul>
      */
     @Override
@@ -153,45 +145,29 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
                        Frustum frustum,
                        float partialTicks) {
         var frameStart = System.nanoTime();
-        collector = storage instanceof IPhotonFXCollector fx ? fx : null;
-        if (collector != null) {
-            var drawMode = options.getDrawMode();
-            collector.photonViewSettings(new PhotonViewSettings(
-                    drawMode != SceneView.DrawMode.WIREFRAME,
-                    drawMode != SceneView.DrawMode.DRAW,
-                    options.isBloomEnabled(),
-                    // the editor's own request stack: a timeline post-process clip previewed
-                    // here must not tint the world, nor the world's effects this panel. An embedded
-                    // preview wants the same isolation, so it is the stack for EVERY Photon scene.
-                    PostEffectStack.EDITOR_SCENE,
-                    options.isEffectsEnabled()));
-            if (options.isMaskViewEnabled()) {
-                // top-bar debug toggle: show the CustomMask contents instead of the scene this frame.
-                // Submitting it like any other request is what makes the mask sub-pass run at all —
-                // the sub-pass is demand-driven on there being a pending mask consumer.
-                PostEffectStack.EDITOR_SCENE.submit(
-                        BuiltinResourceProvider.TYPE
-                                .createFullPath("show_mask"),
-                        Map.of(), 1f);
-            }
+        var drawMode = options.getDrawMode();
+        var settings = new PhotonViewSettings(
+                drawMode != SceneView.DrawMode.WIREFRAME,
+                drawMode != SceneView.DrawMode.DRAW,
+                options.isBloomEnabled(),
+                // isolated from the world's stack
+                PostEffectStack.EDITOR_SCENE,
+                options.isEffectsEnabled());
+        if (options.isMaskViewEnabled()) {
+            // debug toggle: show the CustomMask contents
+            PostEffectStack.EDITOR_SCENE.submit(
+                    BuiltinResourceProvider.TYPE
+                            .createFullPath("show_mask"),
+                    Map.of(), 1f);
         }
-        // The size of the target this scene draws into — the PIP texture (sized to the widget's rect x
-        // guiScale), not the window. Everything that turns gl_FragCoord into a scene-capture UV has to
-        // divide by THIS, or it samples a corner of the capture and the result shifts when the panel is
-        // resized. Published twice: to Photon's own U_ViewPort, and to KilaGraph's KG_ScreenSize (which
-        // shadergraph screen-space nodes use, and which otherwise reads the game window).
+        // the scene's own target size, for U_ViewPort and KG_ScreenSize
         var sceneTarget = RenderSystem.outputColorTextureOverride;
-        var mainTarget = Minecraft.getInstance().getMainRenderTarget();
+        var mainTarget = Minecraft.getInstance().gameRenderer.mainRenderTarget();
         var targetWidth = sceneTarget != null ? sceneTarget.getWidth(0) : mainTarget.width;
         var targetHeight = sceneTarget != null ? sceneTarget.getHeight(0) : mainTarget.height;
         KGEngineUniforms
                 .setScreenSizeOverride(targetWidth, targetHeight);
-        // This scene's shaders run on the TIMELINE's clock, not the world's — the 1.21
-        // setShaderGameTime(getRealTime(), isPlaying ? partial : 0) semantics, which is what makes a
-        // paused timeline freeze time-driven shaders too (getRealTime already zeroes the partial when
-        // paused). Published twice, because there are two blocks carrying a clock: Minecraft's Globals,
-        // which PhotonGlobals substitutes for Photon's own draws, and KilaGraph's KG_Globals, which its
-        // Time / Game Time nodes read and only KilaGraph can rewrite.
+        // scene shaders run on the timeline's clock (Globals via PhotonGlobals, KG_Globals via KilaGraph)
         var sceneTime = getRealTime(partialTicks);
         PhotonTime.setOverride(sceneTime);
         KGEngineUniforms.setTimeOverride(sceneTime);
@@ -204,29 +180,22 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
                     cameraRenderState.projectionMatrix, cameraRenderState.viewRotationMatrix,
                     eye, targetWidth, targetHeight);
         } else if (SceneCameraContext.isActive()) {
-            // LDLib2's buildCameraRenderState() fills only pos/blockPos, so `initialized` is false and it
-            // carries no matrices. The scene publishes its real ones here instead (LDLib2 26.1.2.30 widened
-            // that scope to cover submit + afterRender for exactly this) — without them U_Inverse*Matrix
-            // stayed on the WORLD camera, so depth->world reconstruction (scan's ring) was wrong in scenes.
+            // LDLib2's camera render state carries no matrices; the scene camera context does
             PhotonEngineUniforms.update(
                     SceneCameraContext.projection(),
                     SceneCameraContext.viewRotation(),
                     eye, targetWidth, targetHeight);
         } else {
-            // No camera to publish, but the viewport is knowable regardless — and it must be right, or
-            // every scene-capture sample divides gl_FragCoord by the wrong size (debugger-verified: this
-            // used to hold the world frame's 3840x2054 while the PIP texture was 2340x1308).
             PhotonEngineUniforms.updateViewport(targetWidth, targetHeight);
         }
         editorSceneRendering = true;
         renderingManager = this;
         lastPartialTick = partialTicks;
         try {
-            super.render(storage, cameraRenderState, camera, frustum, isPlaying ? partialTicks : 0);
+            PhotonViewSettings.withCurrent(settings, () ->
+                    super.render(storage, cameraRenderState, camera, frustum, isPlaying ? partialTicks : 0));
         } finally {
-            // NOT cleared here: the bake and the drain both happen in afterRender(), and they are what
-            // the Iris resolver and effectiveStage() need to see as "this is a scene, not the world".
-            // extraction is the editor scene's CPU-side render cost — keep the F3-style stat fed
+            // scene flags stay set until afterRender(): the dispatcher still prepares and executes after this
             lastFrameTimes[frameIndex] = System.nanoTime() - frameStart;
             frameIndex = (frameIndex + 1) % lastFrameTimes.length;
         }
@@ -251,28 +220,11 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         time++;
     }
 
-    /**
-     * The scene's Photon draw slot: runs in {@code WorldSceneRenderer.drawWorld}'s finally, after
-     * its translucent particles, still inside the FBO output-override scope. Both stages drain here,
-     * in order, rather than at the scene's per-stage hooks — {@code drawWorld} has no post-solid
-     * hook at all, and {@code afterTranslucentDispatch} is already owned by LDLib2's {@code Scene}
-     * (it renders the editor overlay there). Draining both at the end keeps the two layers ordered
-     * against each other and depth-tested against the finished scene; the only thing a scene-side
-     * opaque hook would add is letting scene TRANSLUCENT geometry blend over opaque fx, which needs
-     * a new LDLib2 hook to express.
-     */
+    /** Runs after the scene's dispatcher executed every phase. */
     @Override
     public void afterRender() {
-        try {
-            if (collector != null) {
-                collector.drain(PhotonStage.AFTER_OPAQUE_FEATURES);
-                collector.drain(PhotonStage.AFTER_TRANSLUCENT_PARTICLES);
-                collector = null;
-            }
-        } finally {
-            editorSceneRendering = false;
-            renderingManager = null;
-        }
+        editorSceneRendering = false;
+        renderingManager = null;
         // the scene's target and clock are gone — anything drawn after this is the world's again
         KGEngineUniforms.clearScreenSizeOverride();
         KGEngineUniforms.clearTimeOverride();

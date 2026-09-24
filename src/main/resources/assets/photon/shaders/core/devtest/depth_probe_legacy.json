@@ -1,0 +1,8 @@
+{
+    "vertex": "photon:particle",
+    "fragment": "photon:devtest/depth_probe_legacy",
+    "samplers": [
+        { "name": "SamplerSceneDepth" }
+    ],
+    "uniforms": []
+}

@@ -4,39 +4,29 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.BindGroupLayout;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.DestFactor;
-import com.mojang.blaze3d.platform.SourceFactor;
+import com.mojang.blaze3d.platform.BlendFactor;
+import com.mojang.blaze3d.platform.BlendOp;
 import com.mojang.blaze3d.shaders.UniformType;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import org.lwjgl.opengl.GL14;
 import org.lwjgl.system.MemoryUtil;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The 1.21 bloom mip-chain on 26.1 render passes: bright pass (luma threshold + soft knee) →
- * 13-tap down-sample chain → additive 3x3 tent up-sample chain → composite onto the target as
- * {@code main + I*(bloom - sharpHighlight)} split into a REVERSE_SUBTRACT draw and an additive draw
- * (the raw {@code glBlendEquation} escape approved in M3 D4 — blaze3d has no blend equations).
- * <p>
- * The chain is RGBA16F throughout ({@link PhotonFloatTextures}), so it works in real HDR — the
- * threshold compares against actual luma rather than an encoded approximation, and no dynamic-range
- * juggling is needed anywhere.
- * <p>
- * One instance per target size (world + editor scenes differ), evicted when unused. Render thread only.
+ * The 1.21 bloom mip chain in RGBA16F: bright pass → down-sample → additive up-sample → composite as
+ * {@code main + I*(bloom - sharpHighlight)} (a REVERSE_SUBTRACT draw plus an additive one). One instance per size.
  */
 public final class PhotonBloom implements AutoCloseable {
 
@@ -46,64 +36,32 @@ public final class PhotonBloom implements AutoCloseable {
     // ---- per-size instances ----------------------------------------------------------------------
 
     private static final Map<Long, PhotonBloom> INSTANCES = new ConcurrentHashMap<>();
-    /** Sizes whose chain could not be allocated — keeps the warning to once per size. */
-    private static final Set<Long> FAILED = ConcurrentHashMap.newKeySet();
     private static long frameCounter;
 
-    /** The chain for a target of this size, or null when it could not be allocated (skip bloom). */
-    @Nullable
     public static PhotonBloom acquire(int width, int height) {
         var key = ((long) width << 32) | (height & 0xFFFFFFFFL);
-        var bloom = INSTANCES.get(key);
-        if (bloom == null) {
-            if (FAILED.contains(key)) {
-                return null;
-            }
-            bloom = create(width, height);
-            if (bloom == null) {
-                FAILED.add(key);
-                Photon.LOGGER.error("Photon could not allocate its {}x{} RGBA16F bloom chain — bloom "
-                        + "is off at this size", width, height);
-                return null;
-            }
-            INSTANCES.put(key, bloom);
-        }
+        var bloom = INSTANCES.computeIfAbsent(key, k -> create(width, height));
         bloom.lastUsedFrame = frameCounter;
         return bloom;
     }
 
-    /** Allocate the whole chain up front, so a partly-built instance can never escape. */
-    @Nullable
     private static PhotonBloom create(int width, int height) {
-        var allocated = new ArrayList<GpuTexture>();
-        var source = chainTexture("Photon bloom source", Math.max(1, width), Math.max(1, height), allocated);
+        var source = chainTexture("Photon bloom source", Math.max(1, width), Math.max(1, height));
         var levels = Math.clamp(PhotonConfig.INSTANCE.bloomMipLevel.get(), 1, 10);
         var mips = new ArrayList<GpuTexture>();
         var w = Math.max(1, width / 2);
         var h = Math.max(1, height / 2);
         for (int i = 0; i < levels && w >= 8 && h >= 8; i++) {
-            var mip = chainTexture("Photon bloom mip", w, h, allocated);
-            if (mip != null) {
-                mips.add(mip);
-            }
+            mips.add(chainTexture("Photon bloom mip", w, h));
             w /= 2;
             h /= 2;
-        }
-        if (source == null || mips.size() != allocated.size() - 1) {
-            allocated.forEach(GpuTexture::close);
-            return null;
         }
         return new PhotonBloom(source, mips.toArray(new GpuTexture[0]));
     }
 
-    @Nullable
-    private static GpuTexture chainTexture(String label, int width, int height,
-                                           List<GpuTexture> allocated) {
-        var texture = PhotonFloatTextures.createRgba16f(label, TEXTURE_USAGE, width, height);
-        if (texture != null) {
-            allocated.add(texture);
-        }
-        return texture;
+    private static GpuTexture chainTexture(String label, int width, int height) {
+        return RenderSystem.getDevice().createTexture(() -> label, TEXTURE_USAGE, PhotonPipelines.HDR_FORMAT,
+                width, height, 1, 1);
     }
 
     /** Frame boundary: drop target sets nothing rendered with for a while (closed editors, resizes). */
@@ -120,12 +78,15 @@ public final class PhotonBloom implements AutoCloseable {
 
     // ---- pipelines (lazy; bright variants keyed by config threshold) -----------------------------
 
-    private static final BlendFunction ADDITIVE = new BlendFunction(SourceFactor.ONE, DestFactor.ONE);
-    /** Composite draws must leave the target's ALPHA untouched: the editor scene FBO's alpha is
-     *  premultiplied COVERAGE (transparent background) — additive fullscreen passes writing alpha
-     *  turned the whole backdrop opaque black. RGB-only write mask. */
-    private static final ColorTargetState ADDITIVE_RGB =
-            new ColorTargetState(Optional.of(ADDITIVE), ColorTargetState.WRITE_COLOR);
+    private static final BlendFunction ADDITIVE = new BlendFunction(BlendFactor.ONE, BlendFactor.ONE);
+    /** {@code dst - src}: takes the sharp highlight back out before its blurred energy is added. */
+    private static final BlendFunction REVERSE_SUBTRACT =
+            new BlendFunction(BlendFactor.ONE, BlendFactor.ONE, BlendOp.REVERSE_SUBTRACT);
+
+    /** Composites keep the target's alpha: it is coverage for the editor scene and the FX layer. */
+    private static ColorTargetState rgbOnly(BlendFunction blend) {
+        return new ColorTargetState(Optional.of(blend), PhotonPipelines.HDR_FORMAT, ColorTargetState.WRITE_COLOR);
+    }
 
     private static final Map<Float, RenderPipeline> BRIGHT_VARIANTS = new HashMap<>();
     private static final Map<Float, RenderPipeline> BLIT_VARIANTS = new HashMap<>();
@@ -134,52 +95,42 @@ public final class PhotonBloom implements AutoCloseable {
     @Nullable
     private static RenderPipeline upPipeline;
 
-    private static RenderPipeline.Builder fullscreenBuilder(String fragment) {
-        return PhotonFullscreenPass.builder(Photon.id("core/" + fragment)).withSampler("inputSampler");
+    private static final BindGroupLayout INPUT = BindGroupLayout.builder().withSampler("inputSampler").build();
+    private static final BindGroupLayout INPUT_AND_PARAMS = BindGroupLayout.builder()
+            .withSampler("inputSampler")
+            .withUniform("PhotonBloom", UniformType.UNIFORM_BUFFER)
+            .build();
+
+    private static RenderPipeline.Builder fullscreenBuilder(String fragment, BindGroupLayout layout) {
+        return PhotonFullscreenPass.builder(Photon.id("core/" + fragment)).withBindGroupLayout(layout);
     }
 
-    /** The converted 1.21 bright_pass: Threshold/Knee ride in the PhotonBloom UBO; outputScale 1 starts
-     *  the chain (plain overwrite into mip 0), = intensity for the full-res sharp-highlight pass
-     *  (REVERSE_SUBTRACT onto the target). */
+    /** {@code outputScale} 1 writes mip 0; otherwise the intensity-scaled sharp-highlight subtract. */
     private static RenderPipeline brightPipeline(float outputScale) {
         return BRIGHT_VARIANTS.computeIfAbsent(outputScale, scale ->
-                fullscreenBuilder("bright_pass")
+                fullscreenBuilder("bright_pass", INPUT_AND_PARAMS)
                         .withLocation(Photon.id("pipeline/bloom_bright_" + BRIGHT_VARIANTS.size()))
-                        .withUniform("PhotonBloom", UniformType.UNIFORM_BUFFER)
                         .withShaderDefine("OUTPUT_SCALE", scale)
                         .withColorTargetState(scale == 1f
-                                ? ColorTargetState.DEFAULT : ADDITIVE_RGB)
+                                ? PhotonFullscreenPass.opaqueTarget(PhotonPipelines.HDR_FORMAT)
+                                : rgbOnly(REVERSE_SUBTRACT))
                         .build());
     }
 
     private static RenderPipeline blitPipeline(float outputScale) {
         return BLIT_VARIANTS.computeIfAbsent(outputScale, scale ->
-                fullscreenBuilder("bloom_blit")
+                fullscreenBuilder("bloom_blit", INPUT)
                         .withLocation(Photon.id("pipeline/bloom_blit_" + BLIT_VARIANTS.size()))
                         .withShaderDefine("OUTPUT_SCALE", scale)
-                        .withColorTargetState(ADDITIVE_RGB)
+                        .withColorTargetState(rgbOnly(ADDITIVE))
                         .build());
-    }
-
-    @Nullable
-    private static RenderPipeline copyPipeline;
-
-    /** Straight overwrite (no blend) — snapshots the HDR scene into {@link #source}. */
-    private static RenderPipeline copyPipeline() {
-        if (copyPipeline == null) {
-            copyPipeline = fullscreenBuilder("bloom_blit")
-                    .withLocation(Photon.id("pipeline/bloom_copy"))
-                    .withShaderDefine("OUTPUT_SCALE", 1f)
-                    .build();
-        }
-        return copyPipeline;
     }
 
     private static RenderPipeline downPipeline() {
         if (downPipeline == null) {
-            downPipeline = fullscreenBuilder("down_sampling")
+            downPipeline = fullscreenBuilder("down_sampling", INPUT_AND_PARAMS)
                     .withLocation(Photon.id("pipeline/bloom_down"))
-                    .withUniform("PhotonBloom", UniformType.UNIFORM_BUFFER)
+                    .withColorTargetState(PhotonFullscreenPass.opaqueTarget(PhotonPipelines.HDR_FORMAT))
                     .build();
         }
         return downPipeline;
@@ -187,10 +138,10 @@ public final class PhotonBloom implements AutoCloseable {
 
     private static RenderPipeline upPipeline() {
         if (upPipeline == null) {
-            upPipeline = fullscreenBuilder("up_sampling")
+            upPipeline = fullscreenBuilder("up_sampling", INPUT_AND_PARAMS)
                     .withLocation(Photon.id("pipeline/bloom_up"))
-                    .withUniform("PhotonBloom", UniformType.UNIFORM_BUFFER)
-                    .withColorTargetState(new ColorTargetState(ADDITIVE))
+                    .withColorTargetState(new ColorTargetState(Optional.of(ADDITIVE), PhotonPipelines.HDR_FORMAT,
+                            ColorTargetState.WRITE_ALL))
                     .build();
         }
         return upPipeline;
@@ -281,7 +232,7 @@ public final class PhotonBloom implements AutoCloseable {
         // what bloom needs, un-clamped — except the sharp-highlight subtract below both READS its input and
         // WRITES targetColor, and sampling a texture bound as the render attachment is undefined. One
         // full-screen copy buys that separation; it replaces re-drawing every emitter a second time.
-        fullscreenPass(copyPipeline(), sourceView, targetColor, null);
+        PhotonFullscreenPass.copy("Photon bloom source", targetColor, sourceView, null);
 
         fullscreenPass(brightPipeline(1f), mipViews[0], sourceView, brightParams(threshold));
         for (int i = 1; i < mips.length; i++) {
@@ -292,12 +243,7 @@ public final class PhotonBloom implements AutoCloseable {
             fullscreenPass(upPipeline(), mipViews[i], mipViews[i + 1], radiusParams());
         }
         // subtract the sharp highlight (its blurred energy arrives via the bloom add below)
-        GL14.glBlendEquation(GL14.GL_FUNC_REVERSE_SUBTRACT);
-        try {
-            fullscreenPass(brightPipeline(intensity), targetColor, sourceView, brightParams(threshold));
-        } finally {
-            GL14.glBlendEquation(GL14.GL_FUNC_ADD);
-        }
+        fullscreenPass(brightPipeline(intensity), targetColor, sourceView, brightParams(threshold));
         fullscreenPass(blitPipeline(intensity), targetColor, mipViews[0], null);
     }
 

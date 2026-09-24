@@ -9,6 +9,7 @@ import net.irisshaders.iris.api.v0.IrisApi;
 import net.irisshaders.iris.gl.blending.BlendModeStorage;
 import net.irisshaders.iris.gl.blending.DepthColorStorage;
 import net.irisshaders.iris.shadows.ShadowRenderer;
+import net.irisshaders.iris.vertices.ImmediateState;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -68,7 +69,8 @@ public final class IrisBridgeImpl implements IrisBridge {
 
     @Override
     public @Nullable GpuTextureView compositeTarget(IrisFrameTarget target) {
-        return IrisTextureBridge.view(target.primaryTexture(), target.width(), target.height());
+        return IrisTextureBridge.view(target.primaryTexture(), target.width(), target.height(),
+                target.internalFormat());
     }
 
     @Override
@@ -84,6 +86,18 @@ public final class IrisBridgeImpl implements IrisBridge {
     @Override
     public boolean isBlendLocked() {
         return BlendModeStorage.isBlendLocked();
+    }
+
+    /** {@code ImmediateState.bypass} gates Iris' pack-program substitution (and shadow-pass tweaks). */
+    @Override
+    public void runWithoutPackPrograms(Runnable work) {
+        var previous = ImmediateState.bypass;
+        ImmediateState.bypass = true;
+        try {
+            work.run();
+        } finally {
+            ImmediateState.bypass = previous;
+        }
     }
 
     @Override

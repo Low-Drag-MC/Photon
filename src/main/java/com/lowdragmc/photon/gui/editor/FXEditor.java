@@ -12,7 +12,6 @@ import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import com.lowdragmc.photon.gui.editor.view.FXTimelineView;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
-import com.mojang.logging.annotations.MethodsReturnNonnullByDefault;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
@@ -22,7 +21,6 @@ import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
 
 @ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
 public class FXEditor extends Editor {
     public final static Identifier WINDOW_ID = LDLib2.id("fx_editor");
 

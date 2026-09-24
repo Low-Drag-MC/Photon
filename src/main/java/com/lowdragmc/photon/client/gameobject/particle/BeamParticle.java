@@ -188,7 +188,7 @@ public class BeamParticle implements IParticle {
             var level = camera.entity().level();
             var size = getRealWidth(0);
             var velocity = new Vector3f(end).sub(from);
-            var vec3 = Entity.collideBoundingBox(null, new Vec3(velocity),
+            var vec3 = Entity.collideBoundingBox((Entity) null, new Vec3(velocity),
                     AABB.ofSize(Vec3.ZERO, size, size, size), level, List.of());
             end = new Vector3f(from).add(vec3.toVector3f());
         }

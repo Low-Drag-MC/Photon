@@ -1,8 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.emitter;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.Photon;
-import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.AdditionalGPUDataSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
@@ -21,10 +21,9 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
@@ -137,7 +136,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         BlockPos blockPos = new BlockPos((int) this.x, (int) this.y, (int) this.z);
         var level = getLevel();
         if (level != null && (level.hasChunkAt(blockPos) || level instanceof DummyWorld)) {
-            return LevelRenderer.getLightCoords(level, blockPos);
+            return LightCoordsUtil.getLightCoords(level, blockPos);
         }
         return 0;
     }
@@ -211,7 +210,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     private int computeLightColor(BlockPos pos) {
         var level = getLevel();
         if (level != null && (level.hasChunkAt(pos) || level instanceof DummyWorld)) {
-            return LevelRenderer.getLightCoords(level, pos);
+            return LightCoordsUtil.getLightCoords(level, pos);
         }
         return 0;
     }
@@ -296,8 +295,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
 
     /** The primitive mode this emitter's geometry is written in (1.21: quads for tiles/beams,
      *  TRIANGLE_STRIP for trails, TRIANGLES for ara-trails). */
-    public VertexFormat.Mode geometryMode() {
-        return VertexFormat.Mode.QUADS;
+    public PrimitiveTopology geometryMode() {
+        return PrimitiveTopology.QUADS;
     }
 
     /** Bakes one geometry group's camera-relative vertices. An emitter may extract several groups
@@ -331,7 +330,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     /** Bake one geometry group: one job per material, plus the editor wireframe overlay. */
     protected final void bakeGroup(PhotonViewSettings settings, List<PhotonWorldRenderState.DrawJob> out,
                                    Camera camera, float partialTicks,
-                                   RendererSetting.Runtime renderer, VertexFormat.Mode mode,
+                                   RendererSetting.Runtime renderer, PrimitiveTopology mode,
                                    GeometryBaker baker) {
         // the eye in the space the bakers write: Photon bakes camera-relative, and the editor's
         // SceneCamera sits at the origin while the real viewer is elsewhere
@@ -414,19 +413,6 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     private static final long VAT_PHASE_CHANNELS = PhotonGpuChannels.maskOf(
             PhotonGpuChannels.Kind.TILE_MODEL,
             List.of("addition_gpu_data.random", "addition_gpu_data.t"));
-
-    private transient PhotonInstanceRing[] instanceRings;
-    private transient PhotonInstanceRing[] pointRings;
-    private transient PhotonInstanceRing[] dataRings;
-    private transient PhotonInstanceRing[] customRings;
-
-    private PhotonInstanceRing ringFor(PhotonInstanceRing[] rings, int slot) {
-        if (rings[slot] == null) {
-            rings[slot] = new PhotonInstanceRing();
-            AutoCloseCleaner.registerRenderThread(this, rings[slot]);
-        }
-        return rings[slot];
-    }
 
     /**
      * Shared bake scratch, grown on demand and never shrunk. RENDER THREAD ONLY, and the whole set has
@@ -517,7 +503,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     /**
      * The far-to-near instance order for {@code SortMode.DISTANCE}, or null when this group draws in
      * emit order. The instanced twin of the CPU path's {@link #sortQuads}: instead of permuting
-     * vertices it permutes whole instance records (see {@code PhotonInstanceRing.write(..., order, ...)}),
+     * vertices it permutes whole instance records (see {@code PhotonUploads.records(..., order, ...)}),
      * so one instanced draw blends back-to-front internally.
      * <p>
      * Only variants with {@link PhotonPipelines.InstancedVariant#positionAtRecordHead} qualify — the
@@ -526,7 +512,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
      */
     @Nullable
     private static int[] instanceDrawOrder(PhotonPipelines.InstancedVariant variant,
-                                           PhotonInstancedDrawState.Layout layout,
+                                           PhotonInstanceLayouts.Layout layout,
                                            Camera camera, RendererSetting.Runtime renderer,
                                            Vector3f positionOffset, int count) {
         if (count < 2 || !variant.positionAtRecordHead) {
@@ -573,7 +559,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         var infos = new ArrayList<PhotonRenderTypes.PhotonDrawInfo>();
         var slices = new ArrayList<GpuBufferSlice>();
         for (var materialSetting : renderer.getMaterials()) {
-            var renderType = materialSetting.getRenderType(VertexFormat.Mode.QUADS);
+            var renderType = materialSetting.getRenderType(PrimitiveTopology.QUADS);
             if (renderType == null) {
                 return false;
             }
@@ -596,11 +582,9 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                 | (variant.usesVat() ? VAT_PHASE_CHANNELS : 0L);
         setting.setMaterialMask(materialMask);
         setting.setCustomDataMaterialUsed(shaderGraphUsesCustomData(renderer.getMaterials()));
-        // The user-toggled channels / custom-data streams ride as a divisor-1 attribute tail inside the
-        // instance record (hand-written shaders read them as extra `in` declarations) — 1.21 grew the
-        // instance stride the same way. Callers size by the BASE stride, so re-derive the capacity.
-        var attribTail = setting.planAttribs(variant.layout.strideFloats());
-        var layout = variant.layout.withInstanceTail(attribTail, setting.attribFloats());
+        // the user channels ride as an attribute tail in each record; callers size by the base stride
+        var tail = setting.planAttribs(variant.layout.strideFloats());
+        var layout = variant.layout.withInstanceTail(tail, setting.attribFloats());
         var instanceCapacity = instanceFloatCapacity / variant.layout.strideFloats();
         instanceStaging = staging(instanceStaging, instanceCapacity * layout.strideFloats());
         var points = variant.usesPoints ? (pointStaging = staging(pointStaging, pointFloatCapacity)) : null;
@@ -614,48 +598,35 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         }
         instanceStaging.flip();
         var order = instanceDrawOrder(variant, layout, camera, renderer, positionOffset, count);
-        var slots = PhotonPipelines.InstancedVariant.values().length;
-        if (instanceRings == null) instanceRings = new PhotonInstanceRing[slots];
-        if (pointRings == null) pointRings = new PhotonInstanceRing[slots];
-        if (dataRings == null) dataRings = new PhotonInstanceRing[slots];
-        if (customRings == null) customRings = new PhotonInstanceRing[slots];
-        // per-variant ring slot: one emitter can extract several instanced groups per frame
-        // (e.g. tiles + embedded trails) — texel uniforms bind whole buffers, no sharing
-        var ring = ringFor(instanceRings, variant.ordinal());
-        var instanceBuffer = order == null ? ring.write(instanceStaging)
-                : ring.write(instanceStaging, order, count, layout.strideFloats());
-        PhotonWorldRenderState.trackInstanceRing(ring);
+        var instances = PhotonUploads.records(instanceStaging, order, count, layout.strideFloats());
         GpuBuffer pointBuffer = null;
         if (points != null) {
             // never permuted: instances of a point-using variant index into this shared block
             points.flip();
-            var pRing = ringFor(pointRings, variant.ordinal());
-            pointBuffer = pRing.write(points);
-            PhotonWorldRenderState.trackInstanceRing(pRing);
+            pointBuffer = PhotonUploads.texels("PhotonPoints", points, null, 0, 0);
         }
         GpuBuffer dataBuffer = null;
         if (recordsComplete(data, count, setting.dataTexels(), "PhotonData")) {
             data.flip();
-            var dRing = ringFor(dataRings, variant.ordinal());
             // fetched by gl_InstanceID → must follow the instances' permutation exactly
-            dataBuffer = order == null ? dRing.write(data)
-                    : dRing.write(data, order, count, setting.dataTexels() * 4);
-            PhotonWorldRenderState.trackInstanceRing(dRing);
+            dataBuffer = PhotonUploads.texels("PhotonData", data, order, count, setting.dataTexels() * 4);
         }
         if (variant.usesVat() && dataBuffer == null) {
-            // Not optional for a VAT pipeline: it DECLARES PhotonData (that is where the phase's random
-            // and t come from), and 26.1 fails the draw outright on a declared-but-unbound uniform. Give
-            // the group back to the CPU path, which poses from the same table via poseBaseFor.
+            // a VAT pipeline declares PhotonData; fall back to the CPU path
             return false;
         }
         GpuBuffer customBuffer = null;
         if (recordsComplete(custom, count, setting.customDataTexels(), "PhotonCustomData")) {
             custom.flip();
-            var cRing = ringFor(customRings, variant.ordinal());
-            customBuffer = order == null ? cRing.write(custom)
-                    : cRing.write(custom, order, count, setting.customDataTexels() * 4);
-            PhotonWorldRenderState.trackInstanceRing(cRing);
+            customBuffer = PhotonUploads.texels("PhotonCustomData", custom, order, count,
+                    setting.customDataTexels() * 4);
         }
+        // declare exactly the records that were uploaded
+        var geometryKey = new PhotonPipelines.InstancedGeometryKey(variant, layout,
+                dataBuffer != null, customBuffer != null);
+        var geometry = new PhotonWorldRenderState.InstancedGeometry(
+                mesh.vertices(), mesh.indexCount(), mesh.indices(),
+                instances, count, pointBuffer, dataBuffer, customBuffer, mesh.vat(), mesh.vatInfo());
         var eye = PhotonCameraUtils.facingEye(camera);
         var distanceSq = transform.position().distanceSquared(eye);
         var stage = renderer.effectiveStage();
@@ -676,57 +647,53 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                 RenderPipeline pipeline;
                 if (info.bindings().graph() != null) {
                     // shader graphs compile the same generated GLSL against the instanced format + define
-                    var graph = info.bindings().graph();
-                    pipeline = PhotonPipelines.graphShader(graph.compiled(), variant, key,
-                            graph.usedChannelMask(), graph.usesCustomData());
+                    pipeline = PhotonPipelines.graphShader(info.bindings().graph().compiled(), geometryKey, key);
                 } else if (recipe.customShaderKey() != null) {
-                    pipeline = PhotonPipelines.instancedCustomShader(variant, recipe.customShaderKey());
+                    pipeline = PhotonPipelines.instancedCustomShader(geometryKey, recipe.customShaderKey());
                 } else {
-                    pipeline = PhotonPipelines.instancedHdrParticle(variant, recipe.hdrFragment(), key);
+                    pipeline = PhotonPipelines.instancedHdrParticle(geometryKey, recipe.hdrFragment(), key);
                 }
                 var customUniforms = info.bindings().customUniforms();
                 out.add(new PhotonWorldRenderState.InstancedJob(
                         new PhotonRenderTypes.PhotonDrawInfo.Programs(pipeline),
-                        new PhotonWorldRenderState.InstancedGeometry(
-                                mesh.vertices(), mesh.indexCount(), mesh.indices(),
-                                instanceBuffer, count, pointBuffer, dataBuffer, customBuffer, layout,
-                                mesh.vat(), mesh.vatInfo()),
+                        geometry,
                         new PhotonWorldRenderState.DrawBindings(
                                 info.bindings().textures(), slices.get(m),
                                 customUniforms == null ? null : customUniforms.slice(),
-                                info.bindings().sceneSamplers(), info.bindings().graph()),
-                        positionOffset, key.blendEquation(),
-                        stage, renderer.getOrderInLayer(), distanceSq, variant, mask));
+                                info.bindings().sceneSamplers(), info.bindings().graph(),
+                                info.bindings().legacyDepth()),
+                        positionOffset,
+                        stage, renderer.getOrderInLayer(), distanceSq, geometryKey, mask));
             }
         }
         if (wireframe) {
-            var wfKey = PhotonPipelines.ParticlePipelineKey.wireframe(VertexFormat.Mode.QUADS);
-            var wfPipeline = PhotonPipelines.instancedHdrParticle(variant, wfKey);
+            // only a VAT pose needs the records here
+            var wfGeometryKey = new PhotonPipelines.InstancedGeometryKey(variant, layout, false, false);
+            var wfKey = PhotonPipelines.ParticlePipelineKey.wireframe(PrimitiveTopology.QUADS);
+            var wfPipeline = PhotonPipelines.instancedHdrParticle(wfGeometryKey, wfKey);
             out.add(new PhotonWorldRenderState.InstancedJob(
                     new PhotonRenderTypes.PhotonDrawInfo.Programs(wfPipeline),
                     new PhotonWorldRenderState.InstancedGeometry(
                             mesh.vertices(), mesh.indexCount(), mesh.indices(),
-                            instanceBuffer, count, pointBuffer,
-                            // the overlay's own shader reads no additional data — but a VAT variant's
-                            // vertex stage still poses from the table, so those two ride along
-                            dataBuffer, null,
-                            layout, mesh.vat(), mesh.vatInfo()),
+                            instances, count, pointBuffer,
+                            variant.usesVat() ? dataBuffer : null, null,
+                            mesh.vat(), mesh.vatInfo()),
                     new PhotonWorldRenderState.DrawBindings(
                             Map.of("Sampler0", Photon.id("textures/particle/white.png")),
                             PhotonMaterialUniforms.sliceFor(
                                     new PhotonMaterialUniforms.Values(0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0)),
                             null, List.of(),
-                            null), // wireframe overlay draws Photon's own shader, never a graph
-                    positionOffset, PhotonPipelines.BLEND_EQUATION_ADD,
+                            null, false),
+                    positionOffset,
                     PhotonStage.AFTER_TRANSLUCENT_PARTICLES, Integer.MAX_VALUE, distanceSq,
-                    variant, null)); // an editor overlay is not content — it never writes the mask
+                    wfGeometryKey, null));
         }
         return true;
     }
 
     private void bakeJob(List<PhotonWorldRenderState.DrawJob> out,
                          RenderType renderType,
-                         VertexFormat.Mode mode,
+                         PrimitiveTopology mode,
                          Camera camera, float partialTicks,
                          PhotonStage stage, int orderInLayer,
                          @Nullable Vector3fc sortOrigin,
@@ -751,8 +718,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
 
     /**
      * Reorder the baked quads far-to-near, in place. 1.21 sorted by building a sorted INDEX buffer
-     * ({@code MeshDataSorter.sortPrimitives}); Photon's 26.1 drain concatenates adjacent same-RenderType
-     * jobs into one run over a shared ring buffer and draws them with the engine's sequential quad
+     * ({@code MeshDataSorter.sortPrimitives}); Photon's drain concatenates adjacent same-RenderType
+     * jobs into one run over one transient upload and draws them with the engine's sequential quad
      * indices, so a per-job index buffer would have to break that merging. Permuting the vertices instead
      * keeps the merge (and costs one memcpy of the mesh, against an index upload per job per frame).
      * <p>
@@ -765,7 +732,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
      */
     private static void sortQuads(MeshData mesh, Vector3fc sortOrigin) {
         var drawState = mesh.drawState();
-        if (drawState.mode() != VertexFormat.Mode.QUADS) {
+        if (drawState.primitiveTopology() != PrimitiveTopology.QUADS) {
             return;
         }
         var stride = drawState.format().getVertexSize();

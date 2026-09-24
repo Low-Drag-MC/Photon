@@ -17,8 +17,9 @@ layout(std140) uniform PhotonPass {
 in vec2 texCoord;
 out vec4 fragColor;
 
+// reverse-Z: depth 1 is the near plane
 float linearize(float depth) {
-    return (Near * Far) / (Far - depth * (Far - Near));
+    return (Near * Far) / (Near + depth * (Far - Near));
 }
 
 void main() {

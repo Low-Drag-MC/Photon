@@ -1,36 +1,30 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.mojang.blaze3d.pipeline.BlendEquation;
 import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.platform.DestFactor;
-import com.mojang.blaze3d.platform.SourceFactor;
+import com.mojang.blaze3d.platform.BlendFactor;
+import com.mojang.blaze3d.platform.BlendOp;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 
 import javax.annotation.Nullable;
 
-/**
- * 26.1 note: blend state is no longer applied imperatively (RenderSystem.blendFuncSeparate is gone);
- * it is a {@link BlendFunction} baked into a {@code RenderPipeline}. This class stays the serialized
- * blend configuration; {@link #toBlendFunction()} feeds the M2 pipeline-variant cache.
- * <p>
- * Blend equations (SUB/REVERSE_SUB/MIN/MAX): vanilla 26.1 pipelines can't express them — the
- * {@link BlendFuc#op} rides in the pipeline key and Photon's own drain applies it as a raw
- * {@code glBlendEquation} escape around the draw (M3 decision D4-C; GL backend only).
- */
+/** The serialized blend configuration of a material slot, baked into the pipeline by {@link #toBlendFunction()}. */
 @Getter @Setter
 @EqualsAndHashCode
 public class BlendMode {
+    /** Serialized by name. */
     public enum BlendFuc {
-        ADD(32774),
-        SUB(32778),
-        REVERSE_SUB(32779),
-        MIN(32775),
-        MAX(32776);
-        public final int op;
+        ADD(BlendOp.ADD),
+        SUB(BlendOp.SUBTRACT),
+        REVERSE_SUB(BlendOp.REVERSE_SUBTRACT),
+        MIN(BlendOp.MIN),
+        MAX(BlendOp.MAX);
+        public final BlendOp op;
 
-        BlendFuc(int op) {
+        BlendFuc(BlendOp op) {
             this.op = op;
         }
     }
@@ -38,17 +32,17 @@ public class BlendMode {
     @Configurable(name = "BlendMode.enableBlend")
     private boolean enableBlend;
     @Configurable(name = "BlendMode.srcColorFactor")
-    private SourceFactor srcColorFactor;
+    private BlendFactor srcColorFactor;
     @Configurable(name = "BlendMode.dstColorFactor")
-    private DestFactor dstColorFactor;
+    private BlendFactor dstColorFactor;
     @Configurable(name = "BlendMode.srcAlphaFactor")
-    private SourceFactor srcAlphaFactor;
+    private BlendFactor srcAlphaFactor;
     @Configurable(name = "BlendMode.dstAlphaFactor")
-    private DestFactor dstAlphaFactor;
+    private BlendFactor dstAlphaFactor;
     @Configurable(name = "BlendMode.blendFunc")
     private BlendFuc blendFunc;
 
-    private BlendMode(boolean enableBlend, SourceFactor srcColorFactor, DestFactor dstColorFactor, SourceFactor srcAlphaFactor, DestFactor dstAlphaFactor, BlendFuc blendFunc) {
+    private BlendMode(boolean enableBlend, BlendFactor srcColorFactor, BlendFactor dstColorFactor, BlendFactor srcAlphaFactor, BlendFactor dstAlphaFactor, BlendFuc blendFunc) {
         this.srcColorFactor = srcColorFactor;
         this.dstColorFactor = dstColorFactor;
         this.srcAlphaFactor = srcAlphaFactor;
@@ -58,31 +52,34 @@ public class BlendMode {
     }
 
     public BlendMode() {
-        this(true, SourceFactor.SRC_ALPHA, DestFactor.ONE_MINUS_SRC_ALPHA, SourceFactor.ONE, DestFactor.ZERO, BlendFuc.ADD);
+        this(true, BlendFactor.SRC_ALPHA, BlendFactor.ONE_MINUS_SRC_ALPHA, BlendFactor.ONE, BlendFactor.ZERO, BlendFuc.ADD);
     }
 
-    public BlendMode(SourceFactor srcFactor, DestFactor dstFactor, BlendFuc blendFunc) {
+    public BlendMode(BlendFactor srcFactor, BlendFactor dstFactor, BlendFuc blendFunc) {
         this(true, srcFactor, dstFactor, srcFactor, dstFactor, blendFunc);
     }
 
-    public BlendMode(SourceFactor srcColorFactor, DestFactor dstColorFactor, SourceFactor srcAlphaFactor, DestFactor dstAlphaFactor, BlendFuc blendFunc) {
+    public BlendMode(BlendFactor srcColorFactor, BlendFactor dstColorFactor, BlendFactor srcAlphaFactor, BlendFactor dstAlphaFactor, BlendFuc blendFunc) {
         this(true, srcColorFactor, dstColorFactor, srcAlphaFactor, dstAlphaFactor, blendFunc);
     }
 
     /**
      * Pipeline-side blend state; null = blending disabled (opaque pipeline variant).
      * <p>
-     * The ALPHA channel always uses coverage semantics {@code (ONE, ONE_MINUS_SRC_ALPHA)} — the
+     * The ALPHA channel always uses coverage semantics {@code (ONE, ONE_MINUS_SRC_ALPHA, ADD)} — the
      * configured alpha factors (1.21 default {@code (ONE, ZERO)}) never affected on-screen color,
-     * but in 26.1 they'd overwrite the render target's alpha/coverage channel, which the editor's
+     * but they would overwrite the render target's alpha/coverage channel, which the editor's
      * premultiplied PIP composite (and vanilla's translucency stages) trust. Matches vanilla's
      * {@code BlendFunction.TRANSLUCENT} alpha behavior; the serialized fields stay untouched.
+     * The authored operation applies to colour only.
      */
     @Nullable
     public BlendFunction toBlendFunction() {
         if (!enableBlend) {
             return null;
         }
-        return new BlendFunction(srcColorFactor, dstColorFactor, SourceFactor.ONE, DestFactor.ONE_MINUS_SRC_ALPHA);
+        var op = blendFunc == null ? BlendOp.ADD : blendFunc.op;
+        return new BlendFunction(new BlendEquation(srcColorFactor, dstColorFactor, op),
+                new BlendEquation(BlendFactor.ONE, BlendFactor.ONE_MINUS_SRC_ALPHA, BlendOp.ADD));
     }
 }

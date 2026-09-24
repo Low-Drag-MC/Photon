@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -7,7 +8,6 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.renderer.rendertype.RenderType;
 
 import java.util.Objects;
@@ -55,7 +55,7 @@ public final class UIResourceMaterial implements IMaterial {
     @Override
     public RenderType getRenderType(
             MaterialSetting setting,
-            VertexFormat.Mode mode) {
+            PrimitiveTopology mode) {
         return getRawMaterial().getRenderType(setting, mode);
     }
 

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.render;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
@@ -13,10 +14,10 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
+import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ProjectionMatrixBuffer;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -37,8 +38,8 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalDouble;
-import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -64,9 +65,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * on screen, which also drops the material references a closed editor would otherwise leave pinned.
  * <p>
  * <b>Why a hand-rolled pass.</b> Photon binds {@code PhotonMaterial}/{@code PhotonEngine}/lightmap (and, for
- * shader graphs, KilaGraph's own blocks) manually in {@code PhotonWorldRenderState} — the RenderSetup does not
- * carry them, so a plain {@code RenderType.draw} would leave them unbound. The preview mirrors that binding
- * sequence for a single quad.
+ * shader graphs, KilaGraph's own blocks) itself in {@code PhotonWorldRenderState} — the RenderSetup does not
+ * carry them. The preview mirrors that binding sequence for a single quad.
+ * <p>
+ * Material pipelines target {@link PhotonPipelines#HDR_FORMAT}, so the quad is drawn into an HDR scratch target and
+ * resolved into the entry's RGBA8 texture.
  */
 public final class MaterialPreviewRenderer {
     /** Tile/inline preview target edge (px) — small and shared; the inspector sizes its own. */
@@ -139,6 +142,8 @@ public final class MaterialPreviewRenderer {
     /** Shared depth attachments, one per target size (a pass needs depth matching its color). */
     private static final Map<Integer, GpuTextureView> DEPTH_VIEWS = new HashMap<>();
     private static final Map<Integer, GpuTexture> DEPTH_TEXTURES = new HashMap<>();
+    private static final Map<Integer, GpuTextureView> HDR_VIEWS = new HashMap<>();
+    private static final Map<Integer, GpuTexture> HDR_TEXTURES = new HashMap<>();
     /** 1x1 stand-ins for the scene captures a custom shader may sample (no scene in a preview). */
     @Nullable
     private static GpuTexture dummyColor;
@@ -234,6 +239,13 @@ public final class MaterialPreviewRenderer {
             if (texture != null) texture.close();
             return true;
         });
+        HDR_VIEWS.keySet().removeIf(size -> {
+            if (inUse.contains(size)) return false;
+            HDR_VIEWS.get(size).close();
+            var texture = HDR_TEXTURES.remove(size);
+            if (texture != null) texture.close();
+            return true;
+        });
     }
 
     /** Inspector tier: every request, every frame, at its own resolution. */
@@ -322,7 +334,7 @@ public final class MaterialPreviewRenderer {
         RenderType renderType;
         PhotonRenderTypes.PhotonDrawInfo info;
         try {
-            renderType = material.getRenderType(DEFAULT_SETTING, VertexFormat.Mode.QUADS);
+            renderType = material.getRenderType(DEFAULT_SETTING, PrimitiveTopology.QUADS);
             info = renderType == null ? null : PhotonRenderTypes.drawInfo(renderType);
         } catch (Exception e) {
             markFailed(material, now, "render type resolution failed", e);
@@ -398,6 +410,10 @@ public final class MaterialPreviewRenderer {
         DEPTH_VIEWS.clear();
         DEPTH_TEXTURES.values().forEach(GpuTexture::close);
         DEPTH_TEXTURES.clear();
+        HDR_VIEWS.values().forEach(GpuTextureView::close);
+        HDR_VIEWS.clear();
+        HDR_TEXTURES.values().forEach(GpuTexture::close);
+        HDR_TEXTURES.clear();
         // the 1x1 stand-ins are trivial, but releasing them keeps "idle == nothing held" honest
         if (dummyColorView != null) {
             dummyColorView.close();
@@ -436,10 +452,9 @@ public final class MaterialPreviewRenderer {
 
     private static Entry createEntry(int size) {
         var device = RenderSystem.getDevice();
-        // sampleable in the GUI (TEXTURE_BINDING) + a render attachment; the pass itself clears it
         var color = device.createTexture(() -> "Photon material preview",
                 GpuTexture.USAGE_RENDER_ATTACHMENT | GpuTexture.USAGE_TEXTURE_BINDING,
-                TextureFormat.RGBA8, size, size, 1, 1);
+                GpuFormat.RGBA8_UNORM, size, size, 1, 1);
         var view = device.createTextureView(color);
         var id = Photon.id("material_preview/" + ID_SEQ.getAndIncrement());
         Minecraft.getInstance().getTextureManager().register(id, new AbstractTexture() {{
@@ -484,28 +499,31 @@ public final class MaterialPreviewRenderer {
         }
         if (needsSceneColor) dummyColorView();
         if (needsSceneDepth) dummyDepthView();
+        var legacy = info.bindings().legacyDepth();
+        var legacyDepth = legacy && needsSceneDepth ? PhotonSceneCapture.legacyStandInDepth() : null;
+
+        PhotonEngineUniforms.ensure(entry.size, entry.size);
+        var materialSlice = PhotonWorldRenderState.materialSlice(renderType);
+        var sequential = RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS);
+        var indices = sequential.getBuffer(6);
 
         RenderSystem.backupProjectionMatrix();
         // ortho that maps the unit quad straight to the target: ProjMat * identity(ModelView) * (±1,±1,0)
         RenderSystem.setProjectionMatrix(projBuffer().getBuffer(PREVIEW_ORTHO),
                 ProjectionType.ORTHOGRAPHIC);
+        var hdr = hdrView(entry.size);
         try (RenderPass pass = device.createCommandEncoder().createRenderPass(
-                () -> "Photon material preview", entry.colorView, OptionalInt.of(0),
-                depthView(entry.size), OptionalDouble.of(1.0))) {
+                () -> "Photon material preview", hdr, Optional.of(TRANSPARENT),
+                depthView(entry.size), OptionalDouble.of(RenderSystem.DEFAULT_DEPTH_CLEAR_VALUE))) {
             pass.setPipeline(info.programs().main());
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", dynamicTransforms);
-            var materialSlice = PhotonMaterialUniforms.sliceFor(renderType);
-            if (materialSlice != null) pass.setUniform("PhotonMaterial", materialSlice);
-            // custom shaders register their own slice; a soft-particle material declares the block without
-            // registering (it only reads U_InverseProjectionMatrix), so fall back to the frame's own —
-            // same rule as PhotonWorldRenderState.drawRun
-            var engineSlice = PhotonEngineUniforms.sliceFor(renderType);
-            if (engineSlice == null) engineSlice = PhotonEngineUniforms.currentSlice();
-            if (engineSlice != null) pass.setUniform("PhotonEngine", engineSlice);
+            pass.setUniform(PhotonMaterialUniforms.UBO_NAME, materialSlice);
+            var engineSlice = legacy ? PhotonEngineUniforms.legacySlice() : PhotonEngineUniforms.currentSlice();
+            if (engineSlice != null) pass.setUniform(PhotonEngineUniforms.UBO_NAME, engineSlice);
             var custom = info.bindings().customUniforms();
             var customSlice = custom == null ? null : custom.slice();
-            if (customSlice != null) pass.setUniform("PhotonCustomMaterial", customSlice);
+            if (customSlice != null) pass.setUniform(PhotonCustomUniforms.UBO_NAME, customSlice);
             for (var e : textures) {
                 pass.bindTexture(e.getKey(), e.getValue().getTextureView(), e.getValue().getSampler());
             }
@@ -531,19 +549,33 @@ public final class MaterialPreviewRenderer {
             for (var name : info.bindings().sceneSamplers()) {
                 GpuTextureView view;
                 if (name.contains("Depth")) {
-                    view = previewSceneDepth != null ? previewSceneDepth : dummyDepthView();
+                    view = legacyDepth != null ? legacyDepth
+                            : previewSceneDepth != null ? previewSceneDepth : dummyDepthView();
                 } else {
                     view = previewSceneColor != null ? previewSceneColor : dummyColorView();
                 }
                 pass.bindTexture(name, view, sceneSampler);
             }
-            var autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
-            pass.setVertexBuffer(0, quad());
-            pass.setIndexBuffer(autoIndices.getBuffer(6), autoIndices.type());
-            pass.drawIndexed(0, 0, 6, 1);
+            pass.setVertexBuffer(0, quad().slice());
+            pass.setIndexBuffer(indices, sequential.type());
+            pass.drawIndexed(6, 1, 0, 0, 0);
         } finally {
             RenderSystem.restoreProjectionMatrix();
         }
+        PhotonFullscreenPass.copy("Photon material preview resolve", hdr, entry.colorView, null);
+    }
+
+    private static final Vector4f TRANSPARENT = new Vector4f(0, 0, 0, 0);
+
+    private static GpuTextureView hdrView(int size) {
+        return HDR_VIEWS.computeIfAbsent(size, edge -> {
+            var device = RenderSystem.getDevice();
+            var texture = device.createTexture(() -> "Photon material preview hdr",
+                    GpuTexture.USAGE_RENDER_ATTACHMENT | GpuTexture.USAGE_TEXTURE_BINDING,
+                    PhotonPipelines.HDR_FORMAT, edge, edge, 1, 1);
+            HDR_TEXTURES.put(edge, texture);
+            return device.createTextureView(texture);
+        });
     }
 
     /** Depth attachment for a target of this edge (previews never read it; a cleared depth just lets
@@ -559,11 +591,9 @@ public final class MaterialPreviewRenderer {
         });
     }
 
-    /** The main target's depth format, so a stencil-using pipeline (the mask materials) still gets a
-     *  stencil aspect; the superset is the fallback if the main target ever has no depth attachment. */
-    private static TextureFormat depthFormat() {
-        var depth = Minecraft.getInstance().getMainRenderTarget().getDepthTexture();
-        return depth == null ? TextureFormat.DEPTH32_STENCIL8 : depth.getFormat();
+    private static GpuFormat depthFormat() {
+        var depth = Minecraft.getInstance().gameRenderer.mainRenderTarget().getDepthTexture();
+        return depth == null ? GpuFormat.D32_FLOAT : depth.getFormat();
     }
 
     private static GpuTextureView dummyColorView() {
@@ -573,9 +603,9 @@ public final class MaterialPreviewRenderer {
             dummyColor = device.createTexture(() -> "Photon preview scene color stand-in",
                     GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT
                             | GpuTexture.USAGE_COPY_DST,
-                    TextureFormat.RGBA8, 1, 1, 1, 1);
+                    GpuFormat.RGBA8_UNORM, 1, 1, 1, 1);
             dummyColorView = device.createTextureView(dummyColor);
-            device.createCommandEncoder().clearColorTexture(dummyColor, 0);
+            device.createCommandEncoder().clearColorTexture(dummyColor, TRANSPARENT);
         }
         return dummyColorView;
     }
@@ -588,7 +618,7 @@ public final class MaterialPreviewRenderer {
                     GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT
                             | GpuTexture.USAGE_COPY_DST, format, 1, 1, 1, 1);
             dummyDepthView = device.createTextureView(dummyDepth);
-            device.createCommandEncoder().clearDepthTexture(dummyDepth, 1.0);
+            device.createCommandEncoder().clearDepthTexture(dummyDepth, RenderSystem.DEFAULT_DEPTH_CLEAR_VALUE);
         }
         return dummyDepthView;
     }
@@ -609,11 +639,13 @@ public final class MaterialPreviewRenderer {
     /** The cached quad vertex buffer for the Photon-pass path (see {@link #emitQuad}). */
     private static GpuBuffer quad() {
         if (quad == null) {
-            var builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, PhotonPipelines.PARTICLE_FORMAT);
-            emitQuad(builder);
-            try (var mesh = builder.buildOrThrow()) {
-                quad = RenderSystem.getDevice().createBuffer(() -> "Photon material preview quad",
-                        GpuBuffer.USAGE_VERTEX, mesh.vertexBuffer());
+            try (var bytes = new ByteBufferBuilder(PhotonPipelines.PARTICLE_FORMAT.getVertexSize() * 4)) {
+                var builder = new BufferBuilder(bytes, PrimitiveTopology.QUADS, PhotonPipelines.PARTICLE_FORMAT);
+                emitQuad(builder);
+                try (var mesh = builder.buildOrThrow()) {
+                    quad = RenderSystem.getDevice().createBuffer(() -> "Photon material preview quad",
+                            GpuBuffer.USAGE_VERTEX, mesh.vertexBuffer());
+                }
             }
         }
         return quad;

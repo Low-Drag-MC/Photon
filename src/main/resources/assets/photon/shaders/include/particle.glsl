@@ -1,53 +1,51 @@
-#ifdef PARTICLE_INSTANCE
+// Vertex inputs are bound by name: MIRRORED FROM PhotonInstanceLayouts (names, types and order) and the record
+// fillers. Declare every input of a binding up to the last one read, since Vulkan numbers inputs by counting.
+// Side buffers are declared only under the define the pipeline sets when it binds them.
 
-layout(location = 0) in vec3 aPos;
+// one line: line continuations need GLSL 4.20
+#if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE) || defined(TRAIL_INSTANCE) || defined(ARA_TRAIL_INSTANCE) || defined(ARA_TRAIL_TUBE_INSTANCE) || defined(BEAM_INSTANCE)
+#define PHOTON_INSTANCED
+#endif
 
-layout(location = 1) in vec3 iPos;
-layout(location = 2) in vec2 iSize;
-layout(location = 3) in vec3 iScale;
-layout(location = 4) in vec4 iRot;
-layout(location = 5) in vec4 iColor;
-layout(location = 6) in vec4 iUV;
-layout(location = 7) in int iLight;
+#if defined(PARTICLE_INSTANCE)
 
-// additional GPU data: pulled from PhotonData by gl_InstanceID (see photon_data_*()); the raw
-// vertex attributes above stop at iLight — custom shaders declare their own legacy channel
-// attributes at location 8+. Record = 5 texels — MIRRORED FROM PhotonGpuChannels (keep in lockstep).
-uniform samplerBuffer PhotonData;
+in vec3 aPos;
+
+in vec3 iPos;
+in vec2 iSize;
+in vec3 iScale;
+in vec4 iRot;
+in vec4 iColor;
+in vec4 iUV;
+in int iLight;
+
+// additional GPU data records (photon_data_*()); custom shaders read their own tail attributes after iLight.
+// Record = 5 texels — MIRRORED FROM PhotonGpuChannels (keep in lockstep).
 #define PHOTON_DATA_TEXELS 5
-
-// user custom data: pulled from PhotonCustomData by gl_InstanceID (see photon_custom_data()).
-// Constant stride — MIRRORED FROM AdditionalGPUDataSetting.MAX_CUSTOM_DATA (keep in lockstep).
-uniform samplerBuffer PhotonCustomData;
+// user custom data (photon_custom_data()). Constant stride — MIRRORED FROM
+// AdditionalGPUDataSetting.MAX_CUSTOM_DATA (keep in lockstep).
 #define PHOTON_CUSTOM_TEXELS 4
 
 #elif defined(PARTICLE_MODEL_INSTANCE)
 
-// ⚠️ MIRRORED FROM PhotonInstancedDrawState.MODEL / MODEL_TANGENT and from what
-// TileParticleRenderer.modelMeshBuffer writes. 1.21 handed the mesh over as THREE separate buffers (one
-// per PhotonMesh stream) and packed brightness into aUV.z; 26.1 interleaves the streams into ONE base
-// mesh buffer, so brightness has a location of its own. Reading aUV.z here would read a component the
-// VAO does not bind — which GL fills with 0, and every model renders black.
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec2 aUV;
+// ⚠️ MIRRORED FROM PhotonInstanceLayouts.MODEL / MODEL_TANGENT and TileParticleRenderer.modelMeshBuffer.
+in vec3 aPos;
+in vec2 aUV;
 #ifdef PHOTON_TANGENT
-// The emitter's "Tangent" renderer setting is ON, so tangent vertex data is uploaded. Brightness moves
-// into aNormal.w so the tangent costs no EXTRA attribute location — the mesh still uses locations 0..3,
-// the per-instance attributes stay at 4..8 and PhotonGpuChannels.Kind.TILE_MODEL's channel base at 9.
-layout(location = 2) in vec4 aNormal;  // xyz = normal, w = per-face shade brightness
-layout(location = 3) in vec4 aTangent; // xyz = tangent (dP/du), w = handedness
+// Tangent setting on: brightness moves into aNormal.w so later locations stay put.
+in vec4 aNormal;  // xyz = normal, w = per-face shade brightness
+in vec4 aTangent; // xyz = tangent (dP/du), w = handedness
 #else
-// Setting off: byte-for-byte the pre-tangent layout. Nothing is uploaded, nothing is generated, and a
-// hand-written shader written against the old layout still links.
-layout(location = 2) in vec3 aNormal;
-layout(location = 3) in float aBrightness;
+// Setting off: byte-for-byte the pre-tangent layout.
+in vec3 aNormal;
+in float aBrightness;
 #endif
 
 #ifdef PHOTON_VAT
 // A baked pose table: one texel per vertex per frame, so every particle can be at its own frame of the
 // animation without anything being deformed per frame. MIRRORED FROM VertexAnimationBake.
 uniform samplerBuffer PhotonVat;
-// 26.1 has no free-standing uniforms — these are a std140 block. MIRRORED FROM PhotonVatUniforms.
+// MIRRORED FROM PhotonVatUniforms.
 layout(std140) uniform PhotonVatInfo {
     ivec2 PhotonVatSize;   // x = vertices a frame, y = frames
     // xyz = (shared clip position, weight on the per-particle random, weight on the particle's own t) —
@@ -59,20 +57,14 @@ layout(std140) uniform PhotonVatInfo {
 };
 #endif
 
-layout(location = 4) in vec3 iPos;
-layout(location = 5) in vec3 iScale;
-layout(location = 6) in vec4 iRot;
-layout(location = 7) in vec4 iColor;
-layout(location = 8) in int iLight;
+in vec3 iPos;
+in vec3 iScale;
+in vec4 iRot;
+in vec4 iColor;
+in int iLight;
 
-// additional GPU data: pulled from PhotonData by gl_InstanceID; custom shaders declare their own
-// legacy channel attributes at location 9+. Record = 5 texels — MIRRORED FROM PhotonGpuChannels.
-uniform samplerBuffer PhotonData;
+// Record = 5 texels — MIRRORED FROM PhotonGpuChannels.
 #define PHOTON_DATA_TEXELS 5
-
-// user custom data: pulled from PhotonCustomData by gl_InstanceID (see photon_custom_data()).
-// Constant stride — MIRRORED FROM AdditionalGPUDataSetting.MAX_CUSTOM_DATA (keep in lockstep).
-uniform samplerBuffer PhotonCustomData;
 #define PHOTON_CUSTOM_TEXELS 4
 
 #elif defined(TRAIL_INSTANCE)
@@ -82,15 +74,13 @@ uniform samplerBuffer PhotonCustomData;
 // pos+width / premultiplied color / u); each trail's block is padded with bitwise copies of its
 // first/last point, so the c-1 / c+2 neighbor fetches stay in-trail and the endpoint-fallback
 // equality tests hold.
-layout(location = 0) in vec2 aPos;
+in vec2 aPos;
 
-layout(location = 1) in ivec2 iSeg;  // (point index of curr, packed light)
-layout(location = 2) in vec2 iSegV;  // (v0, v1)
+in ivec2 iSeg;  // (point index of curr, packed light)
+in vec2 iSegV;  // (v0, v1)
 
 uniform samplerBuffer PhotonPoints;
-// additional GPU data: pulled from PhotonData by gl_InstanceID; custom shaders declare their own
-// legacy channel attributes at location 3+. Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
-uniform samplerBuffer PhotonData;
+// Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
 #define PHOTON_DATA_TEXELS 4
 
 #elif defined(ARA_TRAIL_INSTANCE)
@@ -99,15 +89,13 @@ uniform samplerBuffer PhotonData;
 // (walk order, newest-first), aPos.y in {-1,+1} the +/- bitangent side. Point data is pulled from
 // PhotonPoints (4 texels per point: pos+u / offset / normal / color); the per-point frames are
 // CPU-computed, so there are no neighbor fetches and no padding.
-layout(location = 0) in vec2 aPos;
+in vec2 aPos;
 
-layout(location = 1) in int iSeg;    // point index of curr
-layout(location = 2) in vec2 iSegV;  // (vA, vB): cross-ribbon v of the +side / -side
+in int iSeg;    // point index of curr
+in vec2 iSegV;  // (vA, vB): cross-ribbon v of the +side / -side
 
 uniform samplerBuffer PhotonPoints;
-// additional GPU data: pulled from PhotonData by gl_InstanceID; custom shaders declare their own
-// legacy channel attributes at location 3+. Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
-uniform samplerBuffer PhotonData;
+// Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
 #define PHOTON_DATA_TEXELS 4
 
 #elif defined(ARA_TRAIL_TUBE_INSTANCE)
@@ -115,30 +103,26 @@ uniform samplerBuffer PhotonData;
 // one instance per AraTrail ring pair; aPos = (x: curr/next ring, y/z: section polygon vertex,
 // w: uAround, all baked from the section config). Point data is pulled from PhotonPoints
 // (4 texels per point: pos+thickness / bitangent+vCoord / tangent(UNNORMALIZED) / color).
-layout(location = 0) in vec4 aPos;
+in vec4 aPos;
 
-layout(location = 1) in int iSeg;    // point index of curr
+in int iSeg;    // point index of curr
 
 uniform samplerBuffer PhotonPoints;
-// additional GPU data: pulled from PhotonData by gl_InstanceID; custom shaders declare their own
-// legacy channel attributes at location 3+. Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
-uniform samplerBuffer PhotonData;
+// Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
 #define PHOTON_DATA_TEXELS 4
 
 #elif defined(BEAM_INSTANCE)
 
 // one instance per beam; aPos.x in {0,1} selects start/end, aPos.y in {-1,+1} the width side
-layout(location = 0) in vec2 aPos;
+in vec2 aPos;
 
-layout(location = 1) in vec4 iStart; // xyz = start (camera-relative), w = half-width
-layout(location = 2) in vec3 iEnd;
-layout(location = 3) in vec4 iColor;
-layout(location = 4) in vec4 iUV;    // (u0, v0, u1, v1), uv-scroll baked in
-layout(location = 5) in int iLight;
+in vec4 iStart; // xyz = start (camera-relative), w = half-width
+in vec3 iEnd;
+in vec4 iColor;
+in vec4 iUV;    // (u0, v0, u1, v1), uv-scroll baked in
+in int iLight;
 
-// additional GPU data: pulled from PhotonData by gl_InstanceID; custom shaders declare their own
-// legacy channel attributes at location 6+. Record = 3 texels — MIRRORED FROM PhotonGpuChannels.
-uniform samplerBuffer PhotonData;
+// Record = 3 texels — MIRRORED FROM PhotonGpuChannels.
 #define PHOTON_DATA_TEXELS 3
 
 #else
@@ -149,6 +133,13 @@ in vec2 UV0;
 in ivec2 UV2;
 in vec3 Normal;
 
+#endif
+
+#ifdef PHOTON_DATA
+uniform samplerBuffer PhotonData;
+#endif
+#ifdef PHOTON_CUSTOM_DATA
+uniform samplerBuffer PhotonCustomData;
 #endif
 
 /**
@@ -506,9 +497,10 @@ mat4 photon_worldToObject() {
 // (VERTEX STAGE ONLY — gl_InstanceID is undefined in the fragment stage; the shadergraph routes
 // these through a varying). Channels a variant doesn't support (and the whole CPU path) read 0.
 // ---------------------------------------------------------------------------
-#if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE) || defined(TRAIL_INSTANCE) \
- || defined(ARA_TRAIL_INSTANCE) || defined(ARA_TRAIL_TUBE_INSTANCE) || defined(BEAM_INSTANCE)
+#ifdef PHOTON_DATA
 #define PHOTON_DATA_SLOT(slot) texelFetch(PhotonData, gl_InstanceID * PHOTON_DATA_TEXELS + (slot))
+#else
+#define PHOTON_DATA_SLOT(slot) vec4(0.0)
 #endif
 
 #if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE)
@@ -593,7 +585,7 @@ float photon_data_beam_length()     { return 0.0; }
 // defines, unsupported kinds, and the whole CPU path read vec4(0). (VERTEX STAGE ONLY — the
 // shadergraph routes it through a varying.)
 // ---------------------------------------------------------------------------
-#if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE)
+#if defined(PHOTON_CUSTOM_DATA) && (defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE))
 vec4 photon_custom_data(int i) {
     return (i < 0 || i >= PHOTON_CUSTOM_TEXELS) ? vec4(0.0)
         : texelFetch(PhotonCustomData, gl_InstanceID * PHOTON_CUSTOM_TEXELS + i);

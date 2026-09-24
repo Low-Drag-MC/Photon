@@ -203,7 +203,7 @@ public class FxFolderScaleScenario implements UIScenario {
                 .frames(MEASURED_FRAMES)
                 .step("the editor still renders", ctx -> checkFrameBudget(ctx, "asset browser")))
 
-        .teardown("close the editor", ctx -> ctx.mc().setScreen(null))
+        .teardown("close the editor", ctx -> ctx.mc().gui.setScreen(null))
         .teardown("delete the fx files",
                 ctx -> ctx.check("the fixture was removed", FileOps.deleteRecursively(bulkDir())));
     }

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.google.common.collect.Queues;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -38,11 +39,10 @@ import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.MultiBufferSource;
+import com.lowdragmc.lowdraglib2.client.utils.RenderUtils;
 import net.minecraft.world.phys.AABB;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -677,7 +677,7 @@ public class ParticleEmitter extends Emitter {
             }
             if (!instanced) {
                 bakeGroup(settings, out, camera, partialTicks, trails.config.defaultRenderRuntime,
-                        VertexFormat.Mode.TRIANGLE_STRIP, (geometry, cam, pt) ->
+                        PrimitiveTopology.TRIANGLE_STRIP, (geometry, cam, pt) ->
                                 renderQueuesOf(TrailParticle.class,
                                         queue -> trailExtractRenderer.renderQueue(geometry, queue, cam, pt)));
             }
@@ -721,7 +721,7 @@ public class ParticleEmitter extends Emitter {
             }
             if (!instanced) {
                 bakeGroup(settings, out, camera, partialTicks, trails.araConfig.defaultRenderRuntime,
-                        VertexFormat.Mode.TRIANGLES, (geometry, cam, pt) ->
+                        PrimitiveTopology.TRIANGLES, (geometry, cam, pt) ->
                                 renderQueuesOf(AraTrailParticle.class,
                                         queue -> araTrailExtractRenderer.renderQueue(geometry, queue, cam, pt)));
             }
@@ -876,9 +876,9 @@ public class ParticleEmitter extends Emitter {
     }
 
     @Override
-    public void drawEditorAfterWorld(SceneView.ParticleSceneEditor scene, MultiBufferSource bufferSource, float partialTicks) {
+    public void drawEditorAfterWorld(SceneView.ParticleSceneEditor scene, RenderUtils.ImmediateDraw draw, float partialTicks) {
         if(scene.sceneView().isShapeVisible()) {
-            runtime().shape.drawGuideLines(bufferSource, partialTicks, this);
+            runtime().shape.drawGuideLines(draw, partialTicks, this);
         }
     }
 

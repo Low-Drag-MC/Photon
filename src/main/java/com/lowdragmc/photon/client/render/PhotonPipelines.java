@@ -2,11 +2,13 @@ package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
 import com.lowdragmc.kilagraph.rendertype.compiler.MaterialUniformLayout;
-import com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler;
 import com.lowdragmc.kilagraph.rendertype.runtime.DynamicShaderSourceRegistry;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
+import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.blaze3d.pipeline.BindGroupLayout;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
@@ -14,306 +16,321 @@ import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.CompareOp;
 import com.mojang.blaze3d.platform.PolygonMode;
 import com.mojang.blaze3d.shaders.UniformType;
-import com.mojang.blaze3d.textures.TextureFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormatElement;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Photon's render pipelines (26.1 model: pipeline state lives in code, shader assets are bare
- * .vsh/.fsh with std140 includes). MaterialSetting state (blend/cull/depth) is no longer imperative
- * GL state but a pipeline property, so pipelines are derived per state combination from the shared
- * snippet and cached — the device compiles unregistered pipelines lazily on first setPipeline
- * (KilaGraph's RenderTypeFactory relies on the same behavior).
+ * Photon's render pipelines, derived per state combination and cached.
+ * <p>
+ * Every layout names exactly what its shaders declare: Vulkan keeps unused declarations, so optional resources
+ * sit behind a define set together with the layout entry. Colour targets use {@link #HDR_FORMAT}; depth is
+ * reverse-Z.
  */
 public final class PhotonPipelines {
 
-    /** The GL blend equation (glBlendEquation enum). 26.1 pipelines can't express it — Photon's
-     *  own drain applies non-ADD equations as a raw-GL escape around the draw (M3 decision D4-C,
-     *  same accepted debt as the bloom composite). NOT a pipeline property; rides in the key so it
-     *  reaches the DrawInfo/instanced derivations. */
-    public static final int BLEND_EQUATION_ADD = 32774; // GL14.GL_FUNC_ADD
+    /** Colour format of Photon's draw targets; float so HDR colours survive to bloom. */
+    public static final GpuFormat HDR_FORMAT = GpuFormat.RGBA16_FLOAT;
 
-    /** Enables the mesh tangent attribute — MIRRORED IN {@code photon:particle.glsl}, where it repacks
-     *  the model path's vertex layout (brightness moves into {@code aNormal.w}, location 3 becomes the
-     *  tangent). See {@link InstancedVariant#MODEL_TANGENT}. */
+    /** Photon's texel buffers carry raw floats read with {@code texelFetch}. */
+    public static final GpuFormat TEXEL_FORMAT = GpuFormat.RGBA32_FLOAT;
+
+    /** Enables the mesh tangent attribute. Mirrored in {@code photon:particle.glsl}. */
     public static final String TANGENT_DEFINE = "PHOTON_TANGENT";
 
     /**
-     * Compiles the depth fade into a material's fragment stage — {@code photon:soft_particle.glsl} is a
-     * no-op function without it. MIRRORED IN that file.
-     * <p>
-     * A define rather than a branch on a uniform, because the branch is not the cost: the SAMPLER is. A
-     * pipeline that declares {@code SamplerSceneDepth} must have it bound at every draw, and what binds it
-     * is the drain noticing a job asked for it — which is also what makes the drain take a full-screen
-     * depth copy that frame. Declaring it unconditionally would put that copy on every frame with any
-     * particle in it, so the whole "a frame nothing wants one in pays nothing" property of 1.21's
-     * pull-based capture lives or dies on this being a separate variant.
+     * Compiles the depth fade in. A define rather than a uniform branch, since declaring {@code SamplerSceneDepth}
+     * costs a scene depth copy that frame. Mirrored in {@code photon:soft_particle.glsl}.
      */
     public static final String SOFT_PARTICLE_DEFINE = "PHOTON_SOFT";
 
-    /** Poses the model from the baked pose table rather than the mesh buffer's own positions.
-     *  See {@link InstancedVariant#MODEL_VAT}; MIRRORED IN {@code photon:particle.glsl}. */
+    /** Poses models from the baked pose table. Mirrored in {@code photon:particle.glsl}. */
     public static final String VAT_DEFINE = "PHOTON_VAT";
 
-    /** Whether {@code key} asks for the fade, and the stage that would read it is the material's own —
-     *  the wireframe overlay replaces the fragment stage with {@code core/inverse}, which has no fade and
-     *  would leave {@code SamplerSceneDepth} declared but never bound. */
+    /** Declares the {@code PhotonData} records; set exactly when the layout carries the buffer. */
+    public static final String DATA_DEFINE = "PHOTON_DATA";
+
+    /** Declares {@code PhotonCustomData}; same contract as {@link #DATA_DEFINE}. */
+    public static final String CUSTOM_DATA_DEFINE = "PHOTON_CUSTOM_DATA";
+
+    private static final String SCENE_COLOR = "SamplerSceneColor";
+
+    /** The wireframe overlay replaces the fragment stage, so it never fades. */
     private static boolean usesSoftParticles(ParticlePipelineKey key) {
         return key.softParticles() && !key.wireframe();
     }
 
     /**
-     * Declare what a VAT-posed vertex stage reads: the baked pose table (declared RGBA8 and remapped to
-     * RGBA32F by {@code GlConstMixin}, exactly as PhotonPoints is) and the block describing it.
-     * <p>
-     * ⚠️ Also {@code PhotonData}. Every instanced branch of {@code particle.glsl} DECLARES that sampler,
-     * but only a stage that actually reads it links it as an active uniform — which is why the mask and
-     * plain-HDR pipelines get away without declaring it. The VAT block reads slot 0 (the per-particle
-     * random and t that make up the phase), so for these variants it becomes active in EVERY stage, and a
-     * declared-but-unbound uniform fails the draw. {@code Emitter.bakeInstancedGroup} forces those two
-     * channels on for the same reason — "declared" has to imply "bound".
+     * Pipeline state of a draw: MaterialSetting blend/cull/depth, topology, wireframe overlay and soft-particle
+     * fade. {@code blend} null = no blending.
      */
-    private static void applyVat(RenderPipeline.Builder builder, @Nullable InstancedVariant variant) {
-        if (variant != null && variant.usesVat()) {
-            builder.withUniform("PhotonVat", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8)
-                    .withUniform("PhotonVatInfo", UniformType.UNIFORM_BUFFER)
-                    .withUniform("PhotonData", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
-        }
-    }
-
-    /** Declare what the fade reads: the scene depth capture and the block carrying the inverse projection
-     *  it reconstructs eye depth through. Both are bound by the drain / the preview renderer. */
-    private static void applySoftParticles(RenderPipeline.Builder builder, ParticlePipelineKey key) {
-        if (usesSoftParticles(key)) {
-            builder.withShaderDefine(SOFT_PARTICLE_DEFINE)
-                    .withSampler(PhotonShaderCompiler.SCENE_DEPTH)
-                    .withUniform("PhotonEngine", UniformType.UNIFORM_BUFFER);
-        }
-    }
-
-    /** The state that selects a pipeline variant: MaterialSetting blend/cull/depth + the emitter's
-     *  primitive mode (quads for tiles/beams, TRIANGLE_STRIP for trails, TRIANGLES for ara-trails)
-     *  + the editor wireframe overlay flag. Blend null = no blending; it does NOT decide when the draw
-     *  happens — that is {@code RendererSetting.Layer} / {@link PhotonStage}, per emitter. */
-    public record ParticlePipelineKey(@Nullable BlendFunction blend, int blendEquation,
-                                      boolean cull, boolean depthTest,
-                                      boolean depthMask, VertexFormat.Mode mode, boolean wireframe,
-                                      boolean softParticles) {
+    public record ParticlePipelineKey(@Nullable BlendFunction blend,
+                                      boolean cull, boolean depthTest, boolean depthMask,
+                                      PrimitiveTopology mode, boolean wireframe, boolean softParticles) {
         public static final ParticlePipelineKey DEFAULT = new ParticlePipelineKey(
-                BlendFunction.TRANSLUCENT, BLEND_EQUATION_ADD, true, true, false, VertexFormat.Mode.QUADS,
-                false, false);
+                BlendFunction.TRANSLUCENT, true, true, false, PrimitiveTopology.QUADS, false, false);
 
-        public ParticlePipelineKey(@Nullable BlendFunction blend, int blendEquation,
-                                   boolean cull, boolean depthTest,
-                                   boolean depthMask, VertexFormat.Mode mode, boolean wireframe) {
-            this(blend, blendEquation, cull, depthTest, depthMask, mode, wireframe, false);
+        public ParticlePipelineKey(@Nullable BlendFunction blend, boolean cull, boolean depthTest,
+                                   boolean depthMask, PrimitiveTopology mode, boolean wireframe) {
+            this(blend, cull, depthTest, depthMask, mode, wireframe, false);
         }
 
         /** The editor wireframe overlay: unculled, undepth-tested lines over the same geometry. */
-        public static ParticlePipelineKey wireframe(VertexFormat.Mode mode) {
-            return new ParticlePipelineKey(BlendFunction.TRANSLUCENT, BLEND_EQUATION_ADD,
-                    false, false, false, mode, true, false);
+        public static ParticlePipelineKey wireframe(PrimitiveTopology mode) {
+            return new ParticlePipelineKey(BlendFunction.TRANSLUCENT, false, false, false, mode, true, false);
         }
 
-        /** This key with the soft-particle fade compiled in — a MATERIAL property, unlike the rest of the
-         *  key, which is the emitter's {@code MaterialSetting}. See {@link #SOFT_PARTICLE_DEFINE}. */
+        /** The fade is a material property, unlike the rest of the key. */
         public ParticlePipelineKey withSoftParticles(boolean soft) {
             return soft == softParticles ? this : new ParticlePipelineKey(
-                    blend, blendEquation, cull, depthTest, depthMask, mode, wireframe, soft);
+                    blend, cull, depthTest, depthMask, mode, wireframe, soft);
+        }
+
+        public ParticlePipelineKey withBlend(@Nullable BlendFunction blend) {
+            return new ParticlePipelineKey(blend, cull, depthTest, depthMask, mode, wireframe, softParticles);
         }
     }
 
-    /**
-     * The CPU-baked particle vertex format: {@code DefaultVertexFormat.BLOCK} <b>plus a Normal</b>.
-     * <p>
-     * 1.21's stock {@code BLOCK} carried a Normal and Photon's geometry relied on it — the CPU bakers
-     * write one ({@code TileParticleRenderer}) and {@code photon:particle.glsl} declares {@code in vec3
-     * Normal} on the non-instanced branch. 26.1's {@code BLOCK} dropped that element, so continuing to
-     * name the same constant silently discarded every normal (written into a slot the format no longer
-     * has, read from an attribute nothing binds). It also made the stride disagree with KilaGraph, whose
-     * "Block" preset still includes Normal: baking 28-byte vertices for a pipeline that strides 32 made
-     * shader-graph materials read every vertex misaligned.
-     * <p>
-     * Element order/types mirror {@code VertexFormatPresets.BLOCK} on the KilaGraph side — keep in lockstep.
-     */
-    public static final VertexFormat PARTICLE_FORMAT = VertexFormat.builder()
-            .add("Position", VertexFormatElement.POSITION)
-            .add("Color", VertexFormatElement.COLOR)
-            .add("UV0", VertexFormatElement.UV0)
-            .add("UV2", VertexFormatElement.UV2)
-            .add("Normal", VertexFormatElement.NORMAL)
-            .padding(1) // MC requires the vertex size to be a multiple of 4 (31 -> 32)
+    /** {@code BLOCK} plus a Normal; must match KilaGraph's {@code VertexFormatPresets.BLOCK}. */
+    public static final VertexFormat PARTICLE_FORMAT = VertexFormat.builder(0)
+            .addAttribute("Position", GpuFormat.RGB32_FLOAT)
+            .addAttribute("Color", GpuFormat.RGBA8_UNORM)
+            .addAttribute("UV0", GpuFormat.RG32_FLOAT)
+            .addAttribute("UV2", GpuFormat.RG16_SINT)
+            .addAttribute("Normal", GpuFormat.RGBA8_SNORM)
             .build();
 
-    /** The particle base: {@link #PARTICLE_FORMAT} geometry with the vanilla matrices/fog stack and the
-     *  texture + lightmap samplers. */
-    public static final RenderPipeline.Snippet HDR_PARTICLE_SNIPPET = RenderPipeline.builder(RenderPipelines.MATRICES_FOG_SNIPPET)
-            .withVertexShader(Photon.id("core/particle"))
-            .withFragmentShader(Photon.id("core/hdr_particle"))
-            .withSampler("Sampler0")
-            .withSampler("Sampler2")
-            .withUniform("PhotonMaterial", UniformType.UNIFORM_BUFFER)
-            .withVertexFormat(PARTICLE_FORMAT, VertexFormat.Mode.QUADS)
-            .buildSnippet();
-
-    private static final Map<HdrPipelineKey, RenderPipeline> HDR_PARTICLE_VARIANTS = new ConcurrentHashMap<>();
     private static final AtomicInteger VARIANT_ID = new AtomicInteger();
 
-    /** Wireframe pipelines sample the scene capture (the 1.21 inverse shader) — the drain must
-     *  capture before drawing them and bind {@code SamplerScene}. */
+    /** Wireframe pipelines sample the scene colour capture. */
     private static final Set<RenderPipeline> WIREFRAME_PIPELINES = ConcurrentHashMap.newKeySet();
 
     public static boolean isWireframe(RenderPipeline pipeline) {
         return WIREFRAME_PIPELINES.contains(pipeline);
     }
 
-    /**
-     * Build, applying the editor wireframe overlay when the key asks for it: polygon mode plus the 1.21
-     * {@code inverse} fragment stage over the captured scene color, tracked so the drain knows to capture
-     * and bind it. The overlay is ALWAYS Photon's own program — see {@code Emitter.bakeGroup} /
-     * {@code bakeInstancedGroup}, which build it from a dedicated wireframe key rather than from a
-     * material's — so only these two builders ever see {@code wireframe == true}.
-     */
-    private static RenderPipeline build(RenderPipeline.Builder builder, boolean wireframe) {
-        if (wireframe) {
-            builder.withPolygonMode(PolygonMode.WIREFRAME)
-                    .withFragmentShader(Photon.id("core/inverse"))
-                    // PhotonEngine, not Globals: inverse.fsh divides gl_FragCoord by U_ViewPort.zw (the
-                    // size of the target it is drawing into), which is what the scene capture is sized to
-                    .withUniform("PhotonEngine", UniformType.UNIFORM_BUFFER)
-                    .withSampler("SamplerSceneColor");
+    private PhotonPipelines() {
+    }
+
+    // ---- layout plumbing -------------------------------------------------------------------------
+
+    /** Names {@code MATRICES_FOG_SNIPPET} already declares. */
+    private static final Set<String> SNIPPET_NAMES = Set.of("Globals", "DynamicTransforms", "Projection", "Fog");
+
+    /** One pipeline's own bind group, deduplicated by name (GL rejects a name declared twice). */
+    private static final class LayoutBuilder {
+        private enum Kind {UNIFORM, TEXEL, SAMPLER}
+
+        private record Entry(Kind kind, @Nullable GpuFormat format) {
         }
-        var pipeline = builder.build();
+
+        private final Map<String, Entry> entries = new LinkedHashMap<>();
+        private final Set<String> reserved;
+
+        LayoutBuilder(Set<String> reserved) {
+            this.reserved = reserved;
+        }
+
+        LayoutBuilder uniform(String name) {
+            return add(name, new Entry(Kind.UNIFORM, null));
+        }
+
+        LayoutBuilder texel(String name) {
+            return add(name, new Entry(Kind.TEXEL, TEXEL_FORMAT));
+        }
+
+        LayoutBuilder sampler(String name) {
+            return add(name, new Entry(Kind.SAMPLER, null));
+        }
+
+        private LayoutBuilder add(String name, Entry entry) {
+            if (reserved.contains(name)) {
+                return this;
+            }
+            var previous = entries.putIfAbsent(name, entry);
+            if (previous != null && !previous.equals(entry)) {
+                throw new IllegalStateException("Photon pipeline declares " + name + " as both "
+                        + previous.kind() + " and " + entry.kind());
+            }
+            return this;
+        }
+
+        void applyTo(RenderPipeline.Builder builder) {
+            if (entries.isEmpty()) {
+                return;
+            }
+            var layout = BindGroupLayout.builder();
+            entries.forEach((name, entry) -> {
+                switch (entry.kind()) {
+                    case UNIFORM -> layout.withUniform(name, UniformType.UNIFORM_BUFFER);
+                    case TEXEL -> layout.withUniform(name, UniformType.TEXEL_BUFFER, entry.format());
+                    case SAMPLER -> layout.withSampler(name);
+                }
+            });
+            builder.withBindGroupLayout(layout.build());
+        }
+    }
+
+    private static ColorTargetState hdrTarget(@Nullable BlendFunction blend) {
+        return new ColorTargetState(Optional.ofNullable(blend), HDR_FORMAT, ColorTargetState.WRITE_ALL);
+    }
+
+    /** Reverse-Z: nearer is greater. */
+    private static DepthStencilState depthState(ParticlePipelineKey key) {
+        return new DepthStencilState(key.depthTest() ? CompareOp.GREATER_THAN_OR_EQUAL : CompareOp.ALWAYS_PASS,
+                key.depthMask());
+    }
+
+    private static void applySoftParticles(RenderPipeline.Builder builder, LayoutBuilder layout,
+                                           ParticlePipelineKey key) {
+        if (usesSoftParticles(key)) {
+            builder.withShaderDefine(SOFT_PARTICLE_DEFINE);
+            layout.sampler(PhotonShaderCompiler.SCENE_DEPTH).uniform(PhotonEngineUniforms.UBO_NAME);
+        }
+    }
+
+    /** Editor wireframe overlay: the 1.21 inverse shader over the captured scene colour. */
+    private static void applyWireframe(RenderPipeline.Builder builder, LayoutBuilder layout,
+                                       ParticlePipelineKey key) {
+        if (key.wireframe()) {
+            builder.withPolygonMode(PolygonMode.WIREFRAME)
+                    .withFragmentShader(Photon.id("core/inverse"));
+            // inverse.fsh reads the target size from PhotonEngine's U_ViewPort
+            layout.uniform(PhotonEngineUniforms.UBO_NAME).sampler(SCENE_COLOR);
+        }
+    }
+
+    private static RenderPipeline track(RenderPipeline pipeline, boolean wireframe) {
         if (wireframe) {
             WIREFRAME_PIPELINES.add(pipeline);
         }
         return pipeline;
     }
 
-    private PhotonPipelines() {
+    /** Side buffers the variant's vertex stage reads; a VAT pose always reads the records. */
+    private static void applyInstanced(RenderPipeline.Builder builder, LayoutBuilder layout,
+                                       InstancedVariant variant, boolean data, boolean customData) {
+        variant.defines.forEach(builder::withShaderDefine);
+        if (variant.usesPoints) {
+            layout.texel("PhotonPoints");
+        }
+        if (variant.usesVat()) {
+            layout.texel("PhotonVat").uniform(PhotonVatUniforms.UBO_NAME);
+        }
+        if (data || variant.usesVat()) {
+            builder.withShaderDefine(DATA_DEFINE);
+            layout.texel("PhotonData");
+        }
+        if (customData && variant.usesCustomData) {
+            builder.withShaderDefine(CUSTOM_DATA_DEFINE);
+            layout.texel("PhotonCustomData");
+        }
     }
 
-    /** Fragment-stage selection restores the 1.21 three-program structure (hdr / pixel / sprite
-     *  variants are separate fsh files sharing the PhotonMaterial block). */
-    public record HdrPipelineKey(Identifier fragmentShader, ParticlePipelineKey key) {
+    private static void applyInstancedGeometry(RenderPipeline.Builder builder, PhotonInstanceLayouts.Layout layout) {
+        applyInstancedGeometry(builder, layout, Map.of());
     }
+
+    /** {@code tailInputs}: attribute-tail location → the custom shader's input name. */
+    private static void applyInstancedGeometry(RenderPipeline.Builder builder, PhotonInstanceLayouts.Layout layout,
+                                               Map<Integer, String> tailInputs) {
+        builder.withVertexBinding(0, layout.baseFormat())
+                .withVertexBinding(1, layout.instanceFormat(tailInputs))
+                // base meshes use the shared quad indices or the ara tube's own
+                .withPrimitiveTopology(PrimitiveTopology.QUADS);
+    }
+
+    // ---- Photon's own particle programs -----------------------------------------------------------
+
+    /** Fragment-stage selection restores the 1.21 three-program structure (hdr / pixel / sprite variants are
+     *  separate fsh files sharing the PhotonMaterial block). */
+    private record HdrPipelineKey(Identifier fragmentShader, ParticlePipelineKey key) {
+    }
+
+    private static final Map<HdrPipelineKey, RenderPipeline> HDR_PARTICLE_VARIANTS = new ConcurrentHashMap<>();
 
     public static RenderPipeline hdrParticle(ParticlePipelineKey key) {
         return hdrParticle(Photon.id("core/hdr_particle"), key);
     }
 
+    /** The CPU-baked {@link #PARTICLE_FORMAT} geometry through one of Photon's own fragment stages. */
     public static RenderPipeline hdrParticle(Identifier fragmentShader, ParticlePipelineKey key) {
         return HDR_PARTICLE_VARIANTS.computeIfAbsent(new HdrPipelineKey(fragmentShader, key), hk -> {
             var k = hk.key();
-            var builder = RenderPipeline.builder(HDR_PARTICLE_SNIPPET)
+            var layout = new LayoutBuilder(SNIPPET_NAMES)
+                    .sampler("Sampler0").sampler("Sampler2")
+                    .uniform(PhotonMaterialUniforms.UBO_NAME);
+            var builder = RenderPipeline.builder(RenderPipelines.MATRICES_FOG_SNIPPET)
                     // unique location per variant: it's the pipeline's identity in debug output/caches
                     .withLocation(Photon.id("pipeline/hdr_particle_" + VARIANT_ID.getAndIncrement()))
+                    .withVertexShader(Photon.id("core/particle"))
                     .withFragmentShader(hk.fragmentShader())
-                    .withColorTargetState(k.blend() == null ? ColorTargetState.DEFAULT : new ColorTargetState(k.blend()))
-                    .withDepthStencilState(new DepthStencilState(
-                            k.depthTest() ? CompareOp.LESS_THAN_OR_EQUAL : CompareOp.ALWAYS_PASS,
-                            k.depthMask()))
-                    .withCull(k.cull())
-                    .withVertexFormat(PARTICLE_FORMAT, k.mode());
-            applySoftParticles(builder, k);
-            return build(builder, k.wireframe());
+                    .withVertexBinding(0, PARTICLE_FORMAT)
+                    .withPrimitiveTopology(k.mode())
+                    .withColorTargetState(hdrTarget(k.blend()))
+                    .withDepthStencilState(depthState(k))
+                    .withCull(k.cull());
+            applySoftParticles(builder, layout, k);
+            applyWireframe(builder, layout, k);
+            layout.applyTo(builder);
+            return track(builder.build(), k.wireframe());
         });
     }
 
-    /** The instanced geometry families: same fragment stage and PhotonMaterial UBO as
-     *  {@link #hdrParticle}, but per-instance data arrives as a divisor-stepped vertex stream
-     *  ({@link PhotonInstancedDrawState}) and the shader define selects the getParticleData
-     *  expansion; TRAIL/ARA additionally pull per-point data from the PhotonPoints texel buffer
-     *  (RGBA8-declared — 26.1 texel buffers have no float format; {@code GlConstMixin} remaps it). */
+    /** Instanced geometry families; the define selects the {@code getParticleData()} expansion. */
     public enum InstancedVariant {
-        // DEDICATED formats (unique element names -> value-unequal -> exclusive VAOs) so the
-        // divisor mixin never touches shared VAOs; real pointers are applied by the mixin
-        TILE(List.of("PARTICLE_INSTANCE"), instancedFormat("PhotonTileCorner"), false, true, true,
-                PhotonGpuChannels.Kind.TILE, PhotonInstancedDrawState.TILE),
-        MODEL(List.of("PARTICLE_MODEL_INSTANCE"), instancedFormat("PhotonModelVertex"), false, true, true,
-                PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstancedDrawState.MODEL),
-        /**
-         * {@link #MODEL} with the mesh tangent uploaded as vertex data — the emitter's {@code Tangent}
-         * renderer setting. A SEPARATE variant rather than a flag on the draw, because the tangent changes
-         * the base-mesh attribute layout ({@code aNormal} widens to vec4 and location 3 becomes the
-         * tangent, see {@code particle.glsl}), and in 26.1 an attribute layout IS a vertex format, which is
-         * what picks the VAO and the pipeline. Every material and sub-pass on the group therefore compiles
-         * against the same layout by construction — a per-material define could not guarantee that.
-         */
-        MODEL_TANGENT(List.of("PARTICLE_MODEL_INSTANCE", TANGENT_DEFINE),
-                instancedFormat("PhotonModelVertexTangent"), false, true, true,
-                PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstancedDrawState.MODEL_TANGENT),
-        /**
-         * {@link #MODEL} posed from a baked pose table ({@code PhotonVat}) instead of the mesh buffer's own
-         * positions, so every particle can sit at its own frame of the animation. Separate variants for the
-         * same reason the tangent has them: the define changes what the vertex stage reads, and in 26.1 that
-         * is a pipeline, not a bind-time choice — so the material pass, the mask sub-pass and the wireframe
-         * overlay all derive from one decision and cannot disagree.
-         * <p>
-         * The BASE mesh layout is unchanged from {@link #MODEL}/{@link #MODEL_TANGENT} (the table supplies
-         * position and normal; uv/brightness/tangent still come from the buffer), so the same
-         * {@code PhotonInstancedDrawState} layouts serve. The format name still differs, because the VAO
-         * must not be shared with a non-VAT draw of the same mesh.
-         */
-        MODEL_VAT(List.of("PARTICLE_MODEL_INSTANCE", VAT_DEFINE),
-                instancedFormat("PhotonModelVertexVat"), false, true, true,
-                PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstancedDrawState.MODEL),
-        MODEL_VAT_TANGENT(List.of("PARTICLE_MODEL_INSTANCE", VAT_DEFINE, TANGENT_DEFINE),
-                instancedFormat("PhotonModelVertexVatTangent"), false, true, true,
-                PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstancedDrawState.MODEL_TANGENT),
-        TRAIL(List.of("TRAIL_INSTANCE"), instancedFormat("PhotonTrailCorner"), true, false, false,
-                PhotonGpuChannels.Kind.TRAIL, PhotonInstancedDrawState.TRAIL),
-        ARA(List.of("ARA_TRAIL_INSTANCE"), instancedFormat("PhotonAraCorner"), true, false, false,
-                PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstancedDrawState.ARA),
-        ARA_TUBE(List.of("ARA_TRAIL_TUBE_INSTANCE"), instancedFormat("PhotonAraTubeCorner"), true, false, false,
-                PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstancedDrawState.ARA_TUBE),
-        BEAM(List.of("BEAM_INSTANCE"), instancedFormat("PhotonBeamCorner"), false, false, true,
-                PhotonGpuChannels.Kind.BEAM, PhotonInstancedDrawState.BEAM);
+        TILE(List.of("PARTICLE_INSTANCE"), false, true, true,
+                PhotonGpuChannels.Kind.TILE, PhotonInstanceLayouts.TILE),
+        MODEL(List.of("PARTICLE_MODEL_INSTANCE"), false, true, true,
+                PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstanceLayouts.MODEL),
+        /** {@link #MODEL} with the mesh tangent; a variant because it changes the base vertex format. */
+        MODEL_TANGENT(List.of("PARTICLE_MODEL_INSTANCE", TANGENT_DEFINE), false, true, true,
+                PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstanceLayouts.MODEL_TANGENT),
+        /** {@link #MODEL} posed per particle from the baked pose table. */
+        MODEL_VAT(List.of("PARTICLE_MODEL_INSTANCE", VAT_DEFINE), false, true, true,
+                PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstanceLayouts.MODEL),
+        MODEL_VAT_TANGENT(List.of("PARTICLE_MODEL_INSTANCE", VAT_DEFINE, TANGENT_DEFINE), false, true, true,
+                PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstanceLayouts.MODEL_TANGENT),
+        TRAIL(List.of("TRAIL_INSTANCE"), true, false, false,
+                PhotonGpuChannels.Kind.TRAIL, PhotonInstanceLayouts.TRAIL),
+        ARA(List.of("ARA_TRAIL_INSTANCE"), true, false, false,
+                PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstanceLayouts.ARA),
+        ARA_TUBE(List.of("ARA_TRAIL_TUBE_INSTANCE"), true, false, false,
+                PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstanceLayouts.ARA_TUBE),
+        BEAM(List.of("BEAM_INSTANCE"), false, false, true,
+                PhotonGpuChannels.Kind.BEAM, PhotonInstanceLayouts.BEAM);
 
-        /** Every {@code #define} this variant's shaders compile with: the geometry-family selector that
-         *  makes {@code getParticleData()} expand to the instanced read, plus any layout modifier. */
         public final List<String> defines;
-        final VertexFormat format;
         public final boolean usesPoints;
-        /** Whether {@code particle.glsl} declares {@code PhotonCustomData} for this define — per-particle
-         *  kinds only; trail/ara/beam instances aren't particles, so {@code photon_custom_data()} reads 0. */
+        /** Trail/ara/beam instances are not particles and carry no custom data. */
         public final boolean usesCustomData;
-        /**
-         * Whether this variant's instance record STARTS with the instance's own position, which is what
-         * lets {@code Emitter.bakeInstancedGroup} honour {@code SortMode.DISTANCE} by permuting whole
-         * records far-to-near. False for trail/ara: their records lead with a PhotonPoints index (the
-         * position lives in that buffer), and their instances are consecutive segments of one ribbon,
-         * where the emit order is the meaningful one anyway. Always false when {@link #usesPoints} is
-         * true — a permutation must not reorder records that index a shared point block.
-         */
+        /** Records start with the position, so distance sorting can permute whole records. */
         public final boolean positionAtRecordHead;
-        /** The additional-GPU-data kind this variant's instances are, which fixes the record packing and
-         *  the base location of the attribute tail. */
         public final PhotonGpuChannels.Kind kind;
-        public final PhotonInstancedDrawState.Layout layout;
+        /** At the variant's own stride, without an attribute tail. */
+        public final PhotonInstanceLayouts.Layout layout;
 
-        /** Whether the vertex stage poses from the baked table, which is what makes every pipeline built
-         *  for this variant declare {@code PhotonVat} + {@code PhotonVatInfo}. Derived from the defines so
-         *  a new VAT variant cannot forget to say so. */
         public boolean usesVat() {
             return defines.contains(VAT_DEFINE);
         }
 
-        InstancedVariant(List<String> defines, VertexFormat format, boolean usesPoints,
-                         boolean usesCustomData, boolean positionAtRecordHead, PhotonGpuChannels.Kind kind,
-                         PhotonInstancedDrawState.Layout layout) {
+        InstancedVariant(List<String> defines, boolean usesPoints, boolean usesCustomData,
+                         boolean positionAtRecordHead, PhotonGpuChannels.Kind kind,
+                         PhotonInstanceLayouts.Layout layout) {
             this.defines = defines;
-            this.format = format;
             this.usesPoints = usesPoints;
             this.usesCustomData = usesCustomData;
             this.positionAtRecordHead = positionAtRecordHead;
@@ -322,289 +339,171 @@ public final class PhotonPipelines {
         }
     }
 
-    private static VertexFormat instancedFormat(String name) {
-        return VertexFormat.builder().add(name, VertexFormatElement.POSITION).build();
+    /** A variant at the stride the emitter wrote, plus whether the pass uploaded the data records. */
+    public record InstancedGeometryKey(InstancedVariant variant, PhotonInstanceLayouts.Layout layout,
+                                       boolean data, boolean customData) {
+        public static InstancedGeometryKey of(InstancedVariant variant) {
+            return new InstancedGeometryKey(variant, variant.layout, false, false);
+        }
     }
 
-    private record InstancedKey(InstancedVariant variant, Identifier fragmentShader, ParticlePipelineKey key) {
+    private record InstancedKey(InstancedGeometryKey geometry, Identifier fragmentShader, ParticlePipelineKey key) {
     }
 
     private static final Map<InstancedKey, RenderPipeline> INSTANCED_VARIANTS = new ConcurrentHashMap<>();
 
-    public static RenderPipeline instancedHdrParticle(InstancedVariant variant, ParticlePipelineKey key) {
-        return instancedHdrParticle(variant, Photon.id("core/hdr_particle"), key);
+    public static RenderPipeline instancedHdrParticle(InstancedGeometryKey geometry, ParticlePipelineKey key) {
+        return instancedHdrParticle(geometry, Photon.id("core/hdr_particle"), key);
     }
 
-    public static RenderPipeline instancedHdrParticle(InstancedVariant variant,
+    public static RenderPipeline instancedHdrParticle(InstancedGeometryKey geometry,
                                                       @Nullable Identifier fragmentShader,
                                                       ParticlePipelineKey key) {
         var fragment = fragmentShader != null ? fragmentShader : Photon.id("core/hdr_particle");
-        return INSTANCED_VARIANTS.computeIfAbsent(new InstancedKey(variant, fragment, key), ik -> {
+        return INSTANCED_VARIANTS.computeIfAbsent(new InstancedKey(geometry, fragment, key), ik -> {
             var k = ik.key();
+            var g = ik.geometry();
+            var layout = new LayoutBuilder(SNIPPET_NAMES)
+                    .sampler("Sampler0").sampler("Sampler2")
+                    .uniform(PhotonMaterialUniforms.UBO_NAME);
             var builder = RenderPipeline.builder(RenderPipelines.MATRICES_FOG_SNIPPET)
                     .withLocation(Photon.id("pipeline/hdr_particle_instanced_" + VARIANT_ID.getAndIncrement()))
                     .withVertexShader(Photon.id("core/particle"))
                     .withFragmentShader(ik.fragmentShader())
-                    .withSampler("Sampler0")
-                    .withSampler("Sampler2")
-                    .withUniform("PhotonMaterial", UniformType.UNIFORM_BUFFER)
-                    .withVertexFormat(ik.variant().format, VertexFormat.Mode.QUADS)
-                    .withColorTargetState(k.blend() == null ? ColorTargetState.DEFAULT : new ColorTargetState(k.blend()))
-                    .withDepthStencilState(new DepthStencilState(
-                            k.depthTest() ? CompareOp.LESS_THAN_OR_EQUAL : CompareOp.ALWAYS_PASS,
-                            k.depthMask()))
+                    .withColorTargetState(hdrTarget(k.blend()))
+                    .withDepthStencilState(depthState(k))
                     .withCull(k.cull());
-            ik.variant().defines.forEach(builder::withShaderDefine);
-            if (ik.variant().usesPoints) {
-                builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
-            }
-            applyVat(builder, ik.variant());
-            applySoftParticles(builder, k);
-            return build(builder, k.wireframe());
+            applyInstancedGeometry(builder, g.layout());
+            applyInstanced(builder, layout, g.variant(), g.data(), g.customData());
+            applySoftParticles(builder, layout, k);
+            applyWireframe(builder, layout, k);
+            layout.applyTo(builder);
+            return track(builder.build(), k.wireframe());
         });
     }
 
-    private record MaskKey(@Nullable InstancedVariant variant, VertexFormat.Mode mode) {
+    /** The format of Photon's custom-mask target: one channel, a group id in 0..1. */
+    public static final GpuFormat MASK_FORMAT = GpuFormat.R8_UNORM;
+
+    private record MaskKey(@Nullable InstancedGeometryKey geometry, PrimitiveTopology mode) {
     }
 
     private static final Map<MaskKey, RenderPipeline> MASK_VARIANTS = new ConcurrentHashMap<>();
 
     /**
-     * The CustomMask sub-pass pipeline: the flat-id shader over the SAME geometry the material pass
-     * drew, so it needs the same format/variant combination. {@code variant} null = CPU-baked
-     * {@link #PARTICLE_FORMAT} geometry in the emitter's own primitive mode.
-     * <p>
-     * State is fixed rather than taken from the material: the mask draws opaque (an id is not a colour
-     * to blend), unculled (a billboard's winding is arbitrary), and depth-tests <b>and writes</b> against
-     * the mask target's own depth — that write is what makes the buffer a custom depth an effect can read.
+     * CustomMask pipeline over the material pass's geometry ({@code geometry} null = CPU-baked). Opaque, unculled
+     * and depth-writing, so the mask depth doubles as a custom depth.
      */
-    public static RenderPipeline mask(@Nullable InstancedVariant variant, VertexFormat.Mode mode) {
-        return MASK_VARIANTS.computeIfAbsent(new MaskKey(variant, mode), mk -> {
+    public static RenderPipeline mask(@Nullable InstancedGeometryKey geometry, PrimitiveTopology mode) {
+        return MASK_VARIANTS.computeIfAbsent(new MaskKey(geometry, mode), mk -> {
+            var layout = new LayoutBuilder(SNIPPET_NAMES)
+                    .sampler("Sampler0")
+                    .uniform(PhotonMaskUniforms.UBO_NAME);
             var builder = RenderPipeline.builder(RenderPipelines.MATRICES_FOG_SNIPPET)
                     .withLocation(Photon.id("pipeline/mask_" + VARIANT_ID.getAndIncrement()))
                     .withVertexShader(Photon.id("core/mask"))
                     .withFragmentShader(Photon.id("core/mask"))
-                    .withSampler("Sampler0")
-                    .withUniform("PhotonMask", UniformType.UNIFORM_BUFFER)
-                    .withVertexFormat(mk.variant() == null ? PARTICLE_FORMAT : mk.variant().format,
-                            mk.variant() == null ? mk.mode() : VertexFormat.Mode.QUADS)
-                    .withColorTargetState(ColorTargetState.DEFAULT)
-                    .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, true))
+                    .withColorTargetState(new ColorTargetState(Optional.empty(), MASK_FORMAT,
+                            ColorTargetState.WRITE_ALL))
+                    .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, true))
                     .withCull(false);
-            if (mk.variant() != null) {
-                mk.variant().defines.forEach(builder::withShaderDefine);
-                if (mk.variant().usesPoints) {
-                    builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
-                }
-                applyVat(builder, mk.variant());
+            if (mk.geometry() == null) {
+                builder.withVertexBinding(0, PARTICLE_FORMAT).withPrimitiveTopology(mk.mode());
+            } else {
+                var g = mk.geometry();
+                applyInstancedGeometry(builder, g.layout());
+                applyInstanced(builder, layout, g.variant(), false, false);
             }
+            layout.applyTo(builder);
             return builder.build();
         });
     }
 
-    private record InstancedCustomKey(InstancedVariant variant, CustomShaderKey key) {
-    }
+    // ---- KilaGraph shader graphs (KilaGraph generates the GLSL, Photon owns the pipeline) ----------
 
-    private static final Map<InstancedCustomKey, RenderPipeline> INSTANCED_CUSTOM_VARIANTS = new ConcurrentHashMap<>();
-
-    /** The user's own vertex+fragment stages compiled with the engine instance define + dedicated
-     *  vertex format (the 1.21 combination — a custom vsh calls {@code getParticleData()} which
-     *  expands to the instanced read under the define; {@code tornado_body.vsh} even branches on
-     *  {@code PARTICLE_MODEL_INSTANCE}). Falls back to the shared vsh when the JSON declared none. */
-    public static RenderPipeline instancedCustomShader(InstancedVariant variant, CustomShaderKey key) {
-        return INSTANCED_CUSTOM_VARIANTS.computeIfAbsent(new InstancedCustomKey(variant, key), ik -> {
-            var k = ik.key();
-            var pk = k.pipelineKey();
-            var builder = RenderPipeline.builder(RenderPipelines.MATRICES_FOG_SNIPPET)
-                    .withLocation(Photon.id("pipeline/custom_instanced_" + VARIANT_ID.getAndIncrement()))
-                    .withVertexShader(k.vertexShader())
-                    .withFragmentShader(k.fragmentShader())
-                    .withSampler("Sampler0")
-                    .withSampler("Sampler2")
-                    .withUniform("Globals", UniformType.UNIFORM_BUFFER)
-                    .withUniform("PhotonEngine", UniformType.UNIFORM_BUFFER)
-                    .withUniform("PhotonCustomMaterial", UniformType.UNIFORM_BUFFER)
-                    // the instanced vertex stage still reads the PhotonMaterial block
-                    .withUniform("PhotonMaterial", UniformType.UNIFORM_BUFFER)
-                    .withVertexFormat(ik.variant().format, VertexFormat.Mode.QUADS)
-                    .withColorTargetState(pk.blend() == null ? ColorTargetState.DEFAULT : new ColorTargetState(pk.blend()))
-                    .withDepthStencilState(new DepthStencilState(
-                            pk.depthTest() ? CompareOp.LESS_THAN_OR_EQUAL : CompareOp.ALWAYS_PASS,
-                            pk.depthMask()))
-                    .withCull(pk.cull());
-            ik.variant().defines.forEach(builder::withShaderDefine);
-            if (ik.variant().usesPoints) {
-                builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
-            }
-            applyVat(builder, ik.variant());
-            k.defines().entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(e -> builder.withShaderDefine(e.getKey(), e.getValue()));
-            k.samplerNames().forEach(builder::withSampler);
-            k.sceneSamplers().forEach(builder::withSampler);
-            return builder.build();
-        });
-    }
-
-    // ---- KilaGraph shader graphs ----------------------------------------------------------------
-    //
-    // 1.21 kept the same split we restore here: KilaGraph is the GLSL GENERATOR, Photon owns the draw.
-    // There, KG produced a CompiledShaderGraph and Photon built an LDShaderInstance per #define variant
-    // (KGShaderResourceProvider), then drew it through its own pass — so graph materials automatically got
-    // MaterialSetting's blend/depth/cull, bloom and GPU instancing, exactly like every other material.
-    // Using KG's own RenderType instead (the shortcut this replaces) moved the draw into KilaGraph and lost
-    // all three. So: KG's generated source is registered under an Identifier
-    // (DynamicShaderSourceRegistry.shaderId) and we compile OUR pipeline from it, declaring the blocks and
-    // samplers the generated GLSL references (the material binds their values at draw).
-
-    private record GraphKey(String contentHash, @Nullable InstancedVariant variant, ParticlePipelineKey key) {
+    private record GraphKey(String contentHash, @Nullable InstancedGeometryKey geometry, ParticlePipelineKey key) {
     }
 
     private static final Map<GraphKey, RenderPipeline> GRAPH_VARIANTS = new ConcurrentHashMap<>();
 
-    /**
-     * A Photon pipeline over a compiled shader graph. {@code variant} null = the CPU-baked
-     * {@link #PARTICLE_FORMAT} geometry; otherwise the instanced format + its {@code #define}, which is what
-     * lets {@code getParticleData()} in {@code photon:particle.glsl} expand to the instanced attribute read.
-     * <p>
-     * {@code usedChannelMask}/{@code usesCustomData} come from the same compile as {@code compiled} (they are
-     * a function of its {@code contentHash}, so they need no place in the cache key) and decide whether the
-     * additional-data texel buffers are declared.
-     */
+    /** Mirrors KilaGraph's {@code RenderTypeFactory.buildPipeline}. */
+    private static void applyGraphResources(LayoutBuilder layout, CompiledShaderGraph compiled) {
+        for (var ubo : compiled.builtinUniforms()) {
+            layout.uniform(ubo);
+        }
+        if (!compiled.layout().isEmpty()) {
+            layout.uniform(MaterialUniformLayout.UBO_NAME);
+        }
+        for (var block : compiled.uniformBlocks()) {
+            layout.uniform(block.uboName());
+        }
+        for (var sampler : compiled.layout().samplers()) {
+            layout.sampler(sampler);
+        }
+    }
+
+    /** {@code geometry} null = CPU-baked geometry in the emitter's topology. */
     public static RenderPipeline graphShader(CompiledShaderGraph compiled,
-                                             @Nullable InstancedVariant variant, ParticlePipelineKey key,
-                                             long usedChannelMask, boolean usesCustomData) {
-        return GRAPH_VARIANTS.computeIfAbsent(new GraphKey(compiled.contentHash(), variant, key), gk -> {
+                                             @Nullable InstancedGeometryKey geometry,
+                                             ParticlePipelineKey key) {
+        return GRAPH_VARIANTS.computeIfAbsent(new GraphKey(compiled.contentHash(), geometry, key), gk -> {
             var k = gk.key();
+            var shaderId = DynamicShaderSourceRegistry.shaderId(compiled.contentHash());
             var builder = RenderPipeline.builder()
                     .withLocation(Photon.id("pipeline/graph_" + VARIANT_ID.getAndIncrement()))
-                    .withVertexShader(DynamicShaderSourceRegistry
-                            .shaderId(compiled.contentHash()))
-                    .withFragmentShader(DynamicShaderSourceRegistry
-                            .shaderId(compiled.contentHash()))
-                    // CPU geometry keeps the emitter's primitive mode (trails are strips, ara-trails
-                    // triangles); the instanced variants always expand a quad-indexed base mesh
-                    .withVertexFormat(variant == null ? PARTICLE_FORMAT : variant.format,
-                            variant == null ? key.mode() : VertexFormat.Mode.QUADS)
-                    .withColorTargetState(k.blend() == null ? ColorTargetState.DEFAULT : new ColorTargetState(k.blend()))
-                    .withDepthStencilState(new DepthStencilState(
-                            k.depthTest() ? CompareOp.LESS_THAN_OR_EQUAL : CompareOp.ALWAYS_PASS,
-                            k.depthMask()))
+                    .withVertexShader(shaderId)
+                    .withFragmentShader(shaderId)
+                    .withColorTargetState(hdrTarget(k.blend()))
+                    .withDepthStencilState(depthState(k))
                     .withCull(k.cull());
-            // exactly what the generated GLSL references — mirrors KilaGraph's own RenderTypeFactory
-            for (var ubo : compiled.builtinUniforms()) {
-                builder.withUniform(ubo, UniformType.UNIFORM_BUFFER);
+            // no snippet: the generated source declares every block itself
+            var layout = new LayoutBuilder(Set.of());
+            applyGraphResources(layout, compiled);
+            if (gk.geometry() == null) {
+                builder.withVertexBinding(0, PARTICLE_FORMAT).withPrimitiveTopology(k.mode());
+            } else {
+                var g = gk.geometry();
+                applyInstancedGeometry(builder, g.layout());
+                applyInstanced(builder, layout, g.variant(), g.data(), g.customData());
             }
-            if (!compiled.layout().isEmpty()) {
-                builder.withUniform(MaterialUniformLayout.UBO_NAME,
-                        UniformType.UNIFORM_BUFFER);
-            }
-            for (var block : compiled.uniformBlocks()) {
-                builder.withUniform(block.uboName(), UniformType.UNIFORM_BUFFER);
-            }
-            for (var sampler : compiled.layout().samplers()) {
-                builder.withSampler(sampler);
-            }
-            // Photon-named scene captures (PhotonShaderCompiler renames them off KilaGraph's own for
-            // non-preview compiles) — bound by the drain from its pre-fx capture
-            if (compiled.usesSceneColor()) {
-                builder.withSampler(PhotonShaderCompiler.SCENE_COLOR);
-            }
-            if (compiled.usesSceneDepth()) {
-                builder.withSampler(PhotonShaderCompiler.SCENE_DEPTH);
-            }
-            if (variant != null) {
-                variant.defines.forEach(builder::withShaderDefine);
-                if (variant.usesPoints) {
-                    builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
-                }
-                applyVat(builder, variant);
-                // Additional GPU data — declared ONLY when the generated GLSL reads it, because a declared
-                // uniform must be bound at draw. The emitter's want-decision uses the same graph flags
-                // (unioned across the pass's materials), so "declared" always implies "bound".
-                // applyVat already declared it for a VAT variant — declaring it twice would be a
-                // duplicate uniform on the pipeline
-                if (usedChannelMask != 0L && !variant.usesVat()) {
-                    builder.withUniform("PhotonData", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
-                }
-                if (usesCustomData && variant.usesCustomData) {
-                    builder.withUniform("PhotonCustomData", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
-                }
-            }
+            layout.applyTo(builder);
             return builder.build();
         });
     }
 
-    private static final Map<String, RenderPipeline> FULLSCREEN_GRAPHS = new ConcurrentHashMap<>();
+    private record FullscreenGraphKey(String contentHash, GpuFormat format) {
+    }
+
+    private static final Map<FullscreenGraphKey, RenderPipeline> FULLSCREEN_GRAPHS = new ConcurrentHashMap<>();
 
     /**
-     * A Photon pipeline over a compiled FULLSCREEN shader graph — one post-effect pass. Same GLSL source
-     * KilaGraph registered for the graph, but our own state, taken from {@link PhotonFullscreenPass#builder()}
-     * so there is one definition of what a fullscreen pipeline is. KilaGraph's own pipeline for the same
-     * graph cannot be reused: its {@code depthState} is never null, and a post-effect target has no depth
-     * attachment, so every draw would warn.
+     * One fullscreen-graph pass writing {@code format}. The only vanilla block it may declare is DynamicTransforms,
+     * which {@code RenderGraphExecutor.dispatchGraph} binds a neutral copy of.
      */
-    public static RenderPipeline fullscreenGraph(
-            CompiledShaderGraph compiled) {
-        return FULLSCREEN_GRAPHS.computeIfAbsent(compiled.contentHash(), hash -> {
-            var shaderId = DynamicShaderSourceRegistry.shaderId(hash);
+    public static RenderPipeline fullscreenGraph(CompiledShaderGraph compiled, GpuFormat format) {
+        return FULLSCREEN_GRAPHS.computeIfAbsent(new FullscreenGraphKey(compiled.contentHash(), format), fk -> {
+            var shaderId = DynamicShaderSourceRegistry.shaderId(fk.contentHash());
             var builder = PhotonFullscreenPass.builder()
                     .withLocation(Photon.id("pipeline/postfx_graph_" + VARIANT_ID.getAndIncrement()))
                     .withVertexShader(shaderId)
                     .withFragmentShader(shaderId)
-                    .withColorTargetState(ColorTargetState.DEFAULT);
-            // Exactly what the generated GLSL references — and here that must be taken literally, because
-            // 26.1 validates every DECLARED uniform at draw and a fullscreen pass binds nothing of
-            // Minecraft's. The one block that can still show up is DynamicTransforms (the unconnected
-            // normal/viewDir port defaults import it for ModelViewMat); RenderGraphExecutor.dispatchGraph
-            // binds a neutral one. FullscreenShaderGraph excludes every node that would pull in the others.
-            for (var ubo : compiled.builtinUniforms()) {
-                builder.withUniform(ubo, UniformType.UNIFORM_BUFFER);
-            }
-            if (!compiled.layout().isEmpty()) {
-                builder.withUniform(MaterialUniformLayout.UBO_NAME,
-                        UniformType.UNIFORM_BUFFER);
-            }
-            for (var block : compiled.uniformBlocks()) {
-                builder.withUniform(block.uboName(), UniformType.UNIFORM_BUFFER);
-            }
-            for (var sampler : compiled.layout().samplers()) {
-                builder.withSampler(sampler);
-            }
-            // a fullscreen graph keeps KilaGraph's own scene-sampler names (PhotonShaderCompiler's
-            // rename is particle-side only), so KilaGraph's bindCustomUniforms binds them for us
-            if (compiled.usesSceneColor()) {
-                builder.withSampler(ShaderGraphCompiler.SCENE_COLOR_SAMPLER);
-            }
-            if (compiled.usesSceneDepth()) {
-                builder.withSampler(ShaderGraphCompiler.SCENE_DEPTH_SAMPLER);
-            }
+                    .withColorTargetState(new ColorTargetState(Optional.empty(), fk.format(),
+                            ColorTargetState.WRITE_ALL));
+            var layout = new LayoutBuilder(Set.of());
+            applyGraphResources(layout, compiled);
+            layout.applyTo(builder);
             return builder.build();
         });
     }
 
     public static void register(RegisterRenderPipelinesEvent event) {
-        // pre-register the default-material variant so startup precompiles the common case;
-        // every other variant lazy-compiles on first draw
+        // precompile the common case; a registered pipeline that fails to compile crashes resource load
         event.registerPipeline(hdrParticle(ParticlePipelineKey.DEFAULT));
     }
 
-    // ---- custom user shaders (26.1 contract: user vsh + fsh, 1.21 JSON is the metadata) ----
+    // ---- custom user shaders (user vsh + fsh, the 1.21 JSON is the metadata) ----------------------
 
-    /** The PURELY STRUCTURAL pipeline identity for a custom-shader material — everything that
-     *  affects COMPILATION, nothing that is a runtime value:
-     *  <ul>
-     *    <li>{@code vertexShader}/{@code fragmentShader}: the 1.21 JSON's own {@code vertex}/{@code
-     *        fragment} programs (custom vsh restored — was hardcoded to {@code core/particle});</li>
-     *    <li>{@code defines}: compile-time VARIANTS only (the engine instance/mode selection — the
-     *        1.21 {@code getShader(defines)} derivation);</li>
-     *    <li>{@code samplerNames}: sampler DECLARATIONS (sorted names) — never the bound textures;
-     *        texture bindings are dynamic per-material state applied at draw;</li>
-     *    <li>{@code sceneSamplers}: {@code SamplerScene*} declaration names (drain binds the capture);</li>
-     *    <li>{@code pipelineKey}: MaterialSetting blend/cull/depth/mode state.</li>
-     *  </ul>
-     *  So ONE pipeline is shared across every material instance and every uniform/texture value using
-     *  the same shader+mode+state — editing a uniform or swapping a sampler texture never recompiles. */
+    /** Only what affects compilation, so uniform edits and texture swaps never recompile. */
     public record CustomShaderKey(Identifier vertexShader,
                                   Identifier fragmentShader,
                                   Map<String, Float> defines,
@@ -613,41 +512,83 @@ public final class PhotonPipelines {
                                   ParticlePipelineKey pipelineKey) {
     }
 
+    private static LayoutBuilder customShaderLayout(CustomShaderKey key) {
+        var layout = new LayoutBuilder(SNIPPET_NAMES)
+                .sampler("Sampler0").sampler("Sampler2")
+                .uniform(PhotonEngineUniforms.UBO_NAME)
+                .uniform(PhotonCustomUniforms.UBO_NAME)
+                .uniform(PhotonMaterialUniforms.UBO_NAME);
+        key.samplerNames().forEach(layout::sampler);
+        key.sceneSamplers().forEach(layout::sampler);
+        return layout;
+    }
+
+    /** The user's stages adapted to this geometry, under the defines the pipeline carries. */
+    private static PhotonShaderSources.Adapted adaptCustomSources(CustomShaderKey key, int providedLocations,
+                                                                  Set<Integer> tailLocations,
+                                                                  Collection<String> extraDefines) {
+        var defines = new HashSet<>(key.defines().keySet());
+        defines.addAll(extraDefines);
+        return PhotonShaderSources.adapt(key.vertexShader(), key.fragmentShader(), providedLocations, tailLocations,
+                defines);
+    }
+
+    private static void applyCustomState(RenderPipeline.Builder builder, CustomShaderKey key,
+                                         PhotonShaderSources.Adapted sources) {
+        var pk = key.pipelineKey();
+        builder.withVertexShader(sources.vertex())
+                .withFragmentShader(sources.fragment())
+                .withColorTargetState(hdrTarget(pk.blend()))
+                .withDepthStencilState(depthState(pk))
+                .withCull(pk.cull());
+        key.defines().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e -> builder.withShaderDefine(e.getKey(), e.getValue()));
+    }
+
     private static final Map<CustomShaderKey, RenderPipeline> CUSTOM_SHADER_VARIANTS = new ConcurrentHashMap<>();
 
-    /**
-     * A pipeline over the user's own vertex stage ({@code key.vertexShader()}; the shared
-     * {@code photon:core/particle} when the JSON declares no custom vsh) with the user's fragment
-     * stage. Custom uniform VALUES live in the per-material {@code PhotonCustomMaterial} UBO (bound at
-     * draw), textures bind per-material at draw — neither is part of this key, so the pipeline is
-     * shared and value edits never recompile.
-     */
     public static RenderPipeline customShader(CustomShaderKey key) {
         return CUSTOM_SHADER_VARIANTS.computeIfAbsent(key, k -> {
             var builder = RenderPipeline.builder(RenderPipelines.MATRICES_FOG_SNIPPET)
                     .withLocation(Photon.id("pipeline/custom_shader_" + VARIANT_ID.getAndIncrement()))
-                    .withVertexShader(k.vertexShader())
-                    .withFragmentShader(k.fragmentShader())
-                    .withSampler("Sampler0")
-                    .withSampler("Sampler2")
-                    // GameTime/ScreenSize for user shaders (bound by bindDefaultUniforms when declared)
-                    .withUniform("Globals", UniformType.UNIFORM_BUFFER)
-                    // the 1.21 U_* dynamic uniforms (photon:engine.glsl; bound by RenderTypeMixin)
-                    .withUniform("PhotonEngine", UniformType.UNIFORM_BUFFER)
-                    .withUniform("PhotonCustomMaterial", UniformType.UNIFORM_BUFFER)
-                    .withVertexFormat(PARTICLE_FORMAT, k.pipelineKey().mode())
-                    .withColorTargetState(k.pipelineKey().blend() == null
-                            ? ColorTargetState.DEFAULT : new ColorTargetState(k.pipelineKey().blend()))
-                    .withDepthStencilState(new DepthStencilState(
-                            k.pipelineKey().depthTest() ? CompareOp.LESS_THAN_OR_EQUAL : CompareOp.ALWAYS_PASS,
-                            k.pipelineKey().depthMask()))
-                    .withCull(k.pipelineKey().cull());
-            // sorted for a deterministic define order (the map's own equality drives the cache)
-            k.defines().entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(e -> builder.withShaderDefine(e.getKey(), e.getValue()));
-            k.samplerNames().forEach(builder::withSampler);
-            k.sceneSamplers().forEach(builder::withSampler);
+                    .withVertexBinding(0, PARTICLE_FORMAT)
+                    .withPrimitiveTopology(k.pipelineKey().mode());
+            // no attribute tail on CPU geometry: tail inputs read the GL default, as on 26.1
+            applyCustomState(builder, k, adaptCustomSources(k, PARTICLE_FORMAT.getElements().size(), Set.of(),
+                    List.of()));
+            customShaderLayout(k).applyTo(builder);
+            return builder.build();
+        });
+    }
+
+    private record InstancedCustomKey(InstancedGeometryKey geometry, CustomShaderKey key) {
+    }
+
+    private static final Map<InstancedCustomKey, RenderPipeline> INSTANCED_CUSTOM_VARIANTS = new ConcurrentHashMap<>();
+
+    /** Custom pipelines are built from adapted source text, so they must be rebuilt after a reload. */
+    public static void onResourceReload() {
+        CUSTOM_SHADER_VARIANTS.clear();
+        INSTANCED_CUSTOM_VARIANTS.clear();
+    }
+
+    public static RenderPipeline instancedCustomShader(InstancedGeometryKey geometry, CustomShaderKey key) {
+        return INSTANCED_CUSTOM_VARIANTS.computeIfAbsent(new InstancedCustomKey(geometry, key), ik -> {
+            var k = ik.key();
+            var g = ik.geometry();
+            var builder = RenderPipeline.builder(RenderPipelines.MATRICES_FOG_SNIPPET)
+                    .withLocation(Photon.id("pipeline/custom_instanced_" + VARIANT_ID.getAndIncrement()));
+            // the defines applyInstanced adds, so the adapter evaluates the same branches
+            var defines = new ArrayList<>(g.variant().defines);
+            if (g.variant().usesVat()) defines.add(DATA_DEFINE);
+            var sources = adaptCustomSources(k, g.layout().elementCount(), g.layout().tailLocations(), defines);
+            applyInstancedGeometry(builder, g.layout(), sources.tailInputs());
+            applyCustomState(builder, k, sources);
+            var layout = customShaderLayout(k);
+            // custom shaders read the attribute tail, not the records
+            applyInstanced(builder, layout, g.variant(), false, false);
+            layout.applyTo(builder);
             return builder.build();
         });
     }

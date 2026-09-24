@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigHDR;
@@ -17,7 +18,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
 import com.lowdragmc.photon.client.render.MaterialPreviewRenderer;
 import com.lowdragmc.photon.client.render.PhotonMaterialUniforms;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
 import lombok.Setter;
@@ -87,7 +87,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     @Override
     public RenderType getRenderType(
             MaterialSetting setting,
-            VertexFormat.Mode mode) {
+            PrimitiveTopology mode) {
         // 1.21 selected the pixel program only when pixel-art was on; the plain program has no Bits use
         var fragment = pixelArt.isEnable() ? Photon.id("core/pixel_hdr_particle") : Photon.id("core/hdr_particle");
         return MaterialRenderTypes.hdrParticle(texture, fragment,

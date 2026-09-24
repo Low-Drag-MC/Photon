@@ -22,7 +22,7 @@ import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.FXProject;
 import com.lowdragmc.photon.gui.editor.resource.CurveResource;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Tuple;
+import it.unimi.dsi.fastutil.Pair;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -132,7 +132,7 @@ public class AssetBrowserCreateScenario implements UIScenario {
             var behaviors = ctx.<ResourceBehaviorCache>get("behaviors");
             if (behaviors != null) behaviors.dispose();
         })
-        .teardown("close the editor", ctx -> ctx.mc().setScreen(null))
+        .teardown("close the editor", ctx -> ctx.mc().gui.setScreen(null))
         .teardown("delete the fixture folder",
                 ctx -> ctx.check("the fixture was removed", FileOps.deleteRecursively(fixtureDir())));
     }
@@ -163,13 +163,13 @@ public class AssetBrowserCreateScenario implements UIScenario {
         return entries;
     }
 
-    private static void collectEntries(TreeNode<Tuple<IGuiTexture, Component>, Runnable> node,
+    private static void collectEntries(TreeNode<Pair<IGuiTexture, Component>, Runnable> node,
                                        List<CreateEntry> entries) {
         for (var child : node.getChildren()) {
             if (child.isBranch()) {
                 collectEntries(child, entries);
             } else if (child.getContent() != null) { // null content is a separator line
-                entries.add(new CreateEntry(child.getKey().getB().getString(), child.getContent()));
+                entries.add(new CreateEntry(child.getKey().right().getString(), child.getContent()));
             }
         }
     }

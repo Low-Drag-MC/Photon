@@ -3,43 +3,39 @@ package com.lowdragmc.photon.client.render;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.state.level.ParticleGroupRenderState;
+import net.neoforged.neoforge.client.submit.RenderPhaseKeys;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The extracted per-frame render state of {@link PhotonParticleGroup}: not geometry, but the list of
- * {@link IPhotonFXCollector.BakeTask}s the visible emitters registered — vanilla's extract/prepare
- * split, where extraction only decides WHICH emitters draw and the vertices are generated in the
- * drain.
- * <p>
- * {@link #submit} hands the tasks to whichever collector the engine is submitting into. That
- * collector IS the view identity: the world submits into {@code LevelRenderer}'s
- * {@code SubmitNodeStorage}, every LDLib2 scene into the one it built itself, so an emitter never
- * has to ask which view it is drawing for. Photon then opens its own render passes at the stages the
- * jobs ask for ({@link PhotonStage}) instead of handing anything to a vanilla feature renderer —
- * that is what keeps HDR/bloom and the custom pipelines under Photon's control.
+ * The extracted state of {@link PhotonParticleGroup}: the bake tasks of the visible emitters, submitted to
+ * {@link PhotonFeatureRenderer} with the view's {@link PhotonViewSettings}.
  */
 public final class PhotonFXRenderState implements ParticleGroupRenderState {
 
-    private final List<IPhotonFXCollector.BakeTask> tasks = new ArrayList<>();
+    private final List<PhotonBakeTask> tasks = new ArrayList<>();
 
-    /** Register one emitter's deferred geometry generation (called from extraction). */
-    public void defer(IPhotonFXCollector.BakeTask task) {
+    public void defer(PhotonBakeTask task) {
         tasks.add(task);
     }
 
     @Override
     public void submit(SubmitNodeCollector collector, CameraRenderState camera) {
-        if (tasks.isEmpty() || !(collector instanceof IPhotonFXCollector fx)) {
-            return; // a collector without a Photon bucket (e.g. Iris' shadow pass) simply skips fx
+        var settings = PhotonViewSettings.current();
+        // still submit while the post-effect chain has work, even with no FX
+        var stack = settings.effects() ? settings.postEffects() : null;
+        if (tasks.isEmpty() && (stack == null || !stack.wantsExecution())) {
+            return;
         }
-        fx.photonFXTasks().addAll(tasks);
-        PhotonWorldRenderState.trackCollector(fx);
+        // vanilla clears this state after the dispatchers drained the storage
+        var frame = new PhotonWorldRenderState.Frame(List.copyOf(tasks), settings);
+        collector.submitSpecial(RenderPhaseKeys.SOLID,
+                new PhotonSubmit(frame, PhotonStage.AFTER_OPAQUE_FEATURES));
+        collector.submitSpecial(RenderPhaseKeys.AFTER_TERRAIN,
+                new PhotonSubmit(frame, PhotonStage.AFTER_TRANSLUCENT_PARTICLES));
     }
 
-    /** Frame boundary (vanilla calls it after the dispatchers drained the storage). The collector
-     *  owns the copy it took in {@link #submit}, so dropping ours here is safe. */
     @Override
     public void clear() {
         tasks.clear();

@@ -2,7 +2,6 @@ package com.lowdragmc.photon.client.fx;
 
 import lombok.Getter;
 import lombok.Setter;
-import com.mojang.logging.annotations.MethodsReturnNonnullByDefault;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
@@ -18,7 +17,6 @@ import javax.annotation.ParametersAreNonnullByDefault;
  * its own copy of the data, so one definition can play many times concurrently.
  */
 @Getter
-@MethodsReturnNonnullByDefault
 @ParametersAreNonnullByDefault
 /*
  * Serialization note (26.1): NeoForge removed INBTSerializable. The .fx file format is Photon-owned

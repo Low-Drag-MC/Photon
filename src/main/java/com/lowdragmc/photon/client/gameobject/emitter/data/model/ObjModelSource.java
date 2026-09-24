@@ -82,7 +82,7 @@ public class ObjModelSource implements IModelSource {
         // The resource manager is mid-swap during a reload (F3+T / resource reload also clears our
         // cache). Loading now can transiently fail; caching EMPTY would blank the mesh until the next
         // invalidation. Retry after the reload instead — mirrors JsonModelSource's overlay guard.
-        if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
+        if (Minecraft.getInstance().gui.overlay() instanceof LoadingOverlay) {
             return null;
         }
         try (var in = Minecraft.getInstance().getResourceManager().open(modelLocation)) {

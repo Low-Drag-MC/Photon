@@ -13,23 +13,18 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The {@code PhotonMaterial} std140 uniform block (DiscardThreshold/HDR/HDRMode/PixelBits — the
- * 1.21 per-material shader uniforms). Unlike KilaGraph's live-updatable {@code MaterialUniformBuffer},
- * Photon's values are baked into the RenderType identity (the RenderType cache key includes them), so
- * each distinct value combo gets ONE immutable GPU buffer, uploaded once at creation. Photon's
- * {@code RenderTypeMixin} binds the associated slice right before {@code RenderPass.drawIndexed}.
+ * The {@code PhotonMaterial} std140 block (the 1.21 per-material uniforms). Values are part of the RenderType
+ * identity, so each distinct combination gets one immutable buffer, bound per draw by {@code PhotonWorldRenderState}.
  */
 public final class PhotonMaterialUniforms {
+
+    public static final String UBO_NAME = "PhotonMaterial";
 
     /** std140 layout mirrors the fsh PhotonMaterial block (1.21 member names): vec4 HDR;
      *  vec4 U_SpriteUV (RAW corners u0,v0,u1,v1 — 1.21 semantics); float DiscardThreshold;
      *  int HDRMode; float Bits; (pad to 48) vec4 SoftParticleParams = 64 B.
      *  <p>
-     *  {@code SoftParticleParams} is {@code (distance, power, alphaOnly, enabled)} — see
-     *  {@code SoftParticles.params()}. It rides here rather than being pushed per draw because in 26.1
-     *  these values ARE part of the material's RenderType identity, so two materials with different fade
-     *  settings can never share a buffer (which is the bug 1.21's "write it on every draw" rule existed
-     *  to avoid). */
+     *  {@code SoftParticleParams} is {@code (distance, power, alphaOnly, enabled)}. */
     public record Values(float hdrR, float hdrG, float hdrB, float hdrA,
                          float spriteU, float spriteV, float spriteUScale, float spriteVScale,
                          float discardThreshold, float hdrMode, float pixelBits,

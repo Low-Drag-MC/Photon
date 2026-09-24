@@ -2,12 +2,17 @@ package com.lowdragmc.photon.client.postfx.runtime;
 
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
+import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.pipeline.BindGroupLayout;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTextureView;
 
+import java.util.EnumMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -24,32 +29,29 @@ import java.util.Optional;
  * <p>Alpha is masked OUT of the write ({@link ColorTargetState#WRITE_COLOR}) so the destination keeps
  * its own: the editor's PIP texture carries premultiplied coverage in that channel (writing it turns
  * the transparent backdrop opaque black), and MC's main target is already opaque. That masking is also
- * why this is a draw and not a {@code PhotonFramebufferBlit} — {@code glBlitFramebuffer} bypasses the
- * fragment pipeline entirely and ignores the color mask, so it would carry the effect's alpha across.
+ * why this is a draw and not a texture copy — a copy bypasses the fragment pipeline entirely and ignores the
+ * color mask, so it would carry the effect's alpha across. One pipeline per destination format.
  *
  * <p>Render thread only, outside any open render pass.</p>
  */
 public final class SceneBlit {
 
-    private static RenderPipeline pipeline;
+    private static final Map<GpuFormat, RenderPipeline> PIPELINES = new EnumMap<>(GpuFormat.class);
 
     private SceneBlit() {}
 
-    private static RenderPipeline pipeline() {
-        if (pipeline == null) {
-            pipeline = PhotonFullscreenPass.builder(Photon.id("core/bloom_blit"))
-                    .withLocation(Photon.id("pipeline/postfx_writeback"))
-                    .withSampler("inputSampler")
-                    .withShaderDefine("OUTPUT_SCALE", 1f)
-                    .withColorTargetState(new ColorTargetState(Optional.empty(), ColorTargetState.WRITE_COLOR))
-                    .build();
-        }
-        return pipeline;
+    private static RenderPipeline pipeline(GpuFormat format) {
+        return PIPELINES.computeIfAbsent(format, f -> PhotonFullscreenPass.builder(Photon.id("core/bloom_blit"))
+                .withLocation(Photon.id("pipeline/postfx_writeback_" + f.name().toLowerCase(Locale.ROOT)))
+                .withBindGroupLayout(BindGroupLayout.builder().withSampler("inputSampler").build())
+                .withShaderDefine("OUTPUT_SCALE", 1f)
+                .withColorTargetState(new ColorTargetState(Optional.empty(), f, ColorTargetState.WRITE_COLOR))
+                .build());
     }
 
     /** Replace {@code to}'s RGB with {@code from}'s, leaving its alpha untouched. */
     public static void writeBack(GpuTextureView from, GpuTextureView to) {
-        PhotonFullscreenPass.draw("Photon postfx write-back", pipeline(), to, pass ->
+        PhotonFullscreenPass.draw("Photon postfx write-back", pipeline(to.texture().getFormat()), to, pass ->
                 pass.bindTexture("inputSampler", from,
                         RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR)));
     }

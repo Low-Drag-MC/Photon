@@ -5,6 +5,8 @@ import com.google.gson.JsonObject;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.postfx.shadergraph.PhotonFullscreenCompiler;
 import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
+import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.pipeline.BindGroupLayout;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.shaders.UniformType;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -17,6 +19,7 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,8 +40,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * ({@link Info#layout()}) and the node's ports ({@link Info#uniforms()}); {@code PostFXShaderAssetsTest}
  * fails the build if a shipped {@code .fsh} block and its JSON ever drift.</p>
  *
- * <p>Pipelines, uniform buffers and parsed infos are cached per location string and dropped on
- * resource reload. Failures memo-log once. Render thread only.</p>
+ * <p>Uniform buffers and parsed infos are cached per location string, pipelines per location and output
+ * format, all dropped on resource reload.
+ * Failures memo-log once. Render thread only.</p>
  */
 public final class CustomShaderPass {
 
@@ -88,8 +92,38 @@ public final class CustomShaderPass {
      */
     public record Info(List<String> samplers, List<UniformSpec> layout, List<UniformSpec> uniforms) {}
 
-    /** A pass shader ready to dispatch: its pipeline plus the value block it binds. */
-    public record Pass(RenderPipeline pipeline, Info info, PassUniforms uniforms) {}
+    /** A pass shader ready to dispatch: its pipeline per output format plus the value block it binds. */
+    public static final class Pass {
+        private final String location;
+        private final Info info;
+        private final PassUniforms uniforms;
+        private final Map<GpuFormat, RenderPipeline> pipelines = new EnumMap<>(GpuFormat.class);
+
+        private Pass(String location, Info info, PassUniforms uniforms) {
+            this.location = location;
+            this.info = info;
+            this.uniforms = uniforms;
+        }
+
+        public Info info() {
+            return info;
+        }
+
+        public PassUniforms uniforms() {
+            return uniforms;
+        }
+
+        /** Null when the shader fails to compile (logged once, until a resource reload). */
+        @Nullable
+        public RenderPipeline pipeline(GpuFormat format) {
+            if (pipelines.containsKey(format)) {
+                return pipelines.get(format);
+            }
+            var pipeline = build(location, info, format);
+            pipelines.put(format, pipeline);
+            return pipeline;
+        }
+    }
 
     private record InfoEntry(@Nullable Info info) {}
 
@@ -116,26 +150,33 @@ public final class CustomShaderPass {
         if (cached != null) return cached;
         var info = getInfo(location);
         if (info == null) return null;
-        var rl = Identifier.parse(location);
-        var builder = PhotonFullscreenPass.builder(
-                        Identifier.fromNamespaceAndPath(rl.getNamespace(), "core/" + rl.getPath()))
-                .withLocation(Photon.id("pipeline/postfx_" + PIPELINE_ID.getAndIncrement()));
-        info.samplers().forEach(builder::withSampler);
-        if (!info.layout().isEmpty()) {
-            builder.withUniform(PassUniforms.BLOCK_NAME, UniformType.UNIFORM_BUFFER);
-        }
-        var pipeline = builder.build();
-        // validate here rather than at setPipeline: a broken shader inside an open pass throws and takes
-        // the frame with it, whereas a null Pass just skips the effect (chain passthrough, logged once)
-        if (!RenderSystem.getDevice().precompilePipeline(pipeline).isValid()) {
-            Photon.LOGGER.warn("post-effect pass shader '{}' failed to compile (must be 26.1-format GLSL: "
-                    + "values in a std140 PhotonPass block)", location);
-            INFOS.put(location, new InfoEntry(null)); // stop re-resolving it every frame
-            return null;
-        }
-        var pass = new Pass(pipeline, info, new PassUniforms(info.layout()));
+        var pass = new Pass(location, info, new PassUniforms(info.layout()));
         PASSES.put(location, pass);
         return pass;
+    }
+
+    @Nullable
+    private static RenderPipeline build(String location, Info info, GpuFormat format) {
+        var rl = Identifier.parse(location);
+        var layout = BindGroupLayout.builder();
+        info.samplers().forEach(layout::withSampler);
+        if (!info.layout().isEmpty()) {
+            layout.withUniform(PassUniforms.BLOCK_NAME, UniformType.UNIFORM_BUFFER);
+        }
+        var pipeline = PhotonFullscreenPass.builder(
+                        Identifier.fromNamespaceAndPath(rl.getNamespace(), "core/" + rl.getPath()))
+                .withLocation(Photon.id("pipeline/postfx_" + PIPELINE_ID.getAndIncrement()))
+                .withBindGroupLayout(layout.build())
+                .withColorTargetState(PhotonFullscreenPass.opaqueTarget(format))
+                .build();
+        // validate here rather than at setPipeline: a broken shader inside an open pass throws and takes
+        // the frame with it, whereas a null pipeline just skips the effect (chain passthrough, logged once)
+        if (!RenderSystem.getDevice().precompilePipeline(pipeline).isValid()) {
+            Photon.LOGGER.warn("post-effect pass shader '{}' failed to compile (must be 26.2-format GLSL: "
+                    + "values in a std140 PhotonPass block, no loose uniforms)", location);
+            return null;
+        }
+        return pipeline;
     }
 
     /** The parsed pass interface of {@code location} ("ns:path"), or null when missing/broken. */

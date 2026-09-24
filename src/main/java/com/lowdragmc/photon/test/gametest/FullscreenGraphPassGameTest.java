@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.test.gametest;
 
+import com.mojang.blaze3d.pipeline.BindGroupLayout;
 import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
 import com.lowdragmc.kilagraph.rendertype.compiler.MaterialUniformLayout;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler;
@@ -153,7 +154,8 @@ public final class FullscreenGraphPassGameTest {
         bound.add(RenderGraphExecutor.BOUND_BUILTIN_UNIFORM);
         bound.add(MaterialUniformLayout.UBO_NAME);
         compiled.uniformBlocks().forEach(block -> bound.add(block.uboName()));
-        for (var uniform : PhotonPipelines.fullscreenGraph(compiled).getUniforms()) {
+        var pipeline = PhotonPipelines.fullscreenGraph(compiled, PhotonPipelines.HDR_FORMAT);
+        for (var uniform : BindGroupLayout.flattenUniforms(pipeline.getBindGroupLayouts())) {
             assertTrue(helper, "pipeline uniform '" + uniform.name() + "' is bound at dispatch",
                     bound.contains(uniform.name()));
         }
@@ -168,7 +170,8 @@ public final class FullscreenGraphPassGameTest {
         var bound = new HashSet<>(compiled.layout().samplers());
         if (compiled.usesSceneColor()) bound.add(ShaderGraphCompiler.SCENE_COLOR_SAMPLER);
         if (compiled.usesSceneDepth()) bound.add(ShaderGraphCompiler.SCENE_DEPTH_SAMPLER);
-        for (var sampler : PhotonPipelines.fullscreenGraph(compiled).getSamplers()) {
+        var pipeline = PhotonPipelines.fullscreenGraph(compiled, PhotonPipelines.HDR_FORMAT);
+        for (var sampler : BindGroupLayout.flattenSamplers(pipeline.getBindGroupLayouts())) {
             assertTrue(helper, "pipeline sampler '" + sampler + "' is bound at dispatch",
                     bound.contains(sampler));
         }

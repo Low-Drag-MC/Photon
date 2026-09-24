@@ -1,10 +1,10 @@
 package com.lowdragmc.photon.uitest;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.uitest.TestContext;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.VertexFormat;
 
 /**
  * Compile every {@code #ifdef} branch of {@code photon:particle.glsl} on the real driver.
@@ -32,17 +32,22 @@ final class ParticleShaderVariants {
     /** Precompile every vertex stage against every vertex layout Photon ships, reporting each. */
     static void checkAll(TestContext ctx) {
         var key = PhotonPipelines.ParticlePipelineKey.DEFAULT;
-        var quads = VertexFormat.Mode.QUADS;
+        var quads = PrimitiveTopology.QUADS;
         check(ctx, "material / CPU vertex layout", PhotonPipelines.hdrParticle(key));
         check(ctx, "mask / CPU vertex layout", PhotonPipelines.mask(null, quads));
         check(ctx, "wireframe / CPU vertex layout",
                 PhotonPipelines.hdrParticle(PhotonPipelines.ParticlePipelineKey.wireframe(quads)));
         for (var variant : PhotonPipelines.InstancedVariant.values()) {
             var defines = String.join("+", variant.defines);
-            check(ctx, "material / " + defines, PhotonPipelines.instancedHdrParticle(variant, key));
-            check(ctx, "mask / " + defines, PhotonPipelines.mask(variant, quads));
-            check(ctx, "wireframe / " + defines, PhotonPipelines.instancedHdrParticle(variant,
+            var geometry = PhotonPipelines.InstancedGeometryKey.of(variant);
+            check(ctx, "material / " + defines, PhotonPipelines.instancedHdrParticle(geometry, key));
+            check(ctx, "mask / " + defines, PhotonPipelines.mask(geometry, quads));
+            check(ctx, "wireframe / " + defines, PhotonPipelines.instancedHdrParticle(geometry,
                     PhotonPipelines.ParticlePipelineKey.wireframe(quads)));
+            // the PHOTON_DATA / PHOTON_CUSTOM_DATA branches of particle.glsl
+            var withData = new PhotonPipelines.InstancedGeometryKey(variant, variant.layout, true,
+                    variant.usesCustomData);
+            check(ctx, "material+data / " + defines, PhotonPipelines.instancedHdrParticle(withData, key));
         }
     }
 

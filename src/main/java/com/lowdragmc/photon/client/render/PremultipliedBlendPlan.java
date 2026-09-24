@@ -2,10 +2,10 @@ package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.compat.iris.IrisCompat;
+import com.mojang.blaze3d.pipeline.BlendEquation;
 import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.platform.DestFactor;
-import com.mojang.blaze3d.platform.SourceFactor;
-import org.jetbrains.annotations.Nullable;
+import com.mojang.blaze3d.platform.BlendFactor;
+import com.mojang.blaze3d.platform.BlendOp;
 
 /**
  * Translates an authored blend into the blend Photon must use while accumulating into a
@@ -26,11 +26,8 @@ import org.jetbrains.annotations.Nullable;
  * <p>Additive is the case worth getting right, because it is what most VFX use: coverage must stay
  * untouched ({@code ZERO / ONE}) so glow adds to the backdrop instead of hiding it.
  *
- * <p><b>26.1 shape.</b> 1.21 applied this as imperative {@code RenderSystem.blendFuncSeparate} calls
- * per material per draw. Here blending is a property of the {@code RenderPipeline}, so the translation
- * rewrites the {@link PhotonPipelines.ParticlePipelineKey} instead — the premultiplied variant is
- * simply another key, which gets its own cached pipeline for free and costs no extra state changes at
- * draw time.
+ * <p>The translation rewrites only the alpha half of the {@link PhotonPipelines.ParticlePipelineKey}'s blend, so
+ * the premultiplied variant is just another cached pipeline.
  *
  * <p>The two accumulation paths differ in what they do about the unreproducible blends.
  * {@link FXCompositeMode#LATE} routes those jobs back to the in-place path via {@link #isLayerSafe} —
@@ -39,9 +36,6 @@ import org.jetbrains.annotations.Nullable;
  * through {@link IrisCompat#degrade}.
  */
 public final class PremultipliedBlendPlan {
-
-    /** {@code GL14.GL_FUNC_REVERSE_SUBTRACT} — the op behind {@code BlendMode.BlendFuc.REVERSE_SUB}. */
-    public static final int BLEND_EQUATION_REVERSE_SUBTRACT = 32779;
 
     /**
      * Whether draws for {@code stage} go into a standalone layer rather than onto the frame.
@@ -100,15 +94,14 @@ public final class PremultipliedBlendPlan {
         // rather than quietly change how they look. (Iris has no in-place path, so premultiply still
         // handles the case for it.)
         if (blend == null) return false;
-        if (!isDestinationFree(blend.sourceColor())) return false;
-        var dst = blend.destColor();
-        if (key.blendEquation() == PhotonPipelines.BLEND_EQUATION_ADD) {
-            return dst == DestFactor.ZERO || dst == DestFactor.ONE_MINUS_SRC_ALPHA || dst == DestFactor.ONE;
-        }
-        if (key.blendEquation() == BLEND_EQUATION_REVERSE_SUBTRACT) {
-            return dst == DestFactor.ONE;
-        }
-        return false;
+        var color = blend.color();
+        if (!isDestinationFree(color.sourceFactor())) return false;
+        var dst = color.destFactor();
+        return switch (color.op()) {
+            case ADD -> dst == BlendFactor.ZERO || dst == BlendFactor.ONE_MINUS_SRC_ALPHA || dst == BlendFactor.ONE;
+            case REVERSE_SUBTRACT -> dst == BlendFactor.ONE;
+            default -> false;
+        };
     }
 
     /** Whether every key of a job is layer-safe (drawing nothing is trivially safe). */
@@ -128,32 +121,33 @@ public final class PremultipliedBlendPlan {
         if (blend == null) {
             // "Opaque": the fragment replaces whatever was there, and covers the backdrop fully.
             // Colour factors ONE/ZERO make this identical to blending being off.
-            return withBlend(key, new BlendFunction(SourceFactor.ONE, DestFactor.ZERO,
-                    SourceFactor.ONE, DestFactor.ZERO), PhotonPipelines.BLEND_EQUATION_ADD);
+            return key.withBlend(new BlendFunction(BlendFactor.ONE, BlendFactor.ZERO,
+                    BlendFactor.ONE, BlendFactor.ZERO));
         }
 
-        var srcColor = blend.sourceColor();
-        var dstColor = blend.destColor();
-        var equation = key.blendEquation();
+        var color = blend.color();
+        var srcColor = color.sourceFactor();
+        var dstColor = color.destFactor();
+        var op = color.op();
 
         if (isDestinationFree(srcColor)) {
-            if (equation == PhotonPipelines.BLEND_EQUATION_ADD) {
-                if (dstColor == DestFactor.ZERO) { // replace
-                    return withBlend(key, new BlendFunction(srcColor, DestFactor.ZERO,
-                            SourceFactor.ONE, DestFactor.ZERO), equation);
+            if (op == BlendOp.ADD) {
+                if (dstColor == BlendFactor.ZERO) { // replace
+                    return key.withBlend(new BlendFunction(color,
+                            new BlendEquation(BlendFactor.ONE, BlendFactor.ZERO, BlendOp.ADD)));
                 }
-                if (dstColor == DestFactor.ONE_MINUS_SRC_ALPHA) {
+                if (dstColor == BlendFactor.ONE_MINUS_SRC_ALPHA) {
                     // "over": coverage accumulates the same way the colour does
-                    return withBlend(key, new BlendFunction(srcColor, DestFactor.ONE_MINUS_SRC_ALPHA,
-                            SourceFactor.ONE, DestFactor.ONE_MINUS_SRC_ALPHA), equation);
+                    return key.withBlend(new BlendFunction(color,
+                            new BlendEquation(BlendFactor.ONE, BlendFactor.ONE_MINUS_SRC_ALPHA, BlendOp.ADD)));
                 }
-                if (dstColor == DestFactor.ONE) {
-                    return coverageFree(key, srcColor, equation);
+                if (dstColor == BlendFactor.ONE) {
+                    return coverageFree(key, color);
                 }
-            } else if (equation == BLEND_EQUATION_REVERSE_SUBTRACT && dstColor == DestFactor.ONE) {
+            } else if (op == BlendOp.REVERSE_SUBTRACT && dstColor == BlendFactor.ONE) {
                 // pure subtractive: dst - f(src). Also coverage-free, and exact because the
                 // accumulator is float — the negative contribution survives to the composite.
-                return coverageFree(key, srcColor, equation);
+                return coverageFree(key, color);
             }
         }
 
@@ -164,24 +158,18 @@ public final class PremultipliedBlendPlan {
         IrisCompat.degrade("BLEND", "a material blends against the destination colour (multiply, "
                 + "min/max, or a DST_* factor), which a shader pack's separate FX layer cannot "
                 + "reproduce — it is approximated as additive");
-        return coverageFree(key, isDestinationFree(srcColor) ? srcColor : SourceFactor.SRC_ALPHA,
-                PhotonPipelines.BLEND_EQUATION_ADD);
+        return coverageFree(key, new BlendEquation(isDestinationFree(srcColor) ? srcColor : BlendFactor.SRC_ALPHA,
+                BlendFactor.ONE, BlendOp.ADD));
     }
 
-    /** Light that adds to the backdrop must not claim coverage, or it would hide what it lights. */
+    /** Additive light must not claim coverage: alpha keeps the destination ({@code ZERO / ONE}). */
     private static PhotonPipelines.ParticlePipelineKey coverageFree(
-            PhotonPipelines.ParticlePipelineKey key, SourceFactor srcColor, int equation) {
-        return withBlend(key, new BlendFunction(srcColor, DestFactor.ONE,
-                SourceFactor.ZERO, DestFactor.ONE), equation);
+            PhotonPipelines.ParticlePipelineKey key, BlendEquation color) {
+        return key.withBlend(new BlendFunction(color,
+                new BlendEquation(BlendFactor.ZERO, BlendFactor.ONE, BlendOp.ADD)));
     }
 
-    private static PhotonPipelines.ParticlePipelineKey withBlend(
-            PhotonPipelines.ParticlePipelineKey key, @Nullable BlendFunction blend, int equation) {
-        return new PhotonPipelines.ParticlePipelineKey(blend, equation, key.cull(), key.depthTest(),
-                key.depthMask(), key.mode(), key.wireframe());
-    }
-
-    private static boolean isDestinationFree(SourceFactor factor) {
+    private static boolean isDestinationFree(BlendFactor factor) {
         return switch (factor) {
             case DST_COLOR, ONE_MINUS_DST_COLOR, DST_ALPHA, ONE_MINUS_DST_ALPHA -> false;
             default -> true;

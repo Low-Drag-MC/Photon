@@ -24,6 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class PhotonVatUniforms {
 
+    public static final String UBO_NAME = "PhotonVatInfo";
+
     /** std140: ivec2 Size (vertices a frame, frames) padded to 16, then vec4 Params
      *  (clip position, weight on the per-particle random, weight on the particle's t, blend) = 32 B.
      *  MIRRORED FROM the PHOTON_VAT block of {@code particle.glsl}. */

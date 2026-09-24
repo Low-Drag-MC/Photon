@@ -183,7 +183,7 @@ public class EditorMemoryScenario implements UIScenario {
             ctx.check("the UI element count does not grow", elementGrowth <= 0, "<= 0", elementGrowth);
         })
 
-        .teardown("close the editor", ctx -> ctx.mc().setScreen(null))
+        .teardown("close the editor", ctx -> ctx.mc().gui.setScreen(null))
         .teardown("delete the fixtures", ctx -> deleteFixtures());
     }
 

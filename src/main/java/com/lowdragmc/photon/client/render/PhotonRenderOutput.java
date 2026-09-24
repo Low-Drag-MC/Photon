@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.render;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.systems.ScissorState;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 
@@ -33,7 +34,7 @@ public final class PhotonRenderOutput {
     public static GpuTextureView color() {
         return RenderSystem.outputColorTextureOverride != null
                 ? RenderSystem.outputColorTextureOverride
-                : Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
+                : Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTextureView();
     }
 
     /** The depth attachment being drawn into, or null when the target has none. */
@@ -41,6 +42,27 @@ public final class PhotonRenderOutput {
     public static GpuTextureView depth() {
         return RenderSystem.outputDepthTextureOverride != null
                 ? RenderSystem.outputDepthTextureOverride
-                : Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+                : Minecraft.getInstance().gameRenderer.mainRenderTarget().getDepthTextureView();
+    }
+
+    /**
+     * The engine's render-type scissor clamped to the target; 26.2 rejects a box outside the render area.
+     * Check {@link #isEmpty} before drawing.
+     */
+    public static ScissorState scissor(int width, int height) {
+        var clip = new ScissorState(RenderSystem.getScissorStateForRenderTypeDraws());
+        if (!clip.enabled()) {
+            return clip;
+        }
+        int x0 = Math.max(0, clip.x());
+        int y0 = Math.max(0, clip.y());
+        int x1 = Math.min(width, clip.x() + clip.width());
+        int y1 = Math.min(height, clip.y() + clip.height());
+        clip.enable(x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0));
+        return clip;
+    }
+
+    public static boolean isEmpty(ScissorState clip) {
+        return clip.enabled() && (clip.width() <= 0 || clip.height() <= 0);
     }
 }

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.lowdragmc.lowdraglib2.LDLib2;
@@ -26,7 +27,6 @@ import com.lowdragmc.photon.client.render.PhotonCustomUniforms;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonRenderTypes;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.serialization.MapCodec;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
@@ -229,8 +229,16 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     private record ShaderMeta(Identifier vertex, Identifier fragment,
                               List<String> samplerNames,
                               List<String> sceneSamplers,
-                              List<PhotonCustomUniforms.Field> layout) {
+                              List<PhotonCustomUniforms.Field> layout,
+                              boolean legacyDepth) {
     }
+
+    /**
+     * {@code "depthConvention": "reverse_z"} opts a shader into 26.2's depth; without it the shader is treated as
+     * forward-Z legacy content and gets its scene depth and inverse projection in that convention.
+     */
+    public static final String DEPTH_CONVENTION_KEY = "depthConvention";
+    public static final String DEPTH_CONVENTION_NATIVE = "reverse_z";
 
     @Nullable
     private transient ShaderMeta cachedMeta;
@@ -260,7 +268,11 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         var samplerNames = new TreeSet<String>();
         var sceneSamplers = new TreeSet<String>();
         var layout = new TreeMap<String, PhotonCustomUniforms.Field>();
+        var legacyDepth = new boolean[]{true};
         readShaderJson(json -> {
+            if (json.has(DEPTH_CONVENTION_KEY)) {
+                legacyDepth[0] = !DEPTH_CONVENTION_NATIVE.equals(json.get(DEPTH_CONVENTION_KEY).getAsString());
+            }
             if (json.has("vertex")) vertex[0] = mapProgram(json.get("vertex").getAsString());
             if (json.has("fragment")) fragment[0] = mapProgram(json.get("fragment").getAsString());
             if (json.has("samplers")) {
@@ -288,7 +300,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         });
         return new ShaderMeta(vertex[0], fragment[0],
                 List.copyOf(samplerNames), List.copyOf(sceneSamplers),
-                List.copyOf(layout.values()));
+                List.copyOf(layout.values()), legacyDepth[0]);
     }
 
     /** 1.21 shader-JSON uniform type/count → the std140 block member type (the block skips
@@ -479,7 +491,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     @SuppressWarnings("resource") // state() is field-managed, freed by the Cleaner
     public RenderType getRenderType(
             MaterialSetting setting,
-            VertexFormat.Mode mode) {
+            PrimitiveTopology mode) {
         // resource reload: re-read the JSON layout + rebuild the buffer/RenderTypes (the GLSL is
         // recompiled by the engine, but our std140 layout comes from the shader JSON)
         int generation = PhotonRenderTypes.reloadGeneration();
@@ -498,7 +510,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         // on first use of each variant, freed together when the material is released
         var renderType = s.renderTypes.get(key);
         if (renderType == null) {
-            renderType = PhotonRenderTypes.createCustomShader(key, s.uniforms, liveSamplers()).orElse(null);
+            renderType = PhotonRenderTypes.createCustomShader(key, s.uniforms, liveSamplers(), m.legacyDepth())
+                    .orElse(null);
             if (renderType != null) {
                 s.renderTypes.put(key, renderType);
             }
@@ -508,7 +521,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             return renderType;
         }
         if (compiledErrorMessage.isEmpty()) {
-            compiledErrorMessage = "shader failed to compile (26.1-format GLSL required): " + shaderLocation;
+            compiledErrorMessage = "shader failed to compile (see the log; uniform values must live in blocks): "
+                    + shaderLocation;
         }
         // visibly broken rather than invisible — same policy as MissingMaterial
         return MaterialRenderTypes.hdrParticle(

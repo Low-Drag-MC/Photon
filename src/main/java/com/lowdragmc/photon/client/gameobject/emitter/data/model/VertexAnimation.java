@@ -14,11 +14,7 @@ import java.lang.ref.Cleaner;
  *
  * <p>Uploaded once and then read-only, so a swarm costs one buffer and no per-frame work at all.</p>
  *
- * <p><b>26.1 shape.</b> 1.21 owned a raw {@code GL_TEXTURE_BUFFER} + texture pair and bound it by unit.
- * 26.1 has a {@code GpuBuffer} with {@code USAGE_UNIFORM_TEXEL_BUFFER} that the render pass binds by
- * NAME, the same transport {@code PhotonPoints} uses for trail/ara per-point data — including the
- * declared-RGBA8-remapped-to-RGBA32F trick {@code GlConstMixin} performs, since 26.1's texel buffers have
- * no float format of their own.</p>
+ * <p>An RGBA32F texel buffer bound by name, like {@code PhotonPoints}.</p>
  */
 public final class VertexAnimation {
 

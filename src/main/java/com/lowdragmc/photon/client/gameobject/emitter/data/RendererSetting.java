@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigList;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
@@ -13,7 +14,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRen
 import com.lowdragmc.photon.client.render.FXCompositeMode;
 import com.lowdragmc.photon.client.render.PhotonStage;
 import com.lowdragmc.photon.client.render.PremultipliedBlendPlan;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
@@ -278,7 +278,7 @@ public class RendererSetting {
             }
             for (var material : getMaterials()) {
                 if (!PremultipliedBlendPlan
-                        .isLayerSafe(material.pipelineKey(VertexFormat.Mode.QUADS))) {
+                        .isLayerSafe(material.pipelineKey(PrimitiveTopology.QUADS))) {
                     return layer.stage;
                 }
             }
