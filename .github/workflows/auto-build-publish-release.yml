@@ -40,7 +40,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
-      mc-family: ${{ steps.version.outputs.mc-family }}
       should-publish: ${{ steps.check.outputs.should-publish }}
     steps:
       - name: Checkout repository
@@ -77,20 +76,11 @@ jobs:
             fi
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "Project version: $VERSION"
-            # The MC family for the release label, read from gradle.properties rather than typed: this
-            # file used to carry 1.21.1 literals, which would have published 26.1 builds as 1.21.1.
-            MC_FAMILY=$(grep -E "^minecraft_version_vague\s*=" gradle.properties | cut -d'=' -f2 | tr -d ' ')
-            if [ -z "$MC_FAMILY" ]; then
-              echo "❌ Could not find minecraft_version_vague in gradle.properties"
-              exit 1
-            fi
-            echo "mc-family=$MC_FAMILY" >> $GITHUB_OUTPUT
-            echo "Minecraft family: $MC_FAMILY"
           else
-            # No fallback: the game version can only come from here, and publishing with an empty one
-            # would upload the jar against no Minecraft version at all.
-            echo "❌ gradle.properties not found"
-            exit 1
+            echo "❌ gradle.properties not found, falling back to Gradle command"
+            VERSION=$(./gradlew -q printVersion)
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Project version: $VERSION"
           fi
 
       - name: Check publish conditions
@@ -238,8 +228,8 @@ jobs:
             build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
             build/libs/*-@(sources).jar
 
-          name: Photon2-${{ needs.validate.outputs.mc-family }}.x-${{ needs.validate.outputs.version }}-neoforge
-          version: mc${{ needs.validate.outputs.mc-family }}.x-${{ needs.validate.outputs.version }}-neoforge
+          name: Photon2-26.2-${{ needs.validate.outputs.version }}-neoforge
+          version: mc26.2-${{ needs.validate.outputs.version }}-neoforge
           version-type: ${{ inputs.versionType }}
           changelog-file: CHANGELOG.*
 
