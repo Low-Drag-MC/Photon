@@ -1,4 +1,7 @@
 ## ChangeLogs
+## v26.2.2.3
+* Hello 26.2
+
 ## v26.1.2.3
 * Added animated glTF models: rigged glb import, animation picker, per-particle animation phase and optional frame blend
 * Added dynamic mesh injection, so other mods can feed geometry that changes while it is drawn
