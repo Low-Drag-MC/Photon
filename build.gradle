@@ -176,6 +176,8 @@ dependencies {
             // Version used in your workspace and bundled in mod jar
             prefer "${kilagraph_version}"
         }
+        // LDLib2 is our own dependency; don't let KilaGraph's pull in a different version
+        exclude group: 'com.lowdragmc.ldlib2'
     }
 
     // Iris + Sodium: OpenGL-only, so left off a Vulkan run
