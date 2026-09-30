@@ -42,28 +42,64 @@ class VertexAnimationBakeTest {
     }
 
     @Test
-    void bakesOneTexelPerVertexPerFrame() {
+    void bakesOneRowPerFramePlusTheEnd() {
         var model = model();
         var table = VertexAnimationBake.bake(model, model.clipAt(0), 4);
         assertNotNull(table);
-        assertEquals(4 * model.mesh().vertexCount() * VertexAnimationBake.FLOATS_PER_TEXEL, table.length);
+        assertEquals((4 + 1) * model.mesh().vertexCount() * VertexAnimationBake.FLOATS_PER_TEXEL, table.length);
     }
 
-    /**
-     * Frame {@code f} is the clip at {@code duration * f / frames}, not {@code f / (frames - 1)} — so
-     * wrapping past the last frame continues a looping clip instead of repeating its end.
-     */
+    /** Row {@code f} is the clip at {@code duration * f / frames}, so a loop wraps cleanly; the extra row is the end. */
     @Test
-    void framesAreSpacedSoALoopWrapsCleanly() {
+    void rowsSampleTheClipEvenlyUpToItsEnd() {
         var model = model();
         int vertices = model.mesh().vertexCount();
         var table = VertexAnimationBake.bake(model, model.clipAt(0), 4);
         assertNotNull(table);
 
-        assertEquals(0f, y(table, 0, vertices, 0), 1e-5f, "frame 0 is the start");
-        assertEquals(2.5f, y(table, 1, vertices, 0), 1e-5f, "a quarter in");
+        assertEquals(0f, y(table, 0, vertices, 0), 1e-5f);
+        assertEquals(2.5f, y(table, 1, vertices, 0), 1e-5f);
         assertEquals(5f, y(table, 2, vertices, 0), 1e-5f);
-        assertEquals(7.5f, y(table, 3, vertices, 0), 1e-5f, "three quarters, NOT the end");
+        assertEquals(7.5f, y(table, 3, vertices, 0), 1e-5f);
+        assertEquals(10f, y(table, 4, vertices, 0), 1e-5f, "the extra row is the end");
+    }
+
+    /** Vertex 0's y at a raw phase, picked the way the shader and the CPU path pick it. */
+    private static float sampleY(float raw, boolean interpolate, boolean clamp) {
+        var model = model();
+        int vertices = model.mesh().vertexCount();
+        var table = VertexAnimationBake.bake(model, model.clipAt(0), 4);
+        assertNotNull(table);
+        float cursor = VertexAnimationBake.cursor(raw, 4, clamp);
+        int frame = VertexAnimationBake.frameAt(cursor, 4);
+        float blend = VertexAnimationBake.blendAt(cursor, frame, interpolate);
+        float at = y(table, frame, vertices, 0);
+        return blend > 0f ? at + (y(table, frame + 1, vertices, 0) - at) * blend : at;
+    }
+
+    @Test
+    void aLoopWrapsAndBlendsTowardTheEndNotTheStart() {
+        assertEquals(2.5f, sampleY(1.25f, true, false), 1e-4f, "a second lap");
+        assertEquals(2.5f, sampleY(-0.75f, true, false), 1e-4f, "backwards wraps forward");
+        // the last interval runs 7.5 -> 10; wrapping to row 0 inside it would sweep the clip backwards
+        assertEquals(9f, sampleY(0.9f, true, false), 1e-4f);
+    }
+
+    @Test
+    void aClipThatDoesNotLoopHoldsItsEnds() {
+        assertEquals(10f, sampleY(1f, true, true), 1e-4f, "the end, not the start again");
+        assertEquals(10f, sampleY(3.7f, true, true), 1e-4f);
+        assertEquals(0f, sampleY(-2f, true, true), 1e-4f);
+        assertEquals(10f, sampleY(1f, false, true), 1e-4f, "snapping reaches the end too");
+        assertEquals(5f, sampleY(0.6f, false, true), 1e-4f, "and otherwise floors");
+    }
+
+    /** fract can round up to exactly 1; that must still land on a row the table has. */
+    @Test
+    void aPhaseThatRoundsToOneStaysInTheTable() {
+        assertEquals(4f, VertexAnimationBake.cursor(-1e-9f, 4, false), 0f, "the fixture must round up");
+        assertEquals(10f, sampleY(-1e-9f, true, false), 1e-4f);
+        assertEquals(10f, sampleY(-1e-9f, false, false), 1e-4f);
     }
 
     @Test

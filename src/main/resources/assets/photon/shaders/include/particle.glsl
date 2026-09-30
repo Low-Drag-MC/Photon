@@ -42,12 +42,11 @@ layout(location = 3) in vec4 aTangent; // xyz = tangent (dP/du), w = handedness
 // A baked pose table: one texel per vertex per frame, so every particle can be at its own frame of the
 // animation without anything being deformed per frame. MIRRORED FROM VertexAnimationBake.
 uniform samplerBuffer PhotonVat;
-uniform ivec2 PhotonVatSize;   // x = vertices a frame, y = frames
+uniform ivec2 PhotonVatSize;   // x = vertices a frame, y = frames (intervals; the table has y + 1 rows)
 // xyz = (shared clip position, weight on the per-particle random, weight on the particle's own t) — the
 // two weights are how "a flock, each at its own offset" and "plays once over a lifetime" are the same
 // expression rather than two shader variants.
-// w = blend between adjacent baked frames (0 = snap). A uniform branch rather than another define: it is
-// coherent across the whole draw, and a define here would double the VAT program permutations.
+// w = flags: +1 blend adjacent frames (else snap), +2 clamp the phase (else wrap).
 uniform vec4 PhotonVatParams;
 #endif
 
@@ -259,20 +258,22 @@ ParticleData getParticleData() {
     // ⚠️ fetched inline rather than through photon_data_random()/photon_data_t(), which are declared
     // further down this file than getParticleData — slot 0 xy, LOCKSTEP with those accessors
     vec4 photonVatData = texelFetch(PhotonData, gl_InstanceID * PHOTON_DATA_TEXELS);
-    float photonVatPhase = fract(PhotonVatParams.x
+    float photonVatRaw = PhotonVatParams.x
             + photonVatData.x * PhotonVatParams.y
-            + photonVatData.y * PhotonVatParams.z);
+            + photonVatData.y * PhotonVatParams.z;
+    // MIRRORED FROM VertexAnimationBake.cursor/frameAt/blendAt; the end row means frame + 1 always exists
+    float photonVatPhase = PhotonVatParams.w > 1.5 ? clamp(photonVatRaw, 0.0, 1.0) : fract(photonVatRaw);
     float photonVatCursor = photonVatPhase * float(PhotonVatSize.y);
     int photonVatFrame = clamp(int(photonVatCursor), 0, PhotonVatSize.y - 1);
+    float photonVatBlend = photonVatCursor - float(photonVatFrame);
+    if (mod(PhotonVatParams.w, 2.0) < 0.5) {
+        photonVatBlend = step(1.0, photonVatBlend);
+    }
     vec4 photonVatTexel = texelFetch(PhotonVat, photonVatFrame * PhotonVatSize.x + gl_VertexID);
     vec3 photonPos = photonVatTexel.xyz;
     vec3 photonNormal = photon_unpack_normal(photonVatTexel.w);
-    if (PhotonVatParams.w > 0.5) {
-        // frame f was baked at duration * f / frames, so the frame after the last one IS the first — the
-        // wrap is what makes a looping clip continuous rather than stuttering once per cycle
-        int photonVatNext = photonVatFrame + 1 == PhotonVatSize.y ? 0 : photonVatFrame + 1;
-        vec4 photonVatTexelNext = texelFetch(PhotonVat, photonVatNext * PhotonVatSize.x + gl_VertexID);
-        float photonVatBlend = photonVatCursor - floor(photonVatCursor);
+    if (photonVatBlend > 0.0) {
+        vec4 photonVatTexelNext = texelFetch(PhotonVat, (photonVatFrame + 1) * PhotonVatSize.x + gl_VertexID);
         photonPos = mix(photonPos, photonVatTexelNext.xyz, photonVatBlend);
         // the packed normals cannot be mixed as scalars; unpack both, then renormalise the blend
         photonNormal = normalize(mix(photonNormal,

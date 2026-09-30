@@ -77,6 +77,13 @@ final class ScreenshotCompare {
         return width + "x" + height;
     }
 
+    /** The central {@code fraction} of the frame. */
+    Region middle(double fraction) {
+        int marginX = (int) (width * (1 - fraction) / 2);
+        int marginY = (int) (height * (1 - fraction) / 2);
+        return new Region(marginX, marginY, width - marginX, height - marginY);
+    }
+
     /**
      * ⚠️ Always pass the scene rectangle. The editor draws a live stats box — playback time, CPU time,
      * FPS — inside the scene view, and a whole-window diff measures that counter ticking rather than

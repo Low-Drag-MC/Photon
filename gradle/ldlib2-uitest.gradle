@@ -13,6 +13,105 @@
 // delegate rather than the project, so ldTestOutDir would not be visible where it is needed.
 def ldTestOutDir = layout.buildDirectory.dir('ldlib2-uitest').get().asFile.absolutePath
 
+// -PldTestHeadless: run without a visible window, on a machine that need not have a monitor at all.
+// For a display-less build box, a locked console, or a run triggered over SSH.
+//
+// Applied to every run rather than just the client's: headless is a property of the machine, so a
+// box that cannot show one window cannot show a shard's or a multi-process client's either. The
+// property is inert in a run that has no UI test runner in it.
+//
+// Keyed by task name because that is all the hook below has to go on; NeoGradle derives a run's task
+// name from the run's name, so this map is how a task finds its own working directory.
+def ldHeadlessRunDirs = [:]
+
+// The fml.toml files this build actually turned the early window off in, so the restore below puts
+// back only what it took away. A developer who disabled the early window for their own reasons keeps
+// it disabled.
+def ldHeadlessFlipped = [] as Set
+
+// ⚠️ Whether this machine can put a window on a screen at all — which decides whether the FML early
+// window may stay on, and that decides WHICH GL CONTEXT the test client gets.
+//
+// FML's early window is what negotiates the context: it asks for 4.6 and falls back
+// ("Trying GL version 4.6 / Requested GL version 4.6 got version 4.6"), and Minecraft then adopts
+// that window and its context. Turn it off and Minecraft creates its own with its own hints — 3.2
+// core — so LWJGL loads no GL 3.3 entry points at all. A library that uses instanced rendering then
+// calls a null function pointer and LWJGL asks the JVM to abort: no exception, no crash report, the
+// process simply disappears. That is what took every multi-process client down, and it made the test
+// clients disagree with the game a player actually runs, which is the worse half of the bug.
+//
+// So the early window is only turned off where it genuinely cannot work: FML calls
+// glfwGetPrimaryMonitor and treats NULL as fatal, behind a modal dialog nobody is there to dismiss,
+// so the run hangs rather than fails.
+//
+// ⚠️ There are TWO overrides, and each exists for a reason the other cannot serve.
+//
+// The environment variable is for a HUMAN at a shell: the parallel and multi-process harnesses launch
+// their clients from child Gradle builds, which inherit this build's environment and none of its
+// properties, so a property typed on the outer command line would be obeyed by the build that prints
+// the message and ignored by the one that actually starts the client. The detection below propagates
+// for the same reason — a child sees the same SSH_* variables and the same graphics environment.
+//
+//     LDLIB2_TEST_EARLY_WINDOW=false ./gradlew runParTest ...
+//
+// The project property is for an ORCHESTRATOR spawning a child build directly, which is the only
+// caller that can put it on the child's own command line. ⚠️ It must not use the environment for
+// this: a Gradle client whose environment differs from the running daemon's makes Gradle stop that
+// daemon, and the orchestrator is running inside it — the parent build dies with "Gradle build
+// daemon disappeared unexpectedly" the instant the child is spawned. That is measured, not feared.
+//
+// ⚠️⚠️ And the machine's own answer, from last time: AWT is wrong exactly where it matters — on a
+// disconnected remote desktop it reports one screen while GLFW finds no monitor at all, and FML then
+// dies before a line of test code runs. Only GLFW knows, and the first thing it does with the answer
+// is abort the process, so the parallel orchestrator writes `build/ldlib2-uitest-no-monitor` when it
+// sees that death and this leaves the early window off from then on. One failed run per machine,
+// once — retrying the shard from inside the running build is not an option, because spawning a
+// second Gradle build kills the parent daemon (see ParallelTestOrchestrator.rememberIfNoMonitor).
+// Delete the file when a display comes back; `clean` deletes it too.
+def ldHasDisplay = {
+    if (project.hasProperty('ldTestEarlyWindow')) {
+        return Boolean.parseBoolean(project.property('ldTestEarlyWindow').toString().trim())
+    }
+    def forced = System.getenv('LDLIB2_TEST_EARLY_WINDOW')
+    if (forced != null && !forced.isBlank()) {
+        return Boolean.parseBoolean(forced.trim())
+    }
+    if (new File(project.layout.buildDirectory.get().asFile, 'ldlib2-uitest-no-monitor').isFile()) {
+        return false
+    }
+    // A session over SSH has no desktop to draw on even though the machine has a monitor attached.
+    if (System.getenv('SSH_CLIENT') || System.getenv('SSH_CONNECTION') || System.getenv('SSH_TTY')) {
+        return false
+    }
+    try {
+        return !java.awt.GraphicsEnvironment.isHeadless() &&
+                java.awt.GraphicsEnvironment.localGraphicsEnvironment.screenDevices.length > 0
+    } catch (Throwable ignored) {
+        return false   // no graphics environment to ask is an answer
+    }
+}()
+
+if (project.hasProperty('ldTestHeadless')) {
+    // Rejected here rather than in RunConfig so it costs nothing: the runner only reads its config
+    // from a frame hook, so the same guard down there turns a typo into a crash report several
+    // minutes into a launch. Real input needs a focusable window, and a hidden one has no focus to
+    // give, so this combination would pass while testing nothing.
+    if ('REAL'.equalsIgnoreCase(project.findProperty('ldTestInputMode')?.toString())) {
+        throw new GradleException("-PldTestInputMode=REAL cannot be combined with -PldTestHeadless: " +
+                "real input drives the OS cursor and needs the window focused.")
+    }
+    logger.lifecycle(ldHasDisplay
+            ? "LDLib2 UI test: headless, and this machine has a display — FML's early window stays on, "
+                    + "so the client gets the same GL context a player's does."
+            : "LDLib2 UI test: headless with no display — disabling FML's early window. ⚠️ The client "
+                    + "then runs on Minecraft's own GL 3.2 core context, where GL 3.3 entry points "
+                    + "(instanced rendering) are absent.")
+    runs.configureEach { run ->
+        run.systemProperty 'ldlib2.uitest.headless', 'true'
+        ldHeadlessRunDirs['run' + run.name.capitalize()] = run.workingDirectory
+    }
+}
+
 if (project.hasProperty('ldTest')) {
     // System properties rather than program arguments: Minecraft's own argument parser owns the
     // command line and rejects what it does not recognise.
@@ -76,8 +175,78 @@ tasks.register('verifyUiTest') {
 
 // NeoGradle creates the run tasks after this script is evaluated, so runClient cannot be looked up
 // by name here - match it lazily instead.
+def ldTestOutDirFile = file(ldTestOutDir)
+
+// Clears last run's output before runClient starts. verifyUiTest reads whatever report.json is on
+// disk, so a client that dies before the runner even starts - an unresolvable class path, a crash
+// during mod loading - would otherwise be reported with the *previous* run's verdict. Removing it up
+// front is what makes "no report is a failure" actually fire.
+//
+// A task runClient depends on, and not a doFirst on runClient: Gradle resolves and snapshots a
+// task's inputs BEFORE it runs any of its actions, so a runtimeClasspath that does not resolve fails
+// the task with its doFirst never reached - and an unresolvable class path is one of the two cases
+// this exists for. Observed, not theorised: a run against an LDLib2 whose new JEI dependency was on
+// no configured repository failed in ':runClient' at resolution, and verifyUiTest went on to report
+// the previous run's "1/1 scenarios passed, 72/72 checks passed" as this run's result.
+tasks.register('ldlib2CleanUiTestReport') {
+    onlyIf { project.hasProperty('ldTest') }
+    doLast { ldTestOutDirFile.deleteDir() }
+}
+
 tasks.configureEach { task ->
     if (task.name == 'runClient') {
         task.finalizedBy 'verifyUiTest'
+        task.dependsOn 'ldlib2CleanUiTestReport'
+    }
+    // FML's early loading window calls glfwGetPrimaryMonitor and treats NULL as fatal, so on a
+    // machine with no monitor it dies long before Minecraft is reached - and it dies behind a modal
+    // dialog nobody is there to dismiss, so the run hangs rather than fails. Minecraft's own Window
+    // handles a null monitor, so skipping the early window is all that is needed.
+    //
+    // A config file rather than a system property because NeoForge moved this setting into FMLConfig,
+    // which has no property override. That file is shared with ordinary interactive runs, which is
+    // why ldlib2RestoreEarlyWindow puts it back: leaving it off would silently cost every later
+    // `runClient` its loading window, and the setting also gates the GL features FML sets up.
+    if (project.hasProperty('ldTestHeadless') && !ldHasDisplay && task.name.startsWith('run')) {
+        task.finalizedBy 'ldlib2RestoreEarlyWindow'
+        task.doFirst {
+            def workingDir = ldHeadlessRunDirs[task.name]
+            if (workingDir == null) return
+            def dir = workingDir instanceof File ? workingDir : workingDir.get().asFile
+            def toml = new File(dir, 'config/fml.toml')
+            if (!toml.exists()) {
+                // A fresh run directory: FML writes this file during startup, so there is nothing to
+                // patch yet and the default (true) would take the client down. Seed just this one
+                // key - FML fills in every other default around it and leaves ours alone.
+                toml.parentFile.mkdirs()
+                toml.text = "earlyWindowControl = false\n"
+                ldHeadlessFlipped << toml
+                logger.lifecycle("LDLib2 UI test: seeded ${toml} with earlyWindowControl = false")
+            } else if (toml.text.contains('earlyWindowControl = true')) {
+                toml.text = toml.text.replace('earlyWindowControl = true', 'earlyWindowControl = false')
+                ldHeadlessFlipped << toml
+                logger.lifecycle("LDLib2 UI test: disabled the FML early window in ${toml}")
+            }
+        }
+    }
+}
+
+// Undoes the doFirst above, so -PldTestHeadless leaves nothing behind for the next interactive run.
+//
+// A finalizer rather than a doLast: finalizers run even when the finalized task fails, and a client
+// that crashed is exactly when the setting must still be restored. It cannot cover Gradle itself
+// being killed; the next headless run flips and restores again, so the worst case is one interactive
+// `runClient` without its loading window in between.
+//
+// Only ever reached as a finalizer of a run task, and only when -PldTestHeadless was given - nothing
+// else attaches it, and with no recorded flips it does nothing.
+tasks.register('ldlib2RestoreEarlyWindow') {
+    doLast {
+        ldHeadlessFlipped.each { toml ->
+            if (toml.exists() && toml.text.contains('earlyWindowControl = false')) {
+                toml.text = toml.text.replace('earlyWindowControl = false', 'earlyWindowControl = true')
+                logger.lifecycle("LDLib2 UI test: restored the FML early window in ${toml}")
+            }
+        }
     }
 }

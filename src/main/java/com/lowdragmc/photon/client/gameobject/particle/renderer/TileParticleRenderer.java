@@ -210,20 +210,19 @@ public class TileParticleRenderer {
 
     /**
      * Where this particle's pose starts in the baked table, in texels, or {@code -1} when there is none.
-     * MIRRORED FROM the PHOTON_VAT block of particle.glsl — the same two channels, the same wrap.
+     * MIRRORED FROM the PHOTON_VAT block of particle.glsl.
      */
     private int poseBaseFor(@Nullable VertexAnimation animation, TileParticle particle, float partialTicks) {
         poseBlend = 0f; // reset before the early return, so a stale blend cannot outlive its table
         if (animation == null) return -1;
         var phase = animation.phase();
-        float p = phase[0] + particle.getMemRandom("instance_random") * phase[1]
+        float raw = phase[0] + particle.getMemRandom("instance_random") * phase[1]
                 + particle.getT(partialTicks) * phase[2];
-        p -= (float) Math.floor(p);
-        float cursor = p * animation.frames();
-        int frame = Math.max(0, Math.min((int) cursor, animation.frames() - 1));
-        // the blend and the following frame, for putMeshVertex; see the PHOTON_VAT block of particle.glsl
-        poseBlend = animation.interpolates() ? cursor - (float) Math.floor(cursor) : 0f;
-        poseNextBase = (frame + 1 == animation.frames() ? 0 : frame + 1) * animation.vertexCount();
+        int frames = animation.frames();
+        float cursor = VertexAnimationBake.cursor(raw, frames, animation.clamps());
+        int frame = VertexAnimationBake.frameAt(cursor, frames);
+        poseBlend = VertexAnimationBake.blendAt(cursor, frame, animation.interpolates());
+        poseNextBase = (frame + 1) * animation.vertexCount();
         return frame * animation.vertexCount();
     }
 

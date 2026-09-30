@@ -39,9 +39,8 @@ public final class VertexAnimation {
     private final float[] table;
     private final int vertexCount;
     private final int frames;
-    /** (shared clip position, weight on the per-particle random, weight on the particle's t, blend
-     *  between adjacent frames) — refreshed by the source each frame, MIRRORED FROM the PHOTON_VAT block
-     *  of particle.glsl. */
+    /** (shared clip position, random weight, t weight, flags: +1 blend, +2 clamp) — MIRRORED FROM the
+     *  PHOTON_VAT block of particle.glsl. */
     private final float[] phase = new float[4];
     @Nullable
     private Resource resource;
@@ -63,6 +62,7 @@ public final class VertexAnimation {
         return vertexCount;
     }
 
+    /** In intervals: the table holds one more row than this, the clip's end. */
     public int frames() {
         return frames;
     }
@@ -71,16 +71,20 @@ public final class VertexAnimation {
         return phase;
     }
 
-    public void setPhase(float base, float randomWeight, float tWeight, boolean interpolate) {
+    public void setPhase(float base, float randomWeight, float tWeight, boolean interpolate, boolean clamp) {
         phase[0] = base;
         phase[1] = randomWeight;
         phase[2] = tWeight;
-        phase[3] = interpolate ? 1f : 0f;
+        phase[3] = (interpolate ? 1f : 0f) + (clamp ? 2f : 0f);
     }
 
     /** Whether adjacent baked frames are blended rather than snapped between. */
     public boolean interpolates() {
-        return phase[3] > 0.5f;
+        return phase[3] % 2f > 0.5f;
+    }
+
+    public boolean clamps() {
+        return phase[3] > 1.5f;
     }
 
     /** The buffer texture, created on first use. {@code -1} when it could not be made. */

@@ -135,6 +135,26 @@ public class AnimatedGltfScenario implements UIScenario {
             }
         })
 
+        // a paused editor: only the speed changes
+        .step("changing speed with the clock held still re-poses", ctx -> {
+            var location = write("speed.glb", glb(skinnedGltf()));
+            var source = new AnimatedGltfModelSource(location);
+            source.invalidate();
+            AnimatedGltfModelSource.pinClock(0.25f);
+            try {
+                var slow = source.getMesh();
+                float slowY = slow.geometry()[PhotonMesh.geometryOffset(0) + 1];
+                source.setSpeed(2f);
+                var fast = source.getMesh();
+                float fastY = fast.geometry()[PhotonMesh.geometryOffset(0) + 1];
+                ctx.check("a new speed is a new mesh", fast != slow, "new instance", "the old speed's pose");
+                ctx.check("the vertex is where twice the time puts it", Math.abs(fastY - slowY) > 0.25f,
+                        "moved about 0.5", "from " + slowY + " to " + fastY);
+            } finally {
+                AnimatedGltfModelSource.pinClock(null);
+            }
+        })
+
         // the edges and triangles hold the vertex objects, so they move in place rather than rebuild
         .step("an emission shape follows the animation without rebuilding", ctx -> {
             var location = write("shape.glb", glb(skinnedGltf()));

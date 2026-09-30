@@ -9,6 +9,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * One deformed pose, shared by everything asking for the same animation at the same instant — an
@@ -33,6 +34,8 @@ final class AnimatedPose {
      *  through — each holding a deformer and a geometry array the size of the model. */
     private static final int CROWDED = 16;
     private static final long STALE_NANOS = 5_000_000_000L;
+    /** ⚠️ Shared by all slots: a new slot (e.g. a new speed) counting from 1 again would read as unchanged. */
+    private static final AtomicLong REVISIONS = new AtomicLong();
 
     private final SkinDeformer deformer;
     private float[] geometry;
@@ -88,7 +91,7 @@ final class AnimatedPose {
         deformer.pose(clip, seconds);
         deformer.deform(model.mesh(), skin, geometry, restTangents, tangents);
         posedAt = seconds;
-        revision++;
+        revision = REVISIONS.incrementAndGet();
     }
 
     float[] geometry() {
