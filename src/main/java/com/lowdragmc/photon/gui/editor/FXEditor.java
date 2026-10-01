@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.editor.keymap.KeyContext;
 import com.lowdragmc.lowdraglib2.editor.ui.Editor;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.utils.TransformGizmo;
 import com.lowdragmc.lowdraglib2.gui.texture.SpriteTexture;
+import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import com.lowdragmc.photon.gui.editor.view.FXTimelineView;
@@ -38,6 +39,7 @@ public class FXEditor extends Editor {
         this.leftWindow.getLeftTop().addView(hierarchyView);
         this.centerWindow.getLeftTop().addView(sceneView);
         this.bottomWindow.getLeftTop().addView(timelineView);
+        sceneView.addEventListener(UIEvents.EXECUTE_COMMAND, hierarchyView::handleCommand);
     }
 
     @Override

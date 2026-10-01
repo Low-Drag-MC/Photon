@@ -72,6 +72,14 @@ public class CustomData {
         this.channelCount = Math.clamp(channelCount, 1, MAX_CHANNELS);
         this.channels.addAll(channels);
         this.channelNames.addAll(names);
+        // Imported streams may declare more components than they actually store.
+        int expected = type == Type.COLOR ? 1 : this.channelCount;
+        while (this.channels.size() > expected) {
+            this.channels.removeLast();
+        }
+        while (this.channels.size() < expected) {
+            this.channels.add(type == Type.COLOR ? new HDRConstantColor() : NumberFunction.constant(0));
+        }
         resizeNames();
     }
 
