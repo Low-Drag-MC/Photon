@@ -504,7 +504,25 @@ public class TileParticleRenderer {
         if (!Vector3fHelper.isZero(rotation)) {
             quaternion = new Quaternionf(quaternion).mul(eulerRotation(rotation));
         }
+        if (renderMode == ParticleRendererSetting.Mode.Horizontal || renderMode == ParticleRendererSetting.Mode.Vertical
+                || renderMode == ParticleRendererSetting.Mode.None) {
+            quaternion = applyOuterRotation(particle, partialTicks, quaternion);
+        }
         return quaternion;
+    }
+
+    /** World / Custom rotation over lifetime: {@code F * euler * F⁻¹ * orientation}; Local is already in the particle's euler. */
+    private static Quaternionf applyOuterRotation(TileParticle particle, float partialTicks, Quaternionf orientation) {
+        var rotationOverLifetime = particle.getRuntime().rotationOverLifetime;
+        if (!rotationOverLifetime.isEnable() || rotationOverLifetime.isLocal()) {
+            return orientation;
+        }
+        var spin = eulerRotation(rotationOverLifetime.getRotation(particle, partialTicks));
+        var frame = rotationOverLifetime.getFrameRotation(particle.getEmitter().getScene());
+        if (frame != null) {
+            spin = new Quaternionf(frame).mul(spin).mul(frame.conjugate());
+        }
+        return spin.mul(orientation);
     }
 
     /**
@@ -535,6 +553,6 @@ public class TileParticleRenderer {
                 ? particle.getSpaceRotation()
                 : new Quaternionf(FacingOrientationHelper.compute(
                         facing, renderer.getFacingDirection(), particle, camera, partialTicks));
-        return outer.mul(eulerRotation(rotation));
+        return applyOuterRotation(particle, partialTicks, outer.mul(eulerRotation(rotation)));
     }
 }

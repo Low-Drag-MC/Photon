@@ -15,8 +15,11 @@ import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
+import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.ValueSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
@@ -414,6 +417,19 @@ public class ParticleEmitter extends Emitter {
             simSpace.worldToLocalMatrix();
             simSpace.scale();
             simSpace.rotation();
+        }
+        if (runtime().forceOverLifetime.getSimulationSpace() == ValueSpace.Custom) {
+            CustomSpace.warm(config.forceOverLifetime.customSpace, getScene());
+        }
+        if (runtime().velocityOverLifetime.space.get() == ValueSpace.Custom) {
+            CustomSpace.warm(config.velocityOverLifetime.customSpace, getScene());
+        }
+        var araConfig = config.trails.araConfig;
+        if (araConfig.physicsSetting.gravitySpace == ValueSpace.Custom) {
+            CustomSpace.warm(araConfig.physicsSetting.gravityCustomSpace, getScene());
+        }
+        if (araConfig.space == AraTrailConfig.TrailSpace.Custom) {
+            CustomSpace.warm(araConfig.customSpace, getScene());
         }
         activeForceFields = gatherForceFields();
         for (var queue : particles.values()) {

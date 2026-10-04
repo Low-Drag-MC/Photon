@@ -1,6 +1,10 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.TransformRef;
+import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
@@ -43,9 +47,14 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
      * {@link com.lowdragmc.photon.client.gameobject.particle.SpawnFrame} — frozen, because those
      * particles were deliberately left behind in the world and should not be re-aimed by the emitter
      * afterwards. {@link ForceOverLifetimeSetting} resolves the same enum by the same rule.
+     *
+     * <p>{@link ValueSpace#Custom}: the picked transform's live axes, with its origin as the orbital / radial pivot.
      */
     @Configurable(name = "VelocityOverLifetimeSetting.space", tips = "photon.emitter.config.velocityOverLifetime.space")
+    @ConfigSelector(subConfiguratorBuilder = "buildSpaceConfigurator")
     protected ValueSpace space = ValueSpace.Local;
+    @Persisted
+    public final TransformRef customSpace = new TransformRef();
 
     @Configurable(name = "VelocityOverLifetimeSetting.linear", tips = "photon.emitter.config.velocityOverLifetime.linear")
     @NumberFunction3Config(common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, wheelDur = 1, curveConfig = @CurveConfig(bound = {-2, 2}, xAxis = "lifetime", yAxis = "additional velocity")))
@@ -72,6 +81,13 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
 
     public Runtime createRuntime() {
         return new Runtime(this);
+    }
+
+    private void buildSpaceConfigurator(ValueSpace space, ConfiguratorGroup group) {
+        if (space == ValueSpace.Custom) {
+            group.addConfigurator(CustomSpace.configurator("ParticleConfig.customSpace", customSpace,
+                    "photon.emitter.config.valueCustomSpace.tips"));
+        }
     }
 
     /**
@@ -118,13 +134,13 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
             // common one) must not pay for it, so both live under this guard.
             //
             // Two corrections are folded into how `pos` is taken:
-            //  - the pivot is the EMITTER, never the simulation space's origin — outside Local space
-            //    getSimPos() is an absolute coordinate, which would drop it on the world origin
-            //    (hundreds of blocks away, far below the effect) and inflate every radius;
+            //  - the pivot is the EMITTER (Custom: the picked transform), never the simulation space's
+            //    origin — outside Local space getSimPos() is an absolute coordinate, which would drop it
+            //    on the world origin (hundreds of blocks away, far below the effect) and inflate every radius;
             //  - the axes are `frame`'s, not the simulation space's — so "the emitter's up" keeps
             //    meaning that even when the particles simulate in world space.
             if (hasOrbital || radialVec != 0) {
-                var pos = toFrame(particle, frame, particle.getEmitterRelativePos());
+                var pos = framePosition(particle, frame);
                 if (hasOrbital) {
                     if (mode == OrbitalMode.AngularVelocity) {
                         var toPoint = new Vector3f(pos).sub(center);
@@ -200,17 +216,27 @@ public class VelocityOverLifetimeSetting extends ToggleGroup {
         }
 
         /**
-         * A simulation-space direction, re-expressed in {@code frame}'s axes (in place).
+         * The particle's position relative to the pivot, in {@code frame}'s axes.
          */
-        private static Vector3f toFrame(TileParticle particle, ValueSpace frame, Vector3f simDirection) {
-            return frame == ValueSpace.World ? particle.simDirToWorld(simDirection)
-                    : particle.simDirToEmitter(simDirection);
+        private Vector3f framePosition(TileParticle particle, ValueSpace frame) {
+            if (frame == ValueSpace.Custom) {
+                var transform = config.customSpace.getTransform(particle.getEmitter().getScene());
+                if (transform != null) {
+                    return transform.worldToLocalMatrix().transformPosition(particle.getWorldPos());
+                }
+                frame = ValueSpace.World;
+            }
+            var pos = particle.getEmitterRelativePos();
+            return frame == ValueSpace.World ? particle.simDirToWorld(pos) : particle.simDirToEmitter(pos);
         }
 
         /**
          * A direction in {@code frame}'s axes, re-expressed in simulation space (in place).
          */
-        private static Vector3f fromFrame(TileParticle particle, ValueSpace frame, Vector3f frameDirection) {
+        private Vector3f fromFrame(TileParticle particle, ValueSpace frame, Vector3f frameDirection) {
+            if (frame == ValueSpace.Custom) {
+                return particle.worldDirToSim(CustomSpace.dirToWorld(config.customSpace, particle.getEmitter().getScene(), frameDirection));
+            }
             return frame == ValueSpace.World ? particle.worldDirToSim(frameDirection)
                     : particle.emitterDirToSim(frameDirection);
         }
