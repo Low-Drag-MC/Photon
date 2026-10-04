@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.compat.iris;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
+import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
 import org.jetbrains.annotations.Nullable;
@@ -58,6 +59,20 @@ public final class IrisCompat {
 
     public static boolean isUsingShaderPack() {
         return BRIDGE.isUsingShaderPack();
+    }
+
+    /** Dev only (uitests): switches to {@code packName}, or shaders off for {@code null}, rewriting the user's Iris config. */
+    public static boolean selectShaderPack(@Nullable String packName) {
+        return restoreShaderPack(new IrisBridge.ShaderPackSelection(packName, packName != null));
+    }
+
+    /** Dev only (uitests): puts back what {@link #shaderPackSelection()} returned. */
+    public static boolean restoreShaderPack(IrisBridge.ShaderPackSelection selection) {
+        return Platform.isDevEnv() && BRIDGE.selectShaderPack(selection);
+    }
+
+    public static IrisBridge.ShaderPackSelection shaderPackSelection() {
+        return BRIDGE.shaderPackSelection();
     }
 
     public static boolean isShadowPass() {

@@ -46,6 +46,12 @@ public class PhotonShaders {
     private static ShaderInstance maskUnionShader;
     @Getter
     private static ShaderInstance irisCompositeShader;
+    @Getter
+    private static ShaderInstance dynamicLightPassShader;
+    @Getter
+    private static ShaderInstance dynamicLightBlurShader;
+    @Getter
+    private static ShaderInstance dynamicLightCompositeShader;
 
     public static void init() {
         if (LDLibShaders.supportComputeShader()) {
@@ -115,6 +121,15 @@ public class PhotonShaders {
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
                             Photon.id("iris_composite"), DefaultVertexFormat.POSITION),
                     shaderInstance -> irisCompositeShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("dynamic_light_pass"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> dynamicLightPassShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("dynamic_light_blur"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> dynamicLightBlurShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("dynamic_light_composite"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> dynamicLightCompositeShader = shaderInstance);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

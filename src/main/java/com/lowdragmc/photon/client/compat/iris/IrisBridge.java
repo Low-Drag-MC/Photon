@@ -88,6 +88,19 @@ public interface IrisBridge {
         return false;
     }
 
+    /** For tests: a pack in shaderpacks/ ({@code null} keeps the current one) and whether shaders are on. */
+    record ShaderPackSelection(@Nullable String name, boolean enabled) {
+    }
+
+    default ShaderPackSelection shaderPackSelection() {
+        return new ShaderPackSelection(null, false);
+    }
+
+    /** For tests: saves the selection to Iris' config and reloads. */
+    default boolean selectShaderPack(ShaderPackSelection selection) {
+        return false;
+    }
+
     default void unlockDepthColorIfLocked() {
     }
 

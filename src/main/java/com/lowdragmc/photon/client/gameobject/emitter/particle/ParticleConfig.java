@@ -139,6 +139,8 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     public final NoiseSetting noise = new NoiseSetting();
     @Configurable(name = "ParticleConfig.uvAnimation", subConfigurable = true, tips = "photon.emitter.config.uvAnimation")
     public final UVAnimationSetting uvAnimation = new UVAnimationSetting();
+    @Configurable(name = "ParticleConfig.lightEmission", subConfigurable = true, tips = "photon.emitter.config.lightEmission")
+    public final LightEmissionSetting lightEmission = new LightEmissionSetting();
     @Configurable(name = "ParticleConfig.trails", subConfigurable = true, tips = "photon.emitter.config.trails")
     public final TrailsSetting trails = new TrailsSetting();
     @Configurable(name = "ParticleConfig.subEmitters", subConfigurable = true, tips = "photon.emitter.config.sub_emitters")

@@ -2,6 +2,7 @@ package com.lowdragmc.photon;
 
 import com.lowdragmc.photon.client.compat.iris.IrisCompositeMode;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.FXCompositeMode;
+import com.lowdragmc.photon.client.light.ShadowMode;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -49,6 +50,20 @@ public class PhotonConfig {
     /** VRAM cap for the pooled post-processing render targets (free targets evict oldest-first). */
     public final ModConfigSpec.ConfigValue<Integer> postFxPoolBudgetMB;
 
+    public final ModConfigSpec.ConfigValue<Boolean> dynamicLights;
+    public final ModConfigSpec.ConfigValue<ShadowMode> lightShadowMode;
+    public final ModConfigSpec.ConfigValue<Boolean> lightSoftShadows;
+    public final ModConfigSpec.ConfigValue<Integer> lightShadowedLights;
+    public final ModConfigSpec.ConfigValue<Double> lightResolution;
+    public final ModConfigSpec.ConfigValue<Integer> lightContactShadowSteps;
+    public final ModConfigSpec.ConfigValue<Double> lightContactShadowLength;
+    public final ModConfigSpec.ConfigValue<Integer> lightScreenShadowSteps;
+    public final ModConfigSpec.ConfigValue<Double> lightScreenShadowThickness;
+    public final ModConfigSpec.ConfigValue<Double> lightScreenShadowDistance;
+    public final ModConfigSpec.ConfigValue<Double> lightVoxelBudgetMs;
+    public final ModConfigSpec.ConfigValue<Double> lightAlbedoMax;
+    public final ModConfigSpec.ConfigValue<Double> lightShaderPackAmbient;
+
     private PhotonConfig(ModConfigSpec.Builder builder) {
         enableBloom = builder.define("enable_bloom", true);
         bloomMipLevel = builder.defineInRange("bloom_mip_level", 5, 2, 10);
@@ -72,5 +87,26 @@ public class PhotonConfig {
         enableCustomEffects = builder.define("enable_custom_effects", true);
         enableCustomEffectsWithShaderPack = builder.define("enable_custom_effects_with_shader_pack", true);
         postFxPoolBudgetMB = builder.defineInRange("postfx_pool_budget_mb", 256, 16, 4096);
+
+        builder.push("dynamic_lights");
+        dynamicLights = light(builder, "enabled").define("enabled", true);
+        lightShadowMode = light(builder, "shadow_mode").defineEnum("shadow_mode", ShadowMode.VOXEL);
+        lightSoftShadows = light(builder, "soft_shadows").define("soft_shadows", true);
+        lightShadowedLights = light(builder, "shadowed_lights").defineInRange("shadowed_lights", 8, 0, 32);
+        lightResolution = light(builder, "resolution").defineInRange("resolution", 0.5, 0.25, 1.0);
+        lightContactShadowSteps = light(builder, "contact_shadow_steps").defineInRange("contact_shadow_steps", 6, 0, 32);
+        lightContactShadowLength = light(builder, "contact_shadow_length").defineInRange("contact_shadow_length", 0.8, 0.1, 4.0);
+        lightScreenShadowSteps = light(builder, "screen_shadow_steps").defineInRange("screen_shadow_steps", 24, 1, 128);
+        lightScreenShadowThickness = light(builder, "screen_shadow_thickness").defineInRange("screen_shadow_thickness", 1.0, 0.05, 16.0);
+        lightScreenShadowDistance = light(builder, "screen_shadow_distance").defineInRange("screen_shadow_distance", 32.0, 1.0, 128.0);
+        lightVoxelBudgetMs = light(builder, "voxel_budget_ms").defineInRange("voxel_budget_ms", 2.0, 0.1, 20.0);
+        lightAlbedoMax = light(builder, "albedo_max").defineInRange("albedo_max", 0.85, 0.1, 1.0);
+        lightShaderPackAmbient = light(builder, "shader_pack_ambient").defineInRange("shader_pack_ambient", 0.06, 0.001, 1.0);
+        builder.pop();
+    }
+
+    // the screen derives value keys from the leaf name alone, which other sections may reuse
+    private static ModConfigSpec.Builder light(ModConfigSpec.Builder builder, String key) {
+        return builder.translation("photon.configuration.dynamic_lights." + key);
     }
 }

@@ -1,0 +1,15 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:dynamic_light_blur",
+    "attributes": [ "Position" ],
+    "samplers": [
+        { "name": "IrradianceSampler" },
+        { "name": "SceneDepthSampler" }
+    ],
+    "uniforms": [
+        { "name": "IProjMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "ScreenSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
+        { "name": "ResolutionScale", "type": "float", "count": 1, "values": [ 1.0 ] },
+        { "name": "BlurDirection", "type": "float", "count": 2, "values": [ 1.0, 0.0 ] }
+    ]
+}

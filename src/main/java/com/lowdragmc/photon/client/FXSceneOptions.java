@@ -42,4 +42,9 @@ public interface FXSceneOptions {
     default boolean isMaskViewEnabled() {
         return false;
     }
+
+    /** Whether the scene's light objects and emitters light it; the mod config's dynamic lights switch must be on too. */
+    default boolean isDynamicLightsEnabled() {
+        return true;
+    }
 }

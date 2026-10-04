@@ -48,6 +48,9 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
     @Configurable(name = "TextureMaterial.softParticles", subConfigurable = true)
     @Getter
     protected final SoftParticles softParticles = new SoftParticles();
+    @Configurable(name = "TextureMaterial.litParticles", subConfigurable = true)
+    @Getter
+    protected final LitParticles litParticles = new LitParticles();
     private static final Map<String, ShaderInstance> spriteHDRParticleShaders = new HashMap<>();
 
     @Nullable
@@ -101,6 +104,7 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
         shader.safeGetUniform("HDR").set(color.x, color.y, color.z, color.w);
         shader.safeGetUniform("HDRMode").set(hdrMode.mode);
         softParticles.apply(shader, context);
+        litParticles.apply(shader, context);
     }
 
     @Override

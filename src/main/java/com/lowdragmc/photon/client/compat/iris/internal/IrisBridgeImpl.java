@@ -88,6 +88,28 @@ public final class IrisBridgeImpl implements IrisBridge {
     }
 
     @Override
+    public ShaderPackSelection shaderPackSelection() {
+        var config = Iris.getIrisConfig();
+        return new ShaderPackSelection(config.getShaderPackName().orElse(null), config.areShadersEnabled());
+    }
+
+    @Override
+    public boolean selectShaderPack(ShaderPackSelection selection) {
+        try {
+            var config = Iris.getIrisConfig();
+            if (selection.name() != null) {
+                config.setShaderPackName(selection.name());
+            }
+            config.setShadersEnabled(selection.enabled());
+            config.save();
+            Iris.reload();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @Override
     public void unlockDepthColorIfLocked() {
         if (DepthColorStorage.isDepthColorLocked()) {
             DepthColorStorage.unlockDepthColor();

@@ -25,6 +25,16 @@ public interface HDRColorFunction extends NumberFunction {
     /** Sample the unclamped HDR rgba into {@code out}. */
     void sampleHDR(float t, Supplier<Float> lerp, Vector4f out);
 
+    /** Samples any colour function into {@code out}, keeping the range of HDR ones and unpacking LDR ones. */
+    static void sample(NumberFunction function, float t, Supplier<Float> lerp, Vector4f out) {
+        if (function instanceof HDRColorFunction hdr) {
+            hdr.sampleHDR(t, lerp, out);
+            return;
+        }
+        int argb = function.get(t, lerp).intValue();
+        out.set((argb >> 16 & 0xFF) / 255f, (argb >> 8 & 0xFF) / 255f, (argb & 0xFF) / 255f, (argb >>> 24) / 255f);
+    }
+
     @Override
     default Number get(float t, Supplier<Float> lerp) {
         var sample = new Vector4f();

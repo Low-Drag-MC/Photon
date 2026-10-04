@@ -5,9 +5,11 @@
   "compatibilityLevel": "JAVA_21",
   "plugin": "com.lowdragmc.photon.core.mixins.PhotonMixinPlugin",
   "client": [
+    "ClientLevelMixin",
     "GameRendererMixin",
     "MinecraftMixin",
     "ParticleEngineMixin",
+    "accessor.LightTextureAccessor",
     "accessor.ParticleEngineAccessor",
     "iris.BlendOverrideAccessors$BlendModeOverrideAccessor",
     "iris.BlendOverrideAccessors$BufferBlendOverrideAccessor",

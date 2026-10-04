@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client;
 
 import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
+import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.postfx.runtime.PostFXCamera;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.platform.GlStateManager;
@@ -61,6 +62,8 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     private static PhotonParticleManager renderingManager = null;
     /** The partial tick the current frame is being drawn at, for clocks read mid-render. */
     private float lastPartialTick;
+    /** Between this frame's first particle draw, where its dynamic lights were applied, and its last. */
+    private boolean sceneLit;
 
     /** The scene's particles by render type (LDLib2 keeps the map protected). */
     public Map<ParticleRenderType, Queue<Particle>> particlesByRenderType() {
@@ -161,8 +164,19 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
 
         var startTime = System.nanoTime();
         GlStateManager._disableScissorTest();
+        boolean translucentPass = renderTypeFilter.test(ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT);
+        // the first call of a frame: blocks drawn, particles not, the scene's own AFTER_BLOCK_ENTITIES
+        if (!sceneLit && level != null && options.isDynamicLightsEnabled()) {
+            sceneLit = true;
+            DynamicLightRenderer.beginScene(level, new Matrix4f(RenderSystem.getModelViewMatrix()).mul(pMatrixStack.last().pose()),
+                    RenderSystem.getProjectionMatrix(), pActiveRenderInfo.getPosition(), isPlaying ? pPartialTicks : 0);
+        }
         super.render(pMatrixStack, pActiveRenderInfo, isPlaying ? pPartialTicks : 0, renderTypeFilter);
         consumeEditorEffectsWithoutParticles(renderTypeFilter);
+        if (translucentPass && sceneLit) {
+            sceneLit = false;
+            DynamicLightRenderer.endScene();
+        }
         GlStateManager._enableScissorTest();
         lastFrameTimes[frameIndex] = System.nanoTime() - startTime;
         frameIndex = (frameIndex + 1) % lastFrameTimes.length;

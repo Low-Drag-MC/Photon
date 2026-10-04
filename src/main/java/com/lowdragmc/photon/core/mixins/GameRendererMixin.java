@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.core.mixins;
 
+import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.postfx.PhotonPostFX;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.GameRenderer;
@@ -37,6 +38,7 @@ public class GameRendererMixin {
                             + "Lorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
                     shift = At.Shift.AFTER))
     private void photon$afterLevelRender(DeltaTracker deltaTracker, CallbackInfo ci) {
+        DynamicLightRenderer.onLevelRendered();
         PhotonPostFX.onLevelRenderComplete();
     }
 }

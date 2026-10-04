@@ -2,6 +2,7 @@
 
 #moj_import <fog.glsl>
 #moj_import <photon:soft_particle.glsl>
+#moj_import <photon:lit_particle.glsl>
 
 uniform sampler2D Sampler0;
 
@@ -17,6 +18,8 @@ uniform vec4 U_SpriteUV; // uo vo u1 v1
 in float vertexDistance;
 in vec2 texCoord0;
 in vec4 vertexColor;
+in vec3 photonViewPos;
+in vec3 photonBaseColor;
 
 out vec4 fragColor;
 
@@ -25,10 +28,12 @@ void main() {
         U_SpriteUV.x + texCoord0.x * (U_SpriteUV.z - U_SpriteUV.x),
         U_SpriteUV.y + texCoord0.y * (U_SpriteUV.w - U_SpriteUV.y)
     );
-    vec4 color = texture(Sampler0, uv) * vertexColor * ColorModulator;
+    vec4 texel = texture(Sampler0, uv);
+    vec4 color = texel * vertexColor * ColorModulator;
     if (color.a < DiscardThreshold) {
         discard;
     }
+    color.rgb += texel.rgb * photonBaseColor * ColorModulator.rgb * photon_particle_light(photonViewPos);
     if (HDRMode == 0) {
         color.rgb += HDR.rgb;
     } else {

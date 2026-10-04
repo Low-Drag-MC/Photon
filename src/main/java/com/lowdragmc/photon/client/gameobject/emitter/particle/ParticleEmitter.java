@@ -27,10 +27,14 @@ import com.lowdragmc.photon.client.gameobject.forcefield.ForceFieldObject;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.SpawnFrame;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
+import com.lowdragmc.photon.client.light.DynamicLightManager;
+import com.lowdragmc.photon.client.light.LightProvider;
+import com.lowdragmc.photon.client.light.LightSink;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -189,6 +193,14 @@ public class ParticleEmitter extends Emitter {
                     o -> ((ParticleEmitter) o).runtime().noise.enable),
             new RuntimeBinding("uvAnimation.enable", "enable", ConfigValueType.BOOL,
                     o -> ((ParticleEmitter) o).runtime().uvAnimation.enable),
+            new RuntimeBinding("lightEmission.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().lightEmission.enable),
+            new RuntimeBinding("lightEmission.color", "LightEmissionSetting.color", ConfigValueType.COLOR,
+                    o -> ((ParticleEmitter) o).runtime().lightEmission.color),
+            new RuntimeBinding("lightEmission.intensity", "LightEmissionSetting.intensity", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().lightEmission.intensity),
+            new RuntimeBinding("lightEmission.range", "LightEmissionSetting.range", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().lightEmission.range),
             new RuntimeBinding("trails.enable", "enable", ConfigValueType.BOOL,
                     o -> ((ParticleEmitter) o).runtime().trails.enable),
             new RuntimeBinding("subEmitters.enable", "enable", ConfigValueType.BOOL,
@@ -501,6 +513,7 @@ public class ParticleEmitter extends Emitter {
     }
 
     public void emitParticle(float dt) {
+        updateLightRegistration();
         // calculate distance (scaled by this step's dt)
         accumulatedDistance += getVelocity().length() * dt;
         // emit new particle (maxParticles may be timeline-overridden; authored value is the fallback)
@@ -652,10 +665,38 @@ public class ParticleEmitter extends Emitter {
         return cull.isEnable() ? cull.getCullAABB(this, partialTicks) : null;
     }
 
+    // one instance: the manager holds providers weakly and removes them by identity
+    private final LightProvider lightProvider = this::submitParticleLights;
+    @Nullable
+    private Level lightLevel;
+
+    private void updateLightRegistration() {
+        registerLights(runtime().lightEmission.isEnable() ? getLevel() : null);
+    }
+
+    private void registerLights(@Nullable Level level) {
+        if (level == lightLevel) return;
+        if (lightLevel != null) DynamicLightManager.removeProvider(lightLevel, lightProvider);
+        if (level != null) DynamicLightManager.addProvider(level, lightProvider);
+        lightLevel = level;
+    }
+
+    private void submitParticleLights(LightSink sink, float partialTick) {
+        if (!runtime().lightEmission.isEnable() || !isAlive() || !isVisible() || isDiscarded()) return;
+        runtime().lightEmission.submit(particles.values(), sink, partialTick);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        registerLights(null);
+    }
+
     @Override
     public void remove(boolean force) {
         super.remove(force);
         if (force) {
+            registerLights(null);
             particles.clear();
             pendingSubEmitterSpawns.clear();
             if (runtime != null) {

@@ -12,6 +12,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.NoiseSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RotationBySpeedSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SizeBySpeedSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.UVAnimationSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.LightEmissionSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.LightOverLifetimeSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhysicsSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RotationOverLifetimeSetting;
@@ -53,6 +54,7 @@ public class ParticleRuntime {
     public final RotationBySpeedSetting.Runtime rotationBySpeed;
     public final NoiseSetting.Runtime noise;
     public final UVAnimationSetting.Runtime uvAnimation;
+    public final LightEmissionSetting.Runtime lightEmission;
     public final TrailsSetting.Runtime trails;
     public final SubEmittersSetting.Runtime subEmitters;
     /** Per-instance override of the additional-GPU custom-data VALUES (structure stays from config). */
@@ -108,6 +110,7 @@ public class ParticleRuntime {
         this.rotationBySpeed = config.rotationBySpeed.createRuntime();
         this.noise = config.noise.createRuntime();
         this.uvAnimation = config.uvAnimation.createRuntime();
+        this.lightEmission = config.lightEmission.createRuntime();
         this.trails = config.trails.createRuntime();
         this.subEmitters = config.subEmitters.createRuntime();
         this.customData = new CustomDataRuntime(config.additionalGPUDataSetting);
@@ -177,6 +180,7 @@ public class ParticleRuntime {
         rotationBySpeed.clear();
         noise.clear();
         uvAnimation.clear();
+        lightEmission.clear();
         trails.clear();
         subEmitters.clear();
         customData.clear();

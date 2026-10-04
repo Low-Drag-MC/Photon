@@ -12,11 +12,16 @@ uniform int FogShape;
 out float vertexDistance;
 out vec2 texCoord0;
 out vec4 vertexColor;
+out vec3 photonViewPos;
+out vec3 photonBaseColor;
 
 void main() {
     ParticleData data = getParticleData();
 
-    gl_Position = ProjMat * ModelViewMat * vec4(data.Position, 1.0);
+    vec4 viewPos = ModelViewMat * vec4(data.Position, 1.0);
+    gl_Position = ProjMat * viewPos;
+    photonViewPos = viewPos.xyz;
+    photonBaseColor = data.Color.rgb;
 
     vertexDistance = fog_distance(data.Position, FogShape);
     texCoord0 = data.UV;

@@ -69,6 +69,8 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     protected final PixelArt pixelArt = new PixelArt();
     @Configurable(name = "TextureMaterial.softParticles", subConfigurable = true)
     protected final SoftParticles softParticles = new SoftParticles();
+    @Configurable(name = "TextureMaterial.litParticles", subConfigurable = true)
+    protected final LitParticles litParticles = new LitParticles();
     // runtime
     private static final Map<String, ShaderInstance> hdrParticleShaders = new HashMap<>();
     private static final Map<String, ShaderInstance> pixelHDRParticleShaders = new HashMap<>();
@@ -89,6 +91,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
         mat.pixelArt.setEnable(pixelArt.isEnable());
         mat.pixelArt.bits = pixelArt.bits;
         mat.softParticles.copyFrom(softParticles);
+        mat.litParticles.copyFrom(litParticles);
         return mat;
     }
 
@@ -149,6 +152,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
             shader.safeGetUniform("Bits").set(pixelArt.bits * 1f);
         }
         softParticles.apply(shader, context);
+        litParticles.apply(shader, context);
     }
 
     @Override
