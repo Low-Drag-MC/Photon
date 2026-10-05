@@ -331,7 +331,7 @@ public class FXHierarchyView extends View {
         return menu;
     }
 
-    /** A menu action that hands the keyboard back to this view: closing the menu leaves nothing focused. */
+    /** Closing the menu leaves nothing focused, so hand the keyboard back to this view. */
     private Runnable thenFocus(Runnable action) {
         return () -> {
             action.run();
@@ -339,10 +339,7 @@ public class FXHierarchyView extends View {
         };
     }
 
-    /**
-     * The scene view routes its commands here too, so the chords act on this selection from either panel.
-     * Undo and redo are taken as well: a focused view is where a command stops, and these views are focusable.
-     */
+    /** Also wired to the scene view. Takes undo/redo too, since commands stop at the focused view. */
     public void handleCommand(UIEvent event) {
         boolean handled;
         if (CommandEvents.COPY.equals(event.command)) {
@@ -380,7 +377,7 @@ public class FXHierarchyView extends View {
         return true;
     }
 
-    /** Copies each selected subtree next to its original, leaving the clipboard alone. */
+    /** Copies each selected subtree next to its original, without touching the clipboard. */
     public boolean duplicateSelection() {
         var roots = selectedRoots();
         if (runtime == null || roots.isEmpty()) return false;
@@ -391,7 +388,7 @@ public class FXHierarchyView extends View {
         return true;
     }
 
-    /** The selected objects without the root or anything already covered by a selected ancestor, in tree order. */
+    /** Selected objects minus the root and any with a selected ancestor, in tree order. */
     private List<IFXObject> selectedRoots() {
         if (runtime == null) return List.of();
         var selected = new HashSet<IFXObject>();
@@ -429,10 +426,7 @@ public class FXHierarchyView extends View {
                 }));
     }
 
-    /**
-     * Selects and reveals {@code objects}, and lets the inspector and gizmo go of the old selection.
-     * ⚠️ Not inspecting them: inspecting pushes history, which must not happen inside an undoable action.
-     */
+    /** ⚠️ Selects without inspecting: inspecting pushes history, which an undoable action must not do. */
     private void select(List<IFXObject> objects) {
         var nodes = objects.stream().map(this::nodeOf).filter(Objects::nonNull).toList();
         nodes.forEach(treeList::expandNodeAlongPath);
@@ -451,7 +445,7 @@ public class FXHierarchyView extends View {
         return node;
     }
 
-    /** Adds {@code fxObject} with whatever subtree it still carries; the saved list is flat. */
+    /** Adds {@code fxObject} and the subtree still linked to it. */
     public void addSceneObject(IFXObject fxObject) {
         if (runtime == null) return;
         var objects = runtime.fxData.objects();
@@ -461,7 +455,7 @@ public class FXHierarchyView extends View {
         runtime.addSceneObject(fxObject);
     }
 
-    /** Removes {@code fxObject} and its subtree, which stays linked to it so an undo can add it back whole. */
+    /** Removes {@code fxObject} and its subtree; the subtree stays linked for undo. */
     public void removeSceneObject(IFXObject fxObject) {
         if (runtime == null) return;
         var sceneEditor = fxEditor.sceneView.sceneEditor;

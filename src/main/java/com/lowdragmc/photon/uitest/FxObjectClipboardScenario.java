@@ -48,11 +48,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 
-/**
- * Copy, paste and duplicate of FX objects through the real chords, from the hierarchy, the scene view and the
- * context menu: fresh ids, references and bound tracks following the copies, where the copies land, what ends up
- * selected, the clipboard left alone by a duplicate, and undo/redo.
- */
+/** FX object copy, paste, duplicate and remove, driven through the real chords and menus. */
 @LDLRegisterClient(name = "fx_object_clipboard", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
 public class FxObjectClipboardScenario implements UIScenario {
@@ -124,7 +120,6 @@ public class FxObjectClipboardScenario implements UIScenario {
                         pasted.transform().parent() == object(ctx, "Renamed").transform());
                 ctx.check("fresh ids", freshIds(ctx, added));
                 ctx.check("the paste is selected", selectedKeys(ctx).equals(Set.of(pasted)), pasted, selectedKeys(ctx));
-                ctx.put("firstPaste", pasted);
             });
             chord(g, GLFW.GLFW_KEY_V);
             g.step("a second paste gets ids of its own", ctx -> {
@@ -166,7 +161,7 @@ public class FxObjectClipboardScenario implements UIScenario {
             g.step("the scene view has the focus", ctx -> {
                 ctx.check("scene view focused", editor(ctx).sceneView.isFocused());
                 editor(ctx).hierarchyView.treeList.setSelected(Set.of(nodeOf(ctx, object(ctx, "Other"))), true);
-                // Other's position is animated; the preview showing its last frame is when a copy used to freeze there
+                // Other is animated; copying it on its last frame used to freeze the copy there
                 seek(ctx, 30);
             });
             chord(g, GLFW.GLFW_KEY_D);
@@ -488,7 +483,7 @@ public class FxObjectClipboardScenario implements UIScenario {
         s.key(key, Keys.MOD_CONTROL).frames(2);
     }
 
-    /** Tags the hierarchy row showing {@code name} so the click resolves to it, then clicks it. */
+    /** Tags the row so the hit-tested click resolves to it. */
     private static void clickRow(ScenarioBuilder s, String name) {
         var id = "row-" + name.toLowerCase();
         s.step("find the " + name + " row", ctx -> rowLabel(ctx, name).setId(id));
@@ -507,10 +502,7 @@ public class FxObjectClipboardScenario implements UIScenario {
         });
     }
 
-    /**
-     * Hover, press and release at one spot, resolved once: a menu opens or closes on the press, so the target
-     * is covered or gone by the release.
-     */
+    /** Press and release at one spot resolved once: menus open or close on the press. */
     private static void clickOn(ScenarioBuilder s, String label, int button, Function<TestContext, float[]> spot) {
         s.step("hover " + label, ctx -> {
             var at = ctx.put("clickAt", spot.apply(ctx));
@@ -536,7 +528,7 @@ public class FxObjectClipboardScenario implements UIScenario {
         return ctx.query().type(TextElement.class).withText(name).where(element -> isInside(element, view)).one().element();
     }
 
-    /** Menu labels count as internal elements, which {@code withText} skips, so this matches the text itself. */
+    /** Menu labels are internal elements, which {@code withText} skips. */
     @Nullable
     private static UIElement menuEntry(TestContext ctx, String text) {
         return ctx.query().type(TextElement.class).visible().list().stream()

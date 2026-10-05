@@ -50,7 +50,7 @@ public final class FXObjectClipboard {
         }
     }
 
-    /** Copies of whatever in {@code track} drives the copied objects, or null if nothing does. */
+    /** The part of {@code track} that drives the copied objects, or null. */
     @Nullable
     private Track boundTracks(Track track) {
         if (track instanceof TrackGroup group) {
@@ -71,9 +71,8 @@ public final class FXObjectClipboard {
     }
 
     /**
-     * Objects (flat, parents before children) and tracks with fresh ids. References between copied objects
-     * follow the copies; anything else still points where it did. {@code parentOf} maps a copied root's
-     * original parent id to the parent it should land under.
+     * Fresh copies, parents before children; references between them follow the copies. {@code parentOf} maps a
+     * root's original parent id to its new one.
      */
     public FXData instantiate(UnaryOperator<UUID> parentOf) {
         var remap = new HashMap<UUID, UUID>();
@@ -83,16 +82,16 @@ public final class FXObjectClipboard {
             remap.put(id, fresh);
             remapStrings.put(id.toString(), fresh.toString());
         }
-        var fresh = new HashSet<>(remap.values());
+        var freshIds = new HashSet<>(remap.values());
         var result = new FXData();
         for (var snapshot : objects) {
             var object = Objects.requireNonNull(IFXObject.deserializeWrapper(remap(snapshot, remap, remapStrings)),
                     "Cannot paste FX object");
             var transform = object.transform();
-            if (!fresh.contains(transform._getInternalParentID())) {
+            if (!freshIds.contains(transform._getInternalParentID())) {
                 transform._setInternalParentID(parentOf.apply(transform._getInternalParentID()));
             }
-            transform._setInternalChildID(transform._getInternalChildID().stream().filter(fresh::contains).toList());
+            transform._setInternalChildID(transform._getInternalChildID().stream().filter(freshIds::contains).toList());
             result.objects().add(object);
         }
         for (var track : tracks) {
