@@ -18,10 +18,12 @@ import com.lowdragmc.lowdraglib2.uitest.TestContext;
 import com.lowdragmc.lowdraglib2.uitest.UIScenario;
 import com.lowdragmc.lowdraglib2.uitest.input.Keys;
 import com.lowdragmc.photon.client.fx.timeline.ActivatorTrack;
+import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.ControlTrack;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.fx.timeline.TrackGroup;
+import com.lowdragmc.photon.client.fx.timeline.property.PositionPropertyType;
 import com.lowdragmc.photon.client.gameobject.EmptyFXObject;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomData;
@@ -163,6 +165,8 @@ public class FxObjectClipboardScenario implements UIScenario {
             g.step("the scene view has the focus", ctx -> {
                 ctx.check("scene view focused", editor(ctx).sceneView.isFocused());
                 editor(ctx).hierarchyView.treeList.setSelected(Set.of(nodeOf(ctx, object(ctx, "Other"))), true);
+                // Other's position is animated; the preview showing its last frame is when a copy used to freeze there
+                seek(ctx, 30);
             });
             chord(g, GLFW.GLFW_KEY_D);
             g.step("Ctrl+D in the scene duplicated the selection", ctx -> {
@@ -170,6 +174,24 @@ public class FxObjectClipboardScenario implements UIScenario {
                 ctx.check("one object added", added.size() == 1, 1, added.size());
                 ctx.check("a copy of Other under the root", !added.isEmpty()
                         && "Other".equals(added.getFirst().getName()) && added.getFirst().transform().parent() == root(ctx));
+            });
+            g.step("the copy is animated like Other, not frozen on the frame it was copied at", ctx -> {
+                var other = object(ctx, "Other");
+                var copy = added(ctx).getFirst();
+                ctx.check("the copy has an animation track of its own", addedTracks(ctx).stream()
+                        .anyMatch(t -> t instanceof AnimationTrack && copy.id().equals(t.targetId())));
+                seek(ctx, 0);
+                var start = new float[]{x(other), x(copy)};
+                seek(ctx, 10);
+                var middle = new float[]{x(other), x(copy)};
+                seek(ctx, 30);
+                var end = new float[]{x(other), x(copy)};
+                ctx.check("both start at x=0", Math.abs(start[0]) < 1e-3f && Math.abs(start[1]) < 1e-3f,
+                        "0, 0", start[0] + ", " + start[1]);
+                ctx.check("both move together mid-way", middle[0] > 0.5f && middle[0] < 9.5f && middle[0] == middle[1],
+                        "equal, inside (0, 10)", middle[0] + ", " + middle[1]);
+                ctx.check("both end at x=10", Math.abs(end[0] - 10) < 1e-3f && Math.abs(end[1] - 10) < 1e-3f,
+                        "10, 10", end[0] + ", " + end[1]);
             });
             chord(g, GLFW.GLFW_KEY_Z);
             g.step("Ctrl+Z in the scene undid it", ctx -> checkOriginal(ctx, "after undo in the scene"));
@@ -246,11 +268,16 @@ public class FxObjectClipboardScenario implements UIScenario {
         group.children().add(PhotonTrackTypes.ACTIVATOR.create().targetId(child2.id()));
         group.children().add(PhotonTrackTypes.ACTIVATOR.create().targetId(other.id()));
         var unrelated = PhotonTrackTypes.ACTIVATOR.create().targetId(other.id());
+        var animation = (AnimationTrack) PhotonTrackTypes.ANIMATION.create().targetId(other.id());
+        var position = PositionPropertyType.INSTANCE.create(other);
+        position.putKey(0, 0, 0);
+        position.putKey(0, 20, 10);
+        animation.properties().add(position);
 
         var project = new FXProject();
         var data = project.getFx().getFxData();
         data.objects().addAll(List.of(parent, child, child2, other));
-        data.timeline().tracks().addAll(List.of(activator, control, group, unrelated));
+        data.timeline().tracks().addAll(List.of(activator, control, group, unrelated, animation));
         var editor = editor(ctx);
         editor.loadProject(project, null);
         ctx.put("editor", editor);
@@ -359,6 +386,16 @@ public class FxObjectClipboardScenario implements UIScenario {
 
         var copied = short3.copy();
         ctx.check("a copy keeps the fitted channels", copied.getChannels().size() == 3, 3, copied.getChannels().size());
+    }
+
+    private static float x(IFXObject object) {
+        return object.transform().localPosition().x;
+    }
+
+    private static void seek(TestContext ctx, long tick) {
+        var scene = editor(ctx).sceneView;
+        scene.particleManager.pause();
+        scene.simulateTo(tick);
     }
 
     private static FXEditor editor(TestContext ctx) {
