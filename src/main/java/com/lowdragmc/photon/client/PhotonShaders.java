@@ -52,6 +52,16 @@ public class PhotonShaders {
     private static ShaderInstance dynamicLightBlurShader;
     @Getter
     private static ShaderInstance dynamicLightCompositeShader;
+    @Getter
+    private static ShaderInstance dynamicLightVolumeShader;
+    @Getter
+    private static ShaderInstance dynamicLightVisibilityShader;
+    @Getter
+    private static ShaderInstance dynamicLightHazeShader;
+    @Getter
+    private static ShaderInstance dynamicLightFogShader;
+    @Getter
+    private static ShaderInstance dynamicLightDepthScaleShader;
 
     public static void init() {
         if (LDLibShaders.supportComputeShader()) {
@@ -130,6 +140,21 @@ public class PhotonShaders {
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
                             Photon.id("dynamic_light_composite"), DefaultVertexFormat.POSITION),
                     shaderInstance -> dynamicLightCompositeShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("dynamic_light_volume"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> dynamicLightVolumeShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("dynamic_light_visibility"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> dynamicLightVisibilityShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("dynamic_light_haze"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> dynamicLightHazeShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("dynamic_light_fog"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> dynamicLightFogShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("dynamic_light_depth_scale"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> dynamicLightDepthScaleShader = shaderInstance);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

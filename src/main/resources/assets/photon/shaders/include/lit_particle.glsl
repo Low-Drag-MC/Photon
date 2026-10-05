@@ -1,4 +1,5 @@
-// Dynamic lights on a particle: a billboard has no normal, so light comes from every direction, unshadowed.
+// Dynamic lights on a particle: a billboard has no normal, so light comes from every direction. Shadowed by the
+// lights' visibility maps where they have one.
 
 #moj_import <photon:dynamic_light.glsl>
 
@@ -18,6 +19,8 @@ vec3 photon_particle_light(vec3 viewPos) {
         float attenuation = photon_attenuation(d2, t0.w);
         if (attenuation <= 0.0) continue;
         attenuation *= photon_spot(toLight * inversesqrt(max(d2, 1e-6)), t1, t2, t3);
+        if (attenuation <= 0.0) continue;
+        attenuation *= photon_visibility(t3, -toLight, sqrt(d2));
         sum += t1.rgb * attenuation;
     }
     // inverse square is unbounded next to a light: saturate by the brightest channel, so the boost caps at

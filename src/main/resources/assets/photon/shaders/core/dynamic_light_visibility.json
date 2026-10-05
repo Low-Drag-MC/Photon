@@ -1,0 +1,16 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:dynamic_light_visibility",
+    "attributes": [ "Position" ],
+    "samplers": [
+        { "name": "VoxelPages" },
+        { "name": "VoxelBricks" },
+        { "name": "VisibilityLights" }
+    ],
+    "uniforms": [
+        { "name": "IViewMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "CameraFrac", "type": "float", "count": 3, "values": [ 0.0, 0.0, 0.0 ] },
+        { "name": "VoxelOrigin", "type": "int", "count": 3, "values": [ 0, 0, 0 ] },
+        { "name": "VisibilityInfo", "type": "int", "count": 4, "values": [ 128, 8, 0, 0 ] }
+    ]
+}

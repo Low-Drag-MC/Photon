@@ -17,7 +17,7 @@ import java.util.Arrays;
  */
 @OnlyIn(Dist.CLIENT)
 public final class LightPassTimer {
-    public enum Stage { COPY, LIGHT, BLUR, COMPOSITE }
+    public enum Stage { COPY, LIGHT, BLUR, VOLUME, COMPOSITE }
 
     private static final boolean ENABLED = Platform.isDevEnv();
     private static final int RING = 8;
@@ -29,7 +29,7 @@ public final class LightPassTimer {
     private static int active = -1;
 
     /** Filled while {@link #recording}: milliseconds per frame, per stage, in total and on the CPU. */
-    public static final DoubleArrayList[] STAGE_MS = {new DoubleArrayList(), new DoubleArrayList(), new DoubleArrayList(), new DoubleArrayList()};
+    public static final DoubleArrayList[] STAGE_MS = Arrays.stream(Stage.values()).map(stage -> new DoubleArrayList()).toArray(DoubleArrayList[]::new);
     public static final DoubleArrayList TOTAL_MS = new DoubleArrayList();
     public static final DoubleArrayList CPU_MS = new DoubleArrayList();
     public static boolean recording;

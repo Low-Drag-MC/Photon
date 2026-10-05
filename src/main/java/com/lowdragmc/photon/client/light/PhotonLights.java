@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Dynamic lights without Photon FX. Client render thread only.
+ * Dynamic lights and fog volumes without Photon FX. Client render thread only.
  *
  * <pre>{@code
  * var lamp = PhotonLights.add(new DynamicLight().at(x, y, z).color(1f, .5f, .2f).intensity(12).range(10));
@@ -24,6 +24,11 @@ import java.util.Set;
  * var handle = PhotonLights.attach(entity, new DynamicLight().color(.3f, .6f, 1f).range(8), new Vec3(0, 1, 0));
  * PhotonLights.flash(new DynamicLight().at(x, y, z).color(1f, .8f, .4f).intensity(40).range(16), 10);
  * PhotonLights.addProvider((sink, partialTick) -> sink.next().at(x, y, z).range(4));
+ *
+ * // a beam in the air, and a fog bank every light scatters in
+ * PhotonLights.add(new DynamicLight().at(x, y, z).spot(15, 25).direction(0, -1, 0).intensity(80).range(24).volumetric(1));
+ * var mist = PhotonLights.addFog(new FogVolume().at(x, y, z).size(16, 4, 16).density(1.5f));
+ * PhotonLights.removeFog(mist);
  * }</pre>
  */
 @OnlyIn(Dist.CLIENT)
@@ -53,6 +58,24 @@ public final class PhotonLights {
         DynamicLightManager.removeGlobalProvider(provider);
     }
 
+    /** A fog volume that stays until {@link #removeFog}d. */
+    public static FogVolume addFog(FogVolume fog) {
+        return DynamicLightManager.addFog(fog);
+    }
+
+    public static boolean removeFog(FogVolume fog) {
+        return DynamicLightManager.removeFog(fog);
+    }
+
+    /** Submits fog volumes every frame until {@link #removeFogProvider}; volumes taken from the sink last one frame. */
+    public static void addFogProvider(FogProvider provider) {
+        DynamicLightManager.addGlobalFogProvider(provider);
+    }
+
+    public static void removeFogProvider(FogProvider provider) {
+        DynamicLightManager.removeGlobalFogProvider(provider);
+    }
+
     /**
      * Follows {@code entity} at {@code offset} until the entity is gone or the handle closed. The template
      * stays live: changing it changes the light.
@@ -78,6 +101,14 @@ public final class PhotonLights {
 
     public static boolean isEnabled() {
         return PhotonConfig.INSTANCE.dynamicLights.get();
+    }
+
+    /**
+     * Whether halos, beams and fog volumes show in the world right now: the config can turn them off, everywhere or
+     * just under shader packs. Lights still light surfaces without them.
+     */
+    public static boolean isVolumetricEnabled() {
+        return isEnabled() && DynamicLightRenderer.volumetricEnabled(true);
     }
 
     /** Client tick: drops what has run out, whether or not anything is being drawn. */

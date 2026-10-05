@@ -13,14 +13,16 @@ import com.lowdragmc.photon.client.light.LightDebug;
 import com.lowdragmc.photon.client.light.ShadowMode;
 import com.lowdragmc.photon.client.light.dev.LightDemoScene;
 import net.minecraft.core.BlockPos;
+import net.neoforged.neoforge.client.ClientCommandHandler;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Builds the dynamic-light demo and photographs every view with voxel shadows, screen-space shadows,
- * no shadows, the shadow mask and the lights off; then a few views again under shader packs (needs the
- * zips in runs/client/shaderpacks). For eyeballing, not asserting.
+ * no shadows, the shadow mask and the lights off; then the haze views with {@code /photonlight volumetric}
+ * and {@code /photonlight fog} on; then a few views again under shader packs (needs the zips in
+ * runs/client/shaderpacks). For eyeballing, apart from the two commands.
  */
 @LDLRegisterClient(name = "dynamic_light_demo", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
@@ -43,6 +45,7 @@ public class DynamicLightDemoScenario implements UIScenario {
                     ctx.mc().options.hideGui = true;
                     LightTestConfig.set(PhotonConfig.INSTANCE.dynamicLights, true);
                     LightTestConfig.set(PhotonConfig.INSTANCE.lightShadowMode, ShadowMode.VOXEL);
+                    LightTestConfig.volumetricDefaults();
                     LightDebug.view = 0;
                     LightDemoScene.frozenSeconds = CLOCK;
                 })
@@ -98,6 +101,26 @@ public class DynamicLightDemoScenario implements UIScenario {
                 .screenshot("courtyard_8_clusters")
                 .step("final image again", ctx -> LightDebug.view = 0);
 
+        // the dev commands that put the demo in a haze, run as typed
+        s.step("/photonlight volumetric 1", ctx -> command(ctx, "photonlight volumetric 1"))
+                .step("/photonlight fog 1", ctx -> command(ctx, "photonlight fog 1"));
+        for (var name : List.of("searchlight", "windows", "courtyard")) {
+            goTo(s, name, 20).screenshot(name + "_9_volumetric");
+        }
+        s.step("the demo glows in the air and in its fog", ctx -> {
+                    int lights = DynamicLightRenderer.lastLightCount();
+                    ctx.check("every demo light is volumetric", lights > 0 && DynamicLightRenderer.lastVolumeCount() == lights,
+                            lights, DynamicLightRenderer.lastVolumeCount());
+                    ctx.check("the courtyard has its fog", DynamicLightRenderer.lastFogCount() == 1, 1, DynamicLightRenderer.lastFogCount());
+                })
+                .step("/photonlight volumetric 0", ctx -> command(ctx, "photonlight volumetric 0"))
+                .step("/photonlight fog 0", ctx -> command(ctx, "photonlight fog 0"))
+                .frames(3)
+                .step("and both go away", ctx -> {
+                    ctx.check("no volumetric lights", DynamicLightRenderer.lastVolumeCount() == 0, 0, DynamicLightRenderer.lastVolumeCount());
+                    ctx.check("no fog", DynamicLightRenderer.lastFogCount() == 0, 0, DynamicLightRenderer.lastFogCount());
+                });
+
         for (var pack : PACKS) {
             String tag = pack[0];
             String file = pack[1];
@@ -121,6 +144,11 @@ public class DynamicLightDemoScenario implements UIScenario {
             LightTestConfig.restore();
             LightDemoScene.stopLights();
         });
+    }
+
+    /** A client command, as if typed: the harness's runCommand goes to the server, which doesn't know these. */
+    private static void command(TestContext ctx, String command) {
+        ctx.check("/" + command + " ran", ClientCommandHandler.runCommand(command));
     }
 
     private static ScenarioBuilder goTo(ScenarioBuilder s, String name, int settleFrames) {

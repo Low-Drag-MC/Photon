@@ -13,6 +13,7 @@ import com.lowdragmc.lowdraglib2.uitest.UIScenario;
 import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRConstantColor;
+import com.lowdragmc.photon.client.gameobject.light.FogVolumeObject;
 import com.lowdragmc.photon.client.gameobject.light.LightConfig;
 import com.lowdragmc.photon.client.gameobject.light.LightObject;
 import com.lowdragmc.photon.gui.editor.FXEditor;
@@ -23,7 +24,8 @@ import org.joml.Vector3f;
 /**
  * Light objects lighting the FX editor's own scene, following the timeline: a lamp that lives 40 ticks and a
  * looping spot. Seeking to 10, past the lamp's end, and back to 10 must show the lamp, lose it, and get it
- * back; the scene's light toggle must take both away.
+ * back; the scene's light toggle must take both away, a volumetric spot must show its beam, and a fog volume the
+ * lights in it.
  */
 @LDLRegisterClient(name = "dynamic_light_editor_preview", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
@@ -33,7 +35,10 @@ public class DynamicLightEditorPreviewScenario implements UIScenario {
 
     @Override
     public void define(ScenarioBuilder s) {
-        s.step("dynamic lights on", ctx -> LightTestConfig.set(PhotonConfig.INSTANCE.dynamicLights, true))
+        s.step("dynamic lights on", ctx -> {
+            LightTestConfig.set(PhotonConfig.INSTANCE.dynamicLights, true);
+            LightTestConfig.volumetricDefaults();
+        })
         .openModularUI("photon editor", ctx -> new ModularUI(UI.of(
                         EditorWindow.open(FXEditor.WINDOW_ID, FXEditor::new).setId("fx_editor")))
                 .shouldCloseOnEsc(false)
@@ -58,6 +63,20 @@ public class DynamicLightEditorPreviewScenario implements UIScenario {
         .step("seek back to tick 10", ctx -> seek(ctx, 10))
         .frames(10)
         .screenshot("preview_t10_again")
+        .step("make the spot volumetric", ctx -> spot(ctx).config.getVolumetric().setEnable(true))
+        .frames(10)
+        .screenshot("preview_volumetric")
+        .step("add a fog volume", ctx -> {
+            var fog = new FogVolumeObject();
+            // under the root, as the add menu does
+            fog.transform().parent(editor(ctx).runtime.getRoot().transform(), false);
+            fog.transform().localPosition(new Vector3f(1, 1.5f, 0));
+            fog.transform().localScale(new Vector3f(7, 3, 5));
+            editor(ctx).hierarchyView.addSceneObject(fog);
+            seek(ctx, 10);
+        })
+        .frames(10)
+        .screenshot("preview_fog")
         .step("compare the captures", DynamicLightEditorPreviewScenario::compare);
 
         s.teardown("close the project", ctx -> {
@@ -72,6 +91,12 @@ public class DynamicLightEditorPreviewScenario implements UIScenario {
 
     private static FXEditor editor(TestContext ctx) {
         return ctx.query().type(FXEditor.class).one().as(FXEditor.class);
+    }
+
+    private static LightObject spot(TestContext ctx) {
+        return (LightObject) editor(ctx).runtime.objects.values().stream()
+                .filter(object -> object instanceof LightObject light && "Spot".equals(light.getName()))
+                .findFirst().orElseThrow();
     }
 
     private static void seek(TestContext ctx, long tick) {
@@ -116,8 +141,10 @@ public class DynamicLightEditorPreviewScenario implements UIScenario {
         var off = ScreenshotCompare.load(ctx, "preview_off");
         var expired = ScreenshotCompare.load(ctx, "preview_t60");
         var again = ScreenshotCompare.load(ctx, "preview_t10_again");
-        if (lit == null || off == null || expired == null || again == null) {
-            ctx.check("all four captures were written", false, "four images", "missing some");
+        var volumetric = ScreenshotCompare.load(ctx, "preview_volumetric");
+        var fog = ScreenshotCompare.load(ctx, "preview_fog");
+        if (lit == null || off == null || expired == null || again == null || volumetric == null || fog == null) {
+            ctx.check("all six captures were written", false, "six images", "missing some");
             return;
         }
         var lights = lit.diff(off, 12, SCENE);
@@ -126,5 +153,11 @@ public class DynamicLightEditorPreviewScenario implements UIScenario {
         ctx.check("the lamp is gone past its lifetime", lamp.count() > 5_000, "> 5000 px", lamp.count() + " " + lamp.box());
         var back = again.diff(lit, 12, SCENE);
         ctx.check("seeking back brings the same light back", back.count() < 500, "< 500 px", back.count() + " " + back.box());
+        var beam = volumetric.diff(again, 6, SCENE);
+        ctx.check("the volumetric spot shows its beam", beam.count() > 3_000, "> 3000 px", beam.count() + " " + beam.box());
+        int darker = volumetric.darkerThan(again, 6, SCENE);
+        ctx.check("and only brightens the scene", darker < 50, "< 50 px", darker);
+        var fogged = fog.diff(volumetric, 6, SCENE);
+        ctx.check("a fog volume shows the lights in it", fogged.count() > 10_000, "> 10000 px", fogged.count() + " " + fogged.box());
     }
 }

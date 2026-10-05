@@ -18,12 +18,12 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * {@code /photonlight}: the demo scene and the debug views, registered in a dev environment only. The
- * light settings themselves live in the client config.
+ * {@code /photonlight}: the demo scene, its haze and fog, and the debug views, registered in a dev environment only.
+ * The light settings themselves live in the client config.
  */
 @OnlyIn(Dist.CLIENT)
 public final class LightCommands {
-    private static final List<String> DEBUG_VIEWS = List.of("off", "light", "normal", "shadow", "albedo", "clusters");
+    private static final List<String> DEBUG_VIEWS = List.of("off", "light", "normal", "shadow", "albedo", "clusters", "volume");
 
     private LightCommands() {
     }
@@ -55,12 +55,22 @@ public final class LightCommands {
                         .then(Commands.argument("seconds", FloatArgumentType.floatArg(0f))
                                 .executes(context -> freeze(FloatArgumentType.getFloat(context, "seconds")))))
                 .then(Commands.literal("unfreeze").executes(context -> freeze(-1f)))
+                .then(Commands.literal("volumetric")
+                        .executes(context -> volumetric(LightDemoScene.volumetric > 0 ? 0f : 1f))
+                        .then(Commands.argument("strength", FloatArgumentType.floatArg(0f, 16f))
+                                .executes(context -> volumetric(FloatArgumentType.getFloat(context, "strength")))))
+                .then(Commands.literal("fog")
+                        .executes(context -> fog(LightDemoScene.fogDensity > 0 ? 0f : 1f))
+                        .then(Commands.argument("density", FloatArgumentType.floatArg(0f, 16f))
+                                .executes(context -> fog(FloatArgumentType.getFloat(context, "density")))))
                 .then(Commands.literal("stats").executes(context -> {
                     double gpu = DynamicLightRenderer.gpuMillis();
-                    feedback("%d lights (%d shadowed), GPU %s, CPU %.3f ms, %d voxel bricks".formatted(
-                            DynamicLightRenderer.lastLightCount(), DynamicLightRenderer.lastShadowedCount(),
-                            gpu < 0 ? "n/a" : "%.3f ms".formatted(gpu), DynamicLightRenderer.prepareMillis(),
-                            bricks()));
+                    feedback("%d lights (%d shadowed, %d volumetric), %d fog volumes, %d visibility maps, GPU %s, CPU %.3f ms, %d voxel bricks"
+                            .formatted(DynamicLightRenderer.lastLightCount(), DynamicLightRenderer.lastShadowedCount(),
+                                    DynamicLightRenderer.lastVolumeCount(), DynamicLightRenderer.lastFogCount(),
+                                    DynamicLightRenderer.lastVisibilityMapCount(),
+                                    gpu < 0 ? "n/a" : "%.3f ms".formatted(gpu), DynamicLightRenderer.prepareMillis(),
+                                    bricks()));
                     return 1;
                 }));
     }
@@ -88,7 +98,8 @@ public final class LightCommands {
             LightDemoScene.build(serverPlayer.serverLevel(), origin);
             LightDemoScene.teleport(serverPlayer, origin, LightDemoScene.VIEWS.getFirst());
         });
-        feedback("demo built at " + origin.toShortString() + "; /photonlight view <name> to look around");
+        feedback("demo built at " + origin.toShortString() + "; /photonlight view <name> to look around, "
+                + "/photonlight volumetric and /photonlight fog for the haze");
         return 1;
     }
 
@@ -131,6 +142,23 @@ public final class LightCommands {
         LightDemoScene.frozenSeconds = seconds;
         feedback(seconds < 0 ? "demo lights running" : "demo lights frozen at %.2f s".formatted(seconds));
         return 1;
+    }
+
+    private static int volumetric(float strength) {
+        LightDemoScene.volumetric = strength;
+        feedback((strength > 0 ? "demo lights glow in the air at strength %.2f; /photonlight debug volume shows the haze alone"
+                .formatted(strength) : "demo lights' glow off") + demoHint());
+        return 1;
+    }
+
+    private static int fog(float density) {
+        LightDemoScene.fogDensity = density;
+        feedback((density > 0 ? "fog over the courtyard at density %.2f".formatted(density) : "courtyard fog removed") + demoHint());
+        return 1;
+    }
+
+    private static String demoHint() {
+        return LightDemoScene.ground() == null ? "; run /photonlight demo to see it" : "";
     }
 
     private static int bricks() {

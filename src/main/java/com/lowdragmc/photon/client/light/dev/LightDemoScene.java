@@ -1,6 +1,8 @@
 package com.lowdragmc.photon.client.light.dev;
 
 import com.lowdragmc.photon.client.light.DynamicLight;
+import com.lowdragmc.photon.client.light.FogProvider;
+import com.lowdragmc.photon.client.light.FogSink;
 import com.lowdragmc.photon.client.light.LightProvider;
 import com.lowdragmc.photon.client.light.LightSink;
 import com.lowdragmc.photon.client.light.PhotonLights;
@@ -41,12 +43,20 @@ public final class LightDemoScene {
             new View("house_level", 11.5, 1, 6.5, -45, 0),
             new View("house_floor", 11.5, 1, 6.5, -45, 45),
             new View("tunnel_top", 0.5, 14, 27.5, 0, 89),
-            new View("fence", 0.5, 1, -3.5, 0, 20));
+            new View("fence", 0.5, 1, -3.5, 0, 20),
+            // for the haze: the searchlight's beam from beside its tower, and the house's upstairs windows
+            new View("searchlight", -4.5, 6, 20.5, -120, 10),
+            new View("windows", 1.5, 7, 0.5, -60, 5));
 
     /** {@code >= 0} pins the clock the demo lights animate on. */
     public static float frozenSeconds = -1f;
+    /** The demo lights' volumetric strength. */
+    public static float volumetric = 0f;
+    /** The density of a fog box over the courtyard; 0 for none. */
+    public static float fogDensity = 0f;
 
     private static final LightProvider PROVIDER = LightDemoScene::submit;
+    private static final FogProvider FOG_PROVIDER = LightDemoScene::submitFog;
     private static final List<DynamicLight> SCATTERED = new ArrayList<>();
     private static final float[][] RGB = {{1f, 0.12f, 0.08f}, {0.15f, 1f, 0.2f}, {0.2f, 0.35f, 1f}};
     @Nullable
@@ -139,11 +149,18 @@ public final class LightDemoScene {
         ground = origin;
         SCATTERED.clear();
         PhotonLights.addProvider(PROVIDER);
+        PhotonLights.addFogProvider(FOG_PROVIDER);
     }
 
     public static void stopLights() {
         SCATTERED.clear();
         PhotonLights.removeProvider(PROVIDER);
+        PhotonLights.removeFogProvider(FOG_PROVIDER);
+    }
+
+    private static void submitFog(FogSink sink, float partialTick) {
+        if (fogDensity <= 0 || ground == null) return;
+        sink.next().at(ground.getX() + 0.5, ground.getY() + 3.5, ground.getZ() + 12.5).size(14, 5, 12).density(fogDensity);
     }
 
     /** Static lights over the courtyard, for load tests; the first {@code shadowed} cast shadows. */
@@ -162,7 +179,8 @@ public final class LightDemoScene {
         }
     }
 
-    private static void submit(LightSink sink, float partialTick) {
+    private static void submit(LightSink pool, float partialTick) {
+        LightSink sink = () -> pool.next().volumetric(volumetric);
         var level = Minecraft.getInstance().level;
         if (ground == null || level == null) return;
         float t = frozenSeconds >= 0 ? frozenSeconds : (level.getGameTime() + partialTick) / 20f;
@@ -172,9 +190,10 @@ public final class LightDemoScene {
             sink.next().color(RGB[k][0], RGB[k][1], RGB[k][2]).intensity(30).range(14).sourceRadius(0.35f)
                     .at(ox + 0.5 + Math.cos(angle) * 4.2, oy + 2.5 + 0.4 * Math.sin(t * 0.9 + k), oz + 12.5 + Math.sin(angle) * 4.2);
         }
-        // arcade, upstairs, tunnel
+        // arcade, upstairs (a smoky room: six times the haze, so what leaks out of the windows shows), tunnel
         sink.next().color(0.2f, 1f, 0.75f).intensity(35).range(16).at(ox - 8.5, oy + 1.5, oz + 12 + 7.5 * Math.sin(t * 0.35));
-        sink.next().color(1f, 0.18f, 0.08f).intensity(20 * (0.85f + 0.15f * Mth.sin(t * 3f))).range(12).at(ox + 14.5, oy + 6.5, oz + 10.5);
+        sink.next().color(1f, 0.18f, 0.08f).intensity(20 * (0.85f + 0.15f * Mth.sin(t * 3f))).range(12).at(ox + 14.5, oy + 6.5, oz + 10.5)
+                .volumetric(volumetric * 6);
         sink.next().color(0.7f, 0.25f, 1f).intensity(20).range(10).at(ox + 0.5 + 7 * Math.sin(t * 0.3), oy + 1.2, oz + 27.5);
         // sweeps across the courtyard from the top of the tower
         sink.next().color(1f, 0.92f, 0.7f).intensity(300).range(30).spot(10, 16).at(ox + 0.5, oy + 9.6, oz + 21.5)
@@ -183,7 +202,7 @@ public final class LightDemoScene {
         sink.next().color(1f, 0.45f, 0.12f).intensity(10 * (0.8f + 0.12f * Mth.sin(t * 13f) + 0.08f * Mth.sin(t * 29f + 1.3f)))
                 .range(8).at(ox + 0.5, oy + 0.3, oz + 1.6);
         for (var light : SCATTERED) {
-            sink.next().set(light);
+            sink.next().set(light).volumetric(volumetric);
         }
     }
 

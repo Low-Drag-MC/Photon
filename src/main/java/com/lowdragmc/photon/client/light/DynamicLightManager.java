@@ -13,14 +13,16 @@ import java.util.Set;
 import java.util.WeakHashMap;
 
 /**
- * Where lights come from. FX objects register with the level they live in, so an editor scene and the world
- * each light only their own; {@link PhotonLights}' lights and providers show in whatever level the client is
- * in. Render thread only.
+ * Where lights and fog volumes come from. FX objects register with the level they live in, so an editor scene and
+ * the world each light only their own; {@link PhotonLights}' lights, fog and providers show in whatever level the
+ * client is in. Render thread only.
  */
 @OnlyIn(Dist.CLIENT)
 public final class DynamicLightManager {
     private static final Set<DynamicLight> LIGHTS = new LinkedHashSet<>();
     private static final Set<LightProvider> GLOBAL_PROVIDERS = new LinkedHashSet<>();
+    private static final Set<FogVolume> FOGS = new LinkedHashSet<>();
+    private static final Set<FogProvider> GLOBAL_FOG_PROVIDERS = new LinkedHashSet<>();
     private static final Map<Level, LightScene> SCENES = new WeakHashMap<>();
     private static final List<DynamicLight> POOL = new ArrayList<>();
     private static int poolUsed;
@@ -29,6 +31,14 @@ public final class DynamicLightManager {
             POOL.add(new DynamicLight());
         }
         return POOL.get(poolUsed++).reset();
+    };
+    private static final List<FogVolume> FOG_POOL = new ArrayList<>();
+    private static int fogPoolUsed;
+    private static final FogSink FOG_SINK = () -> {
+        if (fogPoolUsed == FOG_POOL.size()) {
+            FOG_POOL.add(new FogVolume());
+        }
+        return FOG_POOL.get(fogPoolUsed++).reset();
     };
 
     private DynamicLightManager() {
@@ -42,6 +52,16 @@ public final class DynamicLightManager {
     public static void removeProvider(Level level, LightProvider provider) {
         var scene = SCENES.get(level);
         if (scene != null) scene.providers.remove(provider);
+    }
+
+    /** Held weakly, like the light providers. */
+    public static void addFogProvider(Level level, FogProvider provider) {
+        scene(level).fogProviders.add(provider);
+    }
+
+    public static void removeFogProvider(Level level, FogProvider provider) {
+        var scene = SCENES.get(level);
+        if (scene != null) scene.fogProviders.remove(provider);
     }
 
     /** The voxel copy of {@code level}'s blocks, if anything has lit it yet. */
@@ -84,6 +104,23 @@ public final class DynamicLightManager {
         GLOBAL_PROVIDERS.remove(provider);
     }
 
+    static FogVolume addFog(FogVolume fog) {
+        FOGS.add(fog);
+        return fog;
+    }
+
+    static boolean removeFog(FogVolume fog) {
+        return FOGS.remove(fog);
+    }
+
+    static void addGlobalFogProvider(FogProvider provider) {
+        GLOBAL_FOG_PROVIDERS.add(provider);
+    }
+
+    static void removeGlobalFogProvider(FogProvider provider) {
+        GLOBAL_FOG_PROVIDERS.remove(provider);
+    }
+
     static LightScene scene(Level level) {
         return SCENES.computeIfAbsent(level, key -> new LightScene());
     }
@@ -94,7 +131,8 @@ public final class DynamicLightManager {
     }
 
     static boolean isEmpty(LightScene scene, boolean global) {
-        return scene.providers.isEmpty() && (!global || LIGHTS.isEmpty() && GLOBAL_PROVIDERS.isEmpty());
+        return scene.providers.isEmpty() && scene.fogProviders.isEmpty()
+                && (!global || LIGHTS.isEmpty() && GLOBAL_PROVIDERS.isEmpty() && FOGS.isEmpty() && GLOBAL_FOG_PROVIDERS.isEmpty());
     }
 
     static List<DynamicLight> collect(LightScene scene, boolean global, float partialTick, List<DynamicLight> out) {
@@ -111,6 +149,24 @@ public final class DynamicLightManager {
         }
         for (int i = 0; i < poolUsed; i++) {
             out.add(POOL.get(i));
+        }
+        return out;
+    }
+
+    static List<FogVolume> collectFog(LightScene scene, boolean global, float partialTick, List<FogVolume> out) {
+        fogPoolUsed = 0;
+        out.clear();
+        if (global) {
+            for (var provider : List.copyOf(GLOBAL_FOG_PROVIDERS)) {
+                provider.submitFog(FOG_SINK, partialTick);
+            }
+            out.addAll(FOGS);
+        }
+        for (var provider : List.copyOf(scene.fogProviders)) {
+            provider.submitFog(FOG_SINK, partialTick);
+        }
+        for (int i = 0; i < fogPoolUsed; i++) {
+            out.add(FOG_POOL.get(i));
         }
         return out;
     }

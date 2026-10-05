@@ -8,22 +8,28 @@
 
 uniform sampler2D IrradianceSampler;
 uniform vec2 BlurDirection;
+uniform float SkyDepth;  // where sky texels stand; below 0 (the light buffer, empty there) they are left alone
 
 out vec4 fragColor;
+
+float depthAt(ivec2 lightPixel) {
+    float z = lightTexelDepth(lightPixel);
+    return z < 0.0 ? SkyDepth : z;
+}
 
 void main() {
     ivec2 center = ivec2(gl_FragCoord.xy);
     ivec2 size = textureSize(IrradianceSampler, 0);
     vec4 value = texelFetch(IrradianceSampler, center, 0);
-    float z = lightTexelDepth(center);
+    float z = depthAt(center);
     if (z < 0.0) {
         fragColor = value;
         return;
     }
     // 1/z is affine across a plane in screen space; take the slope from the neighbour on the same surface
     ivec2 axis = ivec2(BlurDirection);
-    float zp = lightTexelDepth(clamp(center + axis, ivec2(0), size - 1));
-    float zm = lightTexelDepth(clamp(center - axis, ivec2(0), size - 1));
+    float zp = depthAt(clamp(center + axis, ivec2(0), size - 1));
+    float zm = depthAt(clamp(center - axis, ivec2(0), size - 1));
     float slope = 0.0;
     if (zp > 0.0 && zm > 0.0) {
         float forward = 1.0 / zp - 1.0 / z;
@@ -38,7 +44,7 @@ void main() {
     for (int i = 1; i <= 3; i++) {
         for (int s = -1; s <= 1; s += 2) {
             ivec2 q = clamp(center + axis * (i * s), ivec2(0), size - 1);
-            float zq = lightTexelDepth(q);
+            float zq = depthAt(q);
             if (zq < 0.0) continue;
             float expected = 1.0 / max(1.0 / z + slope * float(i * s), 1e-5);
             float w = tent[i] * exp(-abs(zq - expected) / tolerance);

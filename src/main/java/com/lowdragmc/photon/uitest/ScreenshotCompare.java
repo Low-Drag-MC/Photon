@@ -119,6 +119,50 @@ final class ScreenshotCompare {
         return new Diff(count, (double) count / area, box, boxWidth, boxHeight);
     }
 
+    /** Pixels where some channel is more than {@code threshold} darker here than in {@code baseline}. */
+    int darkerThan(ScreenshotCompare baseline, int threshold, Region region) {
+        int count = 0;
+        int x0 = Math.max(0, region.left()), x1 = Math.min(width, region.right());
+        int y0 = Math.max(0, region.top()), y1 = Math.min(height, region.bottom());
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                int a = pixels[y * width + x];
+                int b = baseline.pixels[y * width + x];
+                for (int shift = 0; shift <= 16; shift += 8) {
+                    if (((b >> shift) & 0xFF) - ((a >> shift) & 0xFF) > threshold) {
+                        count++;
+                        break;
+                    }
+                }
+            }
+        }
+        return count;
+    }
+
+    /** The share of pixels more than {@code threshold} away, in some channel, from the one below them: stripes. */
+    double rowChanges(int threshold, Region region) {
+        int x0 = Math.max(0, region.left()), x1 = Math.min(width, region.right());
+        int y0 = Math.max(0, region.top()), y1 = Math.min(height - 1, region.bottom());
+        long count = 0;
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                int a = pixels[y * width + x];
+                int b = pixels[(y + 1) * width + x];
+                for (int shift = 0; shift <= 16; shift += 8) {
+                    if (Math.abs(((a >> shift) & 0xFF) - ((b >> shift) & 0xFF)) > threshold) {
+                        count++;
+                        break;
+                    }
+                }
+            }
+        }
+        return (double) count / Math.max(1L, (long) (x1 - x0) * (y1 - y0));
+    }
+
+    Region whole() {
+        return new Region(0, 0, width, height);
+    }
+
     record Diff(int count, double fraction, String box, int width, int height) {
     }
 

@@ -16,13 +16,15 @@ import net.minecraft.core.BlockPos;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Close-ups of two artefacts found in play: soft-shadow noise on a lit floor, and voxel shadows breaking
- * into a grid under a shader pack while the view bobs. Captures only; compare the images.
+ * Close-ups of artefacts found in play: soft-shadow noise on a lit floor, voxel shadows breaking into a grid under
+ * a shader pack while the view bobs, and a TAAU pack, which draws its world into a corner of its depth. Captures,
+ * plus checks on the TAAU pack's normals.
  */
 @LDLRegisterClient(name = "dynamic_light_artifacts", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
 public class DynamicLightArtifactsScenario implements UIScenario {
     private static final String PACK = "ComplementaryReimagined_r5.5.1.zip";
+    private static final String TAAU_PACK = "Kappa_v5.4_T2.zip";
     private static final LightDemoScene.View CLOSE_UP = new LightDemoScene.View("close_up", -2.5, 1, 8.5, 0, 45);
     private static final AtomicReference<BlockPos> ORIGIN = new AtomicReference<>();
 
@@ -49,6 +51,46 @@ public class DynamicLightArtifactsScenario implements UIScenario {
         bob(s, "b_bob_side", 0.25f, 0.5f, 0);
         bob(s, "b_bob_none_mask", 0f, 0f, 3);
         bob(s, "b_bob_down_mask", 0.25f, 0f, 3);
+        bob(s, "b_normals", 0f, 0f, 2);
+
+        int[] taauWaited = {0};
+        s.step("load " + TAAU_PACK, ctx -> {
+                    if (LightTestConfig.hasShaderPack(TAAU_PACK)) {
+                        LightTestConfig.selectShaderPack(TAAU_PACK);
+                    } else {
+                        ctx.log("no " + TAAU_PACK + " in shaderpacks/: the TAAU checks are skipped");
+                    }
+                })
+                .step("wait for the TAAU pack", ctx -> {
+                    boolean active = IrisCompat.isUsingShaderPack() && TAAU_PACK.equals(IrisCompat.packName());
+                    if (!active && LightTestConfig.hasShaderPack(TAAU_PACK) && ++taauWaited[0] < 600) ctx.repeat("taau");
+                })
+                .frames(120);
+        bob(s, "t_normals", 0f, 0f, 2);
+        s.step("the TAAU pack's depth is read at its render scale", ctx -> {
+            LightDebug.view = 0;
+            if (!LightTestConfig.hasShaderPack(TAAU_PACK)) return;
+            boolean active = IrisCompat.isUsingShaderPack() && TAAU_PACK.equals(IrisCompat.packName());
+            // with the full-size pack still on, both captures would match and every check below pass
+            ctx.check(TAAU_PACK + " is active", active, TAAU_PACK, IrisCompat.packName());
+            if (!active) return;
+            ctx.check("its render scale is read", Math.abs(IrisCompat.gbufferRenderScale() - 0.75f) < 1e-3, 0.75f,
+                    IrisCompat.gbufferRenderScale());
+            var full = ScreenshotCompare.load(ctx, "b_normals");
+            var taau = ScreenshotCompare.load(ctx, "t_normals");
+            if (full == null || taau == null) {
+                ctx.check("both normal captures were written", false, "two images", "missing");
+                return;
+            }
+            var region = taau.middle(0.8);
+            // the same scene from the same spot: misread depth moves every edge
+            var moved = taau.diff(full, 24, region);
+            ctx.check("its normals line up with a full-size pack's", moved.fraction() < 0.05, "< 5%",
+                    "%.1f%% %s".formatted(moved.fraction() * 100, moved.box()));
+            // steps in the depth, from a nearest-texel upscale, stripe every plane
+            double stripes = taau.rowChanges(6, region);
+            ctx.check("and are smooth", stripes < 0.1, "< 10%", "%.1f%%".formatted(stripes * 100));
+        });
         restore(s);
     }
 

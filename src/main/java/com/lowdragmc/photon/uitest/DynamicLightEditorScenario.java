@@ -25,6 +25,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.material.SpriteMateri
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.light.FogVolumeConfig;
+import com.lowdragmc.photon.client.gameobject.light.FogVolumeObject;
 import com.lowdragmc.photon.client.gameobject.light.LightConfig;
 import com.lowdragmc.photon.client.gameobject.light.LightObject;
 import com.lowdragmc.photon.client.light.ShadowMode;
@@ -43,8 +45,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The artist-facing half of the dynamic lights: the Light object in the add menu, the new inspector rows,
- * their lang keys, a save/load round trip, and the light's gizmo in the editor scene.
+ * The artist-facing half of the dynamic lights: the Light and Fog Volume objects in the add menu, the new inspector
+ * rows, their lang keys, a save/load round trip, and the light's gizmo in the editor scene.
  */
 @LDLRegisterClient(name = "dynamic_light_editor", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
@@ -55,6 +57,7 @@ public class DynamicLightEditorScenario implements UIScenario {
             "LightConfig.type", "LightConfig.lifetime", "LightConfig.looping", "LightConfig.color",
             "LightConfig.intensity", "LightConfig.range", "LightConfig.innerAngle", "LightConfig.outerAngle",
             "LightConfig.sourceRadius", "LightConfig.castShadows", "LightConfig.flicker", "LightConfig.flickerSpeed",
+            "LightConfig.volumetric", "photon.light.volumetric", "VolumetricSetting.strength", "photon.light.volumetric.strength",
             "ParticleConfig.lightEmission", "photon.emitter.config.lightEmission",
             "LightEmissionSetting.ratio", "LightEmissionSetting.maxLights", "LightEmissionSetting.useParticleColor",
             "LightEmissionSetting.color", "LightEmissionSetting.intensity", "LightEmissionSetting.range",
@@ -63,8 +66,14 @@ public class DynamicLightEditorScenario implements UIScenario {
             "LightEmissionSetting.spot", "photon.emitter.config.lightEmission.spot",
             "LightEmissionSetting.spot.innerAngle", "LightEmissionSetting.spot.outerAngle",
             "LightEmissionSetting.spot.alignToVelocity", "LightEmissionSetting.spot.direction",
-            "LightEmissionSetting.spot.space",
-            "TextureMaterial.litParticles", "TextureMaterial.litParticles.intensity");
+            "LightEmissionSetting.spot.space", "LightEmissionSetting.volumetric", "photon.emitter.config.lightEmission.volumetric",
+            "TextureMaterial.litParticles", "TextureMaterial.litParticles.intensity",
+            "fog_volume", "FogVolumeConfig.shape", "photon.fog_volume.shape", "FogVolumeConfig.lifetime", "photon.fog_volume.lifetime",
+            "FogVolumeConfig.looping", "photon.fog_volume.looping", "FogVolumeConfig.density", "photon.fog_volume.density",
+            "FogVolumeConfig.edgeFalloff", "photon.fog_volume.edgeFalloff", "FogVolumeConfig.color", "photon.fog_volume.color",
+            "FogVolumeConfig.absorption", "photon.fog_volume.absorption", "FogVolumeConfig.emission", "photon.fog_volume.emission",
+            "FogVolumeConfig.noise", "photon.fog_volume.noise", "FogVolumeConfig.noise.strength", "photon.fog_volume.noise.strength",
+            "FogVolumeConfig.noise.scale", "photon.fog_volume.noise.scale", "FogVolumeConfig.noise.wind", "photon.fog_volume.noise.wind");
 
     @Override
     public void define(ScenarioBuilder s) {
@@ -75,6 +84,10 @@ public class DynamicLightEditorScenario implements UIScenario {
             ctx.check("its registry name", "light".equals(LightObject.TYPE.name()), "light", LightObject.TYPE.name());
             ctx.check("the type creates a LightObject", LightObject.TYPE.create() instanceof LightObject,
                     "LightObject", LightObject.TYPE.create().getClass().getSimpleName());
+            boolean fogListed = false;
+            for (var type : PhotonRegistries.FX_OBJECTS) fogListed |= type == FogVolumeObject.TYPE;
+            ctx.check("FX_OBJECTS lists the fog volume", fogListed, "listed", "missing");
+            ctx.check("the fog's registry name", "fog_volume".equals(FogVolumeObject.TYPE.name()), "fog_volume", FogVolumeObject.TYPE.name());
         })
         .step("every new lang key resolves", ctx -> {
             for (var key : LANG_KEYS) {
@@ -84,12 +97,15 @@ public class DynamicLightEditorScenario implements UIScenario {
         })
         .step("the inspectors build and carry the new rows", ctx -> {
             rows(ctx, "light", new LightObject(), List.of("LightConfig.type", "LightConfig.intensity",
-                    "LightConfig.outerAngle", "LightConfig.sourceRadius", "LightConfig.flicker"));
+                    "LightConfig.outerAngle", "LightConfig.sourceRadius", "LightConfig.flicker", "LightConfig.volumetric",
+                    "VolumetricSetting.strength"));
             rows(ctx, "particle emitter", new ParticleEmitter(), List.of("ParticleConfig.lightEmission"));
             rows(ctx, "light emission", new LightEmissionSetting(), List.of("LightEmissionSetting.spot",
                     "LightEmissionSetting.spot.outerAngle", "LightEmissionSetting.spot.direction",
-                    "LightEmissionSetting.spot.space"));
+                    "LightEmissionSetting.spot.space", "LightEmissionSetting.volumetric"));
             rows(ctx, "texture material", new TextureMaterial(), List.of("TextureMaterial.litParticles"));
+            rows(ctx, "fog volume", new FogVolumeObject(), List.of("FogVolumeConfig.shape", "FogVolumeConfig.density",
+                    "FogVolumeConfig.absorption", "FogVolumeConfig.emission", "FogVolumeConfig.noise", "FogVolumeConfig.noise.wind"));
             rows(ctx, "sprite material", new SpriteMaterial(), List.of("TextureMaterial.litParticles"));
         })
         .step("light, emission and lit settings survive save and load", DynamicLightEditorScenario::roundTrip)
@@ -192,6 +208,8 @@ public class DynamicLightEditorScenario implements UIScenario {
         light.config.setOuterAngle(50);
         light.config.setFlicker(0.4f);
         light.config.setCastShadows(false);
+        light.config.getVolumetric().setEnable(true);
+        light.config.getVolumetric().setStrength(NumberFunction.constant(2.5f));
         var loadedLight = IFXObject.deserializeWrapper(light.serializeWrapper());
         ctx.check("the light reloads as a LightObject", loadedLight instanceof LightObject, "LightObject",
                 String.valueOf(loadedLight));
@@ -200,6 +218,28 @@ public class DynamicLightEditorScenario implements UIScenario {
             ctx.check("outer angle", l.config.getOuterAngle() == 50, 50, l.config.getOuterAngle());
             ctx.check("flicker", l.config.getFlicker() == 0.4f, 0.4f, l.config.getFlicker());
             ctx.check("cast shadows", !l.config.isCastShadows(), false, l.config.isCastShadows());
+            var volumetric = l.config.getVolumetric();
+            ctx.check("volumetric on", volumetric.isEnable(), true, volumetric.isEnable());
+            float strength = volumetric.getStrength().get(0, () -> 0f).floatValue();
+            ctx.check("volumetric strength", strength == 2.5f, 2.5f, strength);
+        }
+
+        var fog = new FogVolumeObject();
+        fog.config.setShape(FogVolumeConfig.Shape.Sphere);
+        fog.config.setDensity(NumberFunction.constant(2.5f));
+        fog.config.setAbsorption(0.8f);
+        fog.config.getNoise().setEnable(true);
+        fog.config.getNoise().setWind(new Vector3f(0, 1, 0));
+        var loadedFog = IFXObject.deserializeWrapper(fog.serializeWrapper());
+        ctx.check("the fog reloads as a FogVolumeObject", loadedFog instanceof FogVolumeObject, "FogVolumeObject",
+                String.valueOf(loadedFog));
+        if (loadedFog instanceof FogVolumeObject f) {
+            ctx.check("fog shape", f.config.getShape() == FogVolumeConfig.Shape.Sphere, "Sphere", f.config.getShape());
+            float density = f.config.getDensity().get(0, () -> 0f).floatValue();
+            ctx.check("fog density", density == 2.5f, 2.5f, density);
+            ctx.check("fog absorption", f.config.getAbsorption() == 0.8f, 0.8f, f.config.getAbsorption());
+            ctx.check("fog noise on", f.config.getNoise().isEnable(), true, f.config.getNoise().isEnable());
+            ctx.check("fog wind", f.config.getNoise().getWind().equals(0, 1, 0), "(0, 1, 0)", f.config.getNoise().getWind());
         }
 
         var emitter = new ParticleEmitter();
@@ -211,6 +251,8 @@ public class DynamicLightEditorScenario implements UIScenario {
         spot.setAlignToVelocity(false);
         spot.setDirection(new Vector3f(1, 0, 0));
         spot.setSpace(ValueSpace.World);
+        emitter.config.lightEmission.getVolumetric().setEnable(true);
+        emitter.config.lightEmission.getVolumetric().setStrength(NumberFunction.constant(0.5f));
         var material = new TextureMaterial();
         material.getLitParticles().setEnable(true);
         material.getLitParticles().intensity = 3;
@@ -229,6 +271,10 @@ public class DynamicLightEditorScenario implements UIScenario {
             ctx.check("spot ignores velocity", !loadedSpot.isAlignToVelocity(), false, loadedSpot.isAlignToVelocity());
             ctx.check("spot direction", loadedSpot.getDirection().equals(1, 0, 0), "(1, 0, 0)", loadedSpot.getDirection());
             ctx.check("spot space", loadedSpot.getSpace() == ValueSpace.World, ValueSpace.World, loadedSpot.getSpace());
+            var emissionVolumetric = emission.getVolumetric();
+            ctx.check("emission volumetric on", emissionVolumetric.isEnable(), true, emissionVolumetric.isEnable());
+            float emissionStrength = emissionVolumetric.getStrength().get(0, () -> 0f).floatValue();
+            ctx.check("emission volumetric strength", emissionStrength == 0.5f, 0.5f, emissionStrength);
             var loadedMaterial = e.config.renderer.getMaterials().getFirst().getMaterial();
             ctx.check("lit material on", loadedMaterial instanceof TextureMaterial t && t.getLitParticles().isEnable(),
                     true, loadedMaterial);

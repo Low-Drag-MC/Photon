@@ -1,7 +1,7 @@
 #version 150
 
 // Full resolution: upsample the light buffer (depth-aware), estimate the albedo from the frame
-// already lit by vanilla (or a shader pack), and add albedo * light.
+// already lit by vanilla (or a shader pack), and add albedo * light. The haze goes on later, over the particles.
 
 #moj_import <photon:dynamic_light_depth.glsl>
 
@@ -22,34 +22,6 @@ uniform ivec2 ViewportOrigin;  // where the snapshot sits in the target being dr
 
 out vec4 fragColor;
 
-// bilinear over the four nearest light texels, each weighted by how close its depth is to ours
-vec4 upsample(ivec2 pixel, float z) {
-    vec2 lp = (vec2(pixel) + 0.5) * ResolutionScale - 0.5;
-    ivec2 base = ivec2(floor(lp));
-    vec2 f = lp - vec2(base);
-    ivec2 size = textureSize(IrradianceSampler, 0);
-    vec4 sum = vec4(0.0);
-    float weightSum = 0.0;
-    vec4 nearest = vec4(0.0);
-    float nearestDz = 1e9;
-    for (int j = 0; j < 2; j++) {
-        for (int i = 0; i < 2; i++) {
-            ivec2 q = clamp(base + ivec2(i, j), ivec2(0), size - 1);
-            float zq = lightTexelDepth(q);
-            vec4 value = texelFetch(IrradianceSampler, q, 0);
-            float dz = zq < 0.0 ? 1e9 : abs(zq - z);
-            if (dz < nearestDz) {
-                nearestDz = dz;
-                nearest = value;
-            }
-            float w = (i == 0 ? 1.0 - f.x : f.x) * (j == 0 ? 1.0 - f.y : f.y) * exp(-dz / (0.02 * z + 0.03));
-            sum += value * w;
-            weightSum += w;
-        }
-    }
-    return weightSum > 1e-4 ? sum / weightSum : nearest;
-}
-
 float fogValue(vec3 relative) {
     float dist = FogShape == 0 ? length(relative) : max(length(relative.xz), abs(relative.y));
     if (dist <= FogStart) return 0.0;
@@ -61,13 +33,14 @@ void main() {
     vec3 scene = texelFetch(SceneColorSampler, pixel, 0).rgb;
     float depth = texelFetch(SceneDepthSampler, pixel, 0).r;
     bool afterPack = PackParams.x > 0.5;
-    if (depth >= 1.0 || (afterPack && depth < 0.56)) {
+    // the hand under a pack is drawn with its own projection; the volume view shows the haze pass alone
+    if (depth >= 1.0 || (afterPack && depth < 0.56) || DebugMode == 6) {
         fragColor = vec4(DebugMode == 0 ? scene : vec3(0.0), 1.0);
         return;
     }
 
     vec3 p = viewPos((vec2(pixel) + 0.5) / ScreenSize, depth);
-    vec4 light = ResolutionScale >= 0.999 ? texelFetch(IrradianceSampler, pixel, 0) : upsample(pixel, -p.z);
+    vec4 light = upsample(IrradianceSampler, pixel, -p.z, 1e9);
 
     mat3 viewToWorld = mat3(IViewMat);
     vec3 nw = normalize(viewToWorld * reconstructNormal(pixel, p));

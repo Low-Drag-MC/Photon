@@ -36,6 +36,14 @@ public interface IrisBridge {
         return "";
     }
 
+    /**
+     * The share of the screen, from its lower-left corner, the pack draws its world into before upscaling it in
+     * its final pass; 1 when it draws at full size or we can't tell.
+     */
+    default float gbufferRenderScale() {
+        return 1f;
+    }
+
     /** Iris' own version string, or {@code ""}. */
     default String irisVersion() {
         return "";

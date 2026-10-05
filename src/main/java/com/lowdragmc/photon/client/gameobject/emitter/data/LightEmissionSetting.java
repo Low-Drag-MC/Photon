@@ -19,6 +19,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRRando
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.gameobject.light.VolumetricSetting;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import com.lowdragmc.photon.client.light.DynamicLight;
 import com.lowdragmc.photon.client.light.LightSink;
@@ -75,6 +76,9 @@ public class LightEmissionSetting extends ToggleGroup {
 
     @Configurable(name = "LightEmissionSetting.spot", subConfigurable = true, tips = "photon.emitter.config.lightEmission.spot")
     protected final Spot spot = new Spot();
+
+    @Configurable(name = "LightEmissionSetting.volumetric", subConfigurable = true, tips = "photon.emitter.config.lightEmission.volumetric")
+    protected final VolumetricSetting volumetric = new VolumetricSetting();
 
     public Runtime createRuntime() {
         return new Runtime(this);
@@ -137,6 +141,7 @@ public class LightEmissionSetting extends ToggleGroup {
         private final Object colorKey = new Object();
         private final Object intensityKey = new Object();
         private final Object rangeKey = new Object();
+        private final Object volumetricKey = new Object();
         private final Vector4f sample = new Vector4f();
         public final RuntimeValue<Boolean> enable;
         public final RuntimeValue<NumberFunction> color;
@@ -183,6 +188,10 @@ public class LightEmissionSetting extends ToggleGroup {
                     var light = sink.next().at(position.x, position.y, position.z).color(r, g, b).intensity(intensity).range(range)
                             .shadows(config.castShadows).sourceRadius(config.sourceRadius);
                     if (config.spot.isEnable()) config.spot.aim(light, particle);
+                    if (config.volumetric.isEnable()) {
+                        light.volumetric(Math.max(0f, config.volumetric.getStrength()
+                                .get(t, () -> particle.getMemRandom(volumetricKey)).floatValue()));
+                    }
                     budget--;
                 }
             }

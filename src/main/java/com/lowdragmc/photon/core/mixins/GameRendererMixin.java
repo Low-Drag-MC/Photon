@@ -40,5 +40,6 @@ public class GameRendererMixin {
     private void photon$afterLevelRender(DeltaTracker deltaTracker, CallbackInfo ci) {
         DynamicLightRenderer.onLevelRendered();
         PhotonPostFX.onLevelRenderComplete();
+        DynamicLightRenderer.onFrameComposited();
     }
 }

@@ -18,12 +18,15 @@ import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.light.LightObject;
 import com.lowdragmc.photon.client.light.DynamicLight;
 import com.lowdragmc.photon.client.light.DynamicLightRenderer;
+import com.lowdragmc.photon.client.light.FogProvider;
+import com.lowdragmc.photon.client.light.FogVolume;
 import com.lowdragmc.photon.client.light.LightProvider;
 import com.lowdragmc.photon.client.light.PhotonLights;
 import com.lowdragmc.photon.client.light.dev.LightDemoScene;
 import it.unimi.dsi.fastutil.floats.FloatPredicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.lang.ref.WeakReference;
@@ -33,7 +36,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Photon FX driving dynamic lights end to end: a flickering Light object, an ember emitter whose
  * particles emit light (Light Emission module, also as spots), lit smoke (Lit by Dynamic Lights), and the
- * Java API (a flash and a light attached to an entity) — each toggled off in turn for comparison.
+ * Java API (a flash, a light attached to an entity, providers and fog volumes) — each toggled off in turn.
  */
 @LDLRegisterClient(name = "dynamic_light_fx", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
@@ -127,6 +130,41 @@ public class DynamicLightFxScenario implements UIScenario {
                             before + 1, DynamicLightRenderer.lastLightCount());
                     if (provider != null) PhotonLights.removeProvider(provider);
                 })
+                // fog through the API: a volume that stays, and an inline provider only the API keeps alive
+                .step("API: a fog volume and an inline fog provider", ctx -> {
+                    LightTestConfig.volumetricDefaults();
+                    var o = ORIGIN.get();
+                    ctx.put("fogBefore", DynamicLightRenderer.lastFogCount());
+                    ctx.put("fog", PhotonLights.addFog(new FogVolume().at(o.getX() + 0.5, o.getY() + 2.5, o.getZ() + 12.5)
+                            .size(8, 3, 6).rotate(new Quaternionf().rotateY((float) Math.toRadians(30)))
+                            .edgeFalloff(0.4f).noise(0.5f, 3f).color(1f, 0.8f, 0.6f)));
+                    FogProvider provider = (sink, partialTick) -> sink.next()
+                            .at(o.getX() - 4.5, o.getY() + 2, o.getZ() + 10.5).shape(FogVolume.Shape.SPHERE).size(4, 4, 4);
+                    ctx.put("fogProvider", new WeakReference<>(provider));
+                    PhotonLights.addFogProvider(provider);
+                })
+                .step("collect garbage (fog)", ctx -> System.gc())
+                .frames(5)
+                .screenshot("fx_8_fog_api")
+                .step("both fog volumes are drawn", ctx -> {
+                    WeakReference<FogProvider> reference = ctx.get("fogProvider");
+                    var provider = reference.get();
+                    ctx.check("the fog provider was not collected", provider != null, "alive", "collected");
+                    int before = ctx.get("fogBefore");
+                    ctx.check("the volume and the provider's fog are drawn", DynamicLightRenderer.lastFogCount() == before + 2,
+                            before + 2, DynamicLightRenderer.lastFogCount());
+                    ctx.check("the API says the haze shows", PhotonLights.isVolumetricEnabled());
+                    PhotonLights.removeFog(ctx.get("fog"));
+                    if (provider != null) PhotonLights.removeFogProvider(provider);
+                })
+                .frames(3)
+                .step("and gone once removed", ctx -> {
+                    int before = ctx.get("fogBefore");
+                    ctx.check("no API fog left", DynamicLightRenderer.lastFogCount() == before, before, DynamicLightRenderer.lastFogCount());
+                    LightTestConfig.set(PhotonConfig.INSTANCE.volumetricLights, false);
+                    ctx.check("the API says the haze is off with the setting", !PhotonLights.isVolumetricEnabled());
+                    LightTestConfig.set(PhotonConfig.INSTANCE.volumetricLights, true);
+                })
                 // the API has no way to cancel a flash; don't hand it to the next scenario
                 .ticks(30);
 
@@ -136,6 +174,10 @@ public class DynamicLightFxScenario implements UIScenario {
             if (executor != null && executor.getRuntime() != null) executor.getRuntime().destroy(true);
             PhotonLights.Handle handle = ctx.get("attached");
             if (handle != null) handle.close();
+            FogVolume fog = ctx.get("fog");
+            if (fog != null) PhotonLights.removeFog(fog);
+            WeakReference<FogProvider> fogProvider = ctx.get("fogProvider");
+            if (fogProvider != null && fogProvider.get() != null) PhotonLights.removeFogProvider(fogProvider.get());
             ctx.mc().options.hideGui = false;
             LightTestConfig.restore();
         });

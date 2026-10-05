@@ -7,6 +7,8 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 import org.apache.commons.lang3.tuple.Pair;
 
 public class PhotonConfig {
+    /** The most lights that cast shadows in a frame; the renderer sizes its visibility maps by it. */
+    public static final int MAX_SHADOWED_LIGHTS = 32;
     public static final PhotonConfig INSTANCE;
     public static final ModConfigSpec CONFIG_SPEC;
 
@@ -63,6 +65,11 @@ public class PhotonConfig {
     public final ModConfigSpec.ConfigValue<Double> lightVoxelBudgetMs;
     public final ModConfigSpec.ConfigValue<Double> lightAlbedoMax;
     public final ModConfigSpec.ConfigValue<Double> lightShaderPackAmbient;
+    public final ModConfigSpec.ConfigValue<Boolean> volumetricLights;
+    public final ModConfigSpec.ConfigValue<Double> volumetricDensity;
+    public final ModConfigSpec.ConfigValue<Double> volumetricForwardScattering;
+    public final ModConfigSpec.ConfigValue<Integer> volumetricSamples;
+    public final ModConfigSpec.ConfigValue<Boolean> volumetricWithShaderPacks;
 
     private PhotonConfig(ModConfigSpec.Builder builder) {
         enableBloom = builder.define("enable_bloom", true);
@@ -92,7 +99,7 @@ public class PhotonConfig {
         dynamicLights = light(builder, "enabled").define("enabled", true);
         lightShadowMode = light(builder, "shadow_mode").defineEnum("shadow_mode", ShadowMode.VOXEL);
         lightSoftShadows = light(builder, "soft_shadows").define("soft_shadows", true);
-        lightShadowedLights = light(builder, "shadowed_lights").defineInRange("shadowed_lights", 8, 0, 32);
+        lightShadowedLights = light(builder, "shadowed_lights").defineInRange("shadowed_lights", 8, 0, MAX_SHADOWED_LIGHTS);
         lightResolution = light(builder, "resolution").defineInRange("resolution", 0.5, 0.25, 1.0);
         lightContactShadowSteps = light(builder, "contact_shadow_steps").defineInRange("contact_shadow_steps", 6, 0, 32);
         lightContactShadowLength = light(builder, "contact_shadow_length").defineInRange("contact_shadow_length", 0.8, 0.1, 4.0);
@@ -102,6 +109,12 @@ public class PhotonConfig {
         lightVoxelBudgetMs = light(builder, "voxel_budget_ms").defineInRange("voxel_budget_ms", 2.0, 0.1, 20.0);
         lightAlbedoMax = light(builder, "albedo_max").defineInRange("albedo_max", 0.85, 0.1, 1.0);
         lightShaderPackAmbient = light(builder, "shader_pack_ambient").defineInRange("shader_pack_ambient", 0.06, 0.001, 1.0);
+        volumetricLights = light(builder, "volumetric").define("volumetric", true);
+        volumetricDensity = light(builder, "volumetric_density").defineInRange("volumetric_density", 1.0, 0.0, 8.0);
+        volumetricForwardScattering = light(builder, "volumetric_forward_scattering")
+                .defineInRange("volumetric_forward_scattering", 0.3, 0.0, 0.9);
+        volumetricSamples = light(builder, "volumetric_samples").defineInRange("volumetric_samples", 4, 1, 16);
+        volumetricWithShaderPacks = light(builder, "volumetric_with_shader_packs").define("volumetric_with_shader_packs", true);
         builder.pop();
     }
 

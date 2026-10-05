@@ -10,7 +10,8 @@ import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * Lets dynamic lights light the particle, e.g. smoke glowing orange next to a fireball. A billboard has
- * no normal, so light arrives from every direction, unshadowed. GLSL side: {@code photon:lit_particle.glsl}.
+ * no normal, so light arrives from every direction; with voxel shadows, blocks between a shadowed light and the
+ * particle stop it. GLSL side: {@code photon:lit_particle.glsl}.
  */
 @OnlyIn(Dist.CLIENT)
 public class LitParticles extends ToggleGroup {
@@ -40,6 +41,8 @@ public class LitParticles extends ToggleGroup {
         shader.setSampler("PhotonClusterGrid", null);
         //noinspection DataFlowIssue
         shader.setSampler("PhotonClusterIndices", null);
+        //noinspection DataFlowIssue
+        shader.setSampler("PhotonVisibilityAtlas", null);
         shader.safeGetUniform("LitParticleParams").set(0f, 0f, 0f, 0f);
     }
 }

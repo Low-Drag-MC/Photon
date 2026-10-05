@@ -1,13 +1,16 @@
 package com.lowdragmc.photon.uitest;
 
+import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.compat.iris.IrisBridge;
 import com.lowdragmc.photon.client.compat.iris.IrisCompat;
 import com.lowdragmc.photon.client.light.LightDebug;
 import com.lowdragmc.photon.client.light.dev.LightDemoScene;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.OptionInstance;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.file.Files;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -34,6 +37,21 @@ final class LightTestConfig {
         option.set(newValue);
     }
 
+    /** Whether {@code shaderpacks/} holds this pack: the pack checks need the zips a developer put there. */
+    static boolean hasShaderPack(String pack) {
+        return Files.isRegularFile(Minecraft.getInstance().gameDirectory.toPath().resolve("shaderpacks").resolve(pack));
+    }
+
+    /** Pins the volumetric settings to their defaults, whatever the developer's config says. */
+    static void volumetricDefaults() {
+        var config = PhotonConfig.INSTANCE;
+        set(config.volumetricLights, true);
+        set(config.volumetricDensity, 1.0);
+        set(config.volumetricForwardScattering, 0.3);
+        set(config.volumetricSamples, 4);
+        set(config.volumetricWithShaderPacks, true);
+    }
+
     /** {@code null} turns shaders off. */
     static boolean selectShaderPack(@Nullable String pack) {
         if (originalPack == null) originalPack = IrisCompat.shaderPackSelection();
@@ -52,5 +70,7 @@ final class LightTestConfig {
         }
         LightDebug.reset();
         LightDemoScene.frozenSeconds = -1f;
+        LightDemoScene.volumetric = 0f;
+        LightDemoScene.fogDensity = 0f;
     }
 }

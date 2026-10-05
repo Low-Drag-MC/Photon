@@ -39,8 +39,19 @@ public class DynamicLightBenchScenario implements UIScenario {
     private static final List<String> ROWS = new ArrayList<>();
     private static final List<String> COLD = new ArrayList<>();
 
-    /** extra = scattered lights on top of the 8 demo lights; shadowedExtra of them want shadows (the budget caps at 8). */
-    private record Config(String label, boolean lights, int extra, int shadowedExtra, ShadowMode mode, boolean soft, float scale) {
+    /**
+     * extra = scattered lights on top of the 8 demo lights; shadowedExtra of them want shadows (the budget caps at 8);
+     * volumetric = the demo lights' volumetric strength; fog = the courtyard fog box.
+     */
+    private record Config(String label, boolean lights, int extra, int shadowedExtra, ShadowMode mode, boolean soft, float scale,
+                          float volumetric, boolean fog) {
+        Config(String label, boolean lights, int extra, int shadowedExtra, ShadowMode mode, boolean soft, float scale) {
+            this(label, lights, extra, shadowedExtra, mode, soft, scale, 0f, false);
+        }
+
+        Config(String label, boolean lights, int extra, int shadowedExtra, ShadowMode mode, boolean soft, float scale, float volumetric) {
+            this(label, lights, extra, shadowedExtra, mode, soft, scale, volumetric, false);
+        }
     }
 
     private static final List<Config> CONFIGS = List.of(
@@ -53,7 +64,13 @@ public class DynamicLightBenchScenario implements UIScenario {
             new Config("64 lights, no shadows, half res", true, 56, 0, ShadowMode.OFF, true, 0.5f),
             new Config("64 lights, 8 voxel soft, half res", true, 56, 0, ShadowMode.VOXEL, true, 0.5f),
             new Config("256 lights, 8 voxel soft, half res", true, 248, 0, ShadowMode.VOXEL, true, 0.5f),
-            new Config("1024 lights, 8 voxel soft, half res", true, 1016, 0, ShadowMode.VOXEL, true, 0.5f));
+            new Config("1024 lights, 8 voxel soft, half res", true, 1016, 0, ShadowMode.VOXEL, true, 0.5f),
+            new Config("8 volumetric lights, voxel soft, half res", true, 0, 0, ShadowMode.VOXEL, true, 0.5f, 1f),
+            new Config("64 volumetric lights, voxel soft, half res", true, 56, 0, ShadowMode.VOXEL, true, 0.5f, 1f),
+            new Config("256 volumetric lights, voxel soft, half res", true, 248, 0, ShadowMode.VOXEL, true, 0.5f, 1f),
+            new Config("1024 volumetric lights, voxel soft, half res", true, 1016, 0, ShadowMode.VOXEL, true, 0.5f, 1f),
+            new Config("8 lights in a fog volume, voxel soft, half res", true, 0, 0, ShadowMode.VOXEL, true, 0.5f, 0f, true),
+            new Config("64 lights in a fog volume, voxel soft, half res", true, 56, 0, ShadowMode.VOXEL, true, 0.5f, 0f, true));
 
     private static final List<Config> PACK_CONFIGS = List.of(CONFIGS.get(0), CONFIGS.get(3), CONFIGS.get(8));
 
@@ -189,7 +206,10 @@ public class DynamicLightBenchScenario implements UIScenario {
         s.step("set up " + label, ctx -> {
                     LightDemoScene.startLights(ORIGIN.get());
                     LightDemoScene.addScatteredLights(ORIGIN.get(), config.extra(), config.shadowedExtra(), 42L);
+                    LightDemoScene.volumetric = config.volumetric();
+                    LightDemoScene.fogDensity = config.fog() ? 1f : 0f;
                     LightTestConfig.set(PhotonConfig.INSTANCE.dynamicLights, config.lights());
+                    LightTestConfig.volumetricDefaults();
                     LightTestConfig.set(PhotonConfig.INSTANCE.lightShadowMode, config.mode());
                     LightTestConfig.set(PhotonConfig.INSTANCE.lightSoftShadows, config.soft());
                     LightTestConfig.set(PhotonConfig.INSTANCE.lightResolution, (double) config.scale());
@@ -211,14 +231,18 @@ public class DynamicLightBenchScenario implements UIScenario {
                     }
                     frame[0] = 0;
                     LightPassTimer.recording = false;
-                    var row = "| %s | %s | %d | %s | %s | %s | %s | %s | %s | %s | %.0f |".formatted(
+                    var row = "| %s | %s | %d | %s | %s | %s | %s | %s | %s | %s | %s | %.0f |".formatted(
                             renderer, config.label(), config.lights() ? DynamicLightRenderer.lastLightCount() : 0,
-                            stat(LightPassTimer.STAGE_MS[0]), stat(LightPassTimer.STAGE_MS[1]),
-                            stat(LightPassTimer.STAGE_MS[2]), stat(LightPassTimer.STAGE_MS[3]), stat(LightPassTimer.TOTAL_MS),
+                            stage(LightPassTimer.Stage.COPY), stage(LightPassTimer.Stage.LIGHT), stage(LightPassTimer.Stage.BLUR),
+                            stage(LightPassTimer.Stage.VOLUME), stage(LightPassTimer.Stage.COMPOSITE), stat(LightPassTimer.TOTAL_MS),
                             stat(LightPassTimer.CPU_MS), stat(frameMs), 1000.0 / percentile(frameMs, 0.5));
                     ROWS.add(row);
                     ctx.log(row);
                 });
+    }
+
+    private static String stage(LightPassTimer.Stage stage) {
+        return stat(LightPassTimer.STAGE_MS[stage.ordinal()]);
     }
 
     private static String stat(DoubleArrayList samples) {
@@ -242,11 +266,12 @@ public class DynamicLightBenchScenario implements UIScenario {
                 .append(", vsync off, frame rate uncapped, demo courtyard view, ")
                 .append(MEASURED_FRAMES).append(" frames per row  \n")
                 .append("Times are milliseconds, median / p95. Copy = colour+depth snapshot; light = clustered ")
-                .append("light + shadow pass; blur = soft-shadow blur; composite = upsample and add; ")
+                .append("light + shadow pass; blur = soft-shadow blur; volume = volumetric in-scatter; ")
+                .append("composite = upsample and add; ")
                 .append("CPU = collection, culling, cluster build, voxel update and upload.\n\n")
-                .append("| renderer | config | lights drawn | GPU copy | GPU light | GPU blur | GPU composite ")
+                .append("| renderer | config | lights drawn | GPU copy | GPU light | GPU blur | GPU volume | GPU composite ")
                 .append("| GPU total | CPU | frame | FPS |\n")
-                .append("|---|---|---|---|---|---|---|---|---|---|---|\n");
+                .append("|---|---|---|---|---|---|---|---|---|---|---|---|\n");
         ROWS.forEach(row -> text.append(row).append('\n'));
         COLD.forEach(line -> text.append('\n').append(line).append('\n'));
         var file = ctx.outDir().resolve("bench-%dx%d.md".formatted(window.getWidth(), window.getHeight()));

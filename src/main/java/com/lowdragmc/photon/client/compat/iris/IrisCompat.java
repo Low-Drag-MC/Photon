@@ -83,6 +83,11 @@ public final class IrisCompat {
         return BRIDGE.packName();
     }
 
+    /** See {@link IrisBridge#gbufferRenderScale()}. */
+    public static float gbufferRenderScale() {
+        return BRIDGE.gbufferRenderScale();
+    }
+
     public static String irisVersion() {
         return BRIDGE.irisVersion();
     }

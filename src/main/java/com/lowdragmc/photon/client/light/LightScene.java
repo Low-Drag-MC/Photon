@@ -15,6 +15,7 @@ import java.util.WeakHashMap;
 final class LightScene {
     // weak: an FX object dropped without being removed (a level change does that) must not leak
     final Set<LightProvider> providers = Collections.newSetFromMap(new WeakHashMap<>());
+    final Set<FogProvider> fogProviders = Collections.newSetFromMap(new WeakHashMap<>());
     final VoxelWorld voxels = new VoxelWorld();
     /** Vanilla light where a light sits, per block: it barely changes between frames and is slow to read. */
     final Long2FloatOpenHashMap ambient = new Long2FloatOpenHashMap();
@@ -25,13 +26,19 @@ final class LightScene {
     FormatTarget lightBuffer;
     @Nullable
     FormatTarget blurBuffer;
+    @Nullable
+    FormatTarget volumeBuffer;
+    @Nullable
+    FormatTarget visibilityAtlas;
     long lastLitTick;
 
     void release() {
         if (snapshot != null) snapshot.destroyBuffers();
         if (lightBuffer != null) lightBuffer.destroyBuffers();
         if (blurBuffer != null) blurBuffer.destroyBuffers();
-        snapshot = lightBuffer = blurBuffer = null;
+        if (volumeBuffer != null) volumeBuffer.destroyBuffers();
+        if (visibilityAtlas != null) visibilityAtlas.destroyBuffers();
+        snapshot = lightBuffer = blurBuffer = volumeBuffer = visibilityAtlas = null;
         voxels.release();
         ambient.clear();
     }

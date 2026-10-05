@@ -22,8 +22,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 /**
- * Every pack in {@code shaderpacks/}, one after another: the courtyard with the lights on and off, plus
- * whether the pack loaded and whether the after-pack light pass drew. Writes {@code packs.md}.
+ * Every pack in {@code shaderpacks/}, one after another: the courtyard with the lights on, off, and volumetric
+ * with the fog box, plus whether the pack loaded and whether the after-pack passes drew. Writes {@code packs.md}.
  */
 @LDLRegisterClient(name = "dynamic_light_packs", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
@@ -41,6 +41,7 @@ public class DynamicLightPackSweepScenario implements UIScenario {
     public void define(ScenarioBuilder s) {
         s.step("hide the gui, pin the clock", ctx -> {
                     ctx.mc().options.hideGui = true;
+                    LightTestConfig.volumetricDefaults();
                     LightDemoScene.frozenSeconds = 3f;
                     ROWS.clear();
                 })
@@ -61,6 +62,7 @@ public class DynamicLightPackSweepScenario implements UIScenario {
             String tag = pack.replaceAll("[^A-Za-z0-9.]+", "_");
             boolean[] active = {false};
             int[] waited = {0};
+            String[] lit = {""};
             s.step("load " + pack, ctx -> {
                         waited[0] = 0;
                         active[0] = false;
@@ -77,14 +79,26 @@ public class DynamicLightPackSweepScenario implements UIScenario {
                     .frames(120)
                     .screenshot(tag + "_1_lit")
                     .step("lights off (" + pack + ")", ctx -> {
-                        ROWS.add("| %s | %s | %d | %s |".formatted(pack, active[0] ? "yes" : "**no**",
-                                DynamicLightRenderer.lastLightCount(),
-                                DynamicLightRenderer.gpuMillis() < 0 ? "-" : "%.2f".formatted(DynamicLightRenderer.gpuMillis())));
+                        lit[0] = "| %s | %s | %d | %s |".formatted(pack, active[0] ? "yes" : "**no**",
+                                DynamicLightRenderer.lastLightCount(), gpu());
                         LightTestConfig.set(PhotonConfig.INSTANCE.dynamicLights, false);
                     })
                     .frames(60)
                     .screenshot(tag + "_2_off")
-                    .step("lights on (" + pack + ")", ctx -> LightTestConfig.set(PhotonConfig.INSTANCE.dynamicLights, true));
+                    .step("lights on, haze and fog on (" + pack + ")", ctx -> {
+                        LightTestConfig.set(PhotonConfig.INSTANCE.dynamicLights, true);
+                        LightDemoScene.volumetric = 1f;
+                        LightDemoScene.fogDensity = 1f;
+                    })
+                    // as many frames as the lit capture, so the GPU timer settles
+                    .frames(120)
+                    .screenshot(tag + "_3_haze")
+                    .step("haze and fog off (" + pack + ")", ctx -> {
+                        ROWS.add(lit[0] + " %d | %d | %s | %s |".formatted(DynamicLightRenderer.lastVolumeCount(),
+                                DynamicLightRenderer.lastFogCount(), gpu(), IrisCompat.gbufferRenderScale()));
+                        LightDemoScene.volumetric = 0f;
+                        LightDemoScene.fogDensity = 0f;
+                    });
         }
 
         s.step("write the table", DynamicLightPackSweepScenario::writeTable);
@@ -94,6 +108,10 @@ public class DynamicLightPackSweepScenario implements UIScenario {
             LightTestConfig.restore();
             LightDemoScene.stopLights();
         });
+    }
+
+    private static String gpu() {
+        return DynamicLightRenderer.gpuMillis() < 0 ? "-" : "%.2f".formatted(DynamicLightRenderer.gpuMillis());
     }
 
     private static List<String> packs() {
@@ -107,8 +125,10 @@ public class DynamicLightPackSweepScenario implements UIScenario {
 
     private static void writeTable(TestContext ctx) {
         var text = new StringBuilder("# After-pack light pass across shader packs\n\n")
-                .append("Courtyard view, 8 demo lights, shadows on. \"Lights drawn\" > 0 means the pass ran over the pack's image.\n\n")
-                .append("| pack | loaded | lights drawn | GPU ms |\n|---|---|---|---|\n");
+                .append("Courtyard view, 8 demo lights, shadows on. \"Lights drawn\" > 0 means the pass ran over the pack's image; ")
+                .append("then the same lights volumetric, with the courtyard fog box.\n\n")
+                .append("| pack | loaded | lights drawn | GPU ms | volumetric | fog | GPU ms with haze | render scale |\n")
+                .append("|---|---|---|---|---|---|---|---|\n");
         ROWS.forEach(row -> text.append(row).append('\n'));
         var file = ctx.outDir().resolve("packs.md");
         try {

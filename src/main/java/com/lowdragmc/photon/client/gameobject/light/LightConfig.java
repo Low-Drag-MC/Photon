@@ -83,6 +83,9 @@ public class LightConfig implements IConfigurable, IPersistedSerializable {
     @ConfigNumber(range = {0, 50})
     protected float flickerSpeed = 8;
 
+    @Configurable(name = "LightConfig.volumetric", subConfigurable = true, tips = "photon.light.volumetric")
+    protected final VolumetricSetting volumetric = new VolumetricSetting();
+
     public static class Runtime {
         public final RuntimeValue<NumberFunction> color;
         public final RuntimeValue<NumberFunction> intensity;
@@ -92,6 +95,8 @@ public class LightConfig implements IConfigurable, IPersistedSerializable {
         public final RuntimeValue<Float> sourceRadius;
         public final RuntimeValue<Float> flicker;
         public final RuntimeValue<Boolean> castShadows;
+        public final RuntimeValue<Boolean> volumetricEnable;
+        public final RuntimeValue<NumberFunction> volumetricStrength;
 
         public Runtime(LightConfig config) {
             this.color = new RuntimeValue<>(() -> config.color);
@@ -102,6 +107,8 @@ public class LightConfig implements IConfigurable, IPersistedSerializable {
             this.sourceRadius = new RuntimeValue<>(config::getSourceRadius);
             this.flicker = new RuntimeValue<>(config::getFlicker);
             this.castShadows = new RuntimeValue<>(config::isCastShadows);
+            this.volumetricEnable = new RuntimeValue<>(config.volumetric::isEnable);
+            this.volumetricStrength = new RuntimeValue<>(() -> config.volumetric.strength);
         }
 
         /** Linear rgb with the HDR intensity of the colour already multiplied in. */
@@ -117,6 +124,10 @@ public class LightConfig implements IConfigurable, IPersistedSerializable {
             return range.get().get(t, random).floatValue();
         }
 
+        public float getVolumetricStrength(float t, Supplier<Float> random) {
+            return volumetricStrength.get().get(t, random).floatValue();
+        }
+
         public void clear() {
             color.clear();
             intensity.clear();
@@ -126,6 +137,8 @@ public class LightConfig implements IConfigurable, IPersistedSerializable {
             sourceRadius.clear();
             flicker.clear();
             castShadows.clear();
+            volumetricEnable.clear();
+            volumetricStrength.clear();
         }
     }
 }

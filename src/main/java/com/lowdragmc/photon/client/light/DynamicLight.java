@@ -26,6 +26,8 @@ public class DynamicLight {
     /** Radius of the emitting sphere in blocks: 0 casts hard shadows, larger values softer ones. */
     public float sourceRadius = 0.15f;
     public boolean castShadows = true;
+    /** How strongly the light shows in the air it crosses, as a halo or beam: 0 not at all, 1 a light haze. */
+    public float volumetric = 0f;
     public boolean enabled = true;
 
     public DynamicLight at(double x, double y, double z) {
@@ -58,6 +60,11 @@ public class DynamicLight {
         return this;
     }
 
+    public DynamicLight volumetric(float volumetric) {
+        this.volumetric = volumetric;
+        return this;
+    }
+
     public DynamicLight point() {
         this.type = Type.POINT;
         return this;
@@ -86,6 +93,7 @@ public class DynamicLight {
         outerAngle = other.outerAngle;
         sourceRadius = other.sourceRadius;
         castShadows = other.castShadows;
+        volumetric = other.volumetric;
         enabled = other.enabled;
         return this;
     }
@@ -101,6 +109,7 @@ public class DynamicLight {
         outerAngle = 30f;
         sourceRadius = 0.15f;
         castShadows = true;
+        volumetric = 0f;
         enabled = true;
         return this;
     }
