@@ -274,7 +274,7 @@ public class FXHierarchyView extends View {
             // add fx objects
             menu.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.new", m -> {
                 for (var fx : PhotonRegistries.FX_OBJECTS) {
-                    m.leaf(fx.icon(), fx.name(), () -> {
+                    m.leaf(fx.icon(), fx.name(), thenFocus(() -> {
                         var fxObject = fx.create();
                         var father = treeList.getSelected().stream().findFirst()
                                 .map(FXObjectTreeNode::getKey)
@@ -292,13 +292,13 @@ public class FXHierarchyView extends View {
                                     fxEditor.reloadEffect();
                                 }
                         ));
-                    });
+                    }));
                 }
             });
         }
         var selected = treeList.getSelected();
         if (isSelectedNodeValid(selected)) {
-            menu.leaf(Icons.REMOVE_FILE, "ldlib.gui.editor.menu.remove", () -> {
+            menu.leaf(Icons.REMOVE_FILE, "ldlib.gui.editor.menu.remove", thenFocus(() -> {
                 var nodes = treeList.getSelected();
                 if (!isSelectedNodeValid(nodes)) return;
                 var toRemoved = nodes.stream().map(FXObjectTreeNode::getKey)
@@ -321,14 +321,22 @@ public class FXHierarchyView extends View {
                         }
                 ));
 
-            });
-            menu.leaf(Icons.COPY, "ldlib.gui.editor.menu.copy", this::copySelection);
-            menu.leaf(Icons.COPY, "photon.gui.editor.hierarchy.duplicate", this::duplicateSelection);
+            }));
+            menu.leaf(Icons.COPY, "ldlib.gui.editor.menu.copy", thenFocus(this::copySelection));
+            menu.leaf(Icons.COPY, "photon.gui.editor.hierarchy.duplicate", thenFocus(this::duplicateSelection));
         }
         if (ClipboardManager.INSTANCE.getClipboardType() == FXObjectClipboard.class) {
-            menu.leaf(Icons.PASTE, "ldlib.gui.editor.menu.paste", this::pasteClipboard);
+            menu.leaf(Icons.PASTE, "ldlib.gui.editor.menu.paste", thenFocus(this::pasteClipboard));
         }
         return menu;
+    }
+
+    /** A menu action that hands the keyboard back to this view: closing the menu leaves nothing focused. */
+    private Runnable thenFocus(Runnable action) {
+        return () -> {
+            action.run();
+            focus();
+        };
     }
 
     /**

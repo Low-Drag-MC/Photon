@@ -205,11 +205,22 @@ public class FxObjectClipboardScenario implements UIScenario {
             clickOn(g, "Duplicate in the menu", Keys.MOUSE_LEFT,
                     ctx -> centreOf(Objects.requireNonNull(menuEntry(ctx, "Duplicate"))));
             g.frames(2);
-            g.step("the menu duplicated the subtree", ctx -> {
+            g.step("the menu duplicated the subtree and gave the keyboard back", ctx -> {
                 ctx.check("three objects added", added(ctx).size() == 3, 3, added(ctx).size());
-                editor(ctx).historyView.undo();
-                checkOriginal(ctx, "after undoing the menu duplicate");
+                ctx.check("the hierarchy has the focus again", editor(ctx).hierarchyView.isFocused());
             });
+            chord(g, GLFW.GLFW_KEY_Z);
+            g.step("so Ctrl+Z right after undoes it", ctx -> checkOriginal(ctx, "after undoing the menu duplicate"));
+            clickRow(g, "Parent");
+            rightClickRow(g, "Parent");
+            g.waitUntil("the menu offers Copy", ctx -> menuEntry(ctx, "Copy") != null);
+            clickOn(g, "Copy in the menu", Keys.MOUSE_LEFT, ctx -> centreOf(Objects.requireNonNull(menuEntry(ctx, "Copy"))));
+            g.frames(2);
+            chord(g, GLFW.GLFW_KEY_V);
+            g.step("Ctrl+V right after the menu's Copy pastes", ctx ->
+                    ctx.check("three objects added", added(ctx).size() == 3, 3, added(ctx).size()));
+            chord(g, GLFW.GLFW_KEY_Z);
+            g.step("undone", ctx -> checkOriginal(ctx, "after undoing the paste"));
         });
 
         s.group("Remove takes the subtree with it", g -> {
