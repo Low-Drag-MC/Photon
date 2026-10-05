@@ -39,6 +39,7 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFW;
 
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -245,6 +246,27 @@ public class FxObjectClipboardScenario implements UIScenario {
                         object(ctx, "Parent").children().equals(List.of(object(ctx, "Child"), object(ctx, "Child2"))));
                 ctx.check("the runtime holds them all", editor(ctx).runtime.objects.size() == 5,
                         5, editor(ctx).runtime.objects.size());
+            });
+            g.step("redo, save to a file and open it again", ctx -> {
+                var editor = editor(ctx);
+                editor.historyView.redo();
+                try {
+                    var file = Files.createTempFile("photon_fx_object_clipboard", ".fxproj").toFile();
+                    file.deleteOnExit();
+                    FXProject.TYPE.saveProjectToFile((FXProject) editor.getCurrentProject(), file);
+                    editor.closeCurrentProject(false, null);
+                    editor.loadProject(FXProject.TYPE.loadProjectFromFile(file), file);
+                } catch (Exception e) {
+                    throw new IllegalStateException("could not round-trip the project", e);
+                }
+            });
+            g.frames(2);
+            g.step("the children did not come back as top-level objects", ctx -> {
+                var runtime = editor(ctx).runtime;
+                var saved = runtime.fxData.objects().stream().map(IFXObject::getName).toList();
+                var top = runtime.root.children().stream().map(child -> ((IFXObject) child).getName()).toList();
+                ctx.check("the file holds only Other", saved.equals(List.of("Other")), "[Other]", saved);
+                ctx.check("and only Other sits under the root", top.equals(List.of("Other")), "[Other]", top);
             });
         });
 
