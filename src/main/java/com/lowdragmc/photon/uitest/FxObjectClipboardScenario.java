@@ -190,6 +190,31 @@ public class FxObjectClipboardScenario implements UIScenario {
             });
         });
 
+        s.group("Remove takes the subtree with it", g -> {
+            clickRow(g, "Parent");
+            rightClickRow(g, "Parent");
+            g.waitUntil("the menu offers Remove", ctx -> menuEntry(ctx, "Remove") != null);
+            clickOn(g, "Remove in the menu", Keys.MOUSE_LEFT,
+                    ctx -> centreOf(Objects.requireNonNull(menuEntry(ctx, "Remove"))));
+            g.frames(2);
+            g.step("Parent and both children left the project", ctx -> {
+                var objects = editor(ctx).runtime.fxData.objects();
+                ctx.check("only Other is saved", objects.equals(List.of(object(ctx, "Other"))), "[Other]", objects);
+                ctx.check("the runtime holds the root and Other", editor(ctx).runtime.objects.size() == 2,
+                        2, editor(ctx).runtime.objects.size());
+            });
+            g.step("undo puts the subtree back", ctx -> {
+                editor(ctx).historyView.undo();
+                var objects = editor(ctx).runtime.fxData.objects();
+                ctx.check("all four objects saved again", objects.size() == 4
+                        && Set.copyOf(objects).equals(Set.copyOf(ctx.<List<IFXObject>>get("originalObjects"))), 4, objects);
+                ctx.check("Parent keeps its children",
+                        object(ctx, "Parent").children().equals(List.of(object(ctx, "Child"), object(ctx, "Child2"))));
+                ctx.check("the runtime holds them all", editor(ctx).runtime.objects.size() == 5,
+                        5, editor(ctx).runtime.objects.size());
+            });
+        });
+
         s.teardown("close the project", ctx -> {
             ClipboardManager.INSTANCE.clear();
             FXEditor editor = ctx.get("editor");

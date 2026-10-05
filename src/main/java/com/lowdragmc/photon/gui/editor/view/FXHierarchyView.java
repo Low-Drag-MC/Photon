@@ -443,22 +443,30 @@ public class FXHierarchyView extends View {
         return node;
     }
 
+    /** Adds {@code fxObject} with whatever subtree it still carries; the saved list is flat. */
     public void addSceneObject(IFXObject fxObject) {
         if (runtime == null) return;
-        runtime.fxData.objects().add(fxObject);
+        var objects = runtime.fxData.objects();
+        fxObject.executeAll(object -> {
+            if (object instanceof IFXObject added && !objects.contains(added)) objects.add(added);
+        });
         runtime.addSceneObject(fxObject);
     }
 
+    /** Removes {@code fxObject} and its subtree, which stays linked to it so an undo can add it back whole. */
     public void removeSceneObject(IFXObject fxObject) {
         if (runtime == null) return;
-        if (fxEditor.sceneView.sceneEditor.getTransformGizmo().getTargetTransform() == fxObject.transform()) {
-            fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
-        }
-        if (fxEditor.inspectorView.inspector.getInspectedConfigurable() == fxObject) {
-            fxEditor.inspectorView.clear();
-        }
+        var sceneEditor = fxEditor.sceneView.sceneEditor;
+        fxObject.executeAll(object -> {
+            if (sceneEditor.getTransformGizmo().getTargetTransform() == object.transform()) {
+                sceneEditor.setTransformGizmoTarget(null);
+            }
+            if (fxEditor.inspectorView.inspector.getInspectedConfigurable() == object) {
+                fxEditor.inspectorView.clear();
+            }
+            runtime.fxData.objects().remove(object);
+        });
         fxEditor.sceneView.fxObjectInfoView.clear();
-        runtime.fxData.objects().remove(fxObject);
         runtime.removeSceneObject(fxObject);
     }
 }
