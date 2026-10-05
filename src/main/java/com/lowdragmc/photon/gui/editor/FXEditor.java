@@ -41,6 +41,8 @@ public class FXEditor extends Editor {
         this.leftWindow.getLeftTop().addView(hierarchyView);
         this.centerWindow.getLeftTop().addView(sceneView);
         this.bottomWindow.getLeftTop().addView(timelineView);
+        // focusable, or a click in the scene focuses the panel around it and its commands never pass through here
+        sceneView.setFocusable(true);
         sceneView.addEventListener(UIEvents.EXECUTE_COMMAND, hierarchyView::handleCommand);
     }
 

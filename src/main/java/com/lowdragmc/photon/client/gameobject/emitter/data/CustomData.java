@@ -76,15 +76,8 @@ public class CustomData {
         this.channelCount = Math.clamp(channelCount, 1, MAX_CHANNELS);
         this.channels.addAll(channels);
         this.channelNames.addAll(names);
-        // Imported streams may declare more components than they actually store.
-        int expected = type == Type.COLOR ? 1 : this.channelCount;
-        while (this.channels.size() > expected) {
-            this.channels.removeLast();
-        }
-        while (this.channels.size() < expected) {
-            this.channels.add(type == Type.COLOR ? new HDRConstantColor() : NumberFunction.constant(0));
-        }
-        resizeNames();
+        // saved or imported streams can store more or fewer functions than they declare
+        fitChannels();
     }
 
     public Type getType() {
@@ -95,14 +88,7 @@ public class CustomData {
         if (this.type == type) return;
         this.type = type;
         channels.clear();
-        if (type == Type.COLOR) {
-            channels.add(new HDRConstantColor());
-        } else {
-            for (int i = 0; i < channelCount; i++) {
-                channels.add(NumberFunction.constant(0));
-            }
-        }
-        resizeNames();
+        fitChannels();
     }
 
     public TSource getTSource() {
@@ -120,14 +106,7 @@ public class CustomData {
     /** VECTOR only: resize the channel list, preserving existing functions/names. */
     public void setChannelCount(int count) {
         this.channelCount = Math.clamp(count, 1, MAX_CHANNELS);
-        if (type != Type.VECTOR) return;
-        while (channels.size() > channelCount) {
-            channels.removeLast();
-        }
-        while (channels.size() < channelCount) {
-            channels.add(NumberFunction.constant(0));
-        }
-        resizeNames();
+        fitChannels();
     }
 
     /** The editable functions (size == channelCount for VECTOR, 1 for COLOR). */
@@ -150,6 +129,18 @@ public class CustomData {
             channelNames.add("");
         }
         channelNames.set(i, name == null ? "" : name);
+    }
+
+    /** One colour function for COLOR, {@code channelCount} scalars for VECTOR; names follow. */
+    private void fitChannels() {
+        int expected = type == Type.COLOR ? 1 : channelCount;
+        while (channels.size() > expected) {
+            channels.removeLast();
+        }
+        while (channels.size() < expected) {
+            channels.add(type == Type.COLOR ? new HDRConstantColor() : NumberFunction.constant(0));
+        }
+        resizeNames();
     }
 
     /** Keep {@link #channelNames} the same length as {@link #channels}. */
@@ -278,9 +269,6 @@ public class CustomData {
         for (int i = 0; i < list.size(); i++) {
             var channel = NumberFunction.deserializeWrapper(list.getCompound(i));
             channels.add(type == Type.COLOR ? toHDR(channel) : channel);
-        }
-        if (channels.isEmpty()) {
-            channels.add(type == Type.COLOR ? new HDRConstantColor() : NumberFunction.constant(0));
         }
         var names = new ArrayList<String>();
         var nameList = tag.getList("names", Tag.TAG_STRING);
