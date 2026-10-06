@@ -665,7 +665,8 @@ public class DynamicLightVolumetricScenario implements UIScenario {
                             return;
                         }
                         LightPassTimer.recording = false;
-                        var samples = LightPassTimer.STAGE_MS[LightPassTimer.Stage.VOLUME.ordinal()].toDoubleArray();
+                        var samples = LightPassTimer.sum(LightPassTimer.Stage.VOLUME, LightPassTimer.Stage.FOG,
+                                LightPassTimer.Stage.VOLUME_BLUR).toDoubleArray();
                         ctx.check("timed " + count + " volumetric lights", samples.length > 0, "> 0 samples", samples.length);
                         Arrays.sort(samples);
                         results[index] = samples.length == 0 ? 0 : samples[samples.length / 2];

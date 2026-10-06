@@ -247,6 +247,7 @@ public final class DynamicLightRenderer {
     }
 
     private static void prepare(Frame frame) {
+        LightPassTimer.frame();
         prepared = null;
         pendingHaze = null;
         lightCount = 0;
@@ -366,6 +367,7 @@ public final class DynamicLightRenderer {
         fogCount = FOG.size();
         prepared = frame;
         prepareMillis = (System.nanoTime() - start) / 1e6;
+        LightPassTimer.cpu(prepareMillis);
     }
 
     /** The visible fog volumes worth drawing, nearest first, at most {@link #MAX_FOG}. */
@@ -597,6 +599,7 @@ public final class DynamicLightRenderer {
         int viewportWidth = GlStateManager.Viewport.width();
         int viewportHeight = GlStateManager.Viewport.height();
 
+        LightPassTimer.start();
         VISIBILITY_LIGHTS.clear();
         for (int map = 0; map < maps; map++) {
             int k = MAP_RANK.getInt(map);
@@ -621,6 +624,7 @@ public final class DynamicLightRenderer {
                 voxels.originBlockZ() - blockZ);
         shader.safeGetUniform("VisibilityInfo").set(VISIBILITY_SIZE, VISIBILITY_PER_ROW, maps, 0);
         draw(shader, true);
+        LightPassTimer.mark(LightPassTimer.Stage.VISIBILITY);
         visibilityMapCount = maps;
         restore(framebuffer, viewportX, viewportY, viewportWidth, viewportHeight);
     }
@@ -653,7 +657,7 @@ public final class DynamicLightRenderer {
         int lightWidth = Math.max(1, Math.round(width * scale));
         int lightHeight = Math.max(1, Math.round(height * scale));
 
-        LightPassTimer.begin();
+        LightPassTimer.start();
         var snapshot = scene.snapshot = allocate(scene.snapshot, width, height, TargetFormat.RGBA8, true);
         var lightBuffer = scene.lightBuffer = allocate(scene.lightBuffer, lightWidth, lightHeight, TargetFormat.RGBA16F, false);
         copyRegion(frame.target(), frame.x(), frame.y(), snapshot, afterPack ? IrisCompat.gbufferRenderScale() : 1f);
@@ -720,6 +724,7 @@ public final class DynamicLightRenderer {
                 volumeBuffer.setClearColor(0f, 0f, 0f, 1f);
                 volumeBuffer.clear(Minecraft.ON_OSX);
             }
+            LightPassTimer.mark(LightPassTimer.Stage.VOLUME);
             var fogShader = PhotonShaders.getDynamicLightFogShader();
             if (fogCount > 0 && fogShader != null) {
                 absorbing = uploadFog(frame, afterPack);
@@ -734,6 +739,7 @@ public final class DynamicLightRenderer {
                 // rgb adds to the haze, alpha multiplies into the transmittance
                 drawBlended(fogShader, true, GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_SRC_ALPHA);
             }
+            LightPassTimer.mark(LightPassTimer.Stage.FOG);
             if (shadowedVolumes > 0 || fogCount > 0) {
                 // the shadowed haze and the fog are sampled at a different offset per pixel of a 4x4 tile
                 var blurBuffer = scene.blurBuffer = allocate(scene.blurBuffer, lightWidth, lightHeight, TargetFormat.RGBA16F, false);
@@ -742,8 +748,8 @@ public final class DynamicLightRenderer {
                 volumeBuffer.bindWrite(true);
                 blurPass(blurShader, snapshot, blurBuffer, 0f, 1f, width, height, scale, SKY_DEPTH);
             }
+            LightPassTimer.mark(LightPassTimer.Stage.VOLUME_BLUR);
         }
-        LightPassTimer.mark(LightPassTimer.Stage.VOLUME);
 
         // the volume debug view shows black under the haze without reading the light buffer
         if (surfaces || LightDebug.view == 6) {
@@ -772,12 +778,15 @@ public final class DynamicLightRenderer {
         if (volumeBuffer != null && (LightDebug.view == 0 || LightDebug.view == 6)) {
             var haze = new Haze(frame, new Matrix4f(INVERSE_PROJECTION), scale, afterPack);
             // what the fog hides goes dark now, before the particles: a flame in front of a fog bank stays bright
-            if (absorbing) drawHaze(haze, 1);
+            if (absorbing) {
+                drawHaze(haze, 1);
+                LightPassTimer.mark(LightPassTimer.Stage.HAZE);
+            }
             pendingHaze = haze;
         }
 
         restore(framebuffer, viewportX, viewportY, viewportWidth, viewportHeight);
-        LightPassTimer.end((System.nanoTime() - start) / 1e6 + prepareMillis);
+        LightPassTimer.cpu((System.nanoTime() - start) / 1e6);
     }
 
     private static void compositeHaze() {
@@ -789,7 +798,9 @@ public final class DynamicLightRenderer {
         int viewportY = GlStateManager.Viewport.y();
         int viewportWidth = GlStateManager.Viewport.width();
         int viewportHeight = GlStateManager.Viewport.height();
+        LightPassTimer.start();
         drawHaze(haze, 0);
+        LightPassTimer.mark(LightPassTimer.Stage.HAZE);
         restore(framebuffer, viewportX, viewportY, viewportWidth, viewportHeight);
     }
 

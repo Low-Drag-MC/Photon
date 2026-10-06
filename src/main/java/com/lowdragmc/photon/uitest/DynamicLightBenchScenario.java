@@ -32,8 +32,10 @@ import java.util.concurrent.atomic.AtomicReference;
 @LDLRegisterClient(name = "dynamic_light_bench", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
 public class DynamicLightBenchScenario implements UIScenario {
-    private static final int WARMUP_FRAMES = 40;
-    private static final int MEASURED_FRAMES = 240;
+    static final int WARMUP_FRAMES = 40;
+    static final int MEASURED_FRAMES = 240;
+    static final LightPassTimer.Stage[] HAZE_STAGES = {LightPassTimer.Stage.VISIBILITY, LightPassTimer.Stage.VOLUME,
+            LightPassTimer.Stage.FOG, LightPassTimer.Stage.VOLUME_BLUR, LightPassTimer.Stage.HAZE};
     private static final String PACK = "ComplementaryReimagined_r5.5.1.zip";
     private static final AtomicReference<BlockPos> ORIGIN = new AtomicReference<>();
     private static final List<String> ROWS = new ArrayList<>();
@@ -234,7 +236,7 @@ public class DynamicLightBenchScenario implements UIScenario {
                     var row = "| %s | %s | %d | %s | %s | %s | %s | %s | %s | %s | %s | %.0f |".formatted(
                             renderer, config.label(), config.lights() ? DynamicLightRenderer.lastLightCount() : 0,
                             stage(LightPassTimer.Stage.COPY), stage(LightPassTimer.Stage.LIGHT), stage(LightPassTimer.Stage.BLUR),
-                            stage(LightPassTimer.Stage.VOLUME), stage(LightPassTimer.Stage.COMPOSITE), stat(LightPassTimer.TOTAL_MS),
+                            stat(LightPassTimer.sum(HAZE_STAGES)), stage(LightPassTimer.Stage.COMPOSITE), stat(LightPassTimer.TOTAL_MS),
                             stat(LightPassTimer.CPU_MS), stat(frameMs), 1000.0 / percentile(frameMs, 0.5));
                     ROWS.add(row);
                     ctx.log(row);
@@ -245,12 +247,12 @@ public class DynamicLightBenchScenario implements UIScenario {
         return stat(LightPassTimer.STAGE_MS[stage.ordinal()]);
     }
 
-    private static String stat(DoubleArrayList samples) {
+    static String stat(DoubleArrayList samples) {
         if (samples.isEmpty()) return "-";
         return "%.3f / %.3f".formatted(percentile(samples, 0.5), percentile(samples, 0.95));
     }
 
-    private static double percentile(DoubleArrayList samples, double p) {
+    static double percentile(DoubleArrayList samples, double p) {
         if (samples.isEmpty()) return Double.NaN;
         double[] sorted = samples.toDoubleArray();
         Arrays.sort(sorted);
@@ -266,7 +268,8 @@ public class DynamicLightBenchScenario implements UIScenario {
                 .append(", vsync off, frame rate uncapped, demo courtyard view, ")
                 .append(MEASURED_FRAMES).append(" frames per row  \n")
                 .append("Times are milliseconds, median / p95. Copy = colour+depth snapshot; light = clustered ")
-                .append("light + shadow pass; blur = soft-shadow blur; volume = volumetric in-scatter; ")
+                .append("light + shadow pass; blur = soft-shadow blur; volume = every volumetric stage (visibility maps, ")
+                .append("in-scatter, fog, haze blur and composite); ")
                 .append("composite = upsample and add; ")
                 .append("CPU = collection, culling, cluster build, voxel update and upload.\n\n")
                 .append("| renderer | config | lights drawn | GPU copy | GPU light | GPU blur | GPU volume | GPU composite ")
