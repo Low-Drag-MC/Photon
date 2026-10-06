@@ -95,6 +95,27 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
 
     }
 
+    /** {@code PhotonGpuChannels} bits of the additional-data channels this material reads; passes upload them. */
+    default long getUsedChannelMask() {
+        return 0L;
+    }
+
+    /** Whether this material reads user custom data; passes then upload the {@code PhotonCustomData} buffer. */
+    default boolean usesCustomData() {
+        return false;
+    }
+
+    /** Channels this material reads from each custom-data stream (index = stream, 0 = none), when it knows. */
+    default int[] requiredCustomChannels() {
+        return new int[0];
+    }
+
+    /** The render state this material asks for, or null to leave it to the {@code MaterialSetting}. */
+    @Nullable
+    default MaterialRenderState getPreferredRenderState() {
+        return null;
+    }
+
     default IMaterial copy() {
         return CODEC.encodeStart(NbtOps.INSTANCE, this).result()
                 .flatMap(tag -> CODEC.parse(NbtOps.INSTANCE, tag).result())

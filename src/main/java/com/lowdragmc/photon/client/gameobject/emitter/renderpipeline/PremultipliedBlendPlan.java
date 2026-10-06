@@ -71,7 +71,7 @@ public final class PremultipliedBlendPlan {
     /** Whether every material of a pass is layer-safe (an empty list draws nothing, so it is). */
     public static boolean areLayerSafe(List<MaterialSetting> materials) {
         for (var material : materials) {
-            if (!isLayerSafe(material.getBlendMode())) return false;
+            if (!isLayerSafe(material.getEffectiveBlendMode())) return false;
         }
         return true;
     }

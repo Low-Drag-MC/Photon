@@ -8,10 +8,14 @@ import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.*;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.kila.KilaMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.kila.KilaPresets;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -29,6 +33,9 @@ public class MaterialResource extends Resource<IMaterial> {
         addBuiltinTextureMaterial(provider, "smoke");
         addBuiltinTextureMaterial(provider, "thaumcraft");
         addBuiltinTextureMaterial(provider, "ring");
+        for (var preset : KilaPresets.ALL) {
+            provider.addResource("kila_" + preset.id(), preset.create());
+        }
     }
 
     private void addVanillaTextureMaterial(BuiltinResourceProvider<IMaterial> builtin, String name) {
@@ -108,6 +115,25 @@ public class MaterialResource extends Resource<IMaterial> {
         });
 
         container.setOnDragProvider(UIResourceMaterial::new);
+        // converts in place, so every effect referencing the material picks up the Kila one
+        container.setOnMenu((c, menu) -> {
+            var path = c.getSelected();
+            if (path == null || !c.getCanEdit().test(path)) return;
+            if (!(getResourceInstance().getResource(path) instanceof TextureMaterial texture)
+                    || texture.getClass() != TextureMaterial.class) return;
+            menu.crossLine();
+            menu.leaf("photon.material.convert_to_kila", () -> Dialog.showCheckBox("photon.material.convert_to_kila",
+                    Component.translatable("photon.material.convert_to_kila.confirm", c.resourceProvider.getResourceName(path)),
+                    confirmed -> {
+                        if (!confirmed) return;
+                        var kila = KilaMaterial.fromTexture(texture);
+                        if (!c.resourceProvider.addResource(path, kila)) return;
+                        c.reloadSpecificResource(path);
+                        if (c.getEditor() != null) {
+                            c.getEditor().inspectorView.inspect(kila, configurator -> c.markResourceDirty(path));
+                        }
+                    }).show(c.getModularUI()));
+        });
 
         if (provider.supportAdd()) {
             container.setOnCreateMenu((c, m) -> m.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.add_resource", menu -> {

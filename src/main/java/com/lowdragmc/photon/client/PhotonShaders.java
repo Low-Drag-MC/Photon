@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.client.shader.management.Shader;
 import com.lowdragmc.lowdraglib2.client.shader.management.ShaderProgram;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.compat.iris.IrisCompat;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.kila.KilaShaders;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import lombok.Getter;
 import net.minecraft.client.renderer.ShaderInstance;
@@ -62,6 +63,10 @@ public class PhotonShaders {
     private static ShaderInstance dynamicLightFogShader;
     @Getter
     private static ShaderInstance dynamicLightDepthScaleShader;
+    @Getter
+    private static ShaderInstance kilaPreviewShader;
+    @Getter
+    private static ShaderInstance kilaStackShader;
 
     public static void init() {
         if (LDLibShaders.supportComputeShader()) {
@@ -81,6 +86,7 @@ public class PhotonShaders {
         // fires on every resource reload — drop lazily-loaded custom pass shaders so they re-resolve,
         // and compact the mask-group id table (ids are per-frame-resolved, safe to reassign)
         com.lowdragmc.photon.client.postfx.runtime.CustomShaderPass.clearAll();
+        KilaShaders.clearAll();
         com.lowdragmc.photon.client.postfx.runtime.MaskGroups.clearAll();
         // compiled effects embed custom-shader port bindings — recompile against the fresh files
         com.lowdragmc.photon.client.postfx.runtime.RenderGraphRuntime.invalidateAll();
@@ -155,6 +161,12 @@ public class PhotonShaders {
             registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
                             Photon.id("dynamic_light_depth_scale"), DefaultVertexFormat.POSITION),
                     shaderInstance -> dynamicLightDepthScaleShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("kila_preview"), DefaultVertexFormat.POSITION_TEX),
+                    shaderInstance -> kilaPreviewShader = shaderInstance);
+            registerShadersEvent.registerShader(new ShaderInstance(resourceProvider,
+                            Photon.id("kila_stack"), DefaultVertexFormat.POSITION),
+                    shaderInstance -> kilaStackShader = shaderInstance);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

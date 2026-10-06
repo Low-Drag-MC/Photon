@@ -116,7 +116,8 @@ final class ScreenshotCompare {
         var box = maxX < 0 ? "none"
                 : "x[%d..%d] y[%d..%d] %dx%d".formatted(minX, maxX, minY, maxY, boxWidth, boxHeight);
         long area = Math.max(1L, (long) (x1 - x0) * (y1 - y0));
-        return new Diff(count, (double) count / area, box, boxWidth, boxHeight);
+        var changed = maxX < 0 ? null : new Region(minX, minY, maxX + 1, maxY + 1);
+        return new Diff(count, (double) count / area, box, boxWidth, boxHeight, changed);
     }
 
     /** Pixels where some channel is more than {@code threshold} darker here than in {@code baseline}. */
@@ -159,11 +160,35 @@ final class ScreenshotCompare {
         return (double) count / Math.max(1L, (long) (x1 - x0) * (y1 - y0));
     }
 
+    /** Packed RGB at a window pixel. */
+    int rgb(int x, int y) {
+        return pixels[Math.clamp(y, 0, height - 1) * width + Math.clamp(x, 0, width - 1)];
+    }
+
+    /** The mean red, green and blue over {@code region}, 0..255. */
+    double[] mean(Region region) {
+        var sum = new double[3];
+        int x0 = Math.max(0, region.left()), x1 = Math.min(width, region.right());
+        int y0 = Math.max(0, region.top()), y1 = Math.min(height, region.bottom());
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                int a = pixels[y * width + x];
+                sum[0] += (a >> 16) & 0xFF;
+                sum[1] += (a >> 8) & 0xFF;
+                sum[2] += a & 0xFF;
+            }
+        }
+        long area = Math.max(1L, (long) (x1 - x0) * (y1 - y0));
+        for (int i = 0; i < 3; i++) sum[i] /= area;
+        return sum;
+    }
+
     Region whole() {
         return new Region(0, 0, width, height);
     }
 
-    record Diff(int count, double fraction, String box, int width, int height) {
+    /** {@code changed} is the bounding rectangle of the differing pixels, null when there are none. */
+    record Diff(int count, double fraction, String box, int width, int height, @Nullable Region changed) {
     }
 
     /** A window rectangle, in pixels. */

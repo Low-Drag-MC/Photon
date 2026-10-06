@@ -156,6 +156,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
 
     /** {@code PhotonGpuChannels} bits of the additional-data channels the compiled graph reads
      *  (0 when unresolved/broken) — lets instanced render passes auto-enable required channels. */
+    @Override
     public long getUsedChannelMask() {
         var entry = refreshEntry();
         return entry != null && entry.isValid() ? entry.getUsedChannelMask() : 0L;
@@ -163,6 +164,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
 
     /** Whether the compiled graph reads any user custom-data stream (a {@code CustomDataNode}) —
      *  lets instanced render passes upload the {@code PhotonCustomData} buffer texture only when needed. */
+    @Override
     public boolean usesCustomData() {
         var entry = refreshEntry();
         return entry != null && entry.isValid() && entry.isUsesCustomData();

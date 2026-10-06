@@ -42,6 +42,10 @@ public class TileParticleRenderer {
      *  still comes from the config. */
     private final ParticleRendererSetting.Runtime renderer;
     private final ParticleInstanceRenderer instanceBackend;
+    private final CpuParticleRecords cpuRecords = new CpuParticleRecords();
+    /** Set between {@link #beginCpuRecords} and {@link #endCpuRecords}: the CPU queue writes records too. */
+    @Nullable
+    private CpuParticleRecords activeRecords;
 
     public TileParticleRenderer(ParticleConfig config, ParticleRendererSetting.Runtime renderer) {
         this.config = config;
@@ -62,11 +66,47 @@ public class TileParticleRenderer {
             notifyDynamicMesh();
             model = modelPass();
         }
+        var records = activeRecords;
+        if (records != null) {
+            records.setVertsPerParticle(model == null ? 4 : 4 * primitiveCount(model.mesh()));
+        }
         for (var particle : particles) {
             if (particle instanceof TileParticle tileParticle && tileParticle.getDelay() <= 0) {
                 renderParticle(buffer, tileParticle, camera, partialTicks, model);
+                if (records != null) {
+                    records.write(tileParticle, partialTicks);
+                }
             }
         }
+    }
+
+    /** Collect per-particle records during the next {@link #renderQueue}, for a {@code PHOTON_CPU_DATA} draw. */
+    public void beginCpuRecords(int particleCapacity) {
+        cpuRecords.begin(config.additionalGPUDataSetting, particleCapacity);
+        activeRecords = cpuRecords;
+    }
+
+    public void endCpuRecords() {
+        if (activeRecords != null) {
+            activeRecords.end();
+            activeRecords = null;
+        }
+    }
+
+    /** Bind the records {@link #endCpuRecords} uploaded — after {@code apply()}, the program bound. */
+    public void bindCpuRecords(ShaderInstance shader) {
+        cpuRecords.bind(shader);
+    }
+
+    /** ⚠️ MIRRORS the primitive walk in {@link #renderParticle}: four vertices per emitted primitive. */
+    private static int primitiveCount(PhotonMesh mesh) {
+        int primitives = 0;
+        int triangle = 0;
+        while (triangle < mesh.triangleCount()) {
+            triangle += mesh.quadPaired(triangle) ? 2 : 1;
+            primitives++;
+        }
+        return primitives;
     }
 
     /**
@@ -433,6 +473,7 @@ public class TileParticleRenderer {
      */
     public void dispose() {
         instanceBackend.dispose();
+        cpuRecords.close();
     }
 
     // ---------------------------------------------------------------------

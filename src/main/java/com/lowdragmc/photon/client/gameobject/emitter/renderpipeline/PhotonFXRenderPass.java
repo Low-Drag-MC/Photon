@@ -10,6 +10,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
  import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.ShaderInstance;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
@@ -112,9 +113,15 @@ public abstract class PhotonFXRenderPass {
             return drawInstanced(materials, pipeline, particles, camera, partialTicks);
         }
 
+        var records = beginCpuRecords(materials, particles.size());
+
         // prepare mesh data
         var buffer = begin(Tesselator.getInstance());
-        renderQueue(buffer, particles, camera, partialTicks);
+        try {
+            renderQueue(buffer, particles, camera, partialTicks);
+        } finally {
+            if (records) endCpuRecords();
+        }
         var meshData = buffer.build();
         if (meshData == null) return false;
 
@@ -132,9 +139,16 @@ public abstract class PhotonFXRenderPass {
 
         // render materials
         for (var materialSetting : materials) {
-            materialSetting.pre();
-            renderWithMaterial(materialSetting.getMaterial(), MaterialContext.NORMAL, vbo);
-            materialSetting.post();
+            for (int pass = 0, passes = materialSetting.passes(); pass < passes; pass++) {
+                materialSetting.pre(pass);
+                var material = materialSetting.getMaterial();
+                if (records && readsParticleRecords(material)) {
+                    renderWithCpuRecords(material, vbo);
+                } else {
+                    renderWithMaterial(material, MaterialContext.NORMAL, vbo);
+                }
+                materialSetting.post();
+            }
         }
 
         // invalidate cache
@@ -173,31 +187,19 @@ public abstract class PhotonFXRenderPass {
     public void clearInstance() {
     }
 
-    /**
-     * Union of the additional-data channels required by the pass's shadergraph materials —
-     * fed into {@code AdditionalGPUDataSetting.setMaterialMask} so instanced passes auto-enable
-     * whatever their graphs read (hand-written shader materials toggle channels manually).
-     */
-    protected static long shaderGraphChannelMask(List<MaterialSetting> materials) {
+    /** Union of the additional-data channels the pass's materials read, for {@code setMaterialMask}. */
+    protected static long materialChannelMask(List<MaterialSetting> materials) {
         long mask = 0;
         for (var materialSetting : materials) {
-            if (getRawMaterial(materialSetting.getMaterial()) instanceof ShaderGraphMaterial shaderGraphMaterial) {
-                mask |= shaderGraphMaterial.getUsedChannelMask();
-            }
+            mask |= materialSetting.getMaterial().getUsedChannelMask();
         }
         return mask;
     }
 
-    /**
-     * Whether any shadergraph material on the pass reads user custom data (a {@code CustomDataNode}) —
-     * fed into {@code AdditionalGPUDataSetting.setCustomDataMaterialUsed} so instanced passes upload the
-     * {@code PhotonCustomData} buffer texture only when needed (custom shaders read custom data through
-     * their appended vertex attributes instead).
-     */
-    protected static boolean shaderGraphUsesCustomData(List<MaterialSetting> materials) {
+    /** Whether any material on the pass reads user custom data, so the {@code PhotonCustomData} buffer is uploaded. */
+    protected static boolean materialsUseCustomData(List<MaterialSetting> materials) {
         for (var materialSetting : materials) {
-            if (getRawMaterial(materialSetting.getMaterial()) instanceof ShaderGraphMaterial shaderGraphMaterial
-                    && shaderGraphMaterial.usesCustomData()) {
+            if (materialSetting.getMaterial().usesCustomData()) {
                 return true;
             }
         }
@@ -245,6 +247,40 @@ public abstract class PhotonFXRenderPass {
         var shader = material.begin(context);
         RenderSystem.setShader(() -> shader);
         vbo.drawWithShader(RenderSystem.getModelViewMatrix(), RenderSystem.getProjectionMatrix(), shader);
+        material.end(context);
+    }
+
+    /**
+     * CPU path: whether this frame's {@link #renderQueue} also writes per-particle records. Only a pass that
+     * writes the same number of vertices for every particle can override this.
+     */
+    protected boolean beginCpuRecords(List<MaterialSetting> materials, int particleCapacity) {
+        return false;
+    }
+
+    /** Upload what {@link #renderQueue} wrote after {@link #beginCpuRecords} returned true. */
+    protected void endCpuRecords() {
+    }
+
+    /** Bind the uploaded records to {@code shader}, the program bound. */
+    protected void bindCpuRecords(ShaderInstance shader) {
+    }
+
+    protected static boolean readsParticleRecords(IMaterial material) {
+        return material.getUsedChannelMask() != 0 || material.usesCustomData();
+    }
+
+    /** {@code VertexBuffer.drawWithShader}, with the records bound between {@code apply()} and the draw. */
+    protected void renderWithCpuRecords(IMaterial material, VertexBuffer vbo) {
+        var context = MaterialContext.PARTICLE_CPU_DATA;
+        var shader = material.begin(context);
+        RenderSystem.setShader(() -> shader);
+        shader.setDefaultUniforms(mode, RenderSystem.getModelViewMatrix(), RenderSystem.getProjectionMatrix(),
+                Minecraft.getInstance().getWindow());
+        shader.apply();
+        bindCpuRecords(shader);
+        vbo.draw();
+        shader.clear();
         material.end(context);
     }
 

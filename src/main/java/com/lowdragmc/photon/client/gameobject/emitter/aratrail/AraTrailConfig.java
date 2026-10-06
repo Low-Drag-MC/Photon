@@ -242,7 +242,8 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
         protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
             // auto-enable whatever channels the shadergraph materials read; rebuild the layout /
             // baked geometry (mode, section polygon, tube uvWidthFactor) on change
-            additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));
+            additionalGPUDataSetting.setMaterialMask(materialChannelMask(materials));
+            additionalGPUDataSetting.setCustomDataMaterialUsed(materialsUseCustomData(materials));
             if (additionalGPUDataSetting.attribRelayoutNeeded() || trailRenderer.geometryStale()) {
                 clearInstance();
             }
@@ -253,9 +254,11 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
                 var context = section.isEnable() ? MaterialContext.ARA_TRAIL_TUBE_INSTANCE
                         : MaterialContext.ARA_TRAIL_INSTANCE;
                 for (MaterialSetting materialSetting : materials) {
-                    materialSetting.pre();
-                    renderInstanceWithMaterial(materialSetting.getMaterial(), context);
-                    materialSetting.post();
+                    for (int pass = 0, passes = materialSetting.passes(); pass < passes; pass++) {
+                        materialSetting.pre(pass);
+                        renderInstanceWithMaterial(materialSetting.getMaterial(), context);
+                        materialSetting.post();
+                    }
                 }
                 drew = true;
             }

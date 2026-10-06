@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
+import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialRequirements;
 import com.google.common.collect.Queues;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.math.Transform;
@@ -330,6 +331,8 @@ public class ParticleEmitter extends Emitter {
     public void buildConfigurator(ConfiguratorGroup father) {
         super.buildConfigurator(father);
         config.buildConfigurator(father);
+        MaterialRequirements.addRow(father, config.renderer::getMaterials, config.additionalGPUDataSetting, true,
+                config.renderer::isUseGPUInstance, config.renderer::setUseGPUInstance);
     }
 
     protected TileParticle createNewParticle() {

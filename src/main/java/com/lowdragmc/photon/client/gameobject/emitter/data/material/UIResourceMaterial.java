@@ -9,6 +9,7 @@ import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import net.minecraft.client.renderer.ShaderInstance;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.Objects;
 
 /**
@@ -64,6 +65,27 @@ public final class UIResourceMaterial implements IMaterial {
     @Override
     public IGuiTexture preview() {
         return getInternalMaterial().preview();
+    }
+
+    @Override
+    public long getUsedChannelMask() {
+        return getInternalMaterial().getUsedChannelMask();
+    }
+
+    @Override
+    public boolean usesCustomData() {
+        return getInternalMaterial().usesCustomData();
+    }
+
+    @Override
+    public int[] requiredCustomChannels() {
+        return getInternalMaterial().requiredCustomChannels();
+    }
+
+    @Nullable
+    @Override
+    public MaterialRenderState getPreferredRenderState() {
+        return getInternalMaterial().getPreferredRenderState();
     }
 
     @Override

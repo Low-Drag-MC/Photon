@@ -28,6 +28,7 @@ import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Camera;
+import net.minecraft.client.renderer.ShaderInstance;
 
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -218,6 +219,28 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
         }
 
         @Override
+        protected boolean beginCpuRecords(List<MaterialSetting> materials, int particleCapacity) {
+            if (renderRuntime.getRenderMode() == ParticleRendererSetting.Mode.None) return false;
+            var mask = materialChannelMask(materials);
+            var custom = materialsUseCustomData(materials);
+            additionalGPUDataSetting.setMaterialMask(mask);
+            additionalGPUDataSetting.setCustomDataMaterialUsed(custom);
+            if (mask == 0 && !custom) return false;
+            tileParticleRenderer.beginCpuRecords(particleCapacity);
+            return true;
+        }
+
+        @Override
+        protected void endCpuRecords() {
+            tileParticleRenderer.endCpuRecords();
+        }
+
+        @Override
+        protected void bindCpuRecords(ShaderInstance shader) {
+            tileParticleRenderer.bindCpuRecords(shader);
+        }
+
+        @Override
         protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
             // The user decides whether to upload tangent vertex data (renderer settings, Model mode only —
             // only a mesh has tangents). Every material on the pass then compiles against that one layout.
@@ -236,9 +259,9 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
             // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change.
             // ⚠️ A baked pose table reads the per-particle random and t out of the same record, so those
             // two have to be uploaded whether or not any material asked for them.
-            additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials)
+            additionalGPUDataSetting.setMaterialMask(materialChannelMask(materials)
                     | (vat ? VAT_CHANNELS : 0L));
-            additionalGPUDataSetting.setCustomDataMaterialUsed(shaderGraphUsesCustomData(materials));
+            additionalGPUDataSetting.setCustomDataMaterialUsed(materialsUseCustomData(materials));
             if (additionalGPUDataSetting.attribRelayoutNeeded()) {
                 clearInstance();
             }
@@ -247,9 +270,11 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
             // upload to vbo
             if (tileParticleRenderer.uploadInstances(particles, camera, partialTicks)) {
                 for (MaterialSetting materialSetting : materials) {
-                    materialSetting.pre();
-                    renderInstanceWithMaterial(materialSetting.getMaterial(), context);
-                    materialSetting.post();
+                    for (int pass = 0, passes = materialSetting.passes(); pass < passes; pass++) {
+                        materialSetting.pre(pass);
+                        renderInstanceWithMaterial(materialSetting.getMaterial(), context);
+                        materialSetting.post();
+                    }
                 }
                 drew = true;
             }
