@@ -40,11 +40,11 @@ public class LightConfig implements IConfigurable, IPersistedSerializable {
     protected Type type = Type.Point;
 
     @Configurable(name = "LightConfig.lifetime", tips = "photon.light.lifetime")
-    @ConfigNumber(range = {1, 1000000})
+    @ConfigNumber(range = {1, Integer.MAX_VALUE})
     protected int lifetime = 20;
 
     @Configurable(name = "LightConfig.looping", tips = "photon.light.looping")
-    protected boolean looping = false;
+    protected boolean looping = true;
 
     @Configurable(name = "LightConfig.color", tips = "photon.light.color")
     @NumberFunctionConfig(types = {HDRConstantColor.class, HDRRandomColor.class, HDRGradient.class, HDRRandomGradient.class}, defaultValue = -1)
