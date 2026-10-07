@@ -92,11 +92,18 @@ public class MaterialResource extends Resource<IMaterial> {
     }
 
     /**
-     * All reads go through the canonical {@code ResourceInstance.getResource} lookup (NOT the raw
-     * provider): that is the same instance every {@link UIResourceMaterial} reference resolves, so the
-     * object the inspector edits, the tile previews, and the materials applied to fx objects are always
-     * one and the same — a per-provider lookup could diverge from it after a file-watcher reload.
+     * The material a tile shows and the inspector edits: the provider's own, since that is the one
+     * {@code markResourceDirty} writes back. For a registered provider it is also what every
+     * {@link UIResourceMaterial} resolves. A folder the asset browser opened has a provider the
+     * {@code ResourceInstance} doesn't know, so the canonical lookup reads the file a second time; editing that
+     * copy saved the untouched one back over it.
      */
+    @Nullable
+    private IMaterial editable(IResourceProvider<IMaterial> provider, IResourcePath path) {
+        var own = provider.getResource(path);
+        return own != null ? own : getResourceInstance().getResource(path);
+    }
+
     @Override
     public ResourceProviderContainer<IMaterial> createResourceProviderContainer(IResourceProvider<IMaterial> provider) {
         var container = new ResourceProviderContainer<>(provider) {
@@ -113,11 +120,11 @@ public class MaterialResource extends Resource<IMaterial> {
                     layout.heightPercent(100);
                 }).style(style -> style.backgroundTexture(
                         com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture.of(() -> {
-                            var material = getResourceInstance().getResource(path);
+                            var material = editable(provider, path);
                             return material == null ? IGuiTexture.MISSING_TEXTURE : material.preview();
                         }))));
         container.setOnEdit((c, path) -> {
-            var material = getResourceInstance().getResource(path);
+            var material = editable(provider, path);
             if (material == null) return;
             c.getEditor().inspectorView.inspect(material, configurator -> c.markResourceDirty(path));
         });
@@ -126,13 +133,13 @@ public class MaterialResource extends Resource<IMaterial> {
         container.setOnMenu((c, menu) -> {
             var path = c.getSelected();
             if (path == null) return;
-            if (getResourceInstance().getResource(path) instanceof KilaMaterial kila) {
+            if (editable(provider, path) instanceof KilaMaterial kila) {
                 menu.crossLine();
                 menu.leaf("photon.material.export_shader_graph", () -> exportShaderGraph(c, path, kila));
                 return;
             }
             if (!c.getCanEdit().test(path)) return;
-            if (!(getResourceInstance().getResource(path) instanceof TextureMaterial texture)
+            if (!(editable(provider, path) instanceof TextureMaterial texture)
                     || texture.getClass() != TextureMaterial.class) return;
             // converts in place, so every effect referencing the material picks up the Kila one
             menu.crossLine();
