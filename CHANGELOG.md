@@ -1,16 +1,14 @@
 # Changelog
-## v2.2.7
-* Added animated glTF models: rigged glb import, animation picker, per-particle animation phase and optional frame blend
-* Added dynamic mesh injection, so other mods can feed geometry that changes while it is drawn
-* Added optional soft particles to the texture and sprite materials
-* Added mesh facing modes to the Model render mode, matching Unity's RenderAlignment
-* Added editor keyboard shortcuts for the gizmo, scene view toggles and timeline transport
-* Added a playback rate to FXRuntime, scaling the objects and the timeline clock together
-* Improved the timeline transport with icon buttons, step and jump-to-end controls
-* Fixed GPU instancing aborting the process on a GL 3.2 context
-* Fixed a missing material drawing models untransformed under GPU instancing
-* Fixed model particles ignoring their parent's rotation and using XYZ euler order instead of Unity's ZXY
-* Fixed shader graph texture parameters dropping the wrap and filter picked on them
-* Fixed timeline ruler labels being clipped at the edges
-* Fixed incorrect first frame data while delayed
-* Bump up ldlib2 and kilagraph
+## v2.2.8
+* Added dynamic lights: clustered point and spot lights with voxel soft shadows, a Light object, particle light emission and lit particles
+* Added volumetric lights and fog volumes
+* Added dynamic lights to shader graphs (Dynamic Light node) and custom shaders
+* Added KilaMaterial, a built-in all-in-one VFX material, with 27 presets grouped by category
+* Added exporting a KilaMaterial as a shader graph, and an optional render state on shader graph materials
+* Added a custom space to force, velocity, rotation and ara trail gravity
+* Added copy, paste and duplicate for FX objects
+* Fixed ara trail physics stutter
+* Fixed speed and loop being ignored by per-particle animation phase
+* Fixed removed FX objects' children staying in the project and coming back after reopening
+* Fixed hierarchy shortcuts doing nothing right after a context menu action
+* Fixed integer literals in float math breaking particle and bloom shaders on GLSL ES translators (mobile launchers)
