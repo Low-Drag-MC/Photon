@@ -12,7 +12,6 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.kila.KilaMaterial;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.kila.KilaPresets;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
@@ -33,9 +32,6 @@ public class MaterialResource extends Resource<IMaterial> {
         addBuiltinTextureMaterial(provider, "smoke");
         addBuiltinTextureMaterial(provider, "thaumcraft");
         addBuiltinTextureMaterial(provider, "ring");
-        for (var preset : KilaPresets.ALL) {
-            provider.addResource("kila_" + preset.id(), preset.create());
-        }
     }
 
     private void addVanillaTextureMaterial(BuiltinResourceProvider<IMaterial> builtin, String name) {
