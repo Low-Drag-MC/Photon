@@ -2,7 +2,9 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
+import com.lowdragmc.lowdraglib2.client.shader.LDProgramDefineManager;
 import com.lowdragmc.lowdraglib2.client.shader.LDShaderHolder;
+import com.lowdragmc.lowdraglib2.client.shader.LDShaderInstance;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
@@ -44,6 +46,7 @@ import java.lang.ref.Cleaner;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
@@ -158,7 +161,13 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     }
 
     private LDShaderHolder loadShaderHolder(ResourceLocation shaderLocation) throws Throwable {
-        var shaderHolder = LDShaderHolder.create(shaderLocation, DefaultVertexFormat.BLOCK);
+        LDShaderHolder shaderHolder;
+        releaseLeakedDefines(shaderLocation, Set.of());
+        try {
+            shaderHolder = LDShaderHolder.create(shaderLocation, DefaultVertexFormat.BLOCK);
+        } finally {
+            releaseLeakedDefines(shaderLocation, Set.of());
+        }
         if (shaderHolder == null) throw new IllegalStateException("Failed to find shader " + shaderLocation);
         try {
             var shader = shaderHolder.baseInstance;
@@ -244,9 +253,29 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             return PhotonShaders.getHDRParticleShader();
         }
         var defines = context.getShaderDefines();
-        var shader = defines.isEmpty() ? shaderHolder.getShaderInstance() : shaderHolder.getShaderInstance(defines);
+        LDShaderInstance shader;
+        if (defines.isEmpty()) {
+            shader = shaderHolder.getShaderInstance();
+        } else {
+            releaseLeakedDefines(shaderLocation, defines);
+            shader = shaderHolder.getShaderInstance(defines);
+            releaseLeakedDefines(shaderLocation, defines);
+        }
         if (litByDynamicLights) LitParticles.bind(shader, context, 1f);
         return shader;
+    }
+
+    /**
+     * ⚠️ {@code LDShaderInstance.create} only clears the global program defines when the compile succeeds, and
+     * {@code LDShaderHolder} swallows the failure (a variant falls back to the base program). Left set, the
+     * defines are compiled into whatever shader is built next, e.g. a CPU-path program built as an instanced one.
+     * Checked on both sides of a build: a leak from elsewhere must not get into ours either.
+     */
+    private static void releaseLeakedDefines(ResourceLocation shaderLocation, Set<String> defines) {
+        if (!LDProgramDefineManager.hasProgramDefines()) return;
+        Photon.LOGGER.warn("A failed shader compile left the defines {} set, cleared them (around {}{})",
+                LDProgramDefineManager.getProgramDefines(), shaderLocation, defines.isEmpty() ? "" : " " + defines);
+        LDProgramDefineManager.clearProgramDefines();
     }
 
     @Override
