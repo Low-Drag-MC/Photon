@@ -20,6 +20,8 @@ import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
@@ -80,30 +82,34 @@ public final class KilaDialogs {
         }).style(style -> style.backgroundTexture(texture));
     }
 
-    /** Every preset drawn with its own material; a click applies it. */
+    /** Every preset by category, drawn with its own material; a click applies it. */
     public static Dialog presets(UIElement origin, float x, float y, Consumer<KilaMaterial> apply) {
-        var dialog = new Dialog().windowMode(x, y, 220, 240);
+        var dialog = new Dialog().windowMode(x, y, 220, 300);
         dialog.setTitle("kila.preset.gallery");
         var list = list();
         list.addClass("__kila-presets__");
-        var grid = new UIElement().layout(layout -> {
-            layout.widthPercent(100);
-            layout.flexDirection(FlexDirection.ROW);
-            layout.wrap(FlexWrap.WRAP);
-        });
-        for (var preset : KilaPresets.ALL) {
-            var material = preset.create();
-            var name = Component.translatable(preset.langKey());
-            var cell = cell(fill(KilaSlotPreview.checker()).addChild(fill(material.preview())), name, PRESET, () -> false);
-            cell.style(style -> style.tooltips(name, Component.translatable("kila.preset.click_to_apply")));
-            cell.addEventListener(UIEvents.MOUSE_DOWN, event -> {
-                if (event.button != 0) return;
-                apply.accept(preset.create());
-                dialog.close();
-            });
-            grid.addChild(cell);
+        for (var category : KilaPresets.Category.values()) {
+            var grid = section(list, category.langKey());
+            for (var preset : KilaPresets.ALL) {
+                if (preset.category() != category) continue;
+                var material = preset.create();
+                var name = Component.translatable(preset.langKey());
+                var tips = new ArrayList<Component>(List.of(name));
+                if (preset.target() != KilaPresets.Target.PARTICLE) {
+                    tips.add(Component.translatable(preset.target().langKey()));
+                }
+                tips.add(Component.translatable(preset.langKey() + ".desc"));
+                tips.add(Component.translatable("kila.preset.click_to_apply"));
+                var cell = cell(fill(KilaSlotPreview.checker()).addChild(fill(material.preview())), name, PRESET, () -> false);
+                cell.style(style -> style.tooltips(tips.toArray(Component[]::new)));
+                cell.addEventListener(UIEvents.MOUSE_DOWN, event -> {
+                    if (event.button != 0) return;
+                    apply.accept(preset.create());
+                    dialog.close();
+                });
+                grid.addChild(cell);
+            }
         }
-        list.addScrollViewChild(grid);
         dialog.addContent(list);
         dialog.addButton(new Button().setText("ldlib.gui.tips.cancel").setOnClick(e -> dialog.close())
                 .addClass("__cancel-button__"));

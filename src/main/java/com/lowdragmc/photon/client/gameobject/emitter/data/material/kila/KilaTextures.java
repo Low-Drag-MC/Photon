@@ -32,10 +32,13 @@ public final class KilaTextures {
     public static final ResourceLocation SMOKE_FLIP = tex("smoke_flip");
     /** ...and its motion vectors: rg = 0.5 + 0.5 * the step to the next frame, in uv of one frame */
     public static final ResourceLocation SMOKE_FLIP_MV = tex("smoke_flip_mv");
+    /** an 8 x 4 flipbook: a puff per row billowing out and thinning, and its motion vectors */
+    public static final ResourceLocation SMOKE_BURST = tex("smoke_burst");
+    public static final ResourceLocation SMOKE_BURST_MV = tex("smoke_burst_mv");
 
     public static final List<ResourceLocation> ALL = List.of(WHITE, SOFT_CIRCLE, RING, GLOW, NOISE_PERLIN, NOISE_CLOUD,
             NOISE_CELLS, NOISE_FLOW, FLOW_SWIRL, GRADIENT_LINEAR, GRADIENT_RADIAL, TRAIL, SLASH, RUNE_CIRCLE, SPARK,
-            NORMAL_NOISE, MATCAP_GLASS, SMOKE6_POS, SMOKE6_NEG, SMOKE_FLIP, SMOKE_FLIP_MV);
+            NORMAL_NOISE, MATCAP_GLASS, SMOKE6_POS, SMOKE6_NEG, SMOKE_FLIP, SMOKE_FLIP_MV, SMOKE_BURST, SMOKE_BURST_MV);
 
     private KilaTextures() {
     }

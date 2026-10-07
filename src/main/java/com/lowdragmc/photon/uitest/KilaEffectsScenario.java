@@ -181,7 +181,7 @@ public class KilaEffectsScenario implements UIScenario {
                 s.frames(10).screenshot("flow_later");
             }
             if (round.tag().equals("contact_pulse")) {
-                s.frames(10).screenshot("contact_pulse_later");
+                s.ticks(5).frames(2).screenshot("contact_pulse_later");
             }
             s.step("stop " + round.tag(), KilaEffectsScenario::stop);
         }

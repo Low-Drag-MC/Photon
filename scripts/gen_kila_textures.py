@@ -110,6 +110,20 @@ def rotate(image, angle):
             + (at(y0 + 1, x0) * (1 - fx) + at(y0 + 1, x0 + 1) * fx) * fy)
 
 
+def sample_wrap(image, u, v):
+    """image at (u, v) in [0, 1), wrapping, bilinear; v runs down the rows."""
+    h, w = image.shape
+    sx, sy = u * w - 0.5, v * h - 0.5
+    x0, y0 = np.floor(sx).astype(int), np.floor(sy).astype(int)
+    fx, fy = sx - x0, sy - y0
+
+    def at(y, x):
+        return image[y % h, x % w]
+
+    return ((at(y0, x0) * (1 - fx) + at(y0, x0 + 1) * fx) * (1 - fy)
+            + (at(y0 + 1, x0) * (1 - fx) + at(y0 + 1, x0 + 1) * fx) * fy)
+
+
 def seg_dist(x, y, a, b):
     d = b - a
     t = np.clip(((x - a[0]) * d[0] + (y - a[1]) * d[1]) / (d @ d), 0, 1)
@@ -265,6 +279,35 @@ def main():
     mv = np.sin(turn) * du + np.cos(turn) * dv - dv
     save("smoke_flip.png", 1.0, 1.0, 1.0, sheet)
     save("smoke_flip_mv.png", np.tile(0.5 + 0.5 * mu, (4, 4)), np.tile(0.5 + 0.5 * mv, (4, 4)), 0.5, 1.0)
+
+    # an 8 x 4 flipbook: a row per puff, each billowing out and thinning over eight frames; its motion vectors are
+    # each frame's growth to the next, about the cell's centre
+    cell, frames, puffs = 96, 8, 4
+    x, y, r = polar(cell)
+    du, dv = x / 2, y / 2
+
+    def size(k):
+        return 0.35 + 0.55 * (1 - (1 - k / (frames - 1)) ** 2)
+
+    burst = np.zeros((cell * puffs, cell * frames, 2))
+    motion = np.full((cell * puffs, cell * frames, 2), 0.5)
+    for row in range(puffs):
+        noise = norm(fbm(256, 4, 5, rng("burst%d" % row)))
+        for k in range(frames):
+            t, s = k / (frames - 1), size(k)
+            n = sample_wrap(noise, (x / s * 0.5 + 0.5) % 1, (y / s * 0.5 + 0.5) % 1)
+            # a lumpy rim, and holes opening as it thins
+            body = np.clip(1 - r / s * (0.8 + 0.4 * n), 0, 1) ** 0.6
+            erode = smoothstep(0.5 * t - 0.1, 0.35 + 0.45 * t, n)
+            alpha = np.clip(body * (0.35 + 0.65 * erode) * 1.6, 0, 1) * (1 - 0.55 * t)
+            shade = np.clip(0.45 + 0.5 * n - 0.15 * y, 0, 1)
+            rows, cols = slice(row * cell, (row + 1) * cell), slice(k * cell, (k + 1) * cell)
+            burst[rows, cols] = np.stack([shade, alpha], -1)
+            if k < frames - 1:
+                grow = size(k + 1) / s - 1
+                motion[rows, cols] = np.stack([0.5 + 0.5 * grow * du, 0.5 + 0.5 * grow * dv], -1)
+    save("smoke_burst.png", burst[..., 0], burst[..., 0], burst[..., 0], burst[..., 1])
+    save("smoke_burst_mv.png", motion[..., 0], motion[..., 1], 0.5, 1.0)
 
     # the inspector's transparency backdrop
     checker = np.array([[0.34, 0.22], [0.22, 0.34]])

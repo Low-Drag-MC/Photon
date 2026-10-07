@@ -170,13 +170,18 @@ uniform vec4 KilaProjection;
 // y = the decal's width as a share of the quad's
 uniform vec4 KilaProjectionShape;
 
+// the surface the decal paints, camera-relative: what world-space uvs follow
+vec3 kilaSurfaceRel;
+
 // The decal uv of the scene surface behind the fragment, in the box the quad sets; keep = how much is inside it.
 vec2 kila_project(out float keep) {
     keep = 1.0;
+    kilaSurfaceRel = kilaRelPos;
     if (KilaProjection.w < 0.5) return texCoord0;
     vec2 depthUv = gl_FragCoord.xy / vec2(textureSize(SamplerSceneDepth, 0));
     float sceneEye = photon_eye_from_ndcz(texture(SamplerSceneDepth, depthUv).r * 2.0 - 1.0);
     vec3 scene = kilaRelPos * (sceneEye / -kilaViewPos.z);
+    kilaSurfaceRel = scene;
     // every derivative before the early return
     vec3 face = cross(dFdx(scene), dFdy(scene));
     vec3 t;
@@ -768,8 +773,8 @@ vec3 kila_shade() {
 }
 
 #ifdef KILA_LIT
-// The dynamic lights, each weighted by the way it falls on the surface. ⚠️ MIRRORS photon_particle_light in
-// photon:lit_particle.glsl apart from that weight.
+// The dynamic lights, each weighted by the way it falls on the surface. ⚠️ MIRRORS photon_surface_light in
+// photon:lit_particle.glsl apart from that weight, which six-way lighting needs.
 vec3 kila_dynamic_light(vec3 viewPos) {
     if (LitParticleParams.x < 0.5) return vec3(0.0);
     ivec2 cluster = photon_cluster(ivec2(gl_FragCoord.xy), -viewPos.z);
@@ -966,7 +971,11 @@ void main() {
 #endif
     kilaScreenUv = gl_FragCoord.xy / max(ScreenSize, vec2(1.0));
 #ifdef KILA_WORLD_UV
+#ifdef KILA_PROJECTION
+    kilaWorldPos = kilaSurfaceRel + KilaCameraPos;
+#else
     kilaWorldPos = kilaRelPos + KilaCameraPos;
+#endif
 #else
     kilaWorldPos = vec3(0.0);
 #endif

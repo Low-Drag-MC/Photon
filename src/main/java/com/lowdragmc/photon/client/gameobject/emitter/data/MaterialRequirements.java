@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.ui.data.TextWrap;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
+import com.lowdragmc.lowdraglib2.gui.ui.event.UIEventListener;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -44,14 +45,21 @@ public final class MaterialRequirements {
         father.addConfiguratorAt(row, 0);
         row.setDisplay(false);
         var shown = new Component[1];
-        father.addEventListener(UIEvents.TICK, e -> {
+        var listener = new UIEventListener[1];
+        listener[0] = e -> {
+            // the row was rebuilt away (a trail type switch): stop scanning for it
+            if (row.getParent() == null) {
+                father.removeEventListener(UIEvents.TICK, listener[0]);
+                return;
+            }
             var problem = describe(materials.get(), data, cpuCarriesData, instanced);
             row.setDisplay(problem != null);
             if (problem != null && !problem.equals(shown[0])) {
                 shown[0] = problem;
                 reason.setText(problem);
             }
-        });
+        };
+        father.addEventListener(UIEvents.TICK, listener[0]);
     }
 
     /** Channels each custom-data stream needs, over all the materials (0 = not read). */

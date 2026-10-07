@@ -48,7 +48,14 @@ class KilaLangTest {
         }
         // the ones built at runtime
         for (var source : KilaDriver.Source.values()) keys.add(source.langKey());
-        for (var preset : KilaPresets.ALL) keys.add(preset.langKey());
+        for (var preset : KilaPresets.ALL) {
+            keys.add(preset.langKey());
+            keys.add(preset.langKey() + ".desc");
+        }
+        for (var category : KilaPresets.Category.values()) keys.add(category.langKey());
+        for (var target : KilaPresets.Target.values()) {
+            if (target != KilaPresets.Target.PARTICLE) keys.add(target.langKey());
+        }
         for (var preset : BlendMode.Preset.values()) keys.add(preset.langKey());
         for (var category : KilaModule.Category.values()) keys.add("kila.module.category." + category.name().toLowerCase());
         for (var module : List.of(new KilaMainTexture(), new KilaLayer(), new KilaLayer(2), new KilaMask(1), new KilaMask(2), new KilaDissolve(),

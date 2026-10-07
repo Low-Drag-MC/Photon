@@ -5,6 +5,7 @@ import com.lowdragmc.kilagraph.rendertype.nodes.channel.SplitNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.fragment.FragmentAlphaBlock;
 import com.lowdragmc.kilagraph.rendertype.runtime.KGShaderResourceProvider;
 import com.lowdragmc.kilagraph.test.gametest.KGGameTestHelpers;
+import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.lowdraglib2.registry.RegistrationEnvironment;
@@ -46,6 +47,7 @@ import com.lowdragmc.photon.client.shadergraph.nodes.CustomDataNode;
 import org.lwjgl.opengl.GL20;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.network.chat.contents.TranslatableContents;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -527,6 +529,28 @@ public class KilaMaterialScenario implements UIScenario {
                 true, particle.renderer::isUseGPUInstance);
         ctx.check("a particle emitter needs no instancing for lifetime — its CPU path carries it", lifetime == null,
                 "nothing", lifetime == null ? "nothing" : lifetime.getString());
+
+        // a particle emitter's own trails carry point data only instanced, like a trail emitter's
+        var trails = particle.trails.config;
+        trails.renderer.getMaterials().clear();
+        trails.renderer.getMaterials().add(new MaterialSetting(KilaPresets.ENERGY_TRAIL.create()));
+        var group = new ConfiguratorGroup();
+        particle.trails.buildConfigurator(group);
+        group.screenTick();
+        ctx.check("the trails module shows what its material needs", requirementsRowShown(group), "shown", "none shown");
+        var needs = MaterialRequirements.describe(trails.renderer.getMaterials(), trails.additionalGPUDataSetting, false,
+                trails.renderer::isUseGPUInstance);
+        ctx.check("the energy trail on particle trails asks for instancing", needs != null, "a message", "nothing");
+        MaterialRequirements.fix(trails.renderer.getMaterials(), trails.additionalGPUDataSetting, false,
+                trails.renderer::isUseGPUInstance, trails.renderer::setUseGPUInstance);
+        ctx.check("and fixing it turns instancing on", trails.renderer.isUseGPUInstance(), true, false);
+    }
+
+    /** Searched through the elements: the trail type's rows sit in a selector, not a group. */
+    private static boolean requirementsRowShown(ConfiguratorGroup group) {
+        return group.selfAndAllChildren().anyMatch(element -> element instanceof Configurator row && row.isDisplayed()
+                && row.label.getText().getContents() instanceof TranslatableContents key
+                && key.getKey().equals("photon.material_requirements.title"));
     }
 
     /** The buffer sampler names, without reaching into the renderer package. */

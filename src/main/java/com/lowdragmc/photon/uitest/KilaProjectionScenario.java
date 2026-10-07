@@ -12,6 +12,7 @@ import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.client.gameobject.emitter.data.EmissionSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.kila.KilaMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.kila.KilaTexture;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.kila.KilaTextures;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction3;
@@ -81,6 +82,17 @@ public class KilaProjectionScenario implements UIScenario {
         round(s, "floating", 0);
         round(s, "projected", 1.5f);
         round(s, "shallow", 0.3f);
+        // a decal in world space stays put when its quad slides away from the camera; one in the quad's uv moves
+        for (var world : new boolean[]{true, false}) {
+            var tag = world ? "world" : "mesh";
+            s.step("start " + tag, ctx -> start(ctx, cells(world), 0))
+                    .frames(10)
+                    .screenshot(tag)
+                    .step("slide " + tag, ctx -> start(ctx, cells(world), 0.3))
+                    .frames(10)
+                    .screenshot(tag + "_slid")
+                    .step("stop " + tag, KilaProjectionScenario::stop);
+        }
         s.step("the pictures", KilaProjectionScenario::comparePictures)
                 .teardown("stop any effect", KilaProjectionScenario::stop)
                 .teardown("look ahead again", ctx -> ctx.requirePlayer().setXRot(0))
@@ -114,7 +126,21 @@ public class KilaProjectionScenario implements UIScenario {
         return material;
     }
 
+    /** Still cells across a wide decal, read in world space or in the decal's own uv. */
+    private static KilaMaterial cells(boolean world) {
+        var material = ring(1.5f);
+        material.main.texture.texture = KilaTextures.NOISE_CELLS;
+        material.main.texture.uvSource = world ? KilaTexture.UvSource.WORLD_XZ : KilaTexture.UvSource.MESH;
+        material.main.texture.tiling(world ? 0.25f : 1, world ? 0.25f : 1);
+        material.projection.size = 1;
+        return material;
+    }
+
     private static void start(TestContext ctx, KilaMaterial material) {
+        start(ctx, material, 0);
+    }
+
+    private static void start(TestContext ctx, KilaMaterial material, double slide) {
         stop(ctx);
         var emitter = new ParticleEmitter();
         var config = emitter.config;
@@ -122,7 +148,7 @@ public class KilaProjectionScenario implements UIScenario {
         config.setDuration(200);
         config.setStartLifetime(NumberFunction.constant(200));
         config.setStartSpeed(NumberFunction.constant(0));
-        // the decal is half of it: three blocks across
+        // six blocks across; a decal takes its projection size of that
         config.setStartSize(new NumberFunction3(6, 6, 6));
         config.setMaxParticles(1);
         config.shape.setScale(new NumberFunction3(0, 0, 0));
@@ -139,7 +165,8 @@ public class KilaProjectionScenario implements UIScenario {
         var player = ctx.requirePlayer();
         var pos = player.blockPosition().relative(player.getDirection(), 4);
         var executor = new BlockEffectExecutor(fx, player.level(), pos);
-        executor.setOffset(0.5, HEIGHT, 0.5);
+        var ahead = player.getDirection();
+        executor.setOffset(0.5 + ahead.getStepX() * slide, HEIGHT, 0.5 + ahead.getStepZ() * slide);
         executor.setAllowMulti(false);
         executor.start();
         ctx.put("executor", executor);
@@ -183,6 +210,17 @@ public class KilaProjectionScenario implements UIScenario {
                 shallow.count() + " px at " + shallow.box());
         var box = blocks.changed();
         var lands = shallow.changed();
+        var decal = capture(ctx, "world").diff(terrain, 40, region).changed();
+        ctx.require("the cells decal is on screen", decal != null);
+        // the middle of it, which the slid quad's decal still covers
+        var middle = new ScreenshotCompare.Region(decal.left() + (decal.right() - decal.left()) * 3 / 10,
+                decal.top() + (decal.bottom() - decal.top()) * 3 / 10, decal.right() - (decal.right() - decal.left()) * 3 / 10,
+                decal.bottom() - (decal.bottom() - decal.top()) * 3 / 10);
+        var stayed = capture(ctx, "world_slid").diff(capture(ctx, "world"), 40, middle);
+        var slid = capture(ctx, "mesh_slid").diff(capture(ctx, "mesh"), 40, middle);
+        ctx.check("in world space the projected cells stay on the ground as the quad slides", stayed.count() < slid.count() / 10 + 20,
+                "< " + (slid.count() / 10 + 20) + " px", stayed.count() + " px at " + stayed.box());
+        ctx.check("in the decal's uv they slide with it", slid.count() > 500, "> 500 px", slid.count() + " px");
         ctx.check("and only on the blocks standing up into it", lands != null && lands.left() >= box.left() - 4
                         && lands.right() <= box.right() + 4 && lands.top() >= box.top() - 4 && lands.bottom() <= box.bottom() + 4,
                 "inside " + box, String.valueOf(lands));
