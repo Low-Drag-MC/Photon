@@ -230,9 +230,9 @@ mat3 quatToMat(vec4 q) {
     float wx = q.w * x2, wy = q.w * y2, wz = q.w * z2;
 
     return mat3(
-    1 - (yy + zz), xy + wz, xz - wy,
-    xy - wz, 1 - (xx + zz), yz + wx,
-    xz + wy, yz - wx, 1 - (xx + yy)
+    1.0 - (yy + zz), xy + wz, xz - wy,
+    xy - wz, 1.0 - (xx + zz), yz + wx,
+    xz + wy, yz - wx, 1.0 - (xx + yy)
     );
 }
 
