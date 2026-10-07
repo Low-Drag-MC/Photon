@@ -14,6 +14,9 @@ import com.lowdragmc.lowdraglib2.gui.holder.ModularUIScreen;
 import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
 import com.lowdragmc.lowdraglib2.gui.ui.UI;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Selector;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphEditorView;
 import com.lowdragmc.lowdraglib2.registry.RegistrationEnvironment;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.uitest.ScenarioBuilder;
@@ -27,12 +30,16 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlendMode;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.ShaderGraphMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.kila.KilaMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.FXProject;
+import com.lowdragmc.photon.client.shadergraph.runtime.ShaderGraphRuntime;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
+import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 import org.jetbrains.annotations.Nullable;
@@ -237,11 +244,142 @@ public class KilaEditorScenario implements UIScenario {
                     ctx.check("and it is what the file holds", saved instanceof KilaMaterial, "KilaMaterial",
                             saved == null ? "nothing" : saved.getClass().getSimpleName());
                 })
-                .teardown("close the editor", ctx -> ctx.mc().setScreen(null))
-                .teardown("delete the fixture", ctx -> {
-                    //noinspection ResultOfMethodCallIgnored
-                    fixtureFile().delete();
+                .step("give it a blend of its own, and more to export", ctx -> {
+                    var kila = (KilaMaterial) MaterialResource.INSTANCE.getResourceInstance().getResource(fixturePath());
+                    kila.slotRenderState = false;
+                    kila.blend = BlendMode.Preset.ADDITIVE;
+                    kila.doubleSided = true;
+                    kila.mask1.setEnable(true);
+                    kila.dissolve.setEnable(true);
+                    kila.distortion.setEnable(true);
+                })
+                .step("right-click it again", ctx -> {
+                    var cell = selectedCell(ctx);
+                    ctx.require("the selected tile is shown", cell != null);
+                    var at = ctx.put("clickAt", centreOf(cell));
+                    ctx.input().moveTo(at[0], at[1]);
+                    ctx.input().mouseDown(at[0], at[1], Keys.MOUSE_RIGHT);
+                })
+                .step("let go", ctx -> {
+                    var at = ctx.<float[]>get("clickAt");
+                    ctx.input().mouseUp(at[0], at[1], Keys.MOUSE_RIGHT);
+                })
+                .waitUntil("the menu offers the export", ctx -> menuEntry(ctx, "Export as Shader Graph") != null)
+                .step("but no longer the conversion", ctx -> ctx.check("a Kila material is not offered the conversion",
+                        menuEntry(ctx, "Convert to Kila Material") == null, "absent", "offered"));
+        clickOn(s, "Export as Shader Graph", ctx -> menuEntry(ctx, "Export as Shader Graph"));
+        s.waitUntil("it asks where to", ctx -> exportControl(ctx, "__export-name-field__") != null)
+                .screenshot("export_dialog")
+                .step("by default beside the material, under its name; nothing written yet", ctx -> {
+                    var graphs = (Selector<?>) exportControl(ctx, "__export-graph-target__");
+                    var materials = (Selector<?>) exportControl(ctx, "__export-material-target__");
+                    var name = (TextField) exportControl(ctx, "__export-name-field__");
+                    ctx.require("both destinations are offered", graphs != null && materials != null && name != null);
+                    var fixtureProvider = Objects.requireNonNull(fixtureEntry()).provider();
+                    ctx.check("the material goes where the Kila material is", materials.getValue() == fixtureProvider,
+                            fixtureProvider.getName(), String.valueOf(materials.getValue()));
+                    ctx.check("the graph goes to a folder of the same kind", graphs.getValue() instanceof
+                                    com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider<?> provider
+                                    && provider.getType() == fixtureProvider.getType(), fixtureProvider.getType(),
+                            String.valueOf(graphs.getValue()));
+                    ctx.check("every writable graph folder is offered", graphs.getCandidates().size()
+                                    == ShaderGraphResource.INSTANCE.getResourceInstance().listWritableProviders().size(),
+                            ShaderGraphResource.INSTANCE.getResourceInstance().listWritableProviders().size(),
+                            graphs.getCandidates().size());
+                    ctx.check("the name is the material's", "uitest_kila_convert".equals(name.getText()),
+                            "uitest_kila_convert", name.getText());
+                    ctx.check("nothing is written before the answer", !exportedGraphFile().exists()
+                            && !exportedMaterialFile().exists(), "nothing", "written already");
                 });
+        clickOn(s, "the export dialog's confirm button", KilaUiTestKit::confirmButton);
+        s.waitUntil("it reports what it made", ctx -> labelStarting(ctx, "Exported the shader graph uitest_kila_convert") != null)
+                .screenshot("exported")
+                .step("a graph and a material drawing with it, the Kila material untouched", ctx -> {
+                    ctx.check("the graph file is written", exportedGraphFile().isFile(), exportedGraphFile().getName(), "missing");
+                    ctx.check("the material file is written", exportedMaterialFile().isFile(), exportedMaterialFile().getName(),
+                            "missing");
+                    var material = MaterialResource.INSTANCE.getResourceInstance().listAllResourceEntries().stream()
+                            .filter(entry -> entry.path() instanceof FilePath file && file.file.equals(exportedMaterialFile()))
+                            .map(ResourceInstance.ResourceEntry::getResource)
+                            .findFirst().orElse(null);
+                    ctx.require("the library lists the new material", material instanceof ShaderGraphMaterial);
+                    var graphMaterial = (ShaderGraphMaterial) material;
+                    ctx.check("it draws with the exported graph", graphMaterial.getGraphPath() instanceof FilePath file
+                            && file.file.equals(exportedGraphFile()), exportedGraphFile().getName(), graphMaterial.getGraphPath());
+                    var state = graphMaterial.getRenderState();
+                    ctx.check("and asks for the Kila material's blend and culling", state != null
+                                    && state.blend() == BlendMode.Preset.ADDITIVE && state.doubleSided(),
+                            "ADDITIVE, double sided", state);
+                    ctx.check("the graph compiles", !graphMaterial.isCompiledError() && graphMaterial.getShader(MaterialContext.NORMAL) != null,
+                            "compiled", graphMaterial.getCompiledErrorMessage());
+                    ctx.check("the Kila material is still there", MaterialResource.INSTANCE.getResourceInstance()
+                            .getResource(fixturePath()) instanceof KilaMaterial, "KilaMaterial", "replaced");
+                });
+        clickOn(s, "the report's confirm button", KilaUiTestKit::confirmButton);
+        s.frames(3)
+                .step("the report closes", ctx -> ctx.check("no dialog is left open", confirmButton(ctx) == null,
+                        "closed", "open"))
+                .step("show the shader graph panel", ctx -> {
+                    editor(ctx).resourceView.selectResourceInstance(ShaderGraphResource.INSTANCE);
+                    var entry = exportedGraphEntry();
+                    ctx.require("the library lists the graph", entry != null);
+                    var container = ctx.query().type(ResourceContainer.class).list().stream()
+                            .map(ref -> (ResourceContainer<?>) ref.as(ResourceContainer.class))
+                            .filter(c -> c.resourceInstance == ShaderGraphResource.INSTANCE.getResourceInstance())
+                            .findFirst().orElseThrow(() -> new IllegalStateException("the graph panel is not on screen"));
+                    selectProvider(container, entry.provider());
+                })
+                .frames(3)
+                .step("open the graph", ctx -> {
+                    var entry = Objects.requireNonNull(exportedGraphEntry());
+                    var container = ctx.query().type(ResourceProviderContainer.class).list().stream()
+                            .map(ref -> (ResourceProviderContainer<?>) ref.as(ResourceProviderContainer.class))
+                            .filter(c -> c.resourceProvider == entry.provider() && shown(c))
+                            .findFirst().orElse(null);
+                    ctx.require("its folder is shown", container != null);
+                    container.editResource(entry.path());
+                })
+                .frames(10)
+                .screenshot("exported_graph")
+                .step("it opens in the graph editor", ctx -> ctx.check("a graph editor shows it",
+                        ctx.query().type(GraphEditorView.class).list().stream().anyMatch(ref -> shown(ref.element())),
+                        "shown", "none"))
+                .teardown("close the editor", ctx -> ctx.mc().setScreen(null))
+                .teardown("delete the fixture and what was exported from it", ctx -> {
+                    ShaderGraphRuntime.invalidate(new FilePath(exportedGraphFile()));
+                    for (var file : new File[]{fixtureFile(), exportedGraphFile(), exportedMaterialFile()}) {
+                        //noinspection ResultOfMethodCallIgnored
+                        file.delete();
+                    }
+                });
+    }
+
+    private static File exportedGraphFile() {
+        return new File(LDLib2.getAssetsDir(), "ldlib2/resources/global/uitest_kila_convert"
+                + ShaderGraphResource.INSTANCE.getFileExtension());
+    }
+
+    @Nullable
+    private static UIElement exportControl(TestContext ctx, String cls) {
+        return ctx.requireUI().ui.rootElement.selfAndAllChildren().filter(e -> e.hasClass(cls) && shown(e))
+                .findFirst().orElse(null);
+    }
+
+    @Nullable
+    private static ResourceInstance.ResourceEntry<CompoundTag> exportedGraphEntry() {
+        return ShaderGraphResource.INSTANCE.getResourceInstance().listAllResourceEntries().stream()
+                .filter(entry -> entry.path() instanceof FilePath file && file.file.equals(exportedGraphFile()))
+                .findFirst().orElse(null);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void selectProvider(ResourceContainer<?> container, Object provider) {
+        ((ResourceContainer) container).selectProvider((com.lowdragmc.lowdraglib2.editor.resource.IResourceProvider) provider);
+    }
+
+    private static File exportedMaterialFile() {
+        return new File(LDLib2.getAssetsDir(), "ldlib2/resources/global/uitest_kila_convert_graph"
+                + MaterialResource.INSTANCE.getFileExtension());
     }
 
     private static File fixtureFile() {

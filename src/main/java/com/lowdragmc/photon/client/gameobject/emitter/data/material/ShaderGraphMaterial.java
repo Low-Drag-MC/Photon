@@ -6,8 +6,10 @@ import com.lowdragmc.kilagraph.rendertype.compiler.GlslType;
 import com.lowdragmc.kilagraph.rendertype.runtime.KGBuiltinUniforms;
 import com.lowdragmc.kilagraph.rendertype.runtime.KGMaterialValues;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinPath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
@@ -15,6 +17,7 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Tooltips;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
+import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.IFieldValueConfigurable;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle;
@@ -49,8 +52,10 @@ import org.joml.Vector4f;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * A material driven by a {@link com.lowdragmc.photon.client.shadergraph.ShaderGraph} resource. The
@@ -75,6 +80,42 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
 
     /** Exposed-variable overrides by display name; only variables the user actually touched. */
     private final Map<String, Object> overrides = new LinkedHashMap<>();
+
+    /** Blend, cull and depth the material asks its slot for. */
+    public record RenderState(BlendMode.Preset blend, boolean doubleSided, boolean backFacesFirst, boolean depthTest,
+                              boolean depthWrite) {
+        public static final RenderState DEFAULT = new RenderState(BlendMode.Preset.ALPHA, false, false, true, false);
+
+        public MaterialRenderState create() {
+            boolean twoPass = doubleSided && backFacesFirst;
+            return new MaterialRenderState(blend.create(), !doubleSided || twoPass, depthTest, depthWrite, twoPass);
+        }
+
+        private CompoundTag save() {
+            var tag = new CompoundTag();
+            tag.putString("blend", blend.name());
+            tag.putBoolean("double_sided", doubleSided);
+            tag.putBoolean("back_faces_first", backFacesFirst);
+            tag.putBoolean("depth_test", depthTest);
+            tag.putBoolean("depth_write", depthWrite);
+            return tag;
+        }
+
+        private static RenderState load(CompoundTag tag) {
+            var blend = BlendMode.Preset.ALPHA;
+            for (var preset : BlendMode.Preset.values()) {
+                if (preset.name().equals(tag.getString("blend"))) blend = preset;
+            }
+            return new RenderState(blend, tag.getBoolean("double_sided"), tag.getBoolean("back_faces_first"),
+                    !tag.contains("depth_test") || tag.getBoolean("depth_test"), tag.getBoolean("depth_write"));
+        }
+    }
+
+    /** null leaves blend, cull and depth to the slot. */
+    @Nullable
+    private RenderState renderState;
+    @Nullable
+    private MaterialRenderState preferredState;
 
     // runtime
     @Nullable
@@ -103,6 +144,25 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         this.graphPath = graphPath == null ? new BuiltinPath("") : graphPath;
         this.entry = null;
         this.values = null;
+    }
+
+    @Nullable
+    public RenderState getRenderState() {
+        return renderState;
+    }
+
+    public void setRenderState(@Nullable RenderState renderState) {
+        this.renderState = renderState;
+        this.preferredState = null;
+        invalidateOverridesCache();
+    }
+
+    @Override
+    @Nullable
+    public MaterialRenderState getPreferredRenderState() {
+        if (renderState == null) return null;
+        if (preferredState == null) preferredState = renderState.create();
+        return preferredState;
     }
 
     public boolean isCompiledError() {
@@ -288,6 +348,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             if (encoded != null) overridesTag.put(name, encoded);
         });
         tag.put("overrides", overridesTag);
+        if (renderState != null) tag.put("render_state", renderState.save());
         return tag;
     }
 
@@ -297,7 +358,10 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         invalidateOverridesCache();
         entry = null; // force value-store rebuild (defaults + overrides) on next use
         values = null;
+        renderState = null;
+        preferredState = null;
         if (!(tag instanceof CompoundTag compound)) return;
+        if (compound.contains("render_state")) renderState = RenderState.load(compound.getCompound("render_state"));
         var overridesTag = compound.getCompound("overrides");
         for (var name : overridesTag.getAllKeys()) {
             var value = decodeValue(overridesTag.get(name));
@@ -471,7 +535,43 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
 
         reloadVariableConfigurators(variablesGroup);
 
-        father.addConfigurators(graphRow, reloadRow, variablesGroup);
+        father.addConfigurators(graphRow, reloadRow, renderStateGroup(), variablesGroup);
+    }
+
+    private ConfiguratorGroup renderStateGroup() {
+        var group = new ConfiguratorGroup("photon.shader_graph.render_state", true);
+        group.setTips("photon.shader_graph.render_state.tips");
+        group.addConfigurator(new BooleanConfigurator("photon.shader_graph.render_state.own", () -> renderState != null,
+                own -> setRenderState(own ? RenderState.DEFAULT : null), false, true));
+        Supplier<RenderState> state = () -> renderState == null ? RenderState.DEFAULT : renderState;
+        var blend = new SelectorConfigurator<>("photon.shader_graph.render_state.blend", () -> state.get().blend(),
+                v -> setRenderState(new RenderState(v, state.get().doubleSided(), state.get().backFacesFirst(),
+                        state.get().depthTest(), state.get().depthWrite())),
+                BlendMode.Preset.ALPHA, true, List.of(BlendMode.Preset.values()), BlendMode.Preset::langKey);
+        var doubleSided = new BooleanConfigurator("photon.shader_graph.render_state.double_sided",
+                () -> state.get().doubleSided(), v -> setRenderState(new RenderState(state.get().blend(), v,
+                state.get().backFacesFirst(), state.get().depthTest(), state.get().depthWrite())), false, true);
+        var backFirst = new BooleanConfigurator("photon.shader_graph.render_state.back_faces_first",
+                () -> state.get().backFacesFirst(), v -> setRenderState(new RenderState(state.get().blend(),
+                state.get().doubleSided(), v, state.get().depthTest(), state.get().depthWrite())), false, true);
+        var depthTest = new BooleanConfigurator("photon.shader_graph.render_state.depth_test",
+                () -> state.get().depthTest(), v -> setRenderState(new RenderState(state.get().blend(),
+                state.get().doubleSided(), state.get().backFacesFirst(), v, state.get().depthWrite())), true, true);
+        var depthWrite = new BooleanConfigurator("photon.shader_graph.render_state.depth_write",
+                () -> state.get().depthWrite(), v -> setRenderState(new RenderState(state.get().blend(),
+                state.get().doubleSided(), state.get().backFacesFirst(), state.get().depthTest(), v)), false, true);
+        group.addConfigurators(blend, doubleSided, backFirst, depthTest, depthWrite);
+        Runnable sync = () -> {
+            boolean own = renderState != null;
+            for (var row : List.of(blend, doubleSided, depthTest, depthWrite)) {
+                if (row.isDisplayed() != own) row.setDisplay(own);
+            }
+            boolean twoPass = own && renderState.doubleSided();
+            if (backFirst.isDisplayed() != twoPass) backFirst.setDisplay(twoPass);
+        };
+        sync.run();
+        group.addEventListener(UIEvents.TICK, event -> sync.run());
+        return group;
     }
 
     /**
@@ -563,7 +663,7 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         };
         mark.set(!overrides.containsKey(name)); // force the initial apply
         sync.run();
-        sub.addEventListener(com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents.TICK, event -> sync.run());
+        sub.addEventListener(UIEvents.TICK, event -> sync.run());
     }
 
     /** Deep-copy mutable values so editors never alias the graph's default instances. */
