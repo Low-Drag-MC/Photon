@@ -53,8 +53,6 @@ public final class KilaSimpleModules {
         @Persisted
         public float intensity = 1;
 
-        private final LitParticles lit = new LitParticles();
-
         @Override
         public String id() {
             return "lit";
@@ -75,9 +73,7 @@ public final class KilaSimpleModules {
 
         @Override
         public void apply(ShaderInstance shader, MaterialContext context, float[] scratch) {
-            lit.setEnable(true);
-            lit.intensity = intensity;
-            lit.apply(shader, context);
+            LitParticles.bind(shader, context, intensity);
         }
 
         @Override

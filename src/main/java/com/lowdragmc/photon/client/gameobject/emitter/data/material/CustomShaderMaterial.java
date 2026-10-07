@@ -41,6 +41,8 @@ import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
 import java.lang.ref.Cleaner;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @OnlyIn(Dist.CLIENT)
@@ -62,6 +64,12 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     private Cleaner.Cleanable shaderCleanable;
     @Getter
     private String compiledErrorMessage = "";
+    /**
+     * The shader's json lists {@code PhotonLightData}, as one including {@code photon:lit_particle.glsl} has to: the
+     * dynamic lights are bound to it, out of the inspector and the save.
+     */
+    @Getter
+    private boolean litByDynamicLights;
 
     public CustomShaderMaterial() {
     }
@@ -92,9 +100,15 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public Tag serializeAdditionalNBT(HolderLookup.@NotNull Provider provider) {
         var shaderData = new CompoundTag();
         if (shaderHolder != null) {
-            shaderData.put("shaderData", shaderHolder.serializeNBT(provider));
+            shaderData.put("shaderData", authoredShaderData(provider));
         }
         return shaderData;
+    }
+
+    private CompoundTag authoredShaderData(HolderLookup.Provider provider) {
+        var data = Objects.requireNonNull(shaderHolder).serializeNBT(provider);
+        if (litByDynamicLights) LitParticles.UNIFORMS.forEach(data.getCompound("uniforms")::remove);
+        return data;
     }
 
     @Override
@@ -114,6 +128,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     public void recompile() {
         compiledErrorMessage = "";
+        litByDynamicLights = false;
 
         if (shaderCleanable != null) {
             shaderCleanable.clean();
@@ -154,6 +169,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             }
             attachDynamicSamplers(shaderHolder);
             attachDynamicUniforms(shaderHolder);
+            litByDynamicLights = samplerNames.contains(LitParticles.SAMPLERS.getFirst());
             return shaderHolder;
         } catch (Throwable e) {
             // the holder owns a linked GL program by this point, and the caller only ever sees the
@@ -228,10 +244,9 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             return PhotonShaders.getHDRParticleShader();
         }
         var defines = context.getShaderDefines();
-        if (defines.isEmpty()) {
-            return shaderHolder.getShaderInstance();
-        }
-        return shaderHolder.getShaderInstance(defines);
+        var shader = defines.isEmpty() ? shaderHolder.getShaderInstance() : shaderHolder.getShaderInstance(defines);
+        if (litByDynamicLights) LitParticles.bind(shader, context, 1f);
+        return shader;
     }
 
     @Override
@@ -264,7 +279,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                 .setOnClick(event -> {
                     CompoundTag previousData = null;
                     if (shaderHolder != null) {
-                        previousData = shaderHolder.serializeNBT(Platform.getFrozenRegistry());
+                        previousData = authoredShaderData(Platform.getFrozenRegistry());
                     }
                     recompile();
                     if (previousData != null && shaderHolder != null) {
@@ -305,6 +320,11 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         shaderConfigurator.removeAllConfigurators();
         if (shaderHolder != null) {
             shaderHolder.buildConfigurator(shaderConfigurator);
+            if (litByDynamicLights) {
+                for (var row : List.copyOf(shaderConfigurator.getConfigurators())) {
+                    if (LitParticles.declares(row.label.getText().getString())) shaderConfigurator.removeConfigurator(row);
+                }
+            }
         }
     }
 

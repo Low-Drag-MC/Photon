@@ -174,12 +174,12 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
     public ShaderInstance getShader(MaterialContext context) {
         var entry = refreshEntry();
         if (entry == null || !entry.isValid()) {
-            return PhotonShaders.getHDRParticleShader();
+            return fallback(context);
         }
         var shader = entry.variant(context.getVariantKey(), context.getShaderDefines());
         var compiled = entry.getCompiled();
         if (shader == null || compiled == null) {
-            return PhotonShaders.getHDRParticleShader();
+            return fallback(context);
         }
         // Stage this material's uniforms/samplers on the shared shader — uploaded by the draw's apply().
         KGBuiltinUniforms.bind(shader, compiled.builtinUniforms());
@@ -187,6 +187,16 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
         if (values != null) {
             values.apply(shader);
         }
+        if (entry.isUsesDynamicLights()) {
+            LitParticles.bind(shader, context, 1f);
+        }
+        return shader;
+    }
+
+    /** A broken graph draws with the texture material's shader, unlit whatever the last texture material left on it. */
+    private static ShaderInstance fallback(MaterialContext context) {
+        var shader = PhotonShaders.getHDRParticleShader();
+        if (shader != null) LitParticles.bind(shader, context, 0);
         return shader;
     }
 
