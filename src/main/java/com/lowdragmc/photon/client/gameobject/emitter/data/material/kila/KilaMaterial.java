@@ -584,7 +584,8 @@ public class KilaMaterial extends ShaderInstanceMaterial {
             if (scroller == null || mui == null) return;
             var port = scroller.viewPort;
             boolean away = frame.getPositionY() + frame.getSizeHeight() < port.getPositionY();
-            if (!away) {
+            // a collapsed group still ticks: no corner for a preview that isn't drawn at all
+            if (!away || !shownUnder(frame, mui.ui.rootElement)) {
                 if (corner.getParent() != null) corner.getParent().removeChild(corner);
                 return;
             }
@@ -604,17 +605,25 @@ public class KilaMaterial extends ShaderInstanceMaterial {
             }
         });
         corner.addEventListener(UIEvents.TICK, e -> {
-            // the inspector moved on: the corner is orphaned
-            if (frame.getFirstAncestorOfType(ScrollerView.class) == null && corner.getParent() != null) {
+            var mui = corner.getModularUI();
+            if (mui == null) return;
+            // the inspector moved on or its tab is hidden: a hidden subtree stops ticking, so it can't take the corner down
+            if (!shownUnder(frame, mui.ui.rootElement)) {
                 corner.getParent().removeChild(corner);
                 return;
             }
-            var mui = corner.getModularUI();
-            if (mui == null) return;
             var local = corner.worldToLocal(new Vector2f(mui.getLastMouseX(), mui.getLastMouseY()));
             float opacity = corner.isIntersectWithPoint(local.x, local.y) ? 0.1f : 1f;
             if (corner.getStyle().opacity() != opacity) corner.style(style -> style.opacity(opacity));
         });
+    }
+
+    private static boolean shownUnder(UIElement element, UIElement root) {
+        for (var e = element; e != null; e = e.getParent()) {
+            if (!e.isActive() || !e.isDisplayed() || !e.isVisible()) return false;
+            if (e == root) return true;
+        }
+        return false;
     }
 
     @Override

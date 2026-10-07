@@ -147,6 +147,14 @@ public class KilaInspectorScenario implements UIScenario {
             var name = net.minecraft.network.chat.Component.translatable(module.langKey()).getString();
             capture(s, name, "tour_" + module.id());
         }
+        s.step("the last group pushed the preview out of sight", ctx -> ctx.check("a corner preview is shown",
+                        cornerShown(ctx), "shown", "hidden"))
+                .step("open another project", ctx -> editor(ctx).loadProject(FXProject.TYPE.newEmptyProject(), null));
+        s.waitUntil("it asks about a new window", ctx -> dialogLabel(ctx, "Confirm") != null);
+        clickOn(s, "in a new tab", ctx -> dialogLabel(ctx, "Confirm"));
+        s.frames(5)
+                .step("the hidden tab's corner preview goes with it", ctx -> ctx.check("no corner preview",
+                        !cornerShown(ctx), "hidden", "shown"));
         s.teardown("close the editor", ctx -> ctx.mc().setScreen(null));
     }
 
