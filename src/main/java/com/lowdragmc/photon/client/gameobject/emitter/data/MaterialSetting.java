@@ -200,10 +200,11 @@ public class MaterialSetting implements IConfigurable, IPersistedSerializable {
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         addField(father, "material");
-        father.addConfigurator(new SelectorConfigurator<>("MaterialSetting.renderStateSource",
+        var sourceRow = new SelectorConfigurator<>("MaterialSetting.renderStateSource",
                 () -> renderStateSource, source -> renderStateSource = source, RenderStateSource.MATERIAL, true,
-                List.of(RenderStateSource.values()), source -> "MaterialSetting.renderStateSource." + source.name().toLowerCase())
-                .setTips("MaterialSetting.renderStateSource.tips"));
+                List.of(RenderStateSource.values()), source -> "MaterialSetting.renderStateSource." + source.name().toLowerCase());
+        sourceRow.setTips("MaterialSetting.renderStateSource.tips");
+        father.addConfigurator(sourceRow);
         var slotRows = new ArrayList<Configurator>();
         var preset = new SelectorConfigurator<>("MaterialSetting.blendPreset", () -> BlendChoice.of(blendMode),
                 choice -> {
@@ -218,6 +219,8 @@ public class MaterialSetting implements IConfigurable, IPersistedSerializable {
         var followedRow = new Configurator();
         father.addConfigurator(followedRow);
         father.addEventListener(UIEvents.TICK, e -> {
+            // only a material that brings its own state has anything to follow
+            sourceRow.setDisplay(material.getPreferredRenderState() != null);
             var followed = getFollowedRenderState();
             for (var row : slotRows) {
                 row.setDisplay(followed == null);
