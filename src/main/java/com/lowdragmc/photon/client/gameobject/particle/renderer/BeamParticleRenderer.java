@@ -33,9 +33,9 @@ public class BeamParticleRenderer {
     public BeamParticleRenderer() {
     }
 
-    private static BeamFrame sampleBeam(BeamParticle particle, Camera camera, float partialTicks) {
+    private static BeamFrame sampleBeam(BeamParticle particle, float partialTicks) {
         var from = particle.getWorldPos();
-        var end = particle.getRealEnd(camera, from);
+        var end = particle.getRealEnd(from);
 
         var offset = -particle.getRealEmit(partialTicks);
         var uvs = particle.getRealUVs(partialTicks);
@@ -65,7 +65,7 @@ public class BeamParticleRenderer {
         // distinct in the editor scene, where the camera's position() is intentionally ZERO
         var eye = PhotonCameraUtils.facingEye(camera);
         var origin = PhotonCameraUtils.renderOrigin(camera);
-        var frame = sampleBeam(particle, camera, partialTicks);
+        var frame = sampleBeam(particle, partialTicks);
         var from = frame.from();
         var end = frame.end();
         var u0 = frame.u0();
@@ -111,7 +111,7 @@ public class BeamParticleRenderer {
         for (var p : particles) {
             if (!(p instanceof BeamParticle particle) || particle.getDelay() > 0) continue;
             count++;
-            var frame = sampleBeam(particle, camera, partialTicks);
+            var frame = sampleBeam(particle, partialTicks);
             out.put(frame.from().x - cameraPos.x).put(frame.from().y - cameraPos.y).put(frame.from().z - cameraPos.z);
             out.put(frame.width());
             out.put(frame.end().x - cameraPos.x).put(frame.end().y - cameraPos.y).put(frame.end().z - cameraPos.z);

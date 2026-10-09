@@ -9,7 +9,6 @@ import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamRuntime;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import lombok.Getter;
 import lombok.Setter;
-import net.minecraft.client.Camera;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -22,7 +21,6 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
-import javax.annotation.Nonnull;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -170,10 +168,12 @@ public class BeamParticle implements IParticle {
         return runtime.emitRate.get().get(getT(pPartialTicks), () -> getMemRandom("emit")).floatValue();
     }
 
-    public Vector3f getRealEnd(@Nonnull Camera camera, Vector3f from) {
+    public Vector3f getRealEnd(Vector3f from) {
         var end = new Vector3f(from).add(emitter.transform().localToWorldMatrix().transformDirection(config.getEnd(), new Vector3f()));
+        // not the camera entity's level: an editor scene's camera has none
+        var level = emitter.getLevel();
+        if (level == null) return end;
         if (config.getRaycast() == BeamConfig.RaycastMode.BLOCKS || config.getRaycast() == BeamConfig.RaycastMode.BLOCKS_AND_ENTITIES) {
-            var level = camera.entity().level();
             var result = level.clip(
                     new ClipContext(new Vec3(from.x, from.y, from.z),
                             new Vec3(end.x, end.y, end.z),
@@ -185,7 +185,6 @@ public class BeamParticle implements IParticle {
             }
         }
         if (config.getRaycast() == BeamConfig.RaycastMode.ENTITIES || config.getRaycast() == BeamConfig.RaycastMode.BLOCKS_AND_ENTITIES) {
-            var level = camera.entity().level();
             var size = getRealWidth(0);
             var velocity = new Vector3f(end).sub(from);
             var vec3 = Entity.collideBoundingBox(null, new Vec3(velocity),
