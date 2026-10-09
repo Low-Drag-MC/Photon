@@ -315,7 +315,7 @@ public class RenderPassPipeline extends BufferBuilder {
         if (drawMode != SceneView.DrawMode.WIREFRAME) {
             wireframeSubPass = false;
             renderQueuedPasses();
-            // in place, the working copy is bent once every effect is on it; the late path bends at its composite
+            // in place, the working copy is bent once every effect is on it; the late/after-pack paths bend at their composite
             if (!late && irisTarget == null) StackedDistortion.bend(DRAW_TARGET, depthOf(DRAW_TARGET));
         }
         // wireframe overlay sub-pass (WIREFRAME and BOTH): global polygon LINE mode + the inverse
@@ -400,9 +400,11 @@ public class RenderPassPipeline extends BufferBuilder {
         return current == null ? null : DRAW_TARGET;
     }
 
-    /** Whether a screen distortion drawing now can add itself to {@link StackedDistortion}. */
+    /** Whether a screen distortion drawing now can add itself to {@link StackedDistortion}: under a pack only
+     *  for {@link IrisCompositeMode#AFTER_PACK}, the one path that bends the finished frame. */
     public boolean supportsStackedDistortion() {
-        return irisTarget == null && !maskSubPass && !wireframeSubPass;
+        return (irisTarget == null || irisTarget.compositeMode() == IrisCompositeMode.AFTER_PACK)
+                && !maskSubPass && !wireframeSubPass;
     }
 
     /** Frame boundary: mask textures are only valid for the frame their sub-pass ran in — a

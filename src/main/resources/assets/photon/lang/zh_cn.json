@@ -1577,7 +1577,7 @@
   "kila.screen_distortion.strength": "强度",
   "kila.screen_distortion.strength.tips": "场景被推开的距离，以屏幕为单位：0.02 最多为窗口的 2%。",
   "kila.screen_distortion.stack": "叠加",
-  "kila.screen_distortion.stack.tips": "把推开量累加到其它叠加模式的扭曲上，最后整帧按总和弯折一次：多个热浪能互相看见，也能看见之前画的所有特效。色散在此模式下不生效。光影包下按普通方式读取场景。",
+  "kila.screen_distortion.stack.tips": "把推开量累加到其它叠加模式的扭曲上，最后整帧按总和弯折一次：多个热浪能互相看见，也能看见之前画的所有特效。色散在此模式下不生效。光影包下仅在特效于光影输出后合成时叠加，否则按普通方式读取场景。",
   "kila.screen_distortion.keep_foreground": "不扭曲前景",
   "kila.screen_distortion.keep_foreground.tips": "挡在扭曲前面的东西（玩家、墙）不会被吸进扭曲里。需要额外拷贝一次场景深度。",
   "kila.screen_distortion.texture": "噪声",

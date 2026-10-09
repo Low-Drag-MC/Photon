@@ -1605,7 +1605,7 @@
   "kila.screen_distortion.strength": "Strength",
   "kila.screen_distortion.strength.tips": "How far the scene is pushed, in screens: 0.02 is up to 2% of the window.",
   "kila.screen_distortion.stack": "Stack",
-  "kila.screen_distortion.stack.tips": "Adds its push to the other stacked distortions and bends the finished frame once by the sum: hazes see each other and every effect drawn before them. The colour fringe does not apply. Under a shader pack it reads the scene as usual.",
+  "kila.screen_distortion.stack.tips": "Adds its push to the other stacked distortions and bends the finished frame once by the sum: hazes see each other and every effect drawn before them. The colour fringe does not apply. Under a shader pack it stacks only when FX are composited after the pack; otherwise it reads the scene as usual.",
   "kila.screen_distortion.keep_foreground": "Keep Front",
   "kila.screen_distortion.keep_foreground.tips": "What stands in front of the haze (players, walls) is not pulled into it. Costs a copy of the scene depth.",
   "kila.screen_distortion.texture": "Noise",

@@ -36,7 +36,7 @@ public final class StackedDistortion {
     private StackedDistortion() {
     }
 
-    /** Whether a distortion drawing now can stack: in a build, off a shader pack. */
+    /** Whether a distortion drawing now can stack: in a build, off a shader pack or composited after it. */
     public static boolean available() {
         var pipeline = RenderPassPipeline.getCurrent();
         return pipeline != null && pipeline.supportsStackedDistortion();
