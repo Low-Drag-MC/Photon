@@ -19,6 +19,8 @@ import com.lowdragmc.photon.client.FXSceneOptions;
 import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.FXObject;
+import com.lowdragmc.photon.client.gameobject.light.LightObject;
+import com.lowdragmc.photon.client.light.DynamicLightManager;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.FXProjectEffectExecutor;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -80,6 +82,8 @@ public class SceneView extends View implements FXSceneOptions {
     private boolean bloomEnabled = true;
     @Getter @Setter
     private boolean effectsEnabled = true;
+    @Getter @Setter
+    private boolean dynamicLightsEnabled = true;
     /** Debug view: replace the scene with the CustomMask contents (the builtin show_mask effect). */
     @Getter @Setter
     private boolean maskViewEnabled = false;
@@ -102,6 +106,7 @@ public class SceneView extends View implements FXSceneOptions {
         this.getLayout().heightPercent(100.0F);
         this.fxEditor = fxEditor;
         level.setParticleManager(particleManager);
+        particleManager.setLightLevel(level);
 
         sceneEditor = new ParticleSceneEditor();
         sceneEditor.layout(layout -> {
@@ -250,6 +255,7 @@ public class SceneView extends View implements FXSceneOptions {
             }
         }
         sceneEditor.scene.setRenderedCore(level.getFilledBlocks().longStream().mapToObj(BlockPos::of).toList());
+        DynamicLightManager.blocksReplaced(level);
         isSceneLoaded = true;
     }
 
@@ -372,6 +378,11 @@ public class SceneView extends View implements FXSceneOptions {
                             SceneView.this::setEffectsEnabled)
                             .icon(PhotonIcons.SHADER_GRAPH)
                             .tooltipKey("photon.is_effects_visible")
+                            .build(),
+                    new SceneToggleBuilder(SceneView.this::isDynamicLightsEnabled,
+                            SceneView.this::setDynamicLightsEnabled)
+                            .icon(LightObject.ICON)
+                            .tooltipKey("photon.is_dynamic_lights_visible")
                             .build(),
                     new SceneToggleBuilder(SceneView.this::isMaskViewEnabled,
                             SceneView.this::setMaskViewEnabled)

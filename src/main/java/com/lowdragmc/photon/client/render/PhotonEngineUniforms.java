@@ -7,6 +7,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
+import org.joml.Vector3f;
 import org.joml.Vector3fc;
 import org.lwjgl.system.MemoryUtil;
 
@@ -32,6 +33,7 @@ public final class PhotonEngineUniforms {
     private static final Set<RenderType> ENGINE_RENDER_TYPES = ConcurrentHashMap.newKeySet();
 
     private static final Matrix4f INVERSE_PROJECTION = new Matrix4f();
+    private static final Vector3f CAMERA_POSITION = new Vector3f();
     private static final Matrix4f INVERSE_VIEW = new Matrix4f();
 
     /** The current view's depth range, recovered from its projection — see {@link #zNear()}. */
@@ -109,6 +111,11 @@ public final class PhotonEngineUniforms {
         return buffer.slice();
     }
 
+    /** The {@code U_CameraPosition} last uploaded. */
+    public static Vector3fc cameraPosition() {
+        return CAMERA_POSITION;
+    }
+
     /** Byte offset of the {@code U_ViewPort} vec4 in the std140 block (mat4 + mat4 + vec4 before it). */
     private static final int VIEWPORT_OFFSET = 144;
 
@@ -153,6 +160,7 @@ public final class PhotonEngineUniforms {
         }
         projection.invert(INVERSE_PROJECTION);
         viewRotation.invert(INVERSE_VIEW);
+        CAMERA_POSITION.set(cameraPos);
         captureDepthRange(projection);
         var bytes = MemoryUtil.memAlloc(STD140_SIZE);
         try {

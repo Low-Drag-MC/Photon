@@ -2,10 +2,8 @@ package com.lowdragmc.photon.client.render;
 
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.buffers.Std140Builder;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryUtil;
 
 import javax.annotation.Nullable;
@@ -68,24 +66,38 @@ public final class PhotonCustomUniforms implements AutoCloseable {
         this.byteSize = std140Size(this.fields);
     }
 
-    /** std140: scalars 4B@4, vec2 8B@8, vec3/vec4 16B@16, mat4 64B@16; block padded to 16. */
+    /**
+     * std140: scalars 4B@4, vec2 8B@8, vec3 12B@16, vec4 16B@16, mat4 64B@16; block padded to 16.
+     * <p>
+     * ⚠️ A vec3 takes 12 bytes, not 16: a scalar after it sits in its fourth slot, which is where GLSL reads it.
+     * Minecraft's {@code Std140Builder.putVec3} skips that slot, so a block with a vec3 followed by a float would
+     * be written one member off — the reason {@link #prepareUpload} writes offsets itself.
+     */
     private static int std140Size(List<Field> fields) {
         var offset = 0;
         for (var field : fields) {
-            var size = switch (field.type()) {
-                case FLOAT, INT -> 4;
-                case VEC2 -> 8;
-                case VEC3, VEC4 -> 16;
-                case MAT4 -> 64;
-            };
-            var align = switch (field.type()) {
-                case FLOAT, INT -> 4;
-                case VEC2 -> 8;
-                default -> 16;
-            };
-            offset = (offset + align - 1) / align * align + size;
+            offset = align(offset, field.type()) + size(field.type());
         }
         return Math.max(16, (offset + 15) / 16 * 16);
+    }
+
+    private static int size(Type type) {
+        return switch (type) {
+            case FLOAT, INT -> 4;
+            case VEC2 -> 8;
+            case VEC3 -> 12;
+            case VEC4 -> 16;
+            case MAT4 -> 64;
+        };
+    }
+
+    private static int align(int offset, Type type) {
+        var alignment = switch (type) {
+            case FLOAT, INT -> 4;
+            case VEC2 -> 8;
+            default -> 16;
+        };
+        return (offset + alignment - 1) / alignment * alignment;
     }
 
     public boolean isEmpty() {
@@ -120,27 +132,22 @@ public final class PhotonCustomUniforms implements AutoCloseable {
         if (!dirty) {
             return;
         }
-        ByteBuffer bytes = MemoryUtil.memAlloc(byteSize);
+        ByteBuffer bytes = MemoryUtil.memCalloc(byteSize);
         try {
-            var builder = Std140Builder.intoBuffer(bytes);
+            var offset = 0;
             for (var field : fields) {
                 var v = values.getOrDefault(field.name(), new float[0]);
-                switch (field.type()) {
-                    case FLOAT -> builder.putFloat(at(v, 0));
-                    case INT -> builder.putInt((int) at(v, 0));
-                    case VEC2 -> builder.putVec2(at(v, 0), at(v, 1));
-                    case VEC3 -> builder.putVec3(at(v, 0), at(v, 1), at(v, 2));
-                    case VEC4 -> builder.putVec4(at(v, 0), at(v, 1), at(v, 2), at(v, 3));
-                    case MAT4 -> {
-                        var m = new float[16];
-                        for (int i = 0; i < 16; i++) {
-                            m[i] = at(v, i);
-                        }
-                        builder.putMat4f(new Matrix4f().set(m));
+                offset = align(offset, field.type());
+                if (field.type() == Type.INT) {
+                    bytes.putInt(offset, (int) at(v, 0));
+                } else {
+                    // a mat4 is 16 floats, column-major as GLSL reads them
+                    for (int i = 0; i < field.type().components; i++) {
+                        bytes.putFloat(offset + i * 4, at(v, i));
                     }
                 }
+                offset += size(field.type());
             }
-            bytes.rewind();
             RenderSystem.getDevice().createCommandEncoder().writeToBuffer(buffer.slice(), bytes);
             dirty = false;
         } finally {

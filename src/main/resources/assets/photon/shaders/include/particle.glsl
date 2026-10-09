@@ -49,12 +49,11 @@ layout(location = 3) in float aBrightness;
 uniform samplerBuffer PhotonVat;
 // 26.1 has no free-standing uniforms — these are a std140 block. MIRRORED FROM PhotonVatUniforms.
 layout(std140) uniform PhotonVatInfo {
-    ivec2 PhotonVatSize;   // x = vertices a frame, y = frames
+    ivec2 PhotonVatSize;   // x = vertices a frame, y = frames (intervals; the table has y + 1 rows)
     // xyz = (shared clip position, weight on the per-particle random, weight on the particle's own t) —
     // the two weights are how "a flock, each at its own offset" and "plays once over a lifetime" are the
     // same expression rather than two shader variants.
-    // w = blend between adjacent baked frames (0 = snap). A uniform branch rather than another define: it
-    // is coherent across the whole draw, and a define here would double the VAT program permutations.
+    // w = flags: +1 blend adjacent frames (else snap), +2 clamp the phase (else wrap).
     vec4 PhotonVatParams;
 };
 #endif
@@ -93,6 +92,10 @@ uniform samplerBuffer PhotonPoints;
 uniform samplerBuffer PhotonData;
 #define PHOTON_DATA_TEXELS 4
 
+// user custom data, one record per instance — stride MIRRORED FROM AdditionalGPUDataSetting.MAX_CUSTOM_DATA
+uniform samplerBuffer PhotonCustomData;
+#define PHOTON_CUSTOM_TEXELS 4
+
 #elif defined(ARA_TRAIL_INSTANCE)
 
 // one instance per AraTrail flat segment; aPos.x in {0,1} selects the segment's curr/next point
@@ -110,6 +113,10 @@ uniform samplerBuffer PhotonPoints;
 uniform samplerBuffer PhotonData;
 #define PHOTON_DATA_TEXELS 4
 
+// user custom data, one record per instance — stride MIRRORED FROM AdditionalGPUDataSetting.MAX_CUSTOM_DATA
+uniform samplerBuffer PhotonCustomData;
+#define PHOTON_CUSTOM_TEXELS 4
+
 #elif defined(ARA_TRAIL_TUBE_INSTANCE)
 
 // one instance per AraTrail ring pair; aPos = (x: curr/next ring, y/z: section polygon vertex,
@@ -124,6 +131,10 @@ uniform samplerBuffer PhotonPoints;
 // legacy channel attributes at location 3+. Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
 uniform samplerBuffer PhotonData;
 #define PHOTON_DATA_TEXELS 4
+
+// user custom data, one record per instance — stride MIRRORED FROM AdditionalGPUDataSetting.MAX_CUSTOM_DATA
+uniform samplerBuffer PhotonCustomData;
+#define PHOTON_CUSTOM_TEXELS 4
 
 #elif defined(BEAM_INSTANCE)
 
@@ -141,6 +152,10 @@ layout(location = 5) in int iLight;
 uniform samplerBuffer PhotonData;
 #define PHOTON_DATA_TEXELS 3
 
+// user custom data, one record per instance — stride MIRRORED FROM AdditionalGPUDataSetting.MAX_CUSTOM_DATA
+uniform samplerBuffer PhotonCustomData;
+#define PHOTON_CUSTOM_TEXELS 4
+
 #else
 
 in vec3 Position;
@@ -149,6 +164,28 @@ in vec2 UV0;
 in ivec2 UV2;
 in vec3 Normal;
 
+#ifdef PHOTON_CPU_DATA
+// CPU tile path: a particle's record is (gl_VertexID - PhotonRecordBase) / PhotonVertsPerParticle — every particle
+// writes as many vertices, and a sort moves a particle's vertices and its record together (Emitter.sortQuads).
+// gl_VertexID counts from the start of the frame's shared vertex buffer, so the run's base vertex comes off it.
+// Tile record layout — MIRRORED FROM PhotonGpuChannels / AdditionalGPUDataSetting.MAX_CUSTOM_DATA; the block
+// MIRRORED FROM PhotonWorldRenderState.CPU_DATA_BLOCK_SIZE.
+uniform samplerBuffer PhotonData;
+uniform samplerBuffer PhotonCustomData;
+layout(std140) uniform PhotonCpuData {
+    int PhotonVertsPerParticle;
+    int PhotonRecordBase;
+};
+#define PHOTON_DATA_TEXELS 5
+#define PHOTON_CUSTOM_TEXELS 4
+#endif
+
+#endif
+
+#ifdef PHOTON_CPU_DATA
+#define PHOTON_RECORD_INDEX ((gl_VertexID - PhotonRecordBase) / max(PhotonVertsPerParticle, 1))
+#else
+#define PHOTON_RECORD_INDEX gl_InstanceID
 #endif
 
 /**
@@ -206,9 +243,9 @@ mat3 quatToMat(vec4 q) {
     float wx = q.w * x2, wy = q.w * y2, wz = q.w * z2;
 
     return mat3(
-    1 - (yy + zz), xy + wz, xz - wy,
-    xy - wz, 1 - (xx + zz), yz + wx,
-    xz + wy, yz - wx, 1 - (xx + yy)
+    1.0 - (yy + zz), xy + wz, xz - wy,
+    xy - wz, 1.0 - (xx + zz), yz + wx,
+    xz + wy, yz - wx, 1.0 - (xx + yy)
     );
 }
 
@@ -267,20 +304,22 @@ ParticleData getParticleData() {
     // ⚠️ fetched inline rather than through photon_data_random()/photon_data_t(), which are declared
     // further down this file than getParticleData — slot 0 xy, LOCKSTEP with those accessors
     vec4 photonVatData = texelFetch(PhotonData, gl_InstanceID * PHOTON_DATA_TEXELS);
-    float photonVatPhase = fract(PhotonVatParams.x
+    float photonVatRaw = PhotonVatParams.x
             + photonVatData.x * PhotonVatParams.y
-            + photonVatData.y * PhotonVatParams.z);
+            + photonVatData.y * PhotonVatParams.z;
+    // MIRRORED FROM VertexAnimationBake.cursor/frameAt/blendAt; the end row means frame + 1 always exists
+    float photonVatPhase = PhotonVatParams.w > 1.5 ? clamp(photonVatRaw, 0.0, 1.0) : fract(photonVatRaw);
     float photonVatCursor = photonVatPhase * float(PhotonVatSize.y);
     int photonVatFrame = clamp(int(photonVatCursor), 0, PhotonVatSize.y - 1);
+    float photonVatBlend = photonVatCursor - float(photonVatFrame);
+    if (mod(PhotonVatParams.w, 2.0) < 0.5) {
+        photonVatBlend = step(1.0, photonVatBlend);
+    }
     vec4 photonVatTexel = texelFetch(PhotonVat, photonVatFrame * PhotonVatSize.x + gl_VertexID);
     vec3 photonPos = photonVatTexel.xyz;
     vec3 photonNormal = photon_unpack_normal(photonVatTexel.w);
-    if (PhotonVatParams.w > 0.5) {
-        // frame f was baked at duration * f / frames, so the frame after the last one IS the first — the
-        // wrap is what makes a looping clip continuous rather than stuttering once per cycle
-        int photonVatNext = photonVatFrame + 1 == PhotonVatSize.y ? 0 : photonVatFrame + 1;
-        vec4 photonVatTexelNext = texelFetch(PhotonVat, photonVatNext * PhotonVatSize.x + gl_VertexID);
-        float photonVatBlend = photonVatCursor - floor(photonVatCursor);
+    if (photonVatBlend > 0.0) {
+        vec4 photonVatTexelNext = texelFetch(PhotonVat, (photonVatFrame + 1) * PhotonVatSize.x + gl_VertexID);
         photonPos = mix(photonPos, photonVatTexelNext.xyz, photonVatBlend);
         // the packed normals cannot be mixed as scalars; unpack both, then renormalise the blend
         photonNormal = normalize(mix(photonNormal,
@@ -502,16 +541,17 @@ mat4 photon_worldToObject() {
 
 // ---------------------------------------------------------------------------
 // additional GPU data accessors — MIRRORED FROM PhotonGpuChannels packing (keep in lockstep).
-// Instanced variants pull the packed record from the PhotonData buffer texture by gl_InstanceID
-// (VERTEX STAGE ONLY — gl_InstanceID is undefined in the fragment stage; the shadergraph routes
-// these through a varying). Channels a variant doesn't support (and the whole CPU path) read 0.
+// Instanced variants pull the packed record from the PhotonData buffer texture by gl_InstanceID, the
+// CPU tile path with PHOTON_CPU_DATA by gl_VertexID (VERTEX STAGE ONLY — the shadergraph routes these
+// through a varying). Channels a variant doesn't support, and the plain CPU path, read 0.
 // ---------------------------------------------------------------------------
 #if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE) || defined(TRAIL_INSTANCE) \
- || defined(ARA_TRAIL_INSTANCE) || defined(ARA_TRAIL_TUBE_INSTANCE) || defined(BEAM_INSTANCE)
-#define PHOTON_DATA_SLOT(slot) texelFetch(PhotonData, gl_InstanceID * PHOTON_DATA_TEXELS + (slot))
+ || defined(ARA_TRAIL_INSTANCE) || defined(ARA_TRAIL_TUBE_INSTANCE) || defined(BEAM_INSTANCE) \
+ || defined(PHOTON_CPU_DATA)
+#define PHOTON_DATA_SLOT(slot) texelFetch(PhotonData, PHOTON_RECORD_INDEX * PHOTON_DATA_TEXELS + (slot))
 #endif
 
-#if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE)
+#if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE) || defined(PHOTON_CPU_DATA)
 
 float photon_data_random()          { return PHOTON_DATA_SLOT(0).x; }
 float photon_data_t()               { return PHOTON_DATA_SLOT(0).y; }
@@ -588,15 +628,17 @@ float photon_data_beam_length()     { return 0.0; }
 #endif
 
 // ---------------------------------------------------------------------------
-// user custom data accessor — one vec4 per stream, pulled from PhotonCustomData by gl_InstanceID
+// user custom data accessor — one vec4 per stream, pulled from PhotonCustomData by the record index
 // with a config-independent constant stride (PHOTON_CUSTOM_TEXELS). Streams beyond what the emitter
-// defines, unsupported kinds, and the whole CPU path read vec4(0). (VERTEX STAGE ONLY — the
-// shadergraph routes it through a varying.)
+// defines and the plain CPU path read vec4(0). (VERTEX STAGE ONLY — the shadergraph routes it through
+// a varying.)
 // ---------------------------------------------------------------------------
-#if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE)
+#if defined(PARTICLE_INSTANCE) || defined(PARTICLE_MODEL_INSTANCE) || defined(TRAIL_INSTANCE) \
+ || defined(ARA_TRAIL_INSTANCE) || defined(ARA_TRAIL_TUBE_INSTANCE) || defined(BEAM_INSTANCE) \
+ || defined(PHOTON_CPU_DATA)
 vec4 photon_custom_data(int i) {
     return (i < 0 || i >= PHOTON_CUSTOM_TEXELS) ? vec4(0.0)
-        : texelFetch(PhotonCustomData, gl_InstanceID * PHOTON_CUSTOM_TEXELS + i);
+        : texelFetch(PhotonCustomData, PHOTON_RECORD_INDEX * PHOTON_CUSTOM_TEXELS + i);
 }
 #else
 vec4 photon_custom_data(int i) { return vec4(0.0); }

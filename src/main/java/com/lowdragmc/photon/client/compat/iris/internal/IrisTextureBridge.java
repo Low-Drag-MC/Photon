@@ -1,14 +1,18 @@
 package com.lowdragmc.photon.client.compat.iris.internal;
 
+import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.textures.TextureFormat;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Lends a shader pack's colour attachment to Photon as a {@link GpuTextureView}, so the FX layer can be
@@ -32,6 +36,10 @@ import java.util.Map;
  *       abstraction only consults it for aspect checks and for copies, and Photon does neither to
  *       this texture; the real format stays whatever the pack allocated. Same accepted trade as
  *       {@link com.lowdragmc.photon.client.render.PhotonFloatTextures}.</li>
+ *   <li><b>Sampling.</b> Binding a view for a draw sets the texture's {@code GL_TEXTURE_BASE_LEVEL} /
+ *       {@code GL_TEXTURE_MAX_LEVEL} to the view's mip range — a property of the texture, not of the
+ *       binding, so it outlives the draw. A pack that mipmaps its scene colour (DOF, bloom) would then
+ *       read level 0 alone. {@link #sampled} remembers both and {@link #endSampling()} puts them back.</li>
  * </ul>
  *
  * <p>Cached by (texture, size) because a pass opened on a view makes the backend build an FBO for it,
@@ -43,12 +51,15 @@ import java.util.Map;
  */
 final class IrisTextureBridge {
 
-    /** The pack's texture is only ever a colour attachment for us; it is never sampled or copied. */
+    /** The pack's texture is a colour attachment or a sampled texture for us; it is never copied. */
     private static final int USAGE = GpuTexture.USAGE_RENDER_ATTACHMENT | GpuTexture.USAGE_TEXTURE_BINDING;
 
     private record Key(int glId, int width, int height) {}
 
     private static final Map<Key, GpuTextureView> CACHE = new HashMap<>();
+
+    /** GL texture -> {base level, max level} as the pack left them, for every texture lent out to sample. */
+    private static final Map<Integer, int[]> SAMPLED = new HashMap<>();
 
     private IrisTextureBridge() {
     }
@@ -65,6 +76,48 @@ final class IrisTextureBridge {
                     key.width(), key.height(), 1, 1, key.glId());
             return RenderSystem.getDevice().createTextureView(texture);
         });
+    }
+
+    /**
+     * {@link #view} for sampling: also remembers the texture's mip range, which binding the view will
+     * overwrite, until {@link #endSampling()}.
+     */
+    @Nullable
+    static GpuTextureView sampled(int glId, int width, int height) {
+        var view = view(glId, width, height);
+        if (view != null && !SAMPLED.containsKey(glId)) {
+            SAMPLED.put(glId, withBound(glId, () -> new int[]{
+                    GL11.glGetTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_BASE_LEVEL),
+                    GL11.glGetTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL)}));
+        }
+        return view;
+    }
+
+    /** Give every texture lent out by {@link #sampled} its own mip range back. */
+    static void endSampling() {
+        if (SAMPLED.isEmpty()) return;
+        for (var entry : SAMPLED.entrySet()) {
+            // deleted by a pack reload in between: nothing left to hand back
+            if (!GL11.glIsTexture(entry.getKey())) continue;
+            var levels = entry.getValue();
+            withBound(entry.getKey(), () -> {
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_BASE_LEVEL, levels[0]);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL, levels[1]);
+                return null;
+            });
+        }
+        SAMPLED.clear();
+    }
+
+    /** Run {@code action} with {@code glId} bound to the active unit, leaving that unit as it was. */
+    private static <T> T withBound(int glId, Supplier<T> action) {
+        int previous = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        GlStateManager._bindTexture(glId);
+        try {
+            return action.get();
+        } finally {
+            GlStateManager._bindTexture(previous);
+        }
     }
 
     /** Drop every wrapper. Called whenever the resolved layout changes, including a pack reload. */

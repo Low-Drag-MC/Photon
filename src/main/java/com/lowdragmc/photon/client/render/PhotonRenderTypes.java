@@ -5,6 +5,7 @@ import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeGraphMaterial;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
@@ -52,7 +53,12 @@ public final class PhotonRenderTypes {
         public record Bindings(Map<String, Identifier> textures,
                                List<String> sceneSamplers,
                                @Nullable PhotonCustomUniforms customUniforms,
-                               @Nullable GraphSource graph) {
+                               @Nullable GraphSource graph,
+                               @Nullable MaterialBinder binder) {
+            public Bindings(Map<String, Identifier> textures, List<String> sceneSamplers,
+                            @Nullable PhotonCustomUniforms customUniforms, @Nullable GraphSource graph) {
+                this(textures, sceneSamplers, customUniforms, graph, null);
+            }
         }
 
         /**
@@ -61,15 +67,45 @@ public final class PhotonRenderTypes {
          * {@code #define} and the vertex format into the pipeline). {@code null} = the material has no
          * instanced form and its emitter must take the CPU path.
          * <p>
-         * The three sources are mutually exclusive and checked in this order by
+         * The sources are mutually exclusive and checked in this order by
          * {@code Emitter.bakeInstancedGroup}: a shader graph (read from {@link Bindings#graph}),
-         * a custom user shader ({@link #customShaderKey}), else Photon's own stage
-         * ({@link #hdrFragment}).
+         * a material that derives its own ({@link #source}), a custom user shader ({@link #customShaderKey}),
+         * else Photon's own stage ({@link #hdrFragment}).
          */
         public record InstancedRecipe(PhotonPipelines.ParticlePipelineKey key,
                                       @Nullable Identifier hdrFragment,
-                                      @Nullable PhotonPipelines.CustomShaderKey customShaderKey) {
+                                      @Nullable PhotonPipelines.CustomShaderKey customShaderKey,
+                                      @Nullable PipelineSource source) {
+            public InstancedRecipe(PhotonPipelines.ParticlePipelineKey key, @Nullable Identifier hdrFragment,
+                                   @Nullable PhotonPipelines.CustomShaderKey customShaderKey) {
+                this(key, hdrFragment, customShaderKey, null);
+            }
         }
+    }
+
+    /**
+     * What a material draws with besides textures by name: the material owns some GPU state of its own (a live
+     * uniform block, textures it made, per-texture sampler state) and binds it itself. Photon opens its own passes,
+     * so this is the material's only way into them — the same split a shader graph's {@link GraphSource} has.
+     */
+    public interface MaterialBinder {
+        /** Before the pass opens: upload, resolve textures — everything illegal inside one. */
+        void prepare();
+
+        /** Inside the pass, after the pipeline is set: bind what {@link #prepare} made ready. */
+        void bind(RenderPass pass);
+    }
+
+    /**
+     * A material that builds its own pipelines, so the instanced variants and the CPU-records form are its to derive
+     * (the over-shader of a KilaMaterial, for one). {@code variant} null is the CPU geometry; {@code cpuData} asks
+     * for it with the per-particle records bound. Null when that program failed to compile: the group then draws on
+     * the CPU, and without the records.
+     */
+    @FunctionalInterface
+    public interface PipelineSource {
+        @Nullable
+        RenderPipeline pipeline(@Nullable PhotonPipelines.InstancedVariant variant, boolean cpuData);
     }
 
     /**
@@ -89,6 +125,21 @@ public final class PhotonRenderTypes {
     }
 
     private static final Map<RenderType, PhotonDrawInfo> DRAW_INFO = new ConcurrentHashMap<>();
+
+    /**
+     * The material's pipeline over CPU geometry with per-particle records bound ({@code PHOTON_CPU_DATA}), or null
+     * when it has none — only a material that reads particle data needs one: a shader graph or a KilaMaterial.
+     */
+    @Nullable
+    public static RenderPipeline cpuDataPipeline(PhotonDrawInfo info) {
+        var graph = info.bindings().graph();
+        var recipe = info.instanced();
+        if (graph != null && recipe != null) {
+            return PhotonPipelines.graphShader(graph.compiled(), null, recipe.key(),
+                    graph.usedChannelMask(), graph.usesCustomData(), true);
+        }
+        return recipe != null && recipe.source() != null ? recipe.source().pipeline(null, true) : null;
+    }
 
     @Nullable
     public static PhotonDrawInfo drawInfo(RenderType renderType) {
@@ -201,6 +252,28 @@ public final class PhotonRenderTypes {
                         new GraphSource(compiled, material, usedChannelMask, usesCustomData)),
                 new PhotonDrawInfo.InstancedRecipe(pipelineKey, null, null)));
         return Optional.of(renderType);
+    }
+
+    // ---- materials that build their own pipelines ----------------------------------------------
+
+    /**
+     * Build (do NOT cache) a RenderType over a pipeline the calling material built itself, drawn through
+     * {@code info} — its own state comes in through {@link PhotonDrawInfo.Bindings#binder}, its instanced and
+     * CPU-records forms through {@link PhotonDrawInfo.InstancedRecipe#source}. Owned by the material: release it
+     * with {@link #dropCustomShader}.
+     */
+    public static RenderType createMaterialOwned(String name, PhotonDrawInfo info, boolean lightmap) {
+        var setup = RenderSetup.builder(info.programs().main());
+        if (lightmap) {
+            setup.useLightmap();
+        }
+        var key = info.instanced() == null ? null : info.instanced().key();
+        if (key != null && key.blend() != null && key.mode() == VertexFormat.Mode.QUADS) {
+            setup.sortOnUpload();
+        }
+        var renderType = RenderType.create(name, setup.createRenderSetup());
+        DRAW_INFO.put(renderType, info);
+        return renderType;
     }
 
     /** Release a material-owned custom RenderType from the drain indexes. No GL work — the material's

@@ -12,6 +12,8 @@ out float sphericalVertexDistance;
 out float cylindricalVertexDistance;
 out vec2 texCoord0;
 out vec4 vertexColor;
+out vec3 photonViewPos;
+out vec3 photonBaseColor;
 
 void main() {
     ParticleData data = getParticleData();
@@ -24,7 +26,11 @@ void main() {
     pos += ModelOffset;
 #endif
 
-    gl_Position = ProjMat * ModelViewMat * vec4(pos, 1.0);
+    vec4 viewPos = ModelViewMat * vec4(pos, 1.0);
+    gl_Position = ProjMat * viewPos;
+    // what the dynamic lights are gathered at, and the unlit colour they multiply (photon:lit_particle.glsl)
+    photonViewPos = viewPos.xyz;
+    photonBaseColor = data.Color.rgb;
 
     sphericalVertexDistance = fog_spherical_distance(pos);
     cylindricalVertexDistance = fog_cylindrical_distance(pos);

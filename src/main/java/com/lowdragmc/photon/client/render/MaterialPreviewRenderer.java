@@ -1,9 +1,9 @@
 package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
-import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.mojang.blaze3d.ProjectionType;
@@ -76,8 +76,9 @@ public final class MaterialPreviewRenderer {
     private static final int MAX_ENTRIES = 64;
     /** Tile renders per frame — they fill in over a few frames instead of bursting. */
     private static final int MAX_TILE_RENDERS_PER_FRAME = 8;
-    /** Defensive cap; the inspector normally has a handful of material slots at most. */
-    private static final int MAX_LIVE_RENDERS_PER_FRAME = 8;
+    /** Defensive cap; the inspector normally has a handful of material slots at most — a KilaMaterial's texture slots
+     *  render through here too, one each. */
+    private static final int MAX_LIVE_RENDERS_PER_FRAME = 16;
     /** Tile refresh cadence: content can move without a new RenderType (GameTime animation, and
      *  custom-shader uniform edits, whose values live in a UBO the RenderType doesn't key on). */
     private static final long REFRESH_MS = 100;
@@ -161,7 +162,7 @@ public final class MaterialPreviewRenderer {
      * Inspector preview: re-rendered every frame at the resolution it is drawn at. Use for the single
      * large preview; for many-on-screen tiles use {@link #previewOf}.
      */
-    public static IGuiTexture livePreviewOf(IMaterial material) {
+    public static GuiTexture livePreviewOf(IMaterial material) {
         return GuiTexture.of((context, x, y, width, height) -> {
             lastRequestMs = System.currentTimeMillis();
             LIVE_REQUESTS.put(material, targetPixels(width, height));
@@ -170,7 +171,7 @@ public final class MaterialPreviewRenderer {
     }
 
     /** Tile / inline-slot preview: cached, refreshed on change or on the slow cadence. */
-    public static IGuiTexture previewOf(IMaterial material) {
+    public static GuiTexture previewOf(IMaterial material) {
         return GuiTexture.of((context, x, y, width, height) -> {
             lastRequestMs = System.currentTimeMillis();
             PENDING.add(material); // re-validated next frame
@@ -322,7 +323,7 @@ public final class MaterialPreviewRenderer {
         RenderType renderType;
         PhotonRenderTypes.PhotonDrawInfo info;
         try {
-            renderType = material.getRenderType(DEFAULT_SETTING, VertexFormat.Mode.QUADS);
+            renderType = material.getPreviewRenderType(DEFAULT_SETTING, VertexFormat.Mode.QUADS);
             info = renderType == null ? null : PhotonRenderTypes.drawInfo(renderType);
         } catch (Exception e) {
             markFailed(material, now, "render type resolution failed", e);
@@ -471,6 +472,9 @@ public final class MaterialPreviewRenderer {
         if (info.bindings().graph() != null) {
             info.bindings().graph().material().prepareUniforms();
         }
+        if (info.bindings().binder() != null) {
+            info.bindings().binder().prepare();
+        }
 
         // Same rule for the scene stand-ins: creating them CLEARS them, and clearColorTexture throws
         // "Close the existing render pass before creating a new one!" inside a pass. They used to be
@@ -484,14 +488,16 @@ public final class MaterialPreviewRenderer {
         }
         if (needsSceneColor) dummyColorView();
         if (needsSceneDepth) dummyDepthView();
+        if (PhotonPipelines.isLit(info.programs().main())) DynamicLightRenderer.ensureBindings();
+        var depth = depthView(entry.size);
+        var color = PhotonDepthPairs.color(entry.colorView, depth);
 
         RenderSystem.backupProjectionMatrix();
         // ortho that maps the unit quad straight to the target: ProjMat * identity(ModelView) * (±1,±1,0)
         RenderSystem.setProjectionMatrix(projBuffer().getBuffer(PREVIEW_ORTHO),
                 ProjectionType.ORTHOGRAPHIC);
         try (RenderPass pass = device.createCommandEncoder().createRenderPass(
-                () -> "Photon material preview", entry.colorView, OptionalInt.of(0),
-                depthView(entry.size), OptionalDouble.of(1.0))) {
+                () -> "Photon material preview", color, OptionalInt.of(0), depth, OptionalDouble.of(1.0))) {
             pass.setPipeline(info.programs().main());
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", dynamicTransforms);
@@ -523,6 +529,9 @@ public final class MaterialPreviewRenderer {
             if (info.bindings().graph() != null) {
                 info.bindings().graph().material().bindCustomUniforms(pass);
             }
+            if (info.bindings().binder() != null) {
+                info.bindings().binder().bind(pass);
+            }
             // Photon-owned scene samplers, after the graph's own binds — see PhotonWorldRenderState.drawRun.
             if (PhotonPipelines.isWireframe(info.programs().main())) {
                 pass.bindTexture("SamplerSceneColor",
@@ -540,7 +549,13 @@ public final class MaterialPreviewRenderer {
             var autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
             pass.setVertexBuffer(0, quad());
             pass.setIndexBuffer(autoIndices.getBuffer(6), autoIndices.type());
-            pass.drawIndexed(0, 0, 6, 1);
+            if (PhotonPipelines.isLit(info.programs().main())) {
+                // a preview has no lights of its own; the material just has to have its buffers bound
+                DynamicLightRenderer.bindNoLights(pass);
+                PhotonFloatTexelBuffers.run(() -> pass.drawIndexed(0, 0, 6, 1));
+            } else {
+                pass.drawIndexed(0, 0, 6, 1);
+            }
         } finally {
             RenderSystem.restoreProjectionMatrix();
         }

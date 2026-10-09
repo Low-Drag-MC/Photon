@@ -1,7 +1,13 @@
 package com.lowdragmc.photon.client;
 
+import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.compat.iris.IrisOverlay;
+import com.lowdragmc.photon.client.light.DynamicLightManager;
+import com.lowdragmc.photon.client.light.DynamicLightRenderer;
+import com.lowdragmc.photon.client.light.PhotonLights;
+import com.lowdragmc.photon.client.light.VoxelWorld;
+import com.lowdragmc.photon.client.light.dev.LightCommands;
 import com.lowdragmc.photon.client.postfx.PhotonPostFX;
 import com.lowdragmc.photon.client.postfx.runtime.PostFXPreview;
 import com.lowdragmc.photon.client.render.IPhotonFXCollector;
@@ -13,14 +19,19 @@ import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.FrameGraphSetupEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.event.TagsUpdatedEvent;
+import net.neoforged.neoforge.event.level.ChunkEvent;
+import net.neoforged.neoforge.event.level.LevelEvent;
 import org.joml.Vector3f;
 
 import java.util.List;
@@ -32,6 +43,39 @@ public class PhotonClientListeners {
         var dispatcher = event.getDispatcher();
         List<LiteralArgumentBuilder<CommandSourceStack>> commands = ClientCommands.createClientCommands();
         commands.forEach(dispatcher::register);
+        if (Platform.isDevEnv()) {
+            dispatcher.register(LightCommands.create());
+        }
+    }
+
+    /** A chunk (re)arriving may differ from what was voxelised for the light shadows. */
+    @SubscribeEvent
+    public static void onChunkLoad(ChunkEvent.Load event) {
+        if (event.getLevel() instanceof Level level && level.isClientSide()) {
+            DynamicLightManager.chunkLoaded(level, event.getChunk().getPos().x(), event.getChunk().getPos().z());
+        }
+    }
+
+    @SubscribeEvent
+    public static void onTagsUpdated(TagsUpdatedEvent event) {
+        if (event.getUpdateCause() != TagsUpdatedEvent.UpdateCause.CLIENT_PACKET_RECEIVED) return;
+        VoxelWorld.clearMasks();
+        var level = Minecraft.getInstance().level;
+        if (level != null) DynamicLightManager.blocksReplaced(level);
+    }
+
+    @SubscribeEvent
+    public static void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel() instanceof Level level && level.isClientSide()) {
+            DynamicLightRenderer.release(level);
+            PhotonLights.onLevelUnload(level);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onClientTick(ClientTickEvent.Post event) {
+        PhotonLights.tick();
+        DynamicLightRenderer.tick();
     }
 
     /** Frame start — before the GUI builds its draw list, so previews rendered here are ready for it.
@@ -67,6 +111,9 @@ public class PhotonClientListeners {
     @SubscribeEvent
     public static void onRenderLevelStageAfterOpaque(RenderLevelStageEvent.AfterOpaqueFeatures event) {
         worldCollector().drain(PhotonStage.AFTER_OPAQUE_FEATURES);
+        // the opaque scene is down — Photon's own opaque FX included — and nothing translucent is yet: what the
+        // dynamic lights light (1.21's AFTER_BLOCK_ENTITIES)
+        DynamicLightRenderer.afterOpaque();
         // Snapshot the opaque-only depth FXCompositeMode.LATE tests against, INCLUDING the opaque FX
         // just drawn (they are as solid as the terrain). 26.1 has no AfterBlockEntities event and this
         // is the last seam before the translucent chunk layer, so it is both the correct content and
@@ -82,6 +129,7 @@ public class PhotonClientListeners {
     public static void onRenderLevelStage(RenderLevelStageEvent.AfterTranslucentParticles event) {
         worldCollector().drain(PhotonStage.AFTER_TRANSLUCENT_PARTICLES);
         PhotonPostFX.onLevelStageAfterParticles();
+        DynamicLightRenderer.afterParticles(event.getModelViewMatrix());
     }
 
     /** Per-world-frame engine-uniform upload (U_* block for custom shaders): the event's camera
@@ -95,6 +143,11 @@ public class PhotonClientListeners {
                 camera.projectionMatrix, camera.viewRotationMatrix,
                 new Vector3f((float) camera.pos.x, (float) camera.pos.y, (float) camera.pos.z),
                 target.width, target.height);
+        // Before anything is drawn, the frame's dynamic lights: culled, ranked, uploaded, their shadow maps built.
+        // Not at AfterSky as 1.21 did — 26.1 only fires that when there is a sky pass, which there is not in the
+        // Nether, in lava, in powder snow or under blindness.
+        DynamicLightRenderer.prepareWorld(camera.pos, event.getModelViewMatrix(), camera.projectionMatrix,
+                event.getFrustum(), event.getDeltaTracker().getGameTimeDeltaPartialTick(false), camera.fogData);
     }
 
     /**
@@ -112,7 +165,11 @@ public class PhotonClientListeners {
         // the translucent seam, inside the level pass where the camera state is valid; all that waits
         // for this point is the fullscreen blend (past the clouds and the weather) and the effect chain
         // that had to wait for it.
+        // under a shader pack the dynamic lights go on here, over the pack's image — before the late FX composite,
+        // or those particles would be lit as the wall behind them — and the haze goes on last, over everything
+        DynamicLightRenderer.onLevelRendered();
         PhotonPostFX.onLevelRenderComplete();
+        DynamicLightRenderer.onFrameComposited();
     }
 
     /** Opt-in shader-pack layout readout (/photon_iris overlay). */

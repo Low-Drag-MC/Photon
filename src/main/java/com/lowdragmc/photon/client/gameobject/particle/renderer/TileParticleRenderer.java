@@ -41,6 +41,10 @@ public class TileParticleRenderer {
      *  for the shared pass, or a per-emitter overriding runtime for an override pass. */
     private final ParticleRendererSetting.Runtime renderer;
 
+    /** Set while a bake collects per-particle records alongside the vertices. */
+    @Nullable
+    private CpuParticleRecords activeRecords;
+
     public TileParticleRenderer(ParticleRendererSetting.Runtime renderer) {
         this.renderer = renderer;
     }
@@ -58,11 +62,37 @@ public class TileParticleRenderer {
             notifyDynamicMesh();
             model = modelPass();
         }
+        var records = activeRecords;
+        if (records != null) {
+            records.setVertsPerParticle(model == null ? 4 : 4 * primitiveCount(model.mesh()));
+        }
         for (var particle : particles) {
             if (particle instanceof TileParticle tileParticle && tileParticle.getDelay() <= 0) {
                 renderParticle(buffer, tileParticle, camera, partialTicks, model);
+                if (records != null) {
+                    records.write(tileParticle, partialTicks);
+                }
             }
         }
+    }
+
+    /**
+     * Collect per-particle records during the next {@link #renderQueue}s, for a {@code PHOTON_CPU_DATA} draw; null
+     * stops. The caller owns the records and uploads them — see {@code Emitter.bakeGroup}.
+     */
+    public void setCpuRecords(@Nullable CpuParticleRecords records) {
+        activeRecords = records;
+    }
+
+    /** ⚠️ MIRRORS the primitive walk in {@link #renderParticle}: four vertices per emitted primitive. */
+    private static int primitiveCount(PhotonMesh mesh) {
+        int primitives = 0;
+        int triangle = 0;
+        while (triangle < mesh.triangleCount()) {
+            triangle += mesh.quadPaired(triangle) ? 2 : 1;
+            primitives++;
+        }
+        return primitives;
     }
 
     /**
@@ -203,20 +233,19 @@ public class TileParticleRenderer {
 
     /**
      * Where this particle's pose starts in the baked table, in texels, or {@code -1} when there is none.
-     * MIRRORED FROM the PHOTON_VAT block of particle.glsl — the same two channels, the same wrap.
+     * MIRRORED FROM the PHOTON_VAT block of particle.glsl.
      */
     private int poseBaseFor(@Nullable VertexAnimation animation, TileParticle particle, float partialTicks) {
         poseBlend = 0f; // reset before the early return, so a stale blend cannot outlive its table
         if (animation == null) return -1;
         var phase = animation.phase();
-        float p = phase[0] + particle.getMemRandom("instance_random") * phase[1]
+        float raw = phase[0] + particle.getMemRandom("instance_random") * phase[1]
                 + particle.getT(partialTicks) * phase[2];
-        p -= (float) Math.floor(p);
-        float cursor = p * animation.frames();
-        int frame = Math.max(0, Math.min((int) cursor, animation.frames() - 1));
-        // the blend and the following frame, for putMeshVertex; see the PHOTON_VAT block of particle.glsl
-        poseBlend = animation.interpolates() ? cursor - (float) Math.floor(cursor) : 0f;
-        poseNextBase = (frame + 1 == animation.frames() ? 0 : frame + 1) * animation.vertexCount();
+        int frames = animation.frames();
+        float cursor = VertexAnimationBake.cursor(raw, frames, animation.clamps());
+        int frame = VertexAnimationBake.frameAt(cursor, frames);
+        poseBlend = VertexAnimationBake.blendAt(cursor, frame, animation.interpolates());
+        poseNextBase = (frame + 1) * animation.vertexCount();
         return frame * animation.vertexCount();
     }
 
@@ -628,7 +657,25 @@ public class TileParticleRenderer {
         if (!Vector3fHelper.isZero(rotation)) {
             quaternion = new Quaternionf(quaternion).mul(eulerRotation(rotation));
         }
+        if (renderMode == ParticleRendererSetting.Mode.Horizontal || renderMode == ParticleRendererSetting.Mode.Vertical
+                || renderMode == ParticleRendererSetting.Mode.None) {
+            quaternion = applyOuterRotation(particle, partialTicks, quaternion);
+        }
         return quaternion;
+    }
+
+    /** World / Custom rotation over lifetime: {@code F * euler * F⁻¹ * orientation}; Local is already in the particle's euler. */
+    private static Quaternionf applyOuterRotation(TileParticle particle, float partialTicks, Quaternionf orientation) {
+        var rotationOverLifetime = particle.getRuntime().rotationOverLifetime;
+        if (!rotationOverLifetime.isEnable() || rotationOverLifetime.isLocal()) {
+            return orientation;
+        }
+        var spin = eulerRotation(rotationOverLifetime.getRotation(particle, partialTicks));
+        var frame = rotationOverLifetime.getFrameRotation(particle.getEmitter().getScene());
+        if (frame != null) {
+            spin = new Quaternionf(frame).mul(spin).mul(frame.conjugate());
+        }
+        return spin.mul(orientation);
     }
 
     /**
@@ -659,6 +706,6 @@ public class TileParticleRenderer {
                 ? particle.getSpaceRotation()
                 : new Quaternionf(FacingOrientationHelper.compute(
                         facing, renderer.getFacingDirection(), particle, camera, partialTicks));
-        return outer.mul(eulerRotation(rotation));
+        return applyOuterRotation(particle, partialTicks, outer.mul(eulerRotation(rotation)));
     }
 }

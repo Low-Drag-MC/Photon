@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.compat.iris;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
+import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
 import com.mojang.blaze3d.textures.GpuTextureView;
@@ -61,12 +62,31 @@ public final class IrisCompat {
         return BRIDGE.isUsingShaderPack();
     }
 
+    /** Dev only (uitests): switches to {@code packName}, or shaders off for {@code null}, rewriting the user's Iris config. */
+    public static boolean selectShaderPack(@Nullable String packName) {
+        return restoreShaderPack(new IrisBridge.ShaderPackSelection(packName, packName != null));
+    }
+
+    /** Dev only (uitests): puts back what {@link #shaderPackSelection()} returned. */
+    public static boolean restoreShaderPack(IrisBridge.ShaderPackSelection selection) {
+        return Platform.isDevEnv() && BRIDGE.selectShaderPack(selection);
+    }
+
+    public static IrisBridge.ShaderPackSelection shaderPackSelection() {
+        return BRIDGE.shaderPackSelection();
+    }
+
     public static boolean isShadowPass() {
         return BRIDGE.isShadowPass();
     }
 
     public static String packName() {
         return BRIDGE.packName();
+    }
+
+    /** See {@link IrisBridge#gbufferRenderScale()}. */
+    public static float gbufferRenderScale() {
+        return BRIDGE.gbufferRenderScale();
     }
 
     public static String irisVersion() {
@@ -113,6 +133,23 @@ public final class IrisCompat {
     /** Where the composite draws — a view over the pack's own colour attachment. */
     public static @Nullable GpuTextureView compositeTarget(IrisFrameTarget target) {
         return BRIDGE.compositeTarget(target);
+    }
+
+    /**
+     * The pack's scene colour to sample — lit, pre-tonemap, in the pack's colour space, without the FX
+     * of this frame — or null. Close every use with {@link #endSceneSampling()}.
+     */
+    public static @Nullable GpuTextureView sceneColor(IrisFrameTarget target) {
+        var view = BRIDGE.sceneColor(target);
+        if (view != null) {
+            degrade("SCENE_SAMPLER", "materials sampling scene colour read the pack's colortex0 (lit, "
+                    + "pre-tonemap, pack colour space) instead of the finished frame");
+        }
+        return view;
+    }
+
+    public static void endSceneSampling() {
+        BRIDGE.endSceneSampling();
     }
 
     public static void invalidate() {

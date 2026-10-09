@@ -1,10 +1,15 @@
 package com.lowdragmc.photon.client.fx.compat;
 
+import com.lowdragmc.photon.uitest.LegacyLitShader;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -71,6 +76,161 @@ public class ShaderFormatConverterTest {
         assertTrue(source.contains("apply_fog(color, sphericalVertexDistance, cylindricalVertexDistance,"));
         assertFalse(source.contains("linear_fog"));
         assertEquals(List.of(), conversion.warnings());
+    }
+
+    /**
+     * A 1.21 v2.2.8 shader that imports the lit and soft-particle includes — 1.21's own hdr_particle, which users could
+     * load as a custom shader. Both includes ship in 26.1, the lights' json entries are the pipeline's and stay out of
+     * the block (as CustomShaderMaterial leaves them out of its layout), and the fade gets the parameters it now takes.
+     */
+    @Test
+    public void keepsALitSoftParticleShaderWorking() {
+        var json = ShaderFormatConverter.parseJsonDefaults(LegacyLitShader.JSON);
+        var conversion = ShaderFormatConverter.convertFragment(LegacyLitShader.FRAGMENT, json,
+                ShaderFormatConverter.parseJsonInts(LegacyLitShader.JSON));
+        assertTrue(conversion.changed());
+        assertEquals(List.of(), conversion.warnings(), "both includes ship in 26.1");
+        var source = conversion.source();
+        assertTrue(source.contains("#moj_import <photon:lit_particle.glsl>"));
+        assertTrue(source.contains("#moj_import <photon:soft_particle.glsl>"));
+        var block = source.substring(source.indexOf("uniform PhotonCustomMaterial {"), source.indexOf("};"));
+        for (var own : List.of("DiscardThreshold", "HDR", "HDRMode", "SoftParticleParams")) {
+            assertTrue(block.contains(" " + own + ";"), own + " is the shader's own value");
+        }
+        for (var light : List.of("LitParticleParams", "PhotonClusterInfo", "PhotonClusterView", "PhotonVisibilityInfo",
+                "PhotonViewInverse")) {
+            assertFalse(block.contains(light), light + " is the pipeline's in 26.1");
+        }
+        assertTrue(source.contains("photon_soft_particle(apply_fog(color, sphericalVertexDistance,"));
+        assertTrue(source.contains("FogColor), SoftParticleParams)"), "the fade takes the parameters the shader listed");
+        assertTrue(source.contains("photon_particle_light(photonViewPos)"), "the lights are called as in 1.21");
+    }
+
+    /** One that never listed the parameters read them as 0 in 1.21 — no fade — and still does. */
+    @Test
+    public void anUnlistedFadeStaysOff() {
+        var legacy = """
+                #version 150
+                #moj_import <photon:soft_particle.glsl>
+                uniform float Alpha;
+                out vec4 fragColor;
+                void main() {
+                    fragColor = photon_soft_particle(vec4(1.0, 1.0, 1.0, Alpha));
+                }
+                """;
+        var source = ShaderFormatConverter.convertFragment(legacy, Map.of("Alpha", new float[]{1f})).source();
+        assertTrue(source.contains("photon_soft_particle(vec4(1.0, 1.0, 1.0, Alpha), vec4(0.0))"), source);
+    }
+
+    /** A shader with a fade of its own, not the include's, keeps it as written. */
+    @Test
+    public void anInlinedFadeIsLeftAlone() {
+        var legacy = """
+                #version 150
+                uniform float Alpha;
+                out vec4 fragColor;
+                vec4 photon_soft_particle(vec4 c) { return c; }
+                void main() {
+                    fragColor = photon_soft_particle(vec4(1.0, 1.0, 1.0, Alpha));
+                }
+                """;
+        var source = ShaderFormatConverter.convertFragment(legacy, Map.of("Alpha", new float[]{1f})).source();
+        assertTrue(source.contains("vec4 photon_soft_particle(vec4 c) {"), source);
+        assertTrue(source.contains("photon_soft_particle(vec4(1.0, 1.0, 1.0, Alpha));"), source);
+    }
+
+    /**
+     * The engine block comes before the shader's own includes: soft_particle.glsl imports it under PHOTON_SOFT, and a
+     * file is pasted only where it is first imported — so a shader without the fade would lose it.
+     */
+    @Test
+    public void theEngineBlockPrecedesTheIncludes() {
+        var legacy = """
+                #version 150
+                #moj_import <photon:soft_particle.glsl>
+                uniform vec4 U_ViewPort;
+                uniform float Alpha;
+                out vec4 fragColor;
+                void main() {
+                    fragColor = vec4(gl_FragCoord.xy / U_ViewPort.zw, 0.0, Alpha);
+                }
+                """;
+        var source = ShaderFormatConverter.convertFragment(legacy, Map.of("Alpha", new float[]{1f})).source();
+        assertTrue(source.indexOf("#moj_import <photon:engine.glsl>") >= 0, source);
+        assertTrue(source.indexOf("#moj_import <photon:engine.glsl>")
+                < source.indexOf("#moj_import <photon:soft_particle.glsl>"), source);
+    }
+
+    /** A uniform the json does not list has no value in 26.1: it stays out of the block both stages share. */
+    @Test
+    public void aUniformTheJsonDoesNotListIsFrozen() {
+        var legacy = """
+                #version 150
+                uniform float Alpha;
+                uniform vec4 Extra;
+                out vec4 fragColor;
+                void main() {
+                    fragColor = Extra * Alpha;
+                }
+                """;
+        var conversion = ShaderFormatConverter.convertFragment(legacy, Map.of("Alpha", new float[]{1f}));
+        var source = conversion.source();
+        var block = source.substring(source.indexOf("uniform PhotonCustomMaterial {"), source.indexOf("};"));
+        assertTrue(block.contains("float Alpha;"), source);
+        assertFalse(block.contains("Extra"), source);
+        assertTrue(source.contains("const vec4 Extra = vec4(0);"), source);
+        assertEquals(1, conversion.warnings().size(), conversion.warnings().toString());
+    }
+
+    /**
+     * A json {@code int} is an {@code int} in every stage's block, also where the stage never declared it: both stages
+     * must declare the same block, and the material packs it as an int.
+     */
+    @Test
+    public void aJsonIntStaysAnIntInTheOtherStage() {
+        var json = """
+                {"uniforms": [{"name": "Mode", "type": "int", "count": 1, "values": [0]},
+                              {"name": "Scale", "type": "float", "count": 1, "values": [1.0]}]}
+                """;
+        var vertex = """
+                #version 150
+                uniform float Scale;
+                in vec3 Position;
+                void main() {
+                    gl_Position = vec4(Position * Scale, 1.0);
+                }
+                """;
+        var source = ShaderFormatConverter.convertVertex(vertex, ShaderFormatConverter.parseJsonDefaults(json),
+                ShaderFormatConverter.parseJsonInts(json)).source();
+        assertTrue(source.contains("    int Mode;"), source);
+        assertTrue(source.contains("    float Scale;"), source);
+    }
+
+    /** Photon's own passes' includes, which a custom shader's pipeline does not declare the blocks of. */
+    private static final Set<String> INTERNAL_INCLUDES = Set.of("kila_lib.glsl", "dynamic_light_frame.glsl",
+            "dynamic_light_depth.glsl", "dynamic_light_voxel.glsl");
+
+    private static Path includeFolder() {
+        var relative = Path.of("src", "main", "resources", "assets", "photon", "shaders", "include");
+        for (var dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
+            if (Files.isDirectory(dir.resolve(relative))) return dir.resolve(relative);
+        }
+        throw new IllegalStateException("photon shader includes not found from " + Path.of("").toAbsolutePath());
+    }
+
+    /** What the converter lets a shader import is what ships, and every include that ships is either. */
+    @Test
+    public void everyAllowedIncludeShips() throws IOException {
+        try (var files = Files.list(includeFolder())) {
+            var shipped = files.map(file -> file.getFileName().toString()).toList();
+            for (var include : ShaderFormatConverter.SHIPPED_PHOTON_INCLUDES) {
+                assertTrue(shipped.contains(include), include + " does not ship");
+            }
+            for (var include : shipped) {
+                assertTrue(ShaderFormatConverter.SHIPPED_PHOTON_INCLUDES.contains(include)
+                        || INTERNAL_INCLUDES.contains(include), include + " is neither allowed nor internal");
+            }
+        }
     }
 
     @Test

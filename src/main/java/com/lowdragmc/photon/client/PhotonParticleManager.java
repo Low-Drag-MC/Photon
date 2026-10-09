@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
 import com.lowdragmc.lowdraglib2.client.scene.SceneCameraContext;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
+import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.render.IPhotonFXCollector;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
@@ -20,6 +21,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 
@@ -87,6 +91,17 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     /** The collector this scene's particles submitted into this frame (its {@code SubmitNodeStorage}). */
     @Nullable
     private IPhotonFXCollector collector;
+    /**
+     * The level this scene's FX objects live in, which is what their lights register with — the editor's
+     * {@code TrackedDummyWorld}, not the {@code ClientLevel} proxy LDLib2 hands {@link #setLevel}. Null leaves the
+     * scene unlit.
+     */
+    @Nullable
+    @Setter
+    private Level lightLevel;
+    /** This frame's projection, for the scene's dynamic lights; null without a camera to light through. */
+    @Nullable
+    private Matrix4f frameProjection;
 
     /**
      * {@code options} is the editor's {@link SceneView} when this manager belongs to it, and anything
@@ -199,7 +214,9 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
                 ? new Vector3f((float) cameraRenderState.pos.x,
                         (float) cameraRenderState.pos.y, (float) cameraRenderState.pos.z)
                 : new Vector3f();
+        frameProjection = null;
         if (cameraRenderState != null && cameraRenderState.initialized) {
+            frameProjection = new Matrix4f(cameraRenderState.projectionMatrix);
             PhotonEngineUniforms.update(
                     cameraRenderState.projectionMatrix, cameraRenderState.viewRotationMatrix,
                     eye, targetWidth, targetHeight);
@@ -208,6 +225,7 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
             // carries no matrices. The scene publishes its real ones here instead (LDLib2 26.1.2.30 widened
             // that scope to cover submit + afterRender for exactly this) — without them U_Inverse*Matrix
             // stayed on the WORLD camera, so depth->world reconstruction (scan's ring) was wrong in scenes.
+            frameProjection = new Matrix4f(SceneCameraContext.projection());
             PhotonEngineUniforms.update(
                     SceneCameraContext.projection(),
                     SceneCameraContext.viewRotation(),
@@ -263,13 +281,28 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
      */
     @Override
     public void afterRender() {
+        var lit = false;
         try {
             if (collector != null) {
+                // The scene's blocks are down and its particles are not. Lit through the matrices its particles are
+                // drawn with — vertices are world-relative here (the SceneCamera's position() is zero) and the
+                // model-view carries the camera — so the render origin is zero too.
+                if (lightLevel != null && frameProjection != null && options.isDynamicLightsEnabled()) {
+                    lit = true;
+                    DynamicLightRenderer.beginScene(lightLevel, RenderSystem.getModelViewMatrix(), frameProjection,
+                            Vec3.ZERO, isPlaying ? lastPartialTick : 0);
+                }
                 collector.drain(PhotonStage.AFTER_OPAQUE_FEATURES);
+                // as in the world: the opaque FX are lit with the blocks
+                if (lit) DynamicLightRenderer.lightScene();
                 collector.drain(PhotonStage.AFTER_TRANSLUCENT_PARTICLES);
                 collector = null;
             }
         } finally {
+            if (lit) {
+                // the haze, over the particles
+                DynamicLightRenderer.endScene();
+            }
             editorSceneRendering = false;
             renderingManager = null;
         }

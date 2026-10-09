@@ -177,8 +177,9 @@ public final class PremultipliedBlendPlan {
 
     private static PhotonPipelines.ParticlePipelineKey withBlend(
             PhotonPipelines.ParticlePipelineKey key, @Nullable BlendFunction blend, int equation) {
+        // the material half (fade, lights) is the material's, not the blend's: carried through untouched
         return new PhotonPipelines.ParticlePipelineKey(blend, equation, key.cull(), key.depthTest(),
-                key.depthMask(), key.mode(), key.wireframe());
+                key.depthMask(), key.mode(), key.wireframe(), key.softParticles(), key.litParticles());
     }
 
     private static boolean isDestinationFree(SourceFactor factor) {

@@ -5,15 +5,22 @@ import com.lowdragmc.kilagraph.rendertype.compiler.MaterialUniformLayout;
 import com.lowdragmc.kilagraph.rendertype.compiler.ShaderGraphCompiler;
 import com.lowdragmc.kilagraph.rendertype.runtime.DynamicShaderSourceRegistry;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.LitParticles;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
+import com.lowdragmc.photon.core.mixins.accessor.GlDeviceAccessor;
+import com.lowdragmc.photon.core.mixins.accessor.GpuDeviceAccessor;
+import com.lowdragmc.photon.core.mixins.accessor.ShaderKeyAccessor;
+import com.mojang.blaze3d.opengl.GlShaderModule;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.CompareOp;
 import com.mojang.blaze3d.platform.PolygonMode;
+import com.mojang.blaze3d.shaders.ShaderType;
 import com.mojang.blaze3d.shaders.UniformType;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.TextureFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
@@ -65,6 +72,101 @@ public final class PhotonPipelines {
      *  See {@link InstancedVariant#MODEL_VAT}; MIRRORED IN {@code photon:particle.glsl}. */
     public static final String VAT_DEFINE = "PHOTON_VAT";
 
+    /**
+     * Compiles the dynamic lights into a material's fragment stage — {@code photon:lit_particle.glsl} declares
+     * nothing and lights nothing without it. MIRRORED IN that file. A variant for the reason soft particles are
+     * one: the light buffers it declares must be bound at every draw, so an unlit material must not carry them.
+     */
+    public static final String LIT_DEFINE = "PHOTON_LIT";
+
+    /**
+     * The CPU tile path with per-particle records ({@code CpuParticleRecords}): same vertices as the plain CPU
+     * path, plus the record buffers read by {@code gl_VertexID}. MIRRORED IN {@code photon:particle.glsl}.
+     */
+    public static final String CPU_DATA_DEFINE = "PHOTON_CPU_DATA";
+    /** The block telling a {@link #CPU_DATA_DEFINE} draw how its vertices map to records. */
+    public static final String CPU_DATA_BLOCK = "PhotonCpuData";
+
+    /** Declare what a {@link #CPU_DATA_DEFINE} vertex stage reads: the records it uses, and the block. */
+    public static RenderPipeline.Builder declareCpuData(RenderPipeline.Builder builder, boolean data, boolean custom) {
+        builder.withShaderDefine(CPU_DATA_DEFINE).withUniform(CPU_DATA_BLOCK, UniformType.UNIFORM_BUFFER);
+        if (data) builder.withUniform("PhotonData", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
+        if (custom) builder.withUniform("PhotonCustomData", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
+        return builder;
+    }
+
+    /** The light list, cluster lists and visibility maps a lit pipeline declares — see {@code dynamic_light.glsl};
+     *  bound by {@code DynamicLightRenderer.bindLights}. */
+    public static final String LIGHT_DATA = "PhotonLightData";
+    public static final String CLUSTER_GRID = "PhotonClusterGrid";
+    public static final String CLUSTER_INDICES = "PhotonClusterIndices";
+    public static final String VISIBILITY_ATLAS = "PhotonVisibilityAtlas";
+    public static final String LIGHTS_BLOCK = "PhotonLights";
+
+    /** Pipelines that read the dynamic lights — the drain binds them for exactly these. */
+    private static final Set<RenderPipeline> LIT_PIPELINES = ConcurrentHashMap.newKeySet();
+
+    public static boolean isLit(RenderPipeline pipeline) {
+        return LIT_PIPELINES.contains(pipeline);
+    }
+
+    /** Declare what {@code photon:lit_particle.glsl} reads under {@link #LIT_DEFINE}. The caller registers the
+     *  built pipeline with {@link #markLit}. */
+    public static RenderPipeline.Builder declareLights(RenderPipeline.Builder builder) {
+        return builder.withShaderDefine(LIT_DEFINE)
+                .withUniform(LIGHT_DATA, UniformType.TEXEL_BUFFER, TextureFormat.RGBA8)
+                .withUniform(CLUSTER_GRID, UniformType.TEXEL_BUFFER, TextureFormat.RGBA8)
+                .withUniform(CLUSTER_INDICES, UniformType.TEXEL_BUFFER, TextureFormat.RGBA8)
+                .withSampler(VISIBILITY_ATLAS)
+                .withUniform(LIGHTS_BLOCK, UniformType.UNIFORM_BUFFER);
+    }
+
+    public static RenderPipeline markLit(RenderPipeline pipeline) {
+        LIT_PIPELINES.add(pipeline);
+        return pipeline;
+    }
+
+    /**
+     * Forget a pipeline nothing draws again: its lit/stacked marks, and the program and shader objects the device
+     * compiled for it, which 26.1 otherwise holds until the next resource reload. It must not be drawn afterwards.
+     * Render thread.
+     */
+    public static void release(RenderPipeline pipeline) {
+        RenderSystem.assertOnRenderThread();
+        LIT_PIPELINES.remove(pipeline);
+        StackedDistortion.unmark(pipeline);
+        var device = RenderSystem.tryGetDevice();
+        if (device == null) return;
+        if (!(((GpuDeviceAccessor) device).photon$backend() instanceof GlDeviceAccessor gl)) return;
+        var compiled = gl.photon$pipelineCache().remove(pipeline);
+        if (compiled == null) return;
+        if (compiled.isValid()) compiled.program().close();
+        var defines = pipeline.getShaderDefines();
+        var others = gl.photon$pipelineCache().keySet();
+        gl.photon$shaderCache().entrySet().removeIf(entry -> {
+            var key = (ShaderKeyAccessor) entry.getKey();
+            var type = key.photon$type();
+            var id = key.photon$id();
+            if (!key.photon$defines().equals(defines) || !id.equals(shader(pipeline, type))) return false;
+            // shader objects are shared by every pipeline with the same source and defines
+            for (var other : others) {
+                if (other.getShaderDefines().equals(defines) && id.equals(shader(other, type))) return false;
+            }
+            if (entry.getValue() != GlShaderModule.INVALID_SHADER) entry.getValue().close();
+            return true;
+        });
+    }
+
+    private static Identifier shader(RenderPipeline pipeline, ShaderType type) {
+        return type == ShaderType.VERTEX ? pipeline.getVertexShader() : pipeline.getFragmentShader();
+    }
+
+    /** Whether {@code key} asks for the lights and the stage that would read them is the material's own — the
+     *  wireframe overlay's {@code core/inverse} fragment reads none. */
+    private static boolean usesLitParticles(ParticlePipelineKey key) {
+        return key.litParticles() && !key.wireframe();
+    }
+
     /** Whether {@code key} asks for the fade, and the stage that would read it is the material's own —
      *  the wireframe overlay replaces the fragment stage with {@code core/inverse}, which has no fade and
      *  would leave {@code SamplerSceneDepth} declared but never bound. */
@@ -108,28 +210,35 @@ public final class PhotonPipelines {
     public record ParticlePipelineKey(@Nullable BlendFunction blend, int blendEquation,
                                       boolean cull, boolean depthTest,
                                       boolean depthMask, VertexFormat.Mode mode, boolean wireframe,
-                                      boolean softParticles) {
+                                      boolean softParticles, boolean litParticles) {
         public static final ParticlePipelineKey DEFAULT = new ParticlePipelineKey(
                 BlendFunction.TRANSLUCENT, BLEND_EQUATION_ADD, true, true, false, VertexFormat.Mode.QUADS,
-                false, false);
+                false, false, false);
 
         public ParticlePipelineKey(@Nullable BlendFunction blend, int blendEquation,
                                    boolean cull, boolean depthTest,
                                    boolean depthMask, VertexFormat.Mode mode, boolean wireframe) {
-            this(blend, blendEquation, cull, depthTest, depthMask, mode, wireframe, false);
+            this(blend, blendEquation, cull, depthTest, depthMask, mode, wireframe, false, false);
         }
 
         /** The editor wireframe overlay: unculled, undepth-tested lines over the same geometry. */
         public static ParticlePipelineKey wireframe(VertexFormat.Mode mode) {
             return new ParticlePipelineKey(BlendFunction.TRANSLUCENT, BLEND_EQUATION_ADD,
-                    false, false, false, mode, true, false);
+                    false, false, false, mode, true, false, false);
         }
 
         /** This key with the soft-particle fade compiled in — a MATERIAL property, unlike the rest of the
          *  key, which is the emitter's {@code MaterialSetting}. See {@link #SOFT_PARTICLE_DEFINE}. */
         public ParticlePipelineKey withSoftParticles(boolean soft) {
             return soft == softParticles ? this : new ParticlePipelineKey(
-                    blend, blendEquation, cull, depthTest, depthMask, mode, wireframe, soft);
+                    blend, blendEquation, cull, depthTest, depthMask, mode, wireframe, soft, litParticles);
+        }
+
+        /** This key with the dynamic lights compiled in — a MATERIAL property like the fade. See
+         *  {@link #LIT_DEFINE}. */
+        public ParticlePipelineKey withLitParticles(boolean lit) {
+            return lit == litParticles ? this : new ParticlePipelineKey(
+                    blend, blendEquation, cull, depthTest, depthMask, mode, wireframe, softParticles, lit);
         }
     }
 
@@ -184,7 +293,8 @@ public final class PhotonPipelines {
      * {@code bakeInstancedGroup}, which build it from a dedicated wireframe key rather than from a
      * material's — so only these two builders ever see {@code wireframe == true}.
      */
-    private static RenderPipeline build(RenderPipeline.Builder builder, boolean wireframe) {
+    private static RenderPipeline build(RenderPipeline.Builder builder, ParticlePipelineKey key) {
+        var wireframe = key.wireframe();
         if (wireframe) {
             builder.withPolygonMode(PolygonMode.WIREFRAME)
                     .withFragmentShader(Photon.id("core/inverse"))
@@ -197,7 +307,17 @@ public final class PhotonPipelines {
         if (wireframe) {
             WIREFRAME_PIPELINES.add(pipeline);
         }
+        if (usesLitParticles(key)) {
+            markLit(pipeline);
+        }
         return pipeline;
+    }
+
+    /** Declare what the lights read, for a key that asks for them. Bound by the drain / the preview renderer. */
+    private static void applyLitParticles(RenderPipeline.Builder builder, ParticlePipelineKey key) {
+        if (usesLitParticles(key)) {
+            declareLights(builder);
+        }
     }
 
     private PhotonPipelines() {
@@ -226,7 +346,8 @@ public final class PhotonPipelines {
                     .withCull(k.cull())
                     .withVertexFormat(PARTICLE_FORMAT, k.mode());
             applySoftParticles(builder, k);
-            return build(builder, k.wireframe());
+            applyLitParticles(builder, k);
+            return build(builder, k);
         });
     }
 
@@ -271,13 +392,13 @@ public final class PhotonPipelines {
         MODEL_VAT_TANGENT(List.of("PARTICLE_MODEL_INSTANCE", VAT_DEFINE, TANGENT_DEFINE),
                 instancedFormat("PhotonModelVertexVatTangent"), false, true, true,
                 PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstancedDrawState.MODEL_TANGENT),
-        TRAIL(List.of("TRAIL_INSTANCE"), instancedFormat("PhotonTrailCorner"), true, false, false,
+        TRAIL(List.of("TRAIL_INSTANCE"), instancedFormat("PhotonTrailCorner"), true, true, false,
                 PhotonGpuChannels.Kind.TRAIL, PhotonInstancedDrawState.TRAIL),
-        ARA(List.of("ARA_TRAIL_INSTANCE"), instancedFormat("PhotonAraCorner"), true, false, false,
+        ARA(List.of("ARA_TRAIL_INSTANCE"), instancedFormat("PhotonAraCorner"), true, true, false,
                 PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstancedDrawState.ARA),
-        ARA_TUBE(List.of("ARA_TRAIL_TUBE_INSTANCE"), instancedFormat("PhotonAraTubeCorner"), true, false, false,
+        ARA_TUBE(List.of("ARA_TRAIL_TUBE_INSTANCE"), instancedFormat("PhotonAraTubeCorner"), true, true, false,
                 PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstancedDrawState.ARA_TUBE),
-        BEAM(List.of("BEAM_INSTANCE"), instancedFormat("PhotonBeamCorner"), false, false, true,
+        BEAM(List.of("BEAM_INSTANCE"), instancedFormat("PhotonBeamCorner"), false, true, true,
                 PhotonGpuChannels.Kind.BEAM, PhotonInstancedDrawState.BEAM);
 
         /** Every {@code #define} this variant's shaders compile with: the geometry-family selector that
@@ -285,8 +406,9 @@ public final class PhotonPipelines {
         public final List<String> defines;
         final VertexFormat format;
         public final boolean usesPoints;
-        /** Whether {@code particle.glsl} declares {@code PhotonCustomData} for this define — per-particle
-         *  kinds only; trail/ara/beam instances aren't particles, so {@code photon_custom_data()} reads 0. */
+        /** Whether {@code particle.glsl} declares {@code PhotonCustomData} for this define. Every instanced kind
+         *  does: a trail/ara/beam instance carries its owner's record too (one per segment/beam, written by
+         *  the fills in the same order as the instances). */
         public final boolean usesCustomData;
         /**
          * Whether this variant's instance record STARTS with the instance's own position, which is what
@@ -360,7 +482,8 @@ public final class PhotonPipelines {
             }
             applyVat(builder, ik.variant());
             applySoftParticles(builder, k);
-            return build(builder, k.wireframe());
+            applyLitParticles(builder, k);
+            return build(builder, k);
         });
     }
 
@@ -442,7 +565,7 @@ public final class PhotonPipelines {
                     .forEach(e -> builder.withShaderDefine(e.getKey(), e.getValue()));
             k.samplerNames().forEach(builder::withSampler);
             k.sceneSamplers().forEach(builder::withSampler);
-            return builder.build();
+            return buildCustom(builder, pk);
         });
     }
 
@@ -457,7 +580,8 @@ public final class PhotonPipelines {
     // (DynamicShaderSourceRegistry.shaderId) and we compile OUR pipeline from it, declaring the blocks and
     // samplers the generated GLSL references (the material binds their values at draw).
 
-    private record GraphKey(String contentHash, @Nullable InstancedVariant variant, ParticlePipelineKey key) {
+    private record GraphKey(String contentHash, @Nullable InstancedVariant variant, ParticlePipelineKey key,
+                            boolean cpuData) {
     }
 
     private static final Map<GraphKey, RenderPipeline> GRAPH_VARIANTS = new ConcurrentHashMap<>();
@@ -474,7 +598,16 @@ public final class PhotonPipelines {
     public static RenderPipeline graphShader(CompiledShaderGraph compiled,
                                              @Nullable InstancedVariant variant, ParticlePipelineKey key,
                                              long usedChannelMask, boolean usesCustomData) {
-        return GRAPH_VARIANTS.computeIfAbsent(new GraphKey(compiled.contentHash(), variant, key), gk -> {
+        return graphShader(compiled, variant, key, usedChannelMask, usesCustomData, false);
+    }
+
+    /** {@code cpuData}: the CPU geometry ({@code variant} null) with the per-particle records bound — what lets a
+     *  graph read particle data on a group that is not instanced. */
+    public static RenderPipeline graphShader(CompiledShaderGraph compiled,
+                                             @Nullable InstancedVariant variant, ParticlePipelineKey key,
+                                             long usedChannelMask, boolean usesCustomData, boolean cpuData) {
+        var cpu = cpuData && variant == null;
+        return GRAPH_VARIANTS.computeIfAbsent(new GraphKey(compiled.contentHash(), variant, key, cpu), gk -> {
             var k = gk.key();
             var builder = RenderPipeline.builder()
                     .withLocation(Photon.id("pipeline/graph_" + VARIANT_ID.getAndIncrement()))
@@ -513,6 +646,11 @@ public final class PhotonPipelines {
             if (compiled.usesSceneDepth()) {
                 builder.withSampler(PhotonShaderCompiler.SCENE_DEPTH);
             }
+            // a Dynamic Light node pulled the lights in — a function of the source, so the content hash keys it
+            var lit = LitParticles.includedBy(compiled.fragmentSource());
+            if (lit) {
+                declareLights(builder);
+            }
             if (variant != null) {
                 variant.defines.forEach(builder::withShaderDefine);
                 if (variant.usesPoints) {
@@ -530,8 +668,11 @@ public final class PhotonPipelines {
                 if (usesCustomData && variant.usesCustomData) {
                     builder.withUniform("PhotonCustomData", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
                 }
+            } else if (cpu) {
+                declareCpuData(builder, usedChannelMask != 0L, usesCustomData);
             }
-            return builder.build();
+            var pipeline = builder.build();
+            return lit ? markLit(pipeline) : pipeline;
         });
     }
 
@@ -581,6 +722,47 @@ public final class PhotonPipelines {
             }
             return builder.build();
         });
+    }
+
+    // ---- for materials that build their own pipelines -------------------------------------------
+
+    /** The emitter's half of a pipeline: {@code key}'s blend, depth and cull. */
+    public static RenderPipeline.Builder applyState(RenderPipeline.Builder builder, ParticlePipelineKey key) {
+        return builder
+                .withColorTargetState(key.blend() == null ? ColorTargetState.DEFAULT : new ColorTargetState(key.blend()))
+                .withDepthStencilState(new DepthStencilState(
+                        key.depthTest() ? CompareOp.LESS_THAN_OR_EQUAL : CompareOp.ALWAYS_PASS, key.depthMask()))
+                .withCull(key.cull());
+    }
+
+    /**
+     * The geometry half: {@link #PARTICLE_FORMAT} in {@code cpuMode} when {@code variant} is null (with the records
+     * bound when {@code cpuData} asks), else the variant's instanced stream and everything its vertex stage reads.
+     * {@code data}/{@code custom} say whether the program reads the additional GPU data and the custom data — declared
+     * only then, as {@link #graphShader} does, because a declared uniform must be bound at draw.
+     */
+    public static RenderPipeline.Builder applyGeometry(RenderPipeline.Builder builder, @Nullable InstancedVariant variant,
+                                                       VertexFormat.Mode cpuMode, boolean data, boolean custom,
+                                                       boolean cpuData) {
+        if (variant == null) {
+            builder.withVertexFormat(PARTICLE_FORMAT, cpuMode);
+            if (cpuData) declareCpuData(builder, data, custom);
+            return builder;
+        }
+        builder.withVertexFormat(variant.format, VertexFormat.Mode.QUADS);
+        variant.defines.forEach(builder::withShaderDefine);
+        if (variant.usesPoints) {
+            builder.withUniform("PhotonPoints", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
+        }
+        applyVat(builder, variant);
+        // applyVat already declared PhotonData for a VAT variant
+        if (data && !variant.usesVat()) {
+            builder.withUniform("PhotonData", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
+        }
+        if (custom && variant.usesCustomData) {
+            builder.withUniform("PhotonCustomData", UniformType.TEXEL_BUFFER, TextureFormat.RGBA8);
+        }
+        return builder;
     }
 
     public static void register(RegisterRenderPipelinesEvent event) {
@@ -648,7 +830,19 @@ public final class PhotonPipelines {
                     .forEach(e -> builder.withShaderDefine(e.getKey(), e.getValue()));
             k.samplerNames().forEach(builder::withSampler);
             k.sceneSamplers().forEach(builder::withSampler);
-            return builder.build();
+            return buildCustom(builder, k.pipelineKey());
         });
+    }
+
+    /**
+     * A custom shader is lit when it imports {@code photon:lit_particle.glsl}, and fades when it imports
+     * {@code photon:soft_particle.glsl} and lists the scene depth — see {@code CustomShaderMaterial}. The depth sampler
+     * and the engine block are already the custom pipeline's, so the fade only needs its define.
+     */
+    private static RenderPipeline buildCustom(RenderPipeline.Builder builder, ParticlePipelineKey key) {
+        applyLitParticles(builder, key);
+        if (usesSoftParticles(key)) builder.withShaderDefine(SOFT_PARTICLE_DEFINE);
+        var pipeline = builder.build();
+        return usesLitParticles(key) ? markLit(pipeline) : pipeline;
     }
 }

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
+import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialRequirements;
 import com.google.common.collect.Queues;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -18,7 +19,9 @@ import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.ValueSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.forcefield.ForceFieldObject;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
@@ -34,6 +37,9 @@ import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonViewSettings;
 import com.lowdragmc.photon.client.render.PhotonVatUniforms;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
+import com.lowdragmc.photon.client.light.DynamicLightManager;
+import com.lowdragmc.photon.client.light.LightProvider;
+import com.lowdragmc.photon.client.light.LightSink;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
@@ -43,6 +49,7 @@ import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -203,6 +210,14 @@ public class ParticleEmitter extends Emitter {
                     o -> ((ParticleEmitter) o).runtime().noise.enable),
             new RuntimeBinding("uvAnimation.enable", "enable", ConfigValueType.BOOL,
                     o -> ((ParticleEmitter) o).runtime().uvAnimation.enable),
+            new RuntimeBinding("lightEmission.enable", "enable", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().lightEmission.enable),
+            new RuntimeBinding("lightEmission.color", "LightEmissionSetting.color", ConfigValueType.COLOR,
+                    o -> ((ParticleEmitter) o).runtime().lightEmission.color),
+            new RuntimeBinding("lightEmission.intensity", "LightEmissionSetting.intensity", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().lightEmission.intensity),
+            new RuntimeBinding("lightEmission.range", "LightEmissionSetting.range", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().lightEmission.range),
             new RuntimeBinding("trails.enable", "enable", ConfigValueType.BOOL,
                     o -> ((ParticleEmitter) o).runtime().trails.enable),
             new RuntimeBinding("subEmitters.enable", "enable", ConfigValueType.BOOL,
@@ -332,6 +347,8 @@ public class ParticleEmitter extends Emitter {
     public void buildConfigurator(ConfiguratorGroup father) {
         super.buildConfigurator(father);
         config.buildConfigurator(father);
+        MaterialRequirements.addRow(father, config.renderer::getMaterials, config.additionalGPUDataSetting, true,
+                config.renderer::isUseGPUInstance, config.renderer::setUseGPUInstance);
     }
 
     protected TileParticle createNewParticle() {
@@ -432,6 +449,19 @@ public class ParticleEmitter extends Emitter {
             simSpace.scale();
             simSpace.rotation();
         }
+        if (runtime().forceOverLifetime.getSimulationSpace() == ValueSpace.Custom) {
+            CustomSpace.warm(config.forceOverLifetime.customSpace, getScene());
+        }
+        if (runtime().velocityOverLifetime.space.get() == ValueSpace.Custom) {
+            CustomSpace.warm(config.velocityOverLifetime.customSpace, getScene());
+        }
+        var araConfig = config.trails.araConfig;
+        if (araConfig.physicsSetting.gravitySpace == ValueSpace.Custom) {
+            CustomSpace.warm(araConfig.physicsSetting.gravityCustomSpace, getScene());
+        }
+        if (araConfig.space == AraTrailConfig.TrailSpace.Custom) {
+            CustomSpace.warm(araConfig.customSpace, getScene());
+        }
         activeForceFields = gatherForceFields();
         for (var queue : particles.values()) {
             for (var particle : queue) {
@@ -502,6 +532,7 @@ public class ParticleEmitter extends Emitter {
     }
 
     public void emitParticle(float dt) {
+        updateLightRegistration();
         // calculate distance (scaled by this step's dt)
         accumulatedDistance += getVelocity().length() * dt;
         // emit new particle (maxParticles may be timeline-overridden; authored value is the fallback)
@@ -632,7 +663,9 @@ public class ParticleEmitter extends Emitter {
                                Camera camera, float partialTicks) {
         // GPU-instanced tile quads when the config qualifies; CPU baking otherwise
         if (!(canInstanceTiles() && extractInstancedTiles(settings, out, camera, partialTicks))) {
-            super.bakeBatches(settings, out, camera, partialTicks); // the tile quads (CPU)
+            // the tile quads (CPU), carrying per-particle records for any material that reads particle data
+            bakeGroup(settings, out, camera, partialTicks, rendererRuntime(), geometryMode(), this::bakeGeometry,
+                    new CpuRecordSource(config.additionalGPUDataSetting, records -> tileRenderer().setCpuRecords(records)));
         }
         // The embedded per-particle trails (TrailsSetting) are separate geometry groups: their own
         // sub-config renderer/materials and primitive mode, mirroring TrailEmitter/AraTrailEmitter.
@@ -832,11 +865,16 @@ public class ParticleEmitter extends Emitter {
         }
     }
 
-    @Override
-    protected void bakeGeometry(VertexConsumer geometry, Camera camera, float partialTicks) {
+    private TileParticleRenderer tileRenderer() {
         if (extractRenderer == null) {
             extractRenderer = new TileParticleRenderer(runtime().renderer);
         }
+        return extractRenderer;
+    }
+
+    @Override
+    protected void bakeGeometry(VertexConsumer geometry, Camera camera, float partialTicks) {
+        var extractRenderer = tileRenderer();
         for (var queue : this.particles.values()) {
             // tiles only — trail queues extract as their own groups (see extractBatches)
             if (queue.peek() instanceof TileParticle) {
@@ -863,10 +901,38 @@ public class ParticleEmitter extends Emitter {
         return cull.isEnable() ? cull.getCullAABB(this, partialTicks) : null;
     }
 
+    // one instance: the manager holds providers weakly and removes them by identity
+    private final LightProvider lightProvider = this::submitParticleLights;
+    @Nullable
+    private Level lightLevel;
+
+    private void updateLightRegistration() {
+        registerLights(runtime().lightEmission.isEnable() ? getLevel() : null);
+    }
+
+    private void registerLights(@Nullable Level level) {
+        if (level == lightLevel) return;
+        if (lightLevel != null) DynamicLightManager.removeProvider(lightLevel, lightProvider);
+        if (level != null) DynamicLightManager.addProvider(level, lightProvider);
+        lightLevel = level;
+    }
+
+    private void submitParticleLights(LightSink sink, float partialTick) {
+        if (!runtime().lightEmission.isEnable() || !isAlive() || !isVisible() || isDiscarded()) return;
+        runtime().lightEmission.submit(particles.values(), sink, partialTick);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        registerLights(null);
+    }
+
     @Override
     public void remove(boolean force) {
         super.remove(force);
         if (force) {
+            registerLights(null);
             particles.clear();
             pendingSubEmitterSpawns.clear();
             if (runtime != null) {

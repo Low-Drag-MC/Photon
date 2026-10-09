@@ -10,8 +10,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialRenderTypes;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.ShaderGraphMaterial;
-import com.lowdragmc.photon.client.gameobject.emitter.data.material.UIResourceMaterial;
+import com.lowdragmc.photon.client.gameobject.particle.renderer.CpuParticleRecords;
 import com.lowdragmc.photon.client.render.*;
 import com.lowdragmc.photon.client.render.PremultipliedBlendPlan;
 import com.mojang.blaze3d.buffers.GpuBuffer;
@@ -45,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 @ParametersAreNonnullByDefault
@@ -333,6 +333,23 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                                    Camera camera, float partialTicks,
                                    RendererSetting.Runtime renderer, VertexFormat.Mode mode,
                                    GeometryBaker baker) {
+        bakeGroup(settings, out, camera, partialTicks, renderer, mode, baker, null);
+    }
+
+    /** Per-particle records for a CPU group with a fixed vertex count per particle; {@code collect} points the baker
+     *  at them, null stops it. */
+    public record CpuRecordSource(AdditionalGPUDataSetting setting, Consumer<CpuParticleRecords> collect) {
+    }
+
+    /** As above, plus per-particle records for the materials that read particle data (their PHOTON_CPU_DATA
+     *  pipeline). */
+    protected final void bakeGroup(PhotonViewSettings settings, List<PhotonWorldRenderState.DrawJob> out,
+                                   Camera camera, float partialTicks,
+                                   RendererSetting.Runtime renderer, VertexFormat.Mode mode,
+                                   GeometryBaker baker, @Nullable CpuRecordSource recordSource) {
+        // collected once and shared: bakes and sorts are deterministic, so every material sees the same order
+        PhotonWorldRenderState.CpuRecords records = null;
+        boolean recordsTried = false;
         // the eye in the space the bakers write: Photon bakes camera-relative, and the editor's
         // SceneCamera sits at the origin while the real viewer is elsewhere
         var sortEye = PhotonCameraUtils.facingEye(camera).sub(PhotonCameraUtils.renderOrigin(camera));
@@ -356,15 +373,23 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                 var info = PhotonRenderTypes.drawInfo(renderType);
                 var mask = PhotonWorldRenderState.MaskWrite.of(renderer,
                         info == null ? null : info.bindings().textures().get("Sampler0"));
+                var recordPipeline = recordSource == null || info == null || !readsParticleRecords(materialSetting)
+                        ? null : PhotonRenderTypes.cpuDataPipeline(info);
+                if (recordPipeline != null && !recordsTried) {
+                    recordsTried = true;
+                    records = bakeRecords(recordSource, renderer.getMaterials(), mode, camera, partialTicks,
+                            sortOrigin, baker);
+                }
                 bakeJob(out, renderType, mode, camera, partialTicks, stage,
-                        renderer.getOrderInLayer(), sortOrigin, baker, mask);
+                        renderer.getOrderInLayer(), sortOrigin, baker, mask, materialSetting.isBackFacesFirst(),
+                        recordPipeline == null || records == null ? null : records.with(recordPipeline));
             }
         }
         if (settings.wireframe()) {
             // overlay always on top of everything, whatever layer the emitter itself draws in
             bakeJob(out, MaterialRenderTypes.wireframe(mode), mode, camera, partialTicks,
                     PhotonStage.AFTER_TRANSLUCENT_PARTICLES, Integer.MAX_VALUE, null, baker,
-                    null); // an editor overlay is not content — it never writes the mask
+                    null, false, null); // an editor overlay is not content — it never writes the mask
         }
     }
 
@@ -461,37 +486,29 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     }
 
     /**
-     * Union of the additional-data channels the pass's shadergraph materials read — fed into
-     * {@code AdditionalGPUDataSetting.setMaterialMask} so an instanced pass auto-enables whatever its
-     * graphs need (hand-written shader materials toggle channels manually instead). 1.21 parity:
-     * {@code PhotonFXRenderPass.shaderGraphChannelMask}.
+     * Union of the additional-data channels the pass's materials read — fed into
+     * {@code AdditionalGPUDataSetting.setMaterialMask} so an instanced pass auto-enables whatever they need
+     * (hand-written shader materials toggle channels manually instead). Any material may ask
+     * ({@link IMaterial#getUsedChannelMask}): a shader graph through its nodes, a KilaMaterial through its drivers.
+     * 1.21 parity: {@code PhotonFXRenderPass.materialChannelMask}.
      */
-    private static long shaderGraphChannelMask(List<MaterialSetting> materials) {
+    static long materialChannelMask(List<MaterialSetting> materials) {
         var mask = 0L;
         for (var materialSetting : materials) {
-            if (rawMaterial(materialSetting) instanceof ShaderGraphMaterial graph) {
-                mask |= graph.getUsedChannelMask();
-            }
+            mask |= materialSetting.getMaterial().getUsedChannelMask();
         }
         return mask;
     }
 
-    /** Whether any shadergraph material on the pass reads user custom data (a {@code CustomDataNode}) —
-     *  1.21 parity: {@code PhotonFXRenderPass.shaderGraphUsesCustomData}. */
-    private static boolean shaderGraphUsesCustomData(List<MaterialSetting> materials) {
+    /** Whether any material on the pass reads user custom data — 1.21 parity:
+     *  {@code PhotonFXRenderPass.materialsUseCustomData}. */
+    static boolean materialsUseCustomData(List<MaterialSetting> materials) {
         for (var materialSetting : materials) {
-            if (rawMaterial(materialSetting) instanceof ShaderGraphMaterial graph && graph.usesCustomData()) {
+            if (materialSetting.getMaterial().usesCustomData()) {
                 return true;
             }
         }
         return false;
-    }
-
-    /** Unwrap the resource-library indirection so the checks above see the real material. */
-    private static IMaterial rawMaterial(MaterialSetting materialSetting) {
-        var material = materialSetting.getMaterial();
-        return material instanceof UIResourceMaterial ui
-                ? ui.getRawMaterial() : material;
     }
 
     /**
@@ -581,21 +598,26 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
             if (info == null || info.instanced() == null) {
                 return false;
             }
+            // a material deriving its own instanced program may fail to compile one: then the group draws on the CPU
+            var source = info.instanced().source();
+            if (source != null && info.bindings().graph() == null && source.pipeline(variant, false) == null) {
+                return false;
+            }
             infos.add(info);
             var slice = PhotonMaterialUniforms.sliceFor(renderType);
             // custom-shader types carry no material block — bind the default (vertex stage only)
             slices.add(slice != null ? slice
                     : PhotonMaterialUniforms.sliceFor(PhotonMaterialUniforms.Values.DEFAULT));
         }
-        // A shadergraph reads whatever channels its nodes ask for, with no emitter toggle declaring them,
+        // A material reads whatever channels it asks for, with no emitter toggle declaring them,
         // so the pass auto-enables their union (1.21 PhotonFXRenderPass.drawInstanced does exactly this,
         // right here — after the path is already decided; it is not part of choosing GPU vs CPU).
         // ⚠️ A VAT draw reads the random and t out of the same records whether or not any material asked
         // for them — its pipeline declares PhotonData, and a declared texel buffer must be bound.
-        var materialMask = shaderGraphChannelMask(renderer.getMaterials())
+        var materialMask = materialChannelMask(renderer.getMaterials())
                 | (variant.usesVat() ? VAT_PHASE_CHANNELS : 0L);
         setting.setMaterialMask(materialMask);
-        setting.setCustomDataMaterialUsed(shaderGraphUsesCustomData(renderer.getMaterials()));
+        setting.setCustomDataMaterialUsed(materialsUseCustomData(renderer.getMaterials()));
         // The user-toggled channels / custom-data streams ride as a divisor-1 attribute tail inside the
         // instance record (hand-written shaders read them as extra `in` declarations) — 1.21 grew the
         // instance stride the same way. Callers size by the BASE stride, so re-derive the capacity.
@@ -679,6 +701,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                     var graph = info.bindings().graph();
                     pipeline = PhotonPipelines.graphShader(graph.compiled(), variant, key,
                             graph.usedChannelMask(), graph.usesCustomData());
+                } else if (recipe.source() != null) {
+                    pipeline = recipe.source().pipeline(variant, false);
                 } else if (recipe.customShaderKey() != null) {
                     pipeline = PhotonPipelines.instancedCustomShader(variant, recipe.customShaderKey());
                 } else {
@@ -694,9 +718,11 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                         new PhotonWorldRenderState.DrawBindings(
                                 info.bindings().textures(), slices.get(m),
                                 customUniforms == null ? null : customUniforms.slice(),
-                                info.bindings().sceneSamplers(), info.bindings().graph()),
+                                info.bindings().sceneSamplers(), info.bindings().graph(),
+                                info.bindings().binder()),
                         positionOffset, key.blendEquation(),
-                        stage, renderer.getOrderInLayer(), distanceSq, variant, mask));
+                        stage, renderer.getOrderInLayer(), distanceSq, variant, mask,
+                        renderer.getMaterials().get(m).isBackFacesFirst()));
             }
         }
         if (wireframe) {
@@ -719,7 +745,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                             null), // wireframe overlay draws Photon's own shader, never a graph
                     positionOffset, PhotonPipelines.BLEND_EQUATION_ADD,
                     PhotonStage.AFTER_TRANSLUCENT_PARTICLES, Integer.MAX_VALUE, distanceSq,
-                    variant, null)); // an editor overlay is not content — it never writes the mask
+                    variant, null, false)); // an editor overlay is not content — it never writes the mask
         }
         return true;
     }
@@ -731,7 +757,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                          PhotonStage stage, int orderInLayer,
                          @Nullable Vector3fc sortOrigin,
                          GeometryBaker baker,
-                         @Nullable PhotonWorldRenderState.MaskWrite mask) {
+                         @Nullable PhotonWorldRenderState.MaskWrite mask, boolean backFacesFirst,
+                         @Nullable PhotonWorldRenderState.CpuRecords records) {
         var buffer = new ByteBufferBuilder(64 * 1024);
         var builder = new BufferBuilder(buffer, mode, PhotonPipelines.PARTICLE_FORMAT);
         baker.bake(builder, camera, partialTicks);
@@ -741,62 +768,134 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
             return;
         }
         if (sortOrigin != null) {
-            sortQuads(mesh, sortOrigin);
+            // with records, whole particles move: the records were permuted in the same order (bakeRecords)
+            sortQuads(mesh, sortOrigin, records == null ? 1 : records.vertsPerParticle() / 4);
         }
         var eye = PhotonCameraUtils.facingEye(camera);
         var distanceSq = transform.position().distanceSquared(eye);
         out.add(new PhotonWorldRenderState.Job(renderType, mesh, buffer, stage, orderInLayer,
-                distanceSq, mask));
+                distanceSq, mask, backFacesFirst, records));
+    }
+
+    /** Whether a material reads per-particle data, which the CPU path otherwise feeds it as zeros. */
+    private static boolean readsParticleRecords(MaterialSetting materialSetting) {
+        var material = materialSetting.getMaterial();
+        return material.getUsedChannelMask() != 0L || material.usesCustomData();
+    }
+
+    @Nullable
+    private transient PhotonInstanceRing cpuDataRing;
+    @Nullable
+    private transient PhotonInstanceRing cpuCustomRing;
+    @Nullable
+    private transient CpuParticleRecords cpuRecords;
+
+    /**
+     * Bake the group once more just to collect its records in vertex order, sort them with the particles, and
+     * upload them. Null when they cannot be trusted to line up with the vertices — a particle that wrote a different
+     * number of vertices would shift every record after it — in which case the materials read zeros, as before.
+     */
+    @Nullable
+    private PhotonWorldRenderState.CpuRecords bakeRecords(CpuRecordSource source, List<MaterialSetting> materials,
+                                                          VertexFormat.Mode mode, Camera camera, float partialTicks,
+                                                          @Nullable Vector3fc sortOrigin, GeometryBaker baker) {
+        if (mode != VertexFormat.Mode.QUADS) return null;
+        var setting = source.setting();
+        setting.setMaterialMask(materialChannelMask(materials));
+        setting.setCustomDataMaterialUsed(materialsUseCustomData(materials));
+        if (cpuRecords == null) cpuRecords = new CpuParticleRecords();
+        var records = cpuRecords;
+        records.begin(setting, Math.max(getParticleAmount(), 16));
+        var buffer = new ByteBufferBuilder(64 * 1024);
+        try {
+            source.collect().accept(records);
+            var builder = new BufferBuilder(buffer, mode, PhotonPipelines.PARTICLE_FORMAT);
+            baker.bake(builder, camera, partialTicks);
+            source.collect().accept(null);
+            records.end();
+            try (var mesh = builder.build()) {
+                int particles = records.count();
+                int verts = records.vertsPerParticle();
+                if (mesh == null || particles == 0 || verts % 4 != 0
+                        || mesh.drawState().vertexCount() != particles * verts) {
+                    return null;
+                }
+                if (sortOrigin != null) {
+                    var order = sortQuads(mesh, sortOrigin, verts / 4);
+                    if (order != null) records.permute(order, particles);
+                }
+            }
+        } finally {
+            source.collect().accept(null);
+            buffer.close();
+        }
+        GpuBuffer data = null;
+        GpuBuffer custom = null;
+        var dataRecords = records.data();
+        if (dataRecords != null) {
+            if (cpuDataRing == null) {
+                cpuDataRing = new PhotonInstanceRing();
+                AutoCloseCleaner.registerRenderThread(this, cpuDataRing);
+            }
+            data = cpuDataRing.write(dataRecords);
+            PhotonWorldRenderState.trackInstanceRing(cpuDataRing);
+        }
+        var customRecords = records.custom();
+        if (customRecords != null) {
+            if (cpuCustomRing == null) {
+                cpuCustomRing = new PhotonInstanceRing();
+                AutoCloseCleaner.registerRenderThread(this, cpuCustomRing);
+            }
+            custom = cpuCustomRing.write(customRecords);
+            PhotonWorldRenderState.trackInstanceRing(cpuCustomRing);
+        }
+        if (data == null && custom == null) return null;
+        return new PhotonWorldRenderState.CpuRecords(null, data, custom, records.vertsPerParticle());
     }
 
     /**
-     * Reorder the baked quads far-to-near, in place. 1.21 sorted by building a sorted INDEX buffer
-     * ({@code MeshDataSorter.sortPrimitives}); Photon's 26.1 drain concatenates adjacent same-RenderType
-     * jobs into one run over a shared ring buffer and draws them with the engine's sequential quad
-     * indices, so a per-job index buffer would have to break that merging. Permuting the vertices instead
-     * keeps the merge (and costs one memcpy of the mesh, against an index upload per job per frame).
-     * <p>
-     * QUADS only — the strip/triangle geometries have no independent primitives to reorder, which is the
-     * same restriction {@code MeshDataSorter.getVerticesPerPrimitive} encodes.
-     * <p>
-     * The permutation is one {@code memCopy} per quad into a reused direct scratch, then one bulk copy
-     * back — measured 5–9x faster than the per-byte {@code ByteBuffer} loop it replaces, and it drops a
-     * {@code byte[quads * quadBytes]} allocation per job per frame (2.5MB at 20k quads).
+     * Reorder the baked quads far-to-near in place, {@code quadsPerGroup} at a time (a whole particle when CPU records
+     * index by vertex; they move by the returned order). Vertices move rather than indices, so adjacent jobs still
+     * merge into one draw. QUADS only. Null when nothing was reordered.
      */
-    private static void sortQuads(MeshData mesh, Vector3fc sortOrigin) {
+    @Nullable
+    private static int[] sortQuads(MeshData mesh, Vector3fc sortOrigin, int quadsPerGroup) {
         var drawState = mesh.drawState();
-        if (drawState.mode() != VertexFormat.Mode.QUADS) {
-            return;
+        if (drawState.mode() != VertexFormat.Mode.QUADS || quadsPerGroup < 1) {
+            return null;
         }
         var stride = drawState.format().getVertexSize();
-        var quads = drawState.vertexCount() / 4;
-        if (quads < 2) {
-            return;
+        var groupVertices = 4 * quadsPerGroup;
+        var groups = drawState.vertexCount() / groupVertices;
+        if (groups < 2) {
+            return null;
         }
         var vertices = mesh.vertexBuffer();
-        var keys = PhotonDistanceSort.keys(quads);
-        for (int quad = 0; quad < quads; quad++) {
-            var base = quad * 4 * stride;
+        var keys = PhotonDistanceSort.keys(groups);
+        for (int group = 0; group < groups; group++) {
+            var base = group * groupVertices * stride;
             float x = 0, y = 0, z = 0;
-            for (int v = 0; v < 4; v++) {
+            for (int v = 0; v < groupVertices; v++) {
                 var offset = base + v * stride;
                 x += vertices.getFloat(offset);
                 y += vertices.getFloat(offset + Float.BYTES);
                 z += vertices.getFloat(offset + 2 * Float.BYTES);
             }
-            keys[quad] = sortOrigin.distanceSquared(x * 0.25f, y * 0.25f, z * 0.25f);
+            float inverse = 1f / groupVertices;
+            keys[group] = sortOrigin.distanceSquared(x * inverse, y * inverse, z * inverse);
         }
-        var order = PhotonDistanceSort.farToNear(quads);
-        var quadBytes = 4 * stride;
-        var totalBytes = quads * quadBytes;
+        var order = PhotonDistanceSort.farToNear(groups);
+        var groupBytes = groupVertices * stride;
+        var totalBytes = groups * groupBytes;
         // memAddress0 = the buffer's base, matching the absolute indexing used for the centroids above
         var source = MemoryUtil.memAddress0(vertices);
         var destination = MemoryUtil.memAddress0(quadScratch(totalBytes));
-        for (int i = 0; i < quads; i++) {
-            MemoryUtil.memCopy(source + (long) order[i] * quadBytes,
-                    destination + (long) i * quadBytes, quadBytes);
+        for (int i = 0; i < groups; i++) {
+            MemoryUtil.memCopy(source + (long) order[i] * groupBytes,
+                    destination + (long) i * groupBytes, groupBytes);
         }
         MemoryUtil.memCopy(destination, source, totalBytes);
+        return order;
     }
 
     /** Write this emitter's camera-relative vertices for one material batch (the default group). */

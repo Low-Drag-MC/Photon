@@ -11,6 +11,8 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.system.MemoryUtil;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.function.Consumer;
@@ -72,13 +74,20 @@ public final class PhotonFullscreenPass {
      */
     public static void draw(String label, RenderPipeline pipeline, GpuTextureView target,
                             Consumer<RenderPass> bind) {
+        draw(label, pipeline, target, null, bind);
+    }
+
+    /** {@link #draw(String, RenderPipeline, GpuTextureView, Consumer)} with a depth attachment, for a pipeline
+     *  whose state tests or writes depth (the pass is otherwise the same). */
+    public static void draw(String label, RenderPipeline pipeline, GpuTextureView target,
+                            @Nullable GpuTextureView depth, Consumer<RenderPass> bind) {
         // both buffers are materialized BEFORE the pass opens: the index buffer may grow (and upload),
         // and the quad's first use allocates it — neither is legal once a pass is active
         var autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
         var indices = autoIndices.getBuffer(6);
         var quad = quadBuffer();
         try (var pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                () -> label, target, OptionalInt.empty(), null, OptionalDouble.empty())) {
+                () -> label, PhotonDepthPairs.color(target, depth), OptionalInt.empty(), depth, OptionalDouble.empty())) {
             pass.setPipeline(pipeline);
             bind.accept(pass);
             pass.setVertexBuffer(0, quad);

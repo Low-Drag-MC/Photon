@@ -88,6 +88,16 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
         return null;
     }
 
+    /**
+     * What a material thumbnail draws with ({@code MaterialPreviewRenderer}). The same as {@link #getRenderType} unless
+     * the material looks different in a preview — 1.21 told it by a {@code MaterialContext} flag on every draw, which
+     * 26.1's RenderType-per-state model has no room for, so a material that cares says so here.
+     */
+    @Nullable
+    default RenderType getPreviewRenderType(MaterialSetting setting, VertexFormat.Mode mode) {
+        return getRenderType(setting, mode);
+    }
+
     /** Small, cached preview: resource-panel tiles and inline material slots (many on screen at once). */
     IGuiTexture preview();
 
@@ -97,6 +107,27 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
      */
     default IGuiTexture previewLive() {
         return preview();
+    }
+
+    /** {@code PhotonGpuChannels} bits of the additional-data channels this material reads; passes upload them. */
+    default long getUsedChannelMask() {
+        return 0L;
+    }
+
+    /** Whether this material reads user custom data; passes then upload the {@code PhotonCustomData} buffer. */
+    default boolean usesCustomData() {
+        return false;
+    }
+
+    /** Channels this material reads from each custom-data stream (index = stream, 0 = none), when it knows. */
+    default int[] requiredCustomChannels() {
+        return new int[0];
+    }
+
+    /** The render state this material asks for, or null to leave it to the {@code MaterialSetting}. */
+    @Nullable
+    default MaterialRenderState getPreferredRenderState() {
+        return null;
     }
 
     default IMaterial copy() {

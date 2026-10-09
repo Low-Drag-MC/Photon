@@ -10,6 +10,7 @@ import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.renderer.rendertype.RenderType;
 
+import javax.annotation.Nullable;
 import java.util.Objects;
 
 /**
@@ -60,6 +61,13 @@ public final class UIResourceMaterial implements IMaterial {
     }
 
     @Override
+    public RenderType getPreviewRenderType(
+            MaterialSetting setting,
+            VertexFormat.Mode mode) {
+        return getRawMaterial().getPreviewRenderType(setting, mode);
+    }
+
+    @Override
     public IGuiTexture preview() {
         return getInternalMaterial().preview();
     }
@@ -68,6 +76,27 @@ public final class UIResourceMaterial implements IMaterial {
     @Override
     public IGuiTexture previewLive() {
         return getInternalMaterial().previewLive();
+    }
+
+    @Override
+    public long getUsedChannelMask() {
+        return getInternalMaterial().getUsedChannelMask();
+    }
+
+    @Override
+    public boolean usesCustomData() {
+        return getInternalMaterial().usesCustomData();
+    }
+
+    @Override
+    public int[] requiredCustomChannels() {
+        return getInternalMaterial().requiredCustomChannels();
+    }
+
+    @Nullable
+    @Override
+    public MaterialRenderState getPreferredRenderState() {
+        return getInternalMaterial().getPreferredRenderState();
     }
 
     @Override

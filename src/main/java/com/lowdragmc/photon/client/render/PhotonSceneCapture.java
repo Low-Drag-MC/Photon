@@ -83,6 +83,7 @@ public final class PhotonSceneCapture {
 
     /** Copy {@code target}'s color into the owned capture texture and return its view. */
     public static GpuTextureView captureColor(GpuTextureView target) {
+        colorCaptures++;
         return COLOR.capture(target);
     }
 
@@ -102,6 +103,12 @@ public final class PhotonSceneCapture {
     }
 
     private static int depthCaptures;
+    private static int colorCaptures;
+
+    /** Full-screen copies of either kind taken since launch — what a material reading the scene costs a frame. */
+    public static int captures() {
+        return colorCaptures + depthCaptures;
+    }
 
     /** The most recent color capture, or null before the first one. Lets an off-screen renderer with no
      *  scene of its own (the material previews) show real content instead of a blank stand-in. */

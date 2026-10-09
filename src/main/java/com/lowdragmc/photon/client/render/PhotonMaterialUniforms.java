@@ -23,58 +23,56 @@ public final class PhotonMaterialUniforms {
 
     /** std140 layout mirrors the fsh PhotonMaterial block (1.21 member names): vec4 HDR;
      *  vec4 U_SpriteUV (RAW corners u0,v0,u1,v1 — 1.21 semantics); float DiscardThreshold;
-     *  int HDRMode; float Bits; (pad to 48) vec4 SoftParticleParams = 64 B.
+     *  int HDRMode; float Bits; float LitIntensity; vec4 SoftParticleParams = 64 B.
      *  <p>
      *  {@code SoftParticleParams} is {@code (distance, power, alphaOnly, enabled)} — see
      *  {@code SoftParticles.params()}. It rides here rather than being pushed per draw because in 26.1
      *  these values ARE part of the material's RenderType identity, so two materials with different fade
      *  settings can never share a buffer (which is the bug 1.21's "write it on every draw" rule existed
-     *  to avoid). */
+     *  to avoid).
+     *  <p>
+     *  {@code LitIntensity} is {@code LitParticles.blockIntensity()}: above 0 the material is lit by the dynamic
+     *  lights, which is also what compiles {@code PHOTON_LIT} into its pipeline. It fills what used to be the
+     *  padding before the vec4, so the block did not grow. */
     public record Values(float hdrR, float hdrG, float hdrB, float hdrA,
                          float spriteU, float spriteV, float spriteUScale, float spriteVScale,
                          float discardThreshold, float hdrMode, float pixelBits,
-                         float softDistance, float softPower, float softAlphaOnly, float softEnabled) {
+                         float softDistance, float softPower, float softAlphaOnly, float softEnabled,
+                         float litIntensity) {
         public static final Values DEFAULT = new Values(0, 0, 0, 1, 0, 0, 1, 1, 0.1f, 0, 0,
-                1, 1, 0, 0);
+                1, 1, 0, 0, 0);
 
         /** The 11-arg form, for callers with no soft-particle settings (wireframe, tests). */
         public Values(float hdrR, float hdrG, float hdrB, float hdrA,
                       float spriteU, float spriteV, float spriteUScale, float spriteVScale,
                       float discardThreshold, float hdrMode, float pixelBits) {
             this(hdrR, hdrG, hdrB, hdrA, spriteU, spriteV, spriteUScale, spriteVScale,
-                    discardThreshold, hdrMode, pixelBits, 1, 1, 0, 0);
-        }
-
-        public static Values of(Vector4f hdr, float discardThreshold, float hdrMode, float pixelBits) {
-            return of(hdr, discardThreshold, hdrMode, pixelBits, NO_SOFT_PARTICLES);
+                    discardThreshold, hdrMode, pixelBits, 1, 1, 0, 0, 0);
         }
 
         public static Values of(Vector4f hdr, float discardThreshold, float hdrMode, float pixelBits,
-                                float[] soft) {
+                                float[] soft, float litIntensity) {
             return new Values(hdr.x, hdr.y, hdr.z, hdr.w, 0, 0, 1, 1, discardThreshold, hdrMode, pixelBits,
-                    soft[0], soft[1], soft[2], soft[3]);
+                    soft[0], soft[1], soft[2], soft[3], litIntensity);
         }
 
         /** Sprite-atlas variant: [0,1] particle UVs remap into the sprite's atlas window. */
         public static Values ofSprite(Vector4f hdr, float discardThreshold, float hdrMode,
-                                      float u0, float v0, float u1, float v1) {
-            return ofSprite(hdr, discardThreshold, hdrMode, u0, v0, u1, v1, NO_SOFT_PARTICLES);
-        }
-
-        public static Values ofSprite(Vector4f hdr, float discardThreshold, float hdrMode,
-                                      float u0, float v0, float u1, float v1, float[] soft) {
+                                      float u0, float v0, float u1, float v1, float[] soft, float litIntensity) {
             return new Values(hdr.x, hdr.y, hdr.z, hdr.w, u0, v0, u1, v1, discardThreshold, hdrMode, 0,
-                    soft[0], soft[1], soft[2], soft[3]);
+                    soft[0], soft[1], soft[2], soft[3], litIntensity);
         }
 
         /** Whether the fade is on, which is what makes the material declare the scene-depth sampler. */
         public boolean usesSoftParticles() {
             return softEnabled > 0.5f;
         }
-    }
 
-    /** {@code SoftParticles.params()} for a material that has none. */
-    private static final float[] NO_SOFT_PARTICLES = {1, 1, 0, 0};
+        /** Whether the dynamic lights reach it, which is what makes the material declare them. */
+        public boolean usesLitParticles() {
+            return litIntensity > 0f;
+        }
+    }
 
     private static final int STD140_SIZE = 64;
     private static final Map<Values, GpuBufferSlice> BUFFERS = new ConcurrentHashMap<>();
@@ -115,7 +113,8 @@ public final class PhotonMaterialUniforms {
                     .putFloat(v.discardThreshold())
                     .putInt((int) v.hdrMode())
                     .putFloat(v.pixelBits())
-                    // putVec4 aligns to 16, so this lands at 48 and the block ends at 64
+                    .putFloat(v.litIntensity())
+                    // 16-aligned already: lands at 48 and the block ends at 64
                     .putVec4(v.softDistance(), v.softPower(), v.softAlphaOnly(), v.softEnabled());
             bytes.rewind();
             RenderSystem.getDevice().createCommandEncoder().writeToBuffer(buffer.slice(), bytes);
