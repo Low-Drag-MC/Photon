@@ -25,7 +25,8 @@ import java.util.function.Consumer;
  * The quad is a shared {@code [0,1]²} POSITION buffer, which the
  * {@value #VERTEX_SHADER_PATH} vertex stage passes through as {@code texCoord} and expands to NDC.
  * Working in 0..1 rather than ±1 is what makes a pass's own uv resolution-independent: a half-res
- * pass samples its full-res input at the same coordinates.
+ * pass samples its full-res input at the same coordinates. A compiled fullscreen graph takes POSITION as clip
+ * space, so it draws the ±1 quad ({@link #drawClipSpace}).
  * <p>
  * Callers only bind. Index buffer acquisition happens BEFORE the pass opens, because
  * {@code getSequentialBuffer} may grow (and therefore upload) its buffer, which is illegal once a
@@ -38,6 +39,7 @@ public final class PhotonFullscreenPass {
     public static final String VERTEX_SHADER_PATH = "core/fullscreen";
 
     private static GpuBuffer quadBuffer;
+    private static GpuBuffer clipSpaceQuadBuffer;
 
     private PhotonFullscreenPass() {
     }
@@ -81,11 +83,21 @@ public final class PhotonFullscreenPass {
      *  whose state tests or writes depth (the pass is otherwise the same). */
     public static void draw(String label, RenderPipeline pipeline, GpuTextureView target,
                             @Nullable GpuTextureView depth, Consumer<RenderPass> bind) {
+        draw(label, pipeline, target, depth, quadBuffer(), bind);
+    }
+
+    /** {@link #draw(String, RenderPipeline, GpuTextureView, Consumer)} over the ±1 quad (FullscreenPositionBlock). */
+    public static void drawClipSpace(String label, RenderPipeline pipeline, GpuTextureView target,
+                                     Consumer<RenderPass> bind) {
+        draw(label, pipeline, target, null, clipSpaceQuadBuffer(), bind);
+    }
+
+    private static void draw(String label, RenderPipeline pipeline, GpuTextureView target,
+                             @Nullable GpuTextureView depth, GpuBuffer quad, Consumer<RenderPass> bind) {
         // both buffers are materialized BEFORE the pass opens: the index buffer may grow (and upload),
         // and the quad's first use allocates it — neither is legal once a pass is active
         var autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
         var indices = autoIndices.getBuffer(6);
-        var quad = quadBuffer();
         try (var pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> label, PhotonDepthPairs.color(target, depth), OptionalInt.empty(), depth, OptionalDouble.empty())) {
             pass.setPipeline(pipeline);
@@ -98,20 +110,27 @@ public final class PhotonFullscreenPass {
 
     /** The shared {@code [0,1]²} quad, counter-clockwise. */
     private static GpuBuffer quadBuffer() {
-        if (quadBuffer == null) {
-            var bytes = MemoryUtil.memAlloc(4 * 3 * Float.BYTES);
-            try {
-                bytes.putFloat(0).putFloat(0).putFloat(0)
-                        .putFloat(1).putFloat(0).putFloat(0)
-                        .putFloat(1).putFloat(1).putFloat(0)
-                        .putFloat(0).putFloat(1).putFloat(0)
-                        .flip();
-                quadBuffer = RenderSystem.getDevice().createBuffer(() -> "Photon fullscreen quad",
-                        GpuBuffer.USAGE_VERTEX, bytes);
-            } finally {
-                MemoryUtil.memFree(bytes);
-            }
-        }
+        if (quadBuffer == null) quadBuffer = quad("Photon fullscreen quad", 0);
         return quadBuffer;
+    }
+
+    /** The shared ±1 quad, counter-clockwise. */
+    private static GpuBuffer clipSpaceQuadBuffer() {
+        if (clipSpaceQuadBuffer == null) clipSpaceQuadBuffer = quad("Photon fullscreen quad (clip space)", -1);
+        return clipSpaceQuadBuffer;
+    }
+
+    private static GpuBuffer quad(String label, float min) {
+        var bytes = MemoryUtil.memAlloc(4 * 3 * Float.BYTES);
+        try {
+            bytes.putFloat(min).putFloat(min).putFloat(0)
+                    .putFloat(1).putFloat(min).putFloat(0)
+                    .putFloat(1).putFloat(1).putFloat(0)
+                    .putFloat(min).putFloat(1).putFloat(0)
+                    .flip();
+            return RenderSystem.getDevice().createBuffer(() -> label, GpuBuffer.USAGE_VERTEX, bytes);
+        } finally {
+            MemoryUtil.memFree(bytes);
+        }
     }
 }

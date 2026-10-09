@@ -26,9 +26,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * The hand-written pass source: a core shader pair (json + fsh) played as an effect pass. The pass
  * interface is introspected from the shader JSON — every sampler becomes a TEXTURE port, every
  * float/vec uniform (minus the engine-managed names) becomes a value port — so a builtin or
- * resource-pack shader needs zero Java registration. Shaders draw the same fullscreen POSITION quad
- * as graph passes and share the {@link PhotonFullscreenPass#VERTEX_SHADER_PATH} vertex stage
- * ({@code texCoord} = 0..1).
+ * resource-pack shader needs zero Java registration. Shaders draw the {@code [0,1]²} POSITION quad through
+ * the {@link PhotonFullscreenPass#VERTEX_SHADER_PATH} vertex stage ({@code texCoord} = 0..1).
  *
  * <p><b>26.1 uniform transport:</b> loose uniforms are gone, so a pass shader declares its values in
  * one {@code layout(std140) uniform PhotonPass} block whose members are the JSON's {@code uniforms}

@@ -42,7 +42,8 @@ import java.util.Set;
  *
  * <p>Two pass flavors share the loop: a hand-written core shader ({@link CustomShaderPass}, values in a
  * {@code PhotonPass} std140 block) and a compiled fullscreen graph (KilaGraph's own material UBO +
- * samplers). Both draw the shared {@code [0,1]²} quad through {@link PhotonFullscreenPass}.</p>
+ * samplers). Core shaders draw the {@code [0,1]²} quad, graphs the ±1 one
+ * ({@link PhotonFullscreenPass#drawClipSpace}).</p>
  *
  * <p>Caller contract: the returned target is pool-owned by the CALLER (release it or hand it on); null
  * means the chain must pass through unchanged. Render thread only, and every UBO upload / texture
@@ -329,7 +330,7 @@ public final class RenderGraphExecutor {
         var transforms = RenderSystem.getDynamicUniforms()
                 .writeTransform(IDENTITY, NO_MODULATION, NO_OFFSET, IDENTITY);
 
-        PhotonFullscreenPass.draw("photonfx graph pass", pipeline, target.view(), renderPass -> {
+        PhotonFullscreenPass.drawClipSpace("photonfx graph pass", pipeline, target.view(), renderPass -> {
             renderPass.setUniform(BOUND_BUILTIN_UNIFORM, transforms);
             material.bindCustomUniforms(renderPass);
         });
