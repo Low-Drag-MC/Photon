@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.render;
 
+import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
@@ -17,9 +18,9 @@ import org.lwjgl.opengl.GL30;
  * covers every direction.
  * <p>
  * Bindings are saved and restored, and attachments are detached afterwards so a later blit of the
- * other aspect can't inherit a stale one. Scissor state is deliberately NOT touched: a blit obeys the
- * active scissor box, which is what keeps the composite inside the region the fx draws were clipped
- * to. Render thread only, outside any open render pass.
+ * other aspect can't inherit a stale one. The scissor test is off for the blit: a blit obeys it, and GL
+ * keeps whatever box the last draw set (a visibility-map tile, say), which would copy only that corner.
+ * Render thread only, outside any open render pass.
  */
 public final class PhotonFramebufferBlit {
 
@@ -59,6 +60,8 @@ public final class PhotonFramebufferBlit {
         if (drawFbo == 0) drawFbo = GL30.glGenFramebuffers();
         int previousRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
         int previousDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        boolean scissor = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
+        GlStateManager._disableScissorTest();
         try {
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, readFbo);
             GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, attachment,
@@ -72,6 +75,7 @@ public final class PhotonFramebufferBlit {
         } finally {
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousRead);
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDraw);
+            if (scissor) GlStateManager._enableScissorTest();
         }
     }
 }
