@@ -13,6 +13,7 @@ import com.lowdragmc.photon.client.postfx.runtime.PostFXPreview;
 import com.lowdragmc.photon.client.render.IPhotonFXCollector;
 import com.lowdragmc.photon.client.render.MaterialPreviewRenderer;
 import com.lowdragmc.photon.client.render.OpaqueDepthCapture;
+import com.lowdragmc.photon.client.render.PhotonCameraUtils;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
 import com.lowdragmc.photon.client.render.PhotonStage;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
@@ -132,21 +133,21 @@ public class PhotonClientListeners {
         DynamicLightRenderer.afterParticles(event.getModelViewMatrix());
     }
 
-    /** Per-world-frame engine-uniform upload (U_* block for custom shaders): the event's camera
-     *  state carries the CPU-side projection/view matrices. Editor scenes re-upload their own
-     *  values in {@code PhotonParticleManager.render}. */
+    /** Per-world-frame engine-uniform upload (U_* block for custom shaders). Editor scenes
+     *  re-upload their own values in {@code PhotonParticleManager.render}. */
     @SubscribeEvent
     public static void onFrameGraphSetup(FrameGraphSetupEvent event) {
         var camera = event.getCameraState();
+        var projection = PhotonCameraUtils.levelProjection();
         var target = Minecraft.getInstance().getMainRenderTarget();
         PhotonEngineUniforms.update(
-                camera.projectionMatrix, camera.viewRotationMatrix,
+                projection, camera.viewRotationMatrix,
                 new Vector3f((float) camera.pos.x, (float) camera.pos.y, (float) camera.pos.z),
                 target.width, target.height);
         // Before anything is drawn, the frame's dynamic lights: culled, ranked, uploaded, their shadow maps built.
         // Not at AfterSky as 1.21 did — 26.1 only fires that when there is a sky pass, which there is not in the
         // Nether, in lava, in powder snow or under blindness.
-        DynamicLightRenderer.prepareWorld(camera.pos, event.getModelViewMatrix(), camera.projectionMatrix,
+        DynamicLightRenderer.prepareWorld(camera.pos, event.getModelViewMatrix(), projection,
                 event.getFrustum(), event.getDeltaTracker().getGameTimeDeltaPartialTick(false), camera.fogData);
     }
 

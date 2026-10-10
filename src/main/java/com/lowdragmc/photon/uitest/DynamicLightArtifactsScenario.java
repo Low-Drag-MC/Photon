@@ -39,6 +39,16 @@ public class DynamicLightArtifactsScenario implements UIScenario {
 
         bob(s, "v_bob_none", 0f, 0f, 0);
         bob(s, "v_bob_down", 0.25f, 0f, 0);
+        // depth unprojected without the bob slid the voxel shadows off the blocks: a grid along every block edge
+        s.step("the view bobbing does not crack the shadows", ctx -> {
+            var still = ScreenshotCompare.load(ctx, "v_bob_none");
+            var bobbing = ScreenshotCompare.load(ctx, "v_bob_down");
+            ctx.require("both captures exist", still != null && bobbing != null);
+            var region = still.middle(0.6);
+            // the grid's lines are soft: compare rows a few pixels apart
+            double a = still.rowChanges(10, 6, region), b = bobbing.rowChanges(10, 6, region);
+            ctx.check("no more edges than the still view", b < a * 1.6, "< %.4f".formatted(a * 1.6), "%.4f".formatted(b));
+        });
 
         if (LightTestConfig.hasShaderPack(PACK)) {
             int[] waited = {0};

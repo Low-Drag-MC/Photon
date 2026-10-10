@@ -138,13 +138,18 @@ final class ScreenshotCompare {
 
     /** The share of pixels more than {@code threshold} away, in some channel, from the one below them: stripes. */
     double rowChanges(int threshold, Region region) {
+        return rowChanges(threshold, 1, region);
+    }
+
+    /** {@link #rowChanges(int, Region)} against the pixel {@code step} rows below: soft stripes too. */
+    double rowChanges(int threshold, int step, Region region) {
         int x0 = Math.max(0, region.left()), x1 = Math.min(width, region.right());
-        int y0 = Math.max(0, region.top()), y1 = Math.min(height - 1, region.bottom());
+        int y0 = Math.max(0, region.top()), y1 = Math.min(height - step, region.bottom());
         long count = 0;
         for (int y = y0; y < y1; y++) {
             for (int x = x0; x < x1; x++) {
                 int a = pixels[y * width + x];
-                int b = pixels[(y + 1) * width + x];
+                int b = pixels[(y + step) * width + x];
                 for (int shift = 0; shift <= 16; shift += 8) {
                     if (Math.abs(((a >> shift) & 0xFF) - ((b >> shift) & 0xFF)) > threshold) {
                         count++;

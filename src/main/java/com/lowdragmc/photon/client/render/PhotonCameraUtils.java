@@ -2,6 +2,8 @@ package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.lowdraglib2.client.scene.SceneCamera;
 import net.minecraft.client.Camera;
+import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
 /**
@@ -14,8 +16,22 @@ import org.joml.Vector3f;
  * </ul>
  */
 public final class PhotonCameraUtils {
+    private static final Matrix4f LEVEL_PROJECTION = new Matrix4f();
 
     private PhotonCameraUtils() {
+    }
+
+    /**
+     * The projection the world is drawn with this frame. Not {@code CameraRenderState.projectionMatrix}: vanilla
+     * multiplies the view bob (and nausea skew) in after, so depth unprojected through that one slides while walking.
+     */
+    public static Matrix4fc levelProjection() {
+        return LEVEL_PROJECTION;
+    }
+
+    /** {@code GameRendererMixin}, as the frame's projection is set. */
+    public static void setLevelProjection(Matrix4fc projection) {
+        LEVEL_PROJECTION.set(projection);
     }
 
     /** Origin that emitted vertex positions must be relative to. */
