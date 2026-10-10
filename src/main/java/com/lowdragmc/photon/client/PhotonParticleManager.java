@@ -270,14 +270,9 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     }
 
     /**
-     * The scene's Photon draw slot: runs in {@code WorldSceneRenderer.drawWorld}'s finally, after
-     * its translucent particles, still inside the FBO output-override scope. Both stages drain here,
-     * in order, rather than at the scene's per-stage hooks — {@code drawWorld} has no post-solid
-     * hook at all, and {@code afterTranslucentDispatch} is already owned by LDLib2's {@code Scene}
-     * (it renders the editor overlay there). Draining both at the end keeps the two layers ordered
-     * against each other and depth-tested against the finished scene; the only thing a scene-side
-     * opaque hook would add is letting scene TRANSLUCENT geometry blend over opaque fx, which needs
-     * a new LDLib2 hook to express.
+     * The scene's Photon draw slot: {@code WorldSceneRenderer.drawWorld}'s finally, after its translucent
+     * particles and before the editor overlay. Both stages drain here, in order — {@code drawWorld} has no
+     * post-solid hook — so scene translucents can't blend over opaque fx.
      */
     @Override
     public void afterRender() {
