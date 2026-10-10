@@ -242,8 +242,8 @@ public final class DynamicLightRenderer {
     }
 
     /** {@code AfterTranslucentParticles}, still inside the level pass. */
-    public static void afterParticles(Matrix4fc modelView) {
-        if (!IrisCompat.isUsingShaderPack()) renderMarkers(modelView);
+    public static void afterParticles() {
+        if (!IrisCompat.isUsingShaderPack()) renderMarkers();
     }
 
     /**
@@ -254,8 +254,7 @@ public final class DynamicLightRenderer {
     public static void onLevelRendered() {
         if (IrisCompat.isUsingShaderPack() && !IrisCompat.isShadowPass()) {
             apply(true);
-            var frame = prepared;
-            if (frame != null) renderMarkers(frame.view());
+            renderMarkers();
         }
     }
 
@@ -1004,13 +1003,13 @@ public final class DynamicLightRenderer {
     // ---- dev markers ---------------------------------------------------------------------------------------------
 
     /** A small unlit cube at every light of the world's frame, for {@code /photonlight markers}. */
-    private static void renderMarkers(Matrix4fc pose) {
+    private static void renderMarkers() {
         var frame = prepared;
         if (frame == null || !frame.world() || !LightDebug.markers || FRAME_LIGHTS.isEmpty()) return;
         var camera = frame.camera();
         var buffers = Minecraft.getInstance().renderBuffers().bufferSource();
         var consumer = buffers.getBuffer(RenderTypes.debugQuads());
-        var matrix = new Matrix4f(pose);
+        var matrix = new Matrix4f(frame.view());
         for (var light : FRAME_LIGHTS) {
             if (!light.enabled) continue;
             var c = light.color;
@@ -1018,7 +1017,14 @@ public final class DynamicLightRenderer {
             cube(consumer, matrix, (float) (light.position.x - camera.x), (float) (light.position.y - camera.y),
                     (float) (light.position.z - camera.z), 0.08f, c.x / peak, c.y / peak, c.z / peak);
         }
-        buffers.endBatch(RenderTypes.debugQuads());
+        // the view is in the vertices: inside the level pass RenderSystem's model-view holds it too
+        var modelView = RenderSystem.getModelViewStack();
+        modelView.pushMatrix().identity();
+        try {
+            buffers.endBatch(RenderTypes.debugQuads());
+        } finally {
+            modelView.popMatrix();
+        }
     }
 
     private static void cube(VertexConsumer consumer, Matrix4f pose, float x, float y, float z, float s,

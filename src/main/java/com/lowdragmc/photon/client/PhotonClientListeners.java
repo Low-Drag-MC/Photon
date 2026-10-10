@@ -130,7 +130,7 @@ public class PhotonClientListeners {
     public static void onRenderLevelStage(RenderLevelStageEvent.AfterTranslucentParticles event) {
         worldCollector().drain(PhotonStage.AFTER_TRANSLUCENT_PARTICLES);
         PhotonPostFX.onLevelStageAfterParticles();
-        DynamicLightRenderer.afterParticles(event.getModelViewMatrix());
+        DynamicLightRenderer.afterParticles();
     }
 
     /** Per-world-frame engine-uniform upload (U_* block for custom shaders). Editor scenes
