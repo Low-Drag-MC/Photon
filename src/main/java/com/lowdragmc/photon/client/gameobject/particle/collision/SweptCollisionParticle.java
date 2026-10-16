@@ -30,21 +30,22 @@ public final class SweptCollisionParticle extends TileParticle {
         }
         if (dt <= 0 || !Float.isFinite(dt)) return;
         CollisionSettings settings = owner.config.physics.collision;
-        if (seen == null) seen = new HashMap<>();
+        CollisionRuntime collisionRuntime = owner.collisionRuntime();
+        if (settings.deduplicateParticleHits && seen == null) seen = new HashMap<>();
         Vector3f velocity = getRealVelocity();
         Vec3 remaining = new Vec3(velocity.x * dt, velocity.y * dt, velocity.z * dt);
         if (!Double.isFinite(remaining.lengthSqr())) { setRemoved(true); return; }
         Vector3f worldStart = getWorldPos(1);
         Vec3 start = new Vec3(worldStart.x, worldStart.y, worldStart.z);
         AABB bounds = settings.rayProbe ? new AABB(start, start) : getRealBoundingBox(1);
-        Set<CollisionFrame.Target> stepHits = new HashSet<>();
+        Set<CollisionFrame.Target> stepHits = settings.response == CollisionSettings.Response.PIERCE ? new HashSet<>() : null;
         int contacts = 0;
         double timeLeft = dt;
         boolean overlap = settings.detectStationaryOverlaps && remaining.lengthSqr() <= 1e-16;
         while (remaining.lengthSqr() > 1e-16 || overlap) {
             long tick = owner.collisionRuntime().collisionTick();
-            CollisionFrame.Hit hit = owner.collisionRuntime().frame().nearest(bounds, remaining, timeLeft, settings, owner.collisionRuntime().ownerId(), target -> {
-                return stepHits.contains(target) || owner.collisionRuntime().isSourceEntity(target);
+            CollisionFrame.Hit hit = collisionRuntime.frame().nearest(bounds, remaining, timeLeft, settings, collisionRuntime.ownerId(), target -> {
+                return stepHits != null && stepHits.contains(target) || collisionRuntime.isSourceEntity(target);
             });
             if (hit == null) {
                 start = start.add(remaining);
@@ -68,10 +69,10 @@ public final class SweptCollisionParticle extends TileParticle {
             if (response == CollisionSettings.Response.BOUNCE && settings.maxBounces > 0 && bounces >= settings.maxBounces) response = CollisionSettings.Response.STOP;
             boolean first = !isFirstCollision;
             isFirstCollision = true;
-            Long previous = seen.get(hit.candidate().target());
-            boolean notify = !settings.deduplicateParticleHits || previous == null || settings.contactCooldownTicks > 0 && tick - previous >= settings.contactCooldownTicks;
+            Long previous = seen == null ? null : seen.get(hit.candidate().target());
+            boolean notify = seen == null || previous == null || settings.contactCooldownTicks > 0 && tick - previous >= settings.contactCooldownTicks;
             if (notify) {
-                seen.put(hit.candidate().target(), tick);
+                if (seen != null) seen.put(hit.candidate().target(), tick);
                 if (owner.collisionRuntime().recordHit(hit, point)) CollisionEffects.contact(owner, this, hit, point, first, response == CollisionSettings.Response.REMOVE);
             }
             if (response == CollisionSettings.Response.REMOVE) { setRemoved(true); return; }

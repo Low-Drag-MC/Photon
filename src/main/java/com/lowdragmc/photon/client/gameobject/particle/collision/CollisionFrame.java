@@ -13,6 +13,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -33,6 +34,7 @@ public final class CollisionFrame {
     private final Long2ObjectOpenHashMap<List<Candidate>> blockTiles = new Long2ObjectOpenHashMap<>();
     private final Long2ObjectOpenHashMap<List<Candidate>> entityTiles = new Long2ObjectOpenHashMap<>();
     private final Long2ObjectOpenHashMap<List<BlockPos>> sparseTiles = new Long2ObjectOpenHashMap<>();
+    private final Long2ObjectOpenHashMap<LevelChunkSection> emptySections = new Long2ObjectOpenHashMap<>();
     private final List<Candidate> oversizedEntities = new ArrayList<>();
     private final List<Candidate> indexedEntities = new ArrayList<>();
     private final Map<String, Map<Target, Long>> remembered = new HashMap<>();
@@ -48,10 +50,14 @@ public final class CollisionFrame {
     public long tileBuilds;
     public long narrowTests;
     public long cacheHits;
+    public long emptySectionHits;
 
     public void bind(Level world, long tick) {
         if (level == world && epoch == tick) return;
-        if (level != world || tick < epoch) remembered.clear();
+        if (level != world || tick < epoch) {
+            remembered.clear();
+            emptySections.clear();
+        }
         level = world;
         epoch = tick;
         blockTiles.clear();
@@ -73,7 +79,7 @@ public final class CollisionFrame {
         sparseTiles.clear();
         oversizedEntities.clear();
         indexedEntities.clear();
-        queries = blockReads = tileBuilds = narrowTests = cacheHits = 0;
+        queries = blockReads = tileBuilds = narrowTests = cacheHits = emptySectionHits = 0;
     }
 
     public boolean remember(String group, Target target, int cooldown) {
@@ -96,6 +102,12 @@ public final class CollisionFrame {
 
     public Hit nearest(AABB moving, Vec3 delta, double dt, CollisionSettings settings, int ownerId, Predicate<Target> ignored) {
         queries++;
+        if (settings.blocks && !settings.entities && !settings.fluids
+                && settings.includedBlockTypes.isBlank() && settings.excludedBlockTypes.isBlank()
+                && !settings.rayProbe && !settings.detectStationaryOverlaps
+                && settings.response != CollisionSettings.Response.PIERCE) {
+            return nearestBlockOnly(moving, delta, settings);
+        }
         visitedTiles.clear();
         visitedEntities.clear();
         List<Candidate> candidates = new ArrayList<>();
@@ -144,6 +156,92 @@ public final class CollisionFrame {
             }
         }
         return nearest;
+    }
+
+    /** Fast path for the common projectile/debris case: static block-only collision with no filters. */
+    private Hit nearestBlockOnly(AABB moving, Vec3 delta, CollisionSettings settings) {
+        visitedTiles.clear();
+        AABB broad = moving.expandTowards(delta).inflate(1.000001);
+        int minimumX = floorTile(broad.minX), maximumX = floorTile(broad.maxX);
+        int minimumY = floorTile(broad.minY), maximumY = floorTile(broad.maxY);
+        int minimumZ = floorTile(broad.minZ), maximumZ = floorTile(broad.maxZ);
+        FastNearest result = new FastNearest(moving, delta);
+        long volume = (long) (maximumX - minimumX + 1) * (maximumY - minimumY + 1) * (maximumZ - minimumZ + 1);
+        if (volume <= 256) {
+            for (int tileX = minimumX; tileX <= maximumX; tileX++)
+                for (int tileY = minimumY; tileY <= maximumY; tileY++)
+                    for (int tileZ = minimumZ; tileZ <= maximumZ; tileZ++)
+                        collectBlockOnly(tileX, tileY, tileZ, result, settings);
+        } else {
+            traverseBlockOnly(result, settings);
+        }
+        return result.hit();
+    }
+
+    private void traverseBlockOnly(FastNearest result, CollisionSettings settings) {
+        Vec3 center = result.moving.getCenter();
+        int tileX = floorTile(center.x), tileY = floorTile(center.y), tileZ = floorTile(center.z);
+        int stepX = (int) Math.signum(result.delta.x), stepY = (int) Math.signum(result.delta.y), stepZ = (int) Math.signum(result.delta.z);
+        double nextX = crossing(center.x, result.delta.x, tileX, stepX);
+        double nextY = crossing(center.y, result.delta.y, tileY, stepY);
+        double nextZ = crossing(center.z, result.delta.z, tileZ, stepZ);
+        double incrementX = stepX == 0 ? Double.POSITIVE_INFINITY : 8 / Math.abs(result.delta.x);
+        double incrementY = stepY == 0 ? Double.POSITIVE_INFINITY : 8 / Math.abs(result.delta.y);
+        double incrementZ = stepZ == 0 ? Double.POSITIVE_INFINITY : 8 / Math.abs(result.delta.z);
+        int padX = (int) Math.ceil(result.moving.getXsize() / 16) + 1;
+        int padY = (int) Math.ceil(result.moving.getYsize() / 16) + 1;
+        int padZ = (int) Math.ceil(result.moving.getZsize() / 16) + 1;
+        while (true) {
+            for (int offsetX = -padX; offsetX <= padX; offsetX++)
+                for (int offsetY = -padY; offsetY <= padY; offsetY++)
+                    for (int offsetZ = -padZ; offsetZ <= padZ; offsetZ++)
+                        collectBlockOnly(tileX + offsetX, tileY + offsetY, tileZ + offsetZ, result, settings);
+            double next = Math.min(nextX, Math.min(nextY, nextZ));
+            if (next > 1 || !Double.isFinite(next)) break;
+            if (nextX <= next + 1e-12) { tileX += stepX; nextX += incrementX; }
+            if (nextY <= next + 1e-12) { tileY += stepY; nextY += incrementY; }
+            if (nextZ <= next + 1e-12) { tileZ += stepZ; nextZ += incrementZ; }
+        }
+    }
+
+    private void collectBlockOnly(int tileX, int tileY, int tileZ, FastNearest result, CollisionSettings settings) {
+        long key = BlockPos.asLong(tileX, tileY, tileZ);
+        if (!visitedTiles.add(key)) return;
+        AABB tile = new AABB(tileX * 8.0, tileY * 8.0, tileZ * 8.0, tileX * 8.0 + 8, tileY * 8.0 + 8, tileZ * 8.0 + 8);
+        if (SweepMath.sweep(result.moving, result.delta, tile.inflate(1.000001)) == null) return;
+        List<Candidate> blocks = blockTiles.get(key);
+        if (blocks == null) {
+            blocks = buildTile(tileX, tileY, tileZ, key);
+            if (blockTiles.size() < Math.max(1, settings.cachedTileLimit)) blockTiles.put(key, blocks);
+        } else cacheHits++;
+        for (Candidate candidate : blocks) {
+            narrowTests++;
+            SweepMath.Contact contact = SweepMath.sweep(result.moving, result.delta, candidate.bounds);
+            if (contact != null && contact.time() < result.time) result.set(candidate, contact);
+        }
+    }
+
+    private final class FastNearest {
+        private final AABB moving;
+        private final Vec3 delta;
+        private Candidate candidate;
+        private Vec3 normal;
+        private double time = Double.POSITIVE_INFINITY;
+
+        private FastNearest(AABB moving, Vec3 delta) {
+            this.moving = moving;
+            this.delta = delta;
+        }
+
+        private void set(Candidate candidate, SweepMath.Contact contact) {
+            this.candidate = candidate;
+            this.normal = contact.normal();
+            this.time = contact.time();
+        }
+
+        private Hit hit() {
+            return candidate == null ? null : new Hit(candidate, time, normal);
+        }
     }
 
     private void traverse(AABB moving, Vec3 delta, CollisionSettings settings, List<Candidate> candidates) {
@@ -213,7 +311,17 @@ public final class CollisionFrame {
             int sectionIndex = level.getSectionIndex(baseY);
             if (sectionIndex < 0 || sectionIndex >= chunk.getSections().length) return List.of();
             var section = chunk.getSections()[sectionIndex];
-            if (section == null || section.hasOnlyAir()) return List.of();
+            if (section == null) return List.of();
+            LevelChunkSection knownEmptySection = emptySections.get(key);
+            if (knownEmptySection == section && section.hasOnlyAir()) {
+                emptySectionHits++;
+                return List.of();
+            }
+            emptySections.remove(key);
+            if (section.hasOnlyAir()) {
+                emptySections.put(key, section);
+                return List.of();
+            }
             BlockPos.MutableBlockPos position = new BlockPos.MutableBlockPos();
             for (int offsetX = 0; offsetX < 8; offsetX++)
                 for (int offsetY = 0; offsetY < 8; offsetY++)
@@ -296,7 +404,7 @@ public final class CollisionFrame {
     }
 
     public Map<String, Long> statistics() {
-        return Map.of("queries", queries, "blockReads", blockReads, "tileBuilds", tileBuilds, "narrowTests", narrowTests, "cacheHits", cacheHits, "cachedTiles", (long) blockTiles.size());
+        return Map.of("queries", queries, "blockReads", blockReads, "tileBuilds", tileBuilds, "narrowTests", narrowTests, "cacheHits", cacheHits, "emptySectionHits", emptySectionHits, "cachedTiles", (long) blockTiles.size());
     }
 }
 
