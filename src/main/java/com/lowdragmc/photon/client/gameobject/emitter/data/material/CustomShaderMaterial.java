@@ -2,7 +2,9 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
+import com.lowdragmc.lowdraglib2.client.shader.LDProgramDefineManager;
 import com.lowdragmc.lowdraglib2.client.shader.LDShaderHolder;
+import com.lowdragmc.lowdraglib2.client.shader.LDShaderInstance;
 import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
@@ -41,7 +43,10 @@ import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
 import java.lang.ref.Cleaner;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 @OnlyIn(Dist.CLIENT)
 @ParametersAreNonnullByDefault
@@ -62,6 +67,12 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     private Cleaner.Cleanable shaderCleanable;
     @Getter
     private String compiledErrorMessage = "";
+    /**
+     * The shader's json lists {@code PhotonLightData}, as one including {@code photon:lit_particle.glsl} has to: the
+     * dynamic lights are bound to it, out of the inspector and the save.
+     */
+    @Getter
+    private boolean litByDynamicLights;
 
     public CustomShaderMaterial() {
     }
@@ -92,9 +103,15 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public Tag serializeAdditionalNBT(HolderLookup.@NotNull Provider provider) {
         var shaderData = new CompoundTag();
         if (shaderHolder != null) {
-            shaderData.put("shaderData", shaderHolder.serializeNBT(provider));
+            shaderData.put("shaderData", authoredShaderData(provider));
         }
         return shaderData;
+    }
+
+    private CompoundTag authoredShaderData(HolderLookup.Provider provider) {
+        var data = Objects.requireNonNull(shaderHolder).serializeNBT(provider);
+        if (litByDynamicLights) LitParticles.UNIFORMS.forEach(data.getCompound("uniforms")::remove);
+        return data;
     }
 
     @Override
@@ -114,6 +131,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
 
     public void recompile() {
         compiledErrorMessage = "";
+        litByDynamicLights = false;
 
         if (shaderCleanable != null) {
             shaderCleanable.clean();
@@ -143,7 +161,13 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     }
 
     private LDShaderHolder loadShaderHolder(ResourceLocation shaderLocation) throws Throwable {
-        var shaderHolder = LDShaderHolder.create(shaderLocation, DefaultVertexFormat.BLOCK);
+        LDShaderHolder shaderHolder;
+        releaseLeakedDefines(shaderLocation, Set.of());
+        try {
+            shaderHolder = LDShaderHolder.create(shaderLocation, DefaultVertexFormat.BLOCK);
+        } finally {
+            releaseLeakedDefines(shaderLocation, Set.of());
+        }
         if (shaderHolder == null) throw new IllegalStateException("Failed to find shader " + shaderLocation);
         try {
             var shader = shaderHolder.baseInstance;
@@ -154,6 +178,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             }
             attachDynamicSamplers(shaderHolder);
             attachDynamicUniforms(shaderHolder);
+            litByDynamicLights = samplerNames.contains(LitParticles.SAMPLERS.getFirst());
             return shaderHolder;
         } catch (Throwable e) {
             // the holder owns a linked GL program by this point, and the caller only ever sees the
@@ -228,10 +253,29 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             return PhotonShaders.getHDRParticleShader();
         }
         var defines = context.getShaderDefines();
+        LDShaderInstance shader;
         if (defines.isEmpty()) {
-            return shaderHolder.getShaderInstance();
+            shader = shaderHolder.getShaderInstance();
+        } else {
+            releaseLeakedDefines(shaderLocation, defines);
+            shader = shaderHolder.getShaderInstance(defines);
+            releaseLeakedDefines(shaderLocation, defines);
         }
-        return shaderHolder.getShaderInstance(defines);
+        if (litByDynamicLights) LitParticles.bind(shader, context, 1f);
+        return shader;
+    }
+
+    /**
+     * ⚠️ {@code LDShaderInstance.create} only clears the global program defines when the compile succeeds, and
+     * {@code LDShaderHolder} swallows the failure (a variant falls back to the base program). Left set, the
+     * defines are compiled into whatever shader is built next, e.g. a CPU-path program built as an instanced one.
+     * Checked on both sides of a build: a leak from elsewhere must not get into ours either.
+     */
+    private static void releaseLeakedDefines(ResourceLocation shaderLocation, Set<String> defines) {
+        if (!LDProgramDefineManager.hasProgramDefines()) return;
+        Photon.LOGGER.warn("A failed shader compile left the defines {} set, cleared them (around {}{})",
+                LDProgramDefineManager.getProgramDefines(), shaderLocation, defines.isEmpty() ? "" : " " + defines);
+        LDProgramDefineManager.clearProgramDefines();
     }
 
     @Override
@@ -264,7 +308,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                 .setOnClick(event -> {
                     CompoundTag previousData = null;
                     if (shaderHolder != null) {
-                        previousData = shaderHolder.serializeNBT(Platform.getFrozenRegistry());
+                        previousData = authoredShaderData(Platform.getFrozenRegistry());
                     }
                     recompile();
                     if (previousData != null && shaderHolder != null) {
@@ -305,6 +349,11 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         shaderConfigurator.removeAllConfigurators();
         if (shaderHolder != null) {
             shaderHolder.buildConfigurator(shaderConfigurator);
+            if (litByDynamicLights) {
+                for (var row : List.copyOf(shaderConfigurator.getConfigurators())) {
+                    if (LitParticles.declares(row.label.getText().getString())) shaderConfigurator.removeConfigurator(row);
+                }
+            }
         }
     }
 

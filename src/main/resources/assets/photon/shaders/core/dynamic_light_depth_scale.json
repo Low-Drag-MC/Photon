@@ -1,0 +1,11 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:dynamic_light_depth_scale",
+    "attributes": [ "Position" ],
+    "samplers": [
+        { "name": "DepthSampler" }
+    ],
+    "uniforms": [
+        { "name": "DepthScale", "type": "float", "count": 1, "values": [ 1.0 ] }
+    ]
+}

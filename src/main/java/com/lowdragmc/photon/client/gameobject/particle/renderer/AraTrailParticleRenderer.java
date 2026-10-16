@@ -76,6 +76,7 @@ public class AraTrailParticleRenderer {
 
     // reused per-trail life snapshot for renderAgedSpans (render thread only)
     private float[] savedLivesPool = new float[0];
+    private float[] savedPositionsPool = new float[0];
 
     // ---- instanced-collection scratch (active during uploadInstances; render thread only) ----
     private final Matrix4f collectMatrix = new Matrix4f();
@@ -151,7 +152,8 @@ public class AraTrailParticleRenderer {
         // sub-points via its life-cull, and segment-over-time tapers advance smoothly), and (2) for the
         // flat smoothness<=1 path, geometrically retract the oldest point toward the next as it dies so its
         // last segment shrinks to zero instead of vanishing. All reverted after the mesh build.
-        float ageAmt = partialTicks * particle.emitter.timeScale() / 20f;   // life (seconds) elapsed since last tick
+        float elapsedTicks = partialTicks * particle.emitter.timeScale();
+        float ageAmt = elapsedTicks / 20f;   // life (seconds) elapsed since last tick
         if (savedLivesPool.length < points.size()) {
             savedLivesPool = new float[Math.max(points.size(), savedLivesPool.length * 2)];
         }
@@ -159,6 +161,20 @@ public class AraTrailParticleRenderer {
         for (int i = 0; i < points.size(); ++i) {
             savedLives[i] = points.get(i).life;
             points.get(i).life -= ageAmt;
+        }
+        // physics only steps at the tick: carry the points the elapsed fraction further so they don't hop at 20 Hz
+        boolean extrapolated = elapsedTicks > 0 && particle.runtime.physics.isEnable();
+        if (extrapolated) {
+            if (savedPositionsPool.length < points.size() * 3) {
+                savedPositionsPool = new float[Math.max(points.size() * 3, savedPositionsPool.length * 2)];
+            }
+            for (int i = 0; i < points.size(); ++i) {
+                var position = points.get(i).position;
+                savedPositionsPool[i * 3] = position.x;
+                savedPositionsPool[i * 3 + 1] = position.y;
+                savedPositionsPool[i * 3 + 2] = position.z;
+            }
+            particle.extrapolatePhysics(elapsedTicks);
         }
         Point tail = points.getFirst();
         Vector3f savedTail = null;
@@ -194,6 +210,12 @@ public class AraTrailParticleRenderer {
             for (int i = 0; i < points.size(); ++i) points.get(i).life = savedLives[i];
             if (savedTail != null) tail.position = savedTail;
             if (head != null) head.position = savedHead; // restore before any tick observes it
+            if (extrapolated) {
+                // by value and last: the tail/head restores above may have swapped the vector instances
+                for (int i = 0; i < points.size(); ++i) {
+                    points.get(i).position.set(savedPositionsPool[i * 3], savedPositionsPool[i * 3 + 1], savedPositionsPool[i * 3 + 2]);
+                }
+            }
         }
     }
 
@@ -226,6 +248,7 @@ public class AraTrailParticleRenderer {
         float samplesize = 1.0f / config.smoothness;
 
         Point interpolated = new Point(new Vector3f(), new Vector3f(), new Vector3f(), new Vector3f(), new Vector4f(1, 1, 1, 1), 0, 0, 0);
+        Point culled = null;
 
         for (int i = start; i < end; ++i) {
 
@@ -284,51 +307,56 @@ public class AraTrailParticleRenderer {
                 float dz = pcz - pbz;
                 if (dx * dx + dy * dy + dz * dz < config.smoothingDistance * config.smoothingDistance)
                 {
-                    renderablePoints.add(data[i]);
+                    culled = appendAlive(data[i], culled, false);
                     break;
                 }
 
-                // only if the interpolated point is alive, we add it to the list of points to render.
-                if (interpolated.life > 0)
-                {
+                interpolated.position.x = Point.catmullRom(pax, pbx, pcx, pdx, t);
+                interpolated.position.y = Point.catmullRom(pay, pby, pcy, pdy, t);
+                interpolated.position.z = Point.catmullRom(paz, pbz, pcz, pdz, t);
 
-                    interpolated.position.x = Point.catmullRom(pax, pbx, pcx, pdx, t);
-                    interpolated.position.y = Point.catmullRom(pay, pby, pcy, pdy, t);
-                    interpolated.position.z = Point.catmullRom(paz, pbz, pcz, pdz, t);
+                interpolated.velocity.x = Point.catmullRom(vax, vbx, vcx, vdx, t);
+                interpolated.velocity.y = Point.catmullRom(vay, vby, vcy, vdy, t);
+                interpolated.velocity.z = Point.catmullRom(vaz, vbz, vcz, vdz, t);
 
-                    interpolated.velocity.x = Point.catmullRom(vax, vbx, vcx, vdx, t);
-                    interpolated.velocity.y = Point.catmullRom(vay, vby, vcy, vdy, t);
-                    interpolated.velocity.z = Point.catmullRom(vaz, vbz, vcz, vdz, t);
+                interpolated.tangent.x = Point.catmullRom(tax, tbx, tcx, tdx, t);
+                interpolated.tangent.y = Point.catmullRom(tay, tby, tcy, tdy, t);
+                interpolated.tangent.z = Point.catmullRom(taz, tbz, tcz, tdz, t);
 
-                    interpolated.tangent.x = Point.catmullRom(tax, tbx, tcx, tdx, t);
-                    interpolated.tangent.y = Point.catmullRom(tay, tby, tcy, tdy, t);
-                    interpolated.tangent.z = Point.catmullRom(taz, tbz, tcz, tdz, t);
+                interpolated.normal.x = Point.catmullRom(nax, nbx, ncx, ndx, t);
+                interpolated.normal.y = Point.catmullRom(nay, nby, ncy, ndy, t);
+                interpolated.normal.z = Point.catmullRom(naz, nbz, ncz, ndz, t);
 
-                    interpolated.normal.x = Point.catmullRom(nax, nbx, ncx, ndx, t);
-                    interpolated.normal.y = Point.catmullRom(nay, nby, ncy, ndy, t);
-                    interpolated.normal.z = Point.catmullRom(naz, nbz, ncz, ndz, t);
+                interpolated.color = new Vector4f(
+                        Point.catmullRom(cax, cbx, ccx, cdx, t),
+                        Point.catmullRom(cay, cby, ccy, cdy, t),
+                        Point.catmullRom(caz, cbz, ccz, cdz, t),
+                        Point.catmullRom(caw, cbw, ccw, cdw, t));
 
-                    var a = Point.catmullRom(cax, cbx, ccx, cdx, t);
-                    var r = Point.catmullRom(cay, cby, ccy, cdy, t);
-                    var g = Point.catmullRom(caz, cbz, ccz, cdz, t);
-                    var b = Point.catmullRom(caw, cbw, ccw, cdw, t);
+                interpolated.thickness = Point.catmullRom(data[i_1].thickness, data[i].thickness, data[i1].thickness, data[i2].thickness, t);
+                interpolated.texcoord = Point.catmullRom(data[i_1].texcoord, data[i].texcoord, data[i1].texcoord, data[i2].texcoord, t);
 
-                    interpolated.color = new Vector4f(r, g, b, a);
-
-                    interpolated.thickness = Point.catmullRom(data[i_1].thickness, data[i].thickness, data[i1].thickness, data[i2].thickness, t);
-                    interpolated.texcoord = Point.catmullRom(data[i_1].texcoord, data[i].texcoord, data[i1].texcoord, data[i2].texcoord, t);
-
-                    var copied = interpolated.copy();
-                    renderablePoints.add(copied);
-                }
+                culled = appendAlive(interpolated, culled, true);
             }
 
         }
 
-        if (points.get(end).life > 0)
-            renderablePoints.add(points.get(end));
+        appendAlive(points.get(end), culled, false);
 
         return renderablePoints;
+    }
+
+    /** Adds a live sample, first cutting the tail exactly where life crossed 0 since the last culled one; returns the sample if culled. */
+    @javax.annotation.Nullable
+    private Point appendAlive(Point sample, @javax.annotation.Nullable Point culled, boolean scratch) {
+        if (sample.life <= 0) {
+            return scratch ? sample.copy() : sample;
+        }
+        if (culled != null) {
+            renderablePoints.add(Point.lerp(culled, sample, culled.life / (culled.life - sample.life)));
+        }
+        renderablePoints.add(scratch ? sample.copy() : sample);
+        return null;
     }
 
     /**

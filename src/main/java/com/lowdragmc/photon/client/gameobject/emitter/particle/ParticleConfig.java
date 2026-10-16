@@ -5,7 +5,6 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.configurator.ui.TransformRefConfigurator;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.TransformRef;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
@@ -24,12 +23,12 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCu
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.renderer.TileParticleRenderer;
-import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.Camera;
+import net.minecraft.client.renderer.ShaderInstance;
 
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -141,6 +140,8 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     public final NoiseSetting noise = new NoiseSetting();
     @Configurable(name = "ParticleConfig.uvAnimation", subConfigurable = true, tips = "photon.emitter.config.uvAnimation")
     public final UVAnimationSetting uvAnimation = new UVAnimationSetting();
+    @Configurable(name = "ParticleConfig.lightEmission", subConfigurable = true, tips = "photon.emitter.config.lightEmission")
+    public final LightEmissionSetting lightEmission = new LightEmissionSetting();
     @Configurable(name = "ParticleConfig.trails", subConfigurable = true, tips = "photon.emitter.config.trails")
     public final TrailsSetting trails = new TrailsSetting();
     @Configurable(name = "ParticleConfig.subEmitters", subConfigurable = true, tips = "photon.emitter.config.sub_emitters")
@@ -179,24 +180,8 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
 
     private void createSpaceConfigurator(Space space, ConfiguratorGroup group) {
         if (space == Space.Custom) {
-            group.addConfigurator(new TransformRefConfigurator("ParticleConfig.customSpace",
-                    () -> this.customSpace,
-                    transformRef -> this.customSpace.setTransformId(transformRef.getTransformId()), new TransformRef(), true) {
-                @Override
-                protected boolean canDropObject(@Nonnull Object object) {
-                    return object instanceof FXHierarchyView.DraggingNode || super.canDropObject(object);
-                }
-
-                @Override
-                protected void onDropObject(@Nonnull Object object) {
-                    if (object instanceof FXHierarchyView.DraggingNode(var draggedNode)) {
-                        onValueUpdatePassively(new TransformRef(draggedNode.key.transform()));
-                        updateValue();
-                    } else {
-                        super.onDropObject(object);
-                    }
-                }
-            }.setTips("photon.emitter.config.customSpace.tips"));
+            group.addConfigurator(CustomSpace.configurator("ParticleConfig.customSpace", customSpace,
+                    "photon.emitter.config.customSpace.tips"));
         }
     }
 
@@ -234,6 +219,28 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
         }
 
         @Override
+        protected boolean beginCpuRecords(List<MaterialSetting> materials, int particleCapacity) {
+            if (renderRuntime.getRenderMode() == ParticleRendererSetting.Mode.None) return false;
+            var mask = materialChannelMask(materials);
+            var custom = materialsUseCustomData(materials);
+            additionalGPUDataSetting.setMaterialMask(mask);
+            additionalGPUDataSetting.setCustomDataMaterialUsed(custom);
+            if (mask == 0 && !custom) return false;
+            tileParticleRenderer.beginCpuRecords(particleCapacity);
+            return true;
+        }
+
+        @Override
+        protected void endCpuRecords() {
+            tileParticleRenderer.endCpuRecords();
+        }
+
+        @Override
+        protected void bindCpuRecords(ShaderInstance shader) {
+            tileParticleRenderer.bindCpuRecords(shader);
+        }
+
+        @Override
         protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
             // The user decides whether to upload tangent vertex data (renderer settings, Model mode only —
             // only a mesh has tangents). Every material on the pass then compiles against that one layout.
@@ -252,9 +259,9 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
             // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change.
             // ⚠️ A baked pose table reads the per-particle random and t out of the same record, so those
             // two have to be uploaded whether or not any material asked for them.
-            additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials)
+            additionalGPUDataSetting.setMaterialMask(materialChannelMask(materials)
                     | (vat ? VAT_CHANNELS : 0L));
-            additionalGPUDataSetting.setCustomDataMaterialUsed(shaderGraphUsesCustomData(materials));
+            additionalGPUDataSetting.setCustomDataMaterialUsed(materialsUseCustomData(materials));
             if (additionalGPUDataSetting.attribRelayoutNeeded()) {
                 clearInstance();
             }
@@ -263,9 +270,11 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
             // upload to vbo
             if (tileParticleRenderer.uploadInstances(particles, camera, partialTicks)) {
                 for (MaterialSetting materialSetting : materials) {
-                    materialSetting.pre();
-                    renderInstanceWithMaterial(materialSetting.getMaterial(), context);
-                    materialSetting.post();
+                    for (int pass = 0, passes = materialSetting.passes(); pass < passes; pass++) {
+                        materialSetting.pre(pass);
+                        renderInstanceWithMaterial(materialSetting.getMaterial(), context);
+                        materialSetting.post();
+                    }
                 }
                 drew = true;
             }

@@ -1,0 +1,28 @@
+{
+    "vertex": "ldlib2:fast_blit",
+    "fragment": "photon:dynamic_light_pass",
+    "attributes": [ "Position" ],
+    "samplers": [
+        { "name": "SceneDepthSampler" },
+        { "name": "PhotonLightData" },
+        { "name": "PhotonClusterGrid" },
+        { "name": "PhotonClusterIndices" },
+        { "name": "VoxelPages" },
+        { "name": "VoxelBricks" }
+    ],
+    "uniforms": [
+        { "name": "ProjMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "IProjMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "IViewMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "ScreenSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
+        { "name": "ResolutionScale", "type": "float", "count": 1, "values": [ 1.0 ] },
+        { "name": "ShadowParams", "type": "float", "count": 4, "values": [ 2.0, 24.0, 1.0, 32.0 ] },
+        { "name": "ContactParams", "type": "float", "count": 4, "values": [ 6.0, 1.0, 1.0, 0.0 ] },
+        { "name": "CameraFrac", "type": "float", "count": 3, "values": [ 0.0, 0.0, 0.0 ] },
+        { "name": "VoxelOrigin", "type": "int", "count": 3, "values": [ 0, 0, 0 ] },
+        { "name": "PackParams", "type": "float", "count": 4, "values": [ 0.0, 0.06, 0.0, 0.0 ] },
+        { "name": "DebugMode", "type": "int", "count": 1, "values": [ 0 ] },
+        { "name": "PhotonClusterInfo", "type": "int", "count": 4, "values": [ 64, 1, 1, 1 ] },
+        { "name": "PhotonClusterView", "type": "float", "count": 4, "values": [ 0.5, 1.0, 0.0, 0.0 ] }
+    ]
+}

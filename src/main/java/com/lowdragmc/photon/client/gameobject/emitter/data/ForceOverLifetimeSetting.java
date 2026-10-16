@@ -1,6 +1,10 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data;
 
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.TransformRef;
+import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
@@ -31,11 +35,21 @@ public class ForceOverLifetimeSetting extends ToggleGroup {
     /** The space the force vector is expressed in. @see ValueSpace */
     @Setter
     @Getter
-    @Configurable(name = "ForceOverLifetimeSetting.simulationSpace", tips = "photon.emitter.config.simulationSpace")
+    @Configurable(name = "ForceOverLifetimeSetting.simulationSpace", tips = "photon.emitter.config.forceOverLifetime.space")
+    @ConfigSelector(subConfiguratorBuilder = "buildSpaceConfigurator")
     protected ValueSpace simulationSpace = ValueSpace.Local;
+    @Persisted
+    public final TransformRef customSpace = new TransformRef();
 
     public Runtime createRuntime() {
         return new Runtime(this);
+    }
+
+    private void buildSpaceConfigurator(ValueSpace space, ConfiguratorGroup group) {
+        if (space == ValueSpace.Custom) {
+            group.addConfigurator(CustomSpace.configurator("ParticleConfig.customSpace", customSpace,
+                    "photon.emitter.config.valueCustomSpace.tips"));
+        }
     }
 
     public static class Runtime {
@@ -55,6 +69,10 @@ public class ForceOverLifetimeSetting extends ToggleGroup {
 
         public ValueSpace getSimulationSpace() {
             return config.simulationSpace;
+        }
+
+        public TransformRef getCustomSpace() {
+            return config.customSpace;
         }
 
         public Vector3f getForce(IParticle particle) {

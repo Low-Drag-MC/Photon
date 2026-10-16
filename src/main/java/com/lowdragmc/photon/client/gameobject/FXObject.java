@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.IScene;
 import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
@@ -167,6 +168,11 @@ public abstract class FXObject extends Particle implements IFXObject {
             }
         }
         return false;
+    }
+
+    /** Whether the particle engine dropped this object's runtime without notice; see {@link FXRuntime#isValid()}. */
+    protected boolean isDiscarded() {
+        return scene instanceof FXRuntime runtime && !runtime.isValid();
     }
 
     @Override

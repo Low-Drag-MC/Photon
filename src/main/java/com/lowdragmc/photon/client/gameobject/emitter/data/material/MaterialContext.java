@@ -36,6 +36,11 @@ public class MaterialContext {
     public final static MaterialContext PARTICLE_MODEL_INSTANCE_VAT_TANGENT =
             new MaterialContext().setShaderDefine("PARTICLE_MODEL_INSTANCE").setVat(true).setTangent(true);
 
+    /** CPU tile quads with per-particle records bound — MIRRORED IN {@code photon:particle.glsl}. */
+    public static final String CPU_DATA_DEFINE = "PHOTON_CPU_DATA";
+    /** The CPU path when a material reads particle data: same vertices as {@link #NORMAL}, plus records. */
+    public final static MaterialContext PARTICLE_CPU_DATA = new MaterialContext().setShaderDefine(CPU_DATA_DEFINE);
+
     /** Extra define enabling the mesh tangent attribute — MIRRORED IN {@code photon:particle.glsl}. */
     public static final String TANGENT_DEFINE = "PHOTON_TANGENT";
     /** Extra define making the position come from the baked pose table — MIRRORED IN the same file. */

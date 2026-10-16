@@ -255,9 +255,13 @@ public class TrailsSetting extends ToggleGroup {
                         break;
                     }
                 }
+                MaterialRequirements.addRow(group, config.renderer::getMaterials, config.additionalGPUDataSetting, false,
+                        config.renderer::isUseGPUInstance, config.renderer::setUseGPUInstance);
             }
             case ARA_TRAIL -> {
                 araConfig.buildConfigurator(group);
+                MaterialRequirements.addRow(group, araConfig.renderer::getMaterials, araConfig.additionalGPUDataSetting,
+                        false, araConfig.renderer::isUseGPUInstance, araConfig.renderer::setUseGPUInstance);
             }
         }
     }

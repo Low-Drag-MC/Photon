@@ -10,6 +10,8 @@ import net.neoforged.api.distmarker.OnlyIn;
  * <p>{@link #Local}: the emitter's own axes, so {@code (0,1,0)} means "the emitter's up" and rotating
  * the effect re-aims it. {@link #World}: absolute world axes, unaffected by how the emitter is oriented.
  *
+ * <p>{@link #Custom}: the live axes of a transform the module picks; world axes while it is unset.
+ *
  * <p>Every module that offers this choice must resolve {@code Local} the same way, through the
  * particle's {@code SpawnFrame}: live while the emitter IS the simulation space, frozen at spawn
  * otherwise — so particles deliberately left behind in the world are not re-aimed afterwards. Shared
@@ -20,5 +22,6 @@ import net.neoforged.api.distmarker.OnlyIn;
 @OnlyIn(Dist.CLIENT)
 public enum ValueSpace {
     Local,
-    World
+    World,
+    Custom
 }

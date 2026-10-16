@@ -1,19 +1,31 @@
 package com.lowdragmc.photon.client;
 
+import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.compat.iris.IrisOverlay;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.OpaqueDepthCapture;
+import com.lowdragmc.photon.client.light.DynamicLightManager;
+import com.lowdragmc.photon.client.light.DynamicLightRenderer;
+import com.lowdragmc.photon.client.light.PhotonLights;
+import com.lowdragmc.photon.client.light.VoxelWorld;
+import com.lowdragmc.photon.client.light.dev.LightCommands;
 import com.lowdragmc.photon.client.postfx.PhotonPostFX;
 import com.lowdragmc.photon.client.postfx.runtime.PostFXCamera;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.event.TagsUpdatedEvent;
+import net.neoforged.neoforge.event.level.ChunkEvent;
+import net.neoforged.neoforge.event.level.LevelEvent;
 
 import java.util.List;
 
@@ -24,6 +36,9 @@ public class PhotonClientListeners {
         var dispatcher = event.getDispatcher();
         List<LiteralArgumentBuilder<CommandSourceStack>> commands = ClientCommands.createClientCommands();
         commands.forEach(dispatcher::register);
+        if (Platform.isDevEnv()) {
+            dispatcher.register(LightCommands.create());
+        }
     }
 
     /** Fires once per render frame (in-world and in the editor screen alike) — the post-effect
@@ -33,8 +48,38 @@ public class PhotonClientListeners {
         PhotonPostFX.onFrameEnd();
     }
 
+    /** A chunk (re)arriving may differ from what was voxelised. */
+    @SubscribeEvent
+    public static void onChunkLoad(ChunkEvent.Load event) {
+        if (event.getLevel() instanceof Level level && level.isClientSide()) {
+            DynamicLightManager.chunkLoaded(level, event.getChunk().getPos().x, event.getChunk().getPos().z);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onTagsUpdated(TagsUpdatedEvent event) {
+        if (event.getUpdateCause() != TagsUpdatedEvent.UpdateCause.CLIENT_PACKET_RECEIVED) return;
+        VoxelWorld.clearMasks();
+        var level = Minecraft.getInstance().level;
+        if (level != null) DynamicLightManager.blocksReplaced(level);
+    }
+
+    @SubscribeEvent
+    public static void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel() instanceof Level level && level.isClientSide()) {
+            DynamicLightRenderer.release(level);
+            PhotonLights.onLevelUnload(level);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onClientTick(ClientTickEvent.Post event) {
+        PhotonLights.tick();
+        DynamicLightRenderer.tick();
+    }
+
     /**
-     * Two seams in the level render:
+     * Two seams in the level render ({@link DynamicLightRenderer#onStage} picks its own):
      *
      * <ul>
      *   <li><b>AFTER_BLOCK_ENTITIES</b> — the last stage before {@code RenderType.translucent()} goes
@@ -53,6 +98,7 @@ public class PhotonClientListeners {
         // outside every stage, and PhotonPostFX's own stage hook early-returns there.
         PostFXCamera.capture(event.getModelViewMatrix(), event.getProjectionMatrix(),
                 event.getCamera().getPosition());
+        DynamicLightRenderer.onStage(event);
         if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) {
             OpaqueDepthCapture.capture();
         } else if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {

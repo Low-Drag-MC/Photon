@@ -36,6 +36,14 @@ public interface IrisBridge {
         return "";
     }
 
+    /**
+     * The share of the screen, from its lower-left corner, the pack draws its world into before upscaling it in
+     * its final pass; 1 when it draws at full size or we can't tell.
+     */
+    default float gbufferRenderScale() {
+        return 1f;
+    }
+
     /** Iris' own version string, or {@code ""}. */
     default String irisVersion() {
         return "";
@@ -85,6 +93,19 @@ public interface IrisBridge {
 
     /** The analogous blend lock — while held, every {@code MaterialSetting.pre()} no-ops. */
     default boolean isBlendLocked() {
+        return false;
+    }
+
+    /** For tests: a pack in shaderpacks/ ({@code null} keeps the current one) and whether shaders are on. */
+    record ShaderPackSelection(@Nullable String name, boolean enabled) {
+    }
+
+    default ShaderPackSelection shaderPackSelection() {
+        return new ShaderPackSelection(null, false);
+    }
+
+    /** For tests: saves the selection to Iris' config and reloads. */
+    default boolean selectShaderPack(ShaderPackSelection selection) {
         return false;
     }
 

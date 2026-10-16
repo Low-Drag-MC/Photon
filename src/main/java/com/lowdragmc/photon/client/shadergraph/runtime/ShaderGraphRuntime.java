@@ -2,19 +2,25 @@ package com.lowdragmc.photon.client.shadergraph.runtime;
 
 import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
 import com.lowdragmc.kilagraph.rendertype.format.KGVertexFormat;
+import com.lowdragmc.kilagraph.rendertype.runtime.DynamicShaderSourceRegistry;
+import com.lowdragmc.kilagraph.rendertype.runtime.KGShaderManifest;
 import com.lowdragmc.kilagraph.rendertype.runtime.KGShaderResourceProvider;
 import com.lowdragmc.lowdraglib2.Platform;
+import com.lowdragmc.lowdraglib2.client.shader.LDProgramDefineManager;
 import com.lowdragmc.lowdraglib2.client.shader.LDShaderInstance;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.Graph;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.GraphResource;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.editor.IGraphReferenceResolver;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.LitParticles;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
 import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import lombok.Getter;
+import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -66,6 +72,9 @@ public final class ShaderGraphRuntime {
         /** Whether the graph reads any user custom-data stream (a {@code CustomDataNode}). */
         @Getter
         private final boolean usesCustomData;
+        /** Whether the graph is lit by the dynamic lights (a {@code DynamicLightNode}). */
+        @Getter
+        private final boolean usesDynamicLights;
         private Entry(CompoundTag sourceTag, @Nullable ShaderGraph graph,
                       @Nullable CompiledShaderGraph compiled, String errorMessage) {
             this(sourceTag, graph, compiled, errorMessage, 0, false);
@@ -80,6 +89,7 @@ public final class ShaderGraphRuntime {
             this.errorMessage = errorMessage;
             this.usedChannelMask = usedChannelMask;
             this.usesCustomData = usesCustomData;
+            this.usesDynamicLights = compiled != null && LitParticles.includedBy(compiled.fragmentSource());
         }
 
         public boolean isValid() {
@@ -110,8 +120,7 @@ public final class ShaderGraphRuntime {
             var existing = variants.get(key);
             if (existing != null) return existing;
             var format = KGVertexFormat.of(compiled.settings().vertexFormatElements());
-            var created = KGShaderResourceProvider.createShaderInstance(compiled, format,
-                    defines.isEmpty() ? Set.of(BASE_VARIANT_DEFINE) : defines);
+            var created = createShaderInstance(compiled, format, defines);
             if (created == null) {
                 failedVariants.add(key);
                 return null;
@@ -123,6 +132,38 @@ public final class ShaderGraphRuntime {
         private void close() {
             variants.values().forEach(LDShaderInstance::close);
             variants.clear();
+        }
+    }
+
+    /**
+     * {@code KGShaderResourceProvider.createShaderInstance}, except that no define set is empty (see
+     * {@code BASE_VARIANT_DEFINE}) and a graph including the dynamic lights gets their samplers and uniforms
+     * in its json: the GLSL declares them through the include, out of KilaGraph's sight.
+     */
+    @Nullable
+    public static LDShaderInstance createShaderInstance(CompiledShaderGraph compiled, VertexFormat format, Set<String> defines) {
+        var variant = defines.isEmpty() ? Set.of(Entry.BASE_VARIANT_DEFINE) : defines;
+        if (!LitParticles.includedBy(compiled.fragmentSource())) {
+            return KGShaderResourceProvider.createShaderInstance(compiled, format, variant);
+        }
+        if (compiled.hasStageErrors()) {
+            compiled.stageErrors().forEach(error -> Photon.LOGGER.warn("Shader graph stage error: {}", error.message()));
+            return null;
+        }
+        var id = DynamicShaderSourceRegistry.shaderId(compiled.contentHash());
+        String json = null;
+        try {
+            json = LitParticles.declareIn(KGShaderManifest.json(compiled, id.toString()));
+            var provider = new KGShaderResourceProvider(id, json, compiled.vertexSource(), compiled.fragmentSource(),
+                    Minecraft.getInstance().getResourceManager());
+            return LDShaderInstance.create(provider, id, format, variant);
+        } catch (Throwable e) {
+            Photon.LOGGER.warn("Failed to build lit shader graph {}: {}\n--- MANIFEST ---\n{}\n--- VERTEX ---\n{}\n--- FRAGMENT ---\n{}",
+                    id, e.getMessage(), json, compiled.vertexSource(), compiled.fragmentSource());
+            return null;
+        } finally {
+            // create() only clears them on success; a failed compile would leak them into every later one
+            variant.forEach(LDProgramDefineManager::removeProgramDefine);
         }
     }
 

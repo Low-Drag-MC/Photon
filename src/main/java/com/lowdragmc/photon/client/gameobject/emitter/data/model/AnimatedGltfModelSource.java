@@ -128,7 +128,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     public enum PhaseSource {
         /** A stable per-particle offset from the shared clock — a flock, each at its own point. */
         Random,
-        /** The particle's own life, so the clip plays exactly once from spawn to death. */
+        /** The particle's own life, so the clip plays {@code speed} times from spawn to death. */
         Lifetime
     }
 
@@ -253,12 +253,14 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     private void refreshPhase(SkinnedModel model) {
         if (vertexAnimation == null) return;
         if (phaseSource == PhaseSource.Lifetime) {
-            vertexAnimation.setPhase(0f, 0f, 1f, interpolate);
+            float rate = Float.isFinite(speed) ? speed : 0f;
+            // backwards without looping starts from the end
+            vertexAnimation.setPhase(!loop && rate < 0f ? 1f : 0f, 0f, rate, interpolate, !loop);
             return;
         }
         var clip = animation.isEmpty() ? model.clipAt(0) : model.clip(animation);
         float duration = clip == null ? 0f : clip.duration();
-        vertexAnimation.setPhase(duration <= 0f ? 0f : clipTime(clip) / duration, 1f, 0f, interpolate);
+        vertexAnimation.setPhase(duration <= 0f ? 0f : clipTime(clip) / duration, 1f, 0f, interpolate, !loop);
     }
 
     /** The base file's own key, shared with {@link GltfModelSource}: one parse serves both. */

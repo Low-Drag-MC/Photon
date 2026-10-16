@@ -184,6 +184,16 @@ abstract class InstancedRenderBackend {
         return vatSamplerUnit;
     }
 
+    static int dataUnit() {
+        resolveSamplerUnits();
+        return dataSamplerUnit;
+    }
+
+    static int customUnit() {
+        resolveSamplerUnits();
+        return customSamplerUnit;
+    }
+
     @Getter
     private boolean initialized = false;
 

@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ValueSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InheritVelocitySetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.SubEmittersSetting;
@@ -643,7 +644,7 @@ public class TileParticle implements IParticle {
      * The total world-space velocity. Composition order:
      * <ol>
      *     <li>{@code simToWorld * (stored velocity + velocityOverLifetime addition)}</li>
-     *     <li>{@code + forceOverLifetime} (Local: the spawn frame's axes, World: as-is)</li>
+     *     <li>{@code + forceOverLifetime} (Local: the spawn frame's axes, World: as-is, Custom: the picked transform's axes)</li>
      *     <li>{@code + inheritVelocity} (CURRENT mode)</li>
      *     <li>{@code * velocityOverLifetime speed modifier}</li>
      * </ol>
@@ -653,11 +654,14 @@ public class TileParticle implements IParticle {
         var velocity = getSpaceTransform().transformDirection(getInternalVelocity());
         if (runtime.forceOverLifetime.isEnable()) {
             var force = runtime.forceOverLifetime.getForce(this);
-            if (runtime.forceOverLifetime.getSimulationSpace() == ValueSpace.Local) {
+            var forceSpace = runtime.forceOverLifetime.getSimulationSpace();
+            if (forceSpace == ValueSpace.Local) {
                 // the SPAWN frame's axes, not the emitter's live matrix — same rule as
                 // velocityOverLifetime, so the two "Local" dropdowns cannot mean different things.
                 // Reading it live would swing the force on particles the emitter already left behind.
                 simDirToWorld(emitterDirToSim(force));
+            } else if (forceSpace == ValueSpace.Custom) {
+                CustomSpace.dirToWorld(runtime.forceOverLifetime.getCustomSpace(), emitter.getScene(), force);
             }
             velocity.add(force);
         }
@@ -695,7 +699,7 @@ public class TileParticle implements IParticle {
         if (runtime.rotationOverLifetime.isEnable() || runtime.rotationBySpeed.isEnable() || runtime.noise.isEnable()) {
             var rotation = new Vector3f(initialRotation);
 
-            if (runtime.rotationOverLifetime.isEnable()) {
+            if (runtime.rotationOverLifetime.isEnable() && runtime.rotationOverLifetime.isLocal()) {
                 rotation.add(runtime.rotationOverLifetime.getRotation(this, 0));
             }
 

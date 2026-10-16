@@ -2,6 +2,7 @@ package com.lowdragmc.photon.gui.editor.view;
 
 import com.lowdragmc.lowdraglib2.configurator.EditAction;
 import com.lowdragmc.lowdraglib2.editor.ui.View;
+import com.lowdragmc.lowdraglib2.editor.ClipboardManager;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
@@ -12,12 +13,15 @@ import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.*;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
+import com.lowdragmc.lowdraglib2.gui.ui.event.CommandEvents;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.photon.PhotonRegistries;
+import com.lowdragmc.photon.client.fx.FXData;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.FXEditor;
+import com.lowdragmc.photon.gui.editor.FXObjectClipboard;
 import lombok.Getter;
 import net.minecraft.network.chat.Component;
 import dev.vfyjxf.taffy.style.FlexDirection;
@@ -45,6 +49,8 @@ public class FXHierarchyView extends View {
     public FXHierarchyView(FXEditor fxEditor) {
         super("editor.fx_object.hierarchy");
         this.fxEditor = fxEditor;
+        setFocusable(true);
+        addEventListener(UIEvents.EXECUTE_COMMAND, this::handleCommand);
         this.getLayout().widthPercent(100.0F);
         this.getLayout().heightPercent(100.0F);
 
@@ -268,7 +274,7 @@ public class FXHierarchyView extends View {
             // add fx objects
             menu.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.new", m -> {
                 for (var fx : PhotonRegistries.FX_OBJECTS) {
-                    m.leaf(fx.icon(), fx.name(), () -> {
+                    m.leaf(fx.icon(), fx.name(), thenFocus(() -> {
                         var fxObject = fx.create();
                         var father = treeList.getSelected().stream().findFirst()
                                 .map(FXObjectTreeNode::getKey)
@@ -286,13 +292,13 @@ public class FXHierarchyView extends View {
                                     fxEditor.reloadEffect();
                                 }
                         ));
-                    });
+                    }));
                 }
             });
         }
         var selected = treeList.getSelected();
         if (isSelectedNodeValid(selected)) {
-            menu.leaf(Icons.REMOVE_FILE, "ldlib.gui.editor.menu.remove", () -> {
+            menu.leaf(Icons.REMOVE_FILE, "ldlib.gui.editor.menu.remove", thenFocus(() -> {
                 var nodes = treeList.getSelected();
                 if (!isSelectedNodeValid(nodes)) return;
                 var toRemoved = nodes.stream().map(FXObjectTreeNode::getKey)
@@ -315,61 +321,154 @@ public class FXHierarchyView extends View {
                         }
                 ));
 
-            });
-            menu.leaf(Icons.COPY, "ldlib.gui.editor.menu.copy", () -> {
-                var nodes = treeList.getSelected();
-                if (!isSelectedNodeValid(nodes)) return;
-                var copied = nodes.stream().map(FXObjectTreeNode::getKey).map(this::copySceneObject).flatMap(Collection::stream).toList();
-                fxEditor.historyView.pushHistory(Component.translatable("photon.copy_fx_object"), EditAction.of(
-                        () -> {
-                            for (var copiedFXObject : copied) {
-                                addSceneObject(copiedFXObject);
-                            }
-                            fxEditor.reloadEffect();
-                        },
-                        () -> {
-                            for (var copiedFXObject : copied) {
-                                removeSceneObject(copiedFXObject);
-                            }
-                            fxEditor.reloadEffect();
-                        }
-                ));
-            });
+            }));
+            menu.leaf(Icons.COPY, "ldlib.gui.editor.menu.copy", thenFocus(this::copySelection));
+            menu.leaf(Icons.COPY, "photon.gui.editor.hierarchy.duplicate", thenFocus(this::duplicateSelection));
+        }
+        if (ClipboardManager.INSTANCE.getClipboardType() == FXObjectClipboard.class) {
+            menu.leaf(Icons.PASTE, "ldlib.gui.editor.menu.paste", thenFocus(this::pasteClipboard));
         }
         return menu;
     }
 
-    private List<IFXObject> copySceneObject(IFXObject toCopied) {
-        List<IFXObject> result = new ArrayList<>();
-        var copied = toCopied.deepCopy();
-        result.add(copied);
-        copied.transform()._refreshInternalID();
-        for (var child : toCopied.children()) {
-            if (child instanceof IFXObject childFXObject) {
-                var copiedChildren = copySceneObject(childFXObject);
-                copiedChildren.getFirst().transform().parent(copied.transform(), false);
-                result.addAll(copiedChildren);
-            }
-        }
-        return result;
+    /** Closing the menu leaves nothing focused, so hand the keyboard back to this view. */
+    private Runnable thenFocus(Runnable action) {
+        return () -> {
+            action.run();
+            focus();
+        };
     }
 
+    /** Also wired to the scene view. Takes undo/redo too, since commands stop at the focused view. */
+    public void handleCommand(UIEvent event) {
+        boolean handled;
+        if (CommandEvents.COPY.equals(event.command)) {
+            handled = copySelection();
+        } else if (CommandEvents.PASTE.equals(event.command)) {
+            handled = pasteClipboard();
+        } else if (CommandEvents.DUPLICATE.equals(event.command)) {
+            handled = duplicateSelection();
+        } else if (CommandEvents.UNDO.equals(event.command)) {
+            fxEditor.historyView.undo();
+            handled = true;
+        } else if (CommandEvents.REDO.equals(event.command)) {
+            fxEditor.historyView.redo();
+            handled = true;
+        } else {
+            handled = false;
+        }
+        if (handled) event.stopPropagation();
+    }
+
+    public boolean copySelection() {
+        var roots = selectedRoots();
+        if (runtime == null || roots.isEmpty()) return false;
+        ClipboardManager.INSTANCE.copyDirect(new FXObjectClipboard(roots, runtime.fxData.timeline()));
+        return true;
+    }
+
+    /** Pastes next to the selection: under the parent the selected objects share, else under the root. */
+    public boolean pasteClipboard() {
+        if (runtime == null || ClipboardManager.INSTANCE.getClipboardType() != FXObjectClipboard.class
+                || !(ClipboardManager.INSTANCE.paste() instanceof FXObjectClipboard clipboard)) return false;
+        var parents = treeList.getSelected().stream().map(node -> node.getKey().transform().parent()).distinct().toList();
+        var parent = parents.size() == 1 && parents.getFirst() != null ? parents.getFirst() : runtime.root.transform();
+        paste(runtime, clipboard.instantiate(original -> parent.id()), "photon.paste_fx_object");
+        return true;
+    }
+
+    /** Copies each selected subtree next to its original, without touching the clipboard. */
+    public boolean duplicateSelection() {
+        var roots = selectedRoots();
+        if (runtime == null || roots.isEmpty()) return false;
+        var rootId = runtime.root.id();
+        var duplicated = new FXObjectClipboard(roots, runtime.fxData.timeline())
+                .instantiate(original -> original == null ? rootId : original);
+        paste(runtime, duplicated, "photon.duplicate_fx_object");
+        return true;
+    }
+
+    /** Selected objects minus the root and any with a selected ancestor, in tree order. */
+    private List<IFXObject> selectedRoots() {
+        if (runtime == null) return List.of();
+        var selected = new HashSet<IFXObject>();
+        treeList.getSelected().forEach(node -> selected.add(node.getKey()));
+        var roots = new ArrayList<IFXObject>();
+        runtime.root.executeAll(object -> {
+            if (object instanceof IFXObject fxObject && fxObject != runtime.root && selected.contains(fxObject)
+                    && selected.stream().noneMatch(other -> fxObject.transform().isInheritedParent(other.transform()))) {
+                roots.add(fxObject);
+            }
+        });
+        return roots;
+    }
+
+    private void paste(FXRuntime runtime, FXData pasted, String historyKey) {
+        var objects = pasted.objects();
+        var ids = new HashSet<UUID>();
+        objects.forEach(object -> ids.add(object.id()));
+        var roots = objects.stream().filter(object -> !ids.contains(object.transform()._getInternalParentID())).toList();
+        var tracks = runtime.fxData.timeline().tracks();
+        fxEditor.historyView.pushHistory(Component.translatable(historyKey), EditAction.of(
+                () -> {
+                    objects.forEach(this::addSceneObject);
+                    objects.forEach(object -> object.transform().rebuildChildOrder());
+                    tracks.addAll(pasted.timeline().tracks());
+                    fxEditor.timelineView.rebuild();
+                    fxEditor.reloadEffect();
+                    select(roots);
+                },
+                () -> {
+                    objects.reversed().forEach(this::removeSceneObject);
+                    tracks.removeAll(pasted.timeline().tracks());
+                    fxEditor.timelineView.rebuild();
+                    fxEditor.reloadEffect();
+                }));
+    }
+
+    /** ⚠️ Selects without inspecting: inspecting pushes history, which an undoable action must not do. */
+    private void select(List<IFXObject> objects) {
+        var nodes = objects.stream().map(this::nodeOf).filter(Objects::nonNull).toList();
+        nodes.forEach(treeList::expandNodeAlongPath);
+        fxEditor.inspectorView.clear();
+        fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
+        treeList.setSelected(nodes, true);
+    }
+
+    @Nullable
+    private FXObjectTreeNode nodeOf(IFXObject object) {
+        var node = rootNode;
+        while (node != null && node.getKey() != object) {
+            node = node.getChildren().stream().filter(child -> child.getKey() == object
+                    || object.transform().isInheritedParent(child.getKey().transform())).findFirst().orElse(null);
+        }
+        return node;
+    }
+
+    /** Adds {@code fxObject} and the subtree still linked to it. */
     public void addSceneObject(IFXObject fxObject) {
         if (runtime == null) return;
-        runtime.fxData.objects().add(fxObject);
+        var objects = runtime.fxData.objects();
+        fxObject.executeAll(object -> {
+            if (object instanceof IFXObject added && !objects.contains(added)) objects.add(added);
+        });
         runtime.addSceneObject(fxObject);
     }
 
+    /** Removes {@code fxObject} and its subtree; the subtree stays linked for undo. */
     public void removeSceneObject(IFXObject fxObject) {
         if (runtime == null) return;
-        if (fxEditor.sceneView.sceneEditor.getTransformGizmo().getTargetTransform() == fxObject.transform()) {
-            fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(null);
-        }
-        if (fxEditor.inspectorView.inspector.getInspectedConfigurable() == fxObject) {
-            fxEditor.inspectorView.clear();
-        }
+        var sceneEditor = fxEditor.sceneView.sceneEditor;
+        fxObject.executeAll(object -> {
+            if (sceneEditor.getTransformGizmo().getTargetTransform() == object.transform()) {
+                sceneEditor.setTransformGizmoTarget(null);
+            }
+            if (fxEditor.inspectorView.inspector.getInspectedConfigurable() == object) {
+                fxEditor.inspectorView.clear();
+            }
+            runtime.fxData.objects().remove(object);
+        });
         fxEditor.sceneView.fxObjectInfoView.clear();
-        runtime.fxData.objects().remove(fxObject);
         runtime.removeSceneObject(fxObject);
     }
 }

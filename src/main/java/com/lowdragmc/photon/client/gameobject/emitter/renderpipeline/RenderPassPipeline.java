@@ -25,6 +25,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 
 import javax.annotation.Nonnull;
@@ -201,6 +202,8 @@ public class RenderPassPipeline extends BufferBuilder {
         } finally {
             if (!completed) {
                 UISurface.currentTarget().bindWrite(true);
+                GL11.glCullFace(GL11.GL_BACK);
+                RenderSystem.blendEquation(GL14.GL_FUNC_ADD);
             }
             clearRenderingState();
             current = null;
@@ -312,6 +315,8 @@ public class RenderPassPipeline extends BufferBuilder {
         if (drawMode != SceneView.DrawMode.WIREFRAME) {
             wireframeSubPass = false;
             renderQueuedPasses();
+            // in place, the working copy is bent once every effect is on it; the late path bends at its composite
+            if (!late && irisTarget == null) StackedDistortion.bend(DRAW_TARGET, depthOf(DRAW_TARGET));
         }
         // wireframe overlay sub-pass (WIREFRAME and BOTH): global polygon LINE mode + the inverse
         // material draws each mesh as inverted-color lines over the (optional) shaded pass.
@@ -384,6 +389,22 @@ public class RenderPassPipeline extends BufferBuilder {
         DRAW_TARGET.bindWrite(false);
     }
 
+    /** The depth the build tests against: the attached scene depth, or the target's own. */
+    private static int depthOf(HDRTarget target) {
+        return target.hasOtherAttachedDepthTexture() ? target.getAttachedDepthTexture() : target.getDepthTextureId();
+    }
+
+    /** The target the current build draws into; null outside a build. */
+    @Nullable
+    public static HDRTarget drawTarget() {
+        return current == null ? null : DRAW_TARGET;
+    }
+
+    /** Whether a screen distortion drawing now can add itself to {@link StackedDistortion}. */
+    public boolean supportsStackedDistortion() {
+        return irisTarget == null && !maskSubPass && !wireframeSubPass;
+    }
+
     /** Frame boundary: mask textures are only valid for the frame their sub-pass ran in — a
      *  no-particle frame must not feed post effects last frame's (stale) mask. */
     public static void clearFrameMask() {
@@ -393,6 +414,7 @@ public class RenderPassPipeline extends BufferBuilder {
         // paths, a cancelled level render) must not leak it into the next frame
         pendingLateLayer = null;
         lateLayerStarted = false;
+        StackedDistortion.endFrame();
         // likewise the opaque depth snapshot: a frame that never reached AFTER_BLOCK_ENTITIES must
         // not depth-test this frame's FX against last frame's geometry
         OpaqueDepthCapture.endFrame();
@@ -809,6 +831,9 @@ public class RenderPassPipeline extends BufferBuilder {
         // bindWrite(true) also restores the full-frame viewport that the bloom chain left mip-sized
         UISurface.currentTarget().bindWrite(true);
         SceneBlit.compositePremultipliedToBound(colorTexture, layer.getColorTextureId(), false);
+        // after the composite, so the stacked distortions bend the layer together with the frame
+        var frame = UISurface.currentTarget();
+        StackedDistortion.bend(frame, frame.getDepthTextureId());
     }
 
     /**

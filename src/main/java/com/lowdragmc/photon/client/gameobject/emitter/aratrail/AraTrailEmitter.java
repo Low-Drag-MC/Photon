@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.aratrail;
 
+import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialRequirements;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
@@ -162,6 +163,8 @@ public class AraTrailEmitter extends Emitter {
     public void buildConfigurator(ConfiguratorGroup father) {
         super.buildConfigurator(father);
         config.buildConfigurator(father);
+        MaterialRequirements.addRow(father, config.renderer::getMaterials, config.additionalGPUDataSetting, false,
+                config.renderer::isUseGPUInstance, config.renderer::setUseGPUInstance);
     }
 
     //////////////////////////////////////

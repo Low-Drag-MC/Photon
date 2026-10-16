@@ -71,11 +71,28 @@ public final class VertexAnimationBake {
         out[2] = z / length;
     }
 
+    /** A raw phase as a position in the table, in {@code [0, frames]}. MIRRORED BY the PHOTON_VAT block of
+     *  particle.glsl, as are {@link #frameAt} and {@link #blendAt}. */
+    public static float cursor(float raw, int frames, boolean clamp) {
+        float phase = clamp ? Math.min(1f, Math.max(0f, raw)) : raw - (float) Math.floor(raw);
+        return phase * frames;
+    }
+
+    public static int frameAt(float cursor, int frames) {
+        return Math.max(0, Math.min((int) cursor, frames - 1));
+    }
+
+    /** Snapping still returns 1 at the very end, or a clip that does not loop stops one row short. */
+    public static float blendAt(float cursor, int frame, boolean interpolate) {
+        float blend = cursor - frame;
+        return interpolate ? blend : (blend >= 1f ? 1f : 0f);
+    }
+
     /**
-     * @param frames how many poses to sample; frame {@code f} is the clip at {@code duration * f / frames},
-     *               so wrapping past the last frame continues a looping clip
-     * @return {@code frames * vertexCount * }{@link #FLOATS_PER_TEXEL} floats, or null when the model
-     *         cannot be posed or the table would be too large
+     * @param frames intervals to cut the clip into; row {@code f} is the clip at {@code duration * f / frames}
+     *               for {@code f} in {@code [0, frames]}, so the last row is the clip's end
+     * @return {@code (frames + 1) * vertexCount * }{@link #FLOATS_PER_TEXEL} floats, or null when the
+     *         model cannot be posed or the table would be too large
      */
     @Nullable
     public static float[] bake(SkinnedModel model, @Nullable AnimationClip clip, int frames) {
@@ -86,7 +103,7 @@ public final class VertexAnimationBake {
         var skin = model.skin();
         if (skin == null) return null;
         int vertexCount = mesh.vertexCount();
-        long texels = (long) frames * vertexCount;
+        long texels = ((long) frames + 1) * vertexCount;
         if (texels <= 0 || texels > MAX_TEXELS) {
             return null;
         }
@@ -96,7 +113,7 @@ public final class VertexAnimationBake {
         var pose = new float[vertexCount * PhotonMesh.FLOATS_PER_GEOMETRY];
         float duration = clip == null ? 0f : clip.duration();
 
-        for (int frame = 0; frame < frames; frame++) {
+        for (int frame = 0; frame <= frames; frame++) {
             deformer.pose(clip, duration * frame / frames);
             deformer.deform(mesh, skin, pose);
             int base = frame * vertexCount * FLOATS_PER_TEXEL;

@@ -28,6 +28,57 @@ public class BlendMode {
         }
     }
 
+    /** The blends nearly every effect uses, by name. */
+    public enum Preset {
+        ALPHA,
+        ADDITIVE,
+        /** {@code ONE / ONE_MINUS_SRC_ALPHA}: the shader premultiplies, and alpha 0 is purely additive. */
+        PREMULTIPLIED,
+        MULTIPLY,
+        OPAQUE;
+
+        public BlendMode create() {
+            return switch (this) {
+                case ALPHA -> new BlendMode();
+                case ADDITIVE -> new BlendMode(SourceFactor.SRC_ALPHA, DestFactor.ONE,
+                        SourceFactor.ONE, DestFactor.ZERO, BlendFuc.ADD);
+                case PREMULTIPLIED -> new BlendMode(SourceFactor.ONE, DestFactor.ONE_MINUS_SRC_ALPHA,
+                        SourceFactor.ONE, DestFactor.ZERO, BlendFuc.ADD);
+                case MULTIPLY -> new BlendMode(SourceFactor.DST_COLOR, DestFactor.ZERO,
+                        SourceFactor.ONE, DestFactor.ZERO, BlendFuc.ADD);
+                case OPAQUE -> new BlendMode(false, SourceFactor.ONE, DestFactor.ZERO,
+                        SourceFactor.ONE, DestFactor.ZERO, BlendFuc.ADD);
+            };
+        }
+
+        public String langKey() {
+            return "photon.blend_preset." + name().toLowerCase();
+        }
+
+        // private: a BlendMode is mutable, so these never leave this class
+        private static final BlendMode[] REFERENCE = new BlendMode[values().length];
+
+        static {
+            for (var preset : values()) REFERENCE[preset.ordinal()] = preset.create();
+        }
+
+        /** The preset {@code mode} is, judged by what it does to colour; null when it is none of them. */
+        @javax.annotation.Nullable
+        public static Preset of(BlendMode mode) {
+            if (!mode.isEnableBlend()) return OPAQUE;
+            if (mode.getBlendFunc() != BlendFuc.ADD) return null;
+            for (var preset : values()) {
+                if (preset == OPAQUE) continue;
+                var candidate = REFERENCE[preset.ordinal()];
+                if (candidate.getSrcColorFactor() == mode.getSrcColorFactor()
+                        && candidate.getDstColorFactor() == mode.getDstColorFactor()) {
+                    return preset;
+                }
+            }
+            return null;
+        }
+    }
+
     @Configurable(name = "BlendMode.enableBlend")
     private boolean enableBlend;
     @Configurable(name = "BlendMode.srcColorFactor")

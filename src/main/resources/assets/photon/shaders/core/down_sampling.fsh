@@ -18,17 +18,17 @@ void main() {
     // - l - m -
     // g - h - i
     // === ('e' is the current texel) ===
-    vec3 a = texture(inputSampler, vec2(texCoord.x - 2*x, texCoord.y + 2*y)).rgb;
-    vec3 b = texture(inputSampler, vec2(texCoord.x,       texCoord.y + 2*y)).rgb;
-    vec3 c = texture(inputSampler, vec2(texCoord.x + 2*x, texCoord.y + 2*y)).rgb;
+    vec3 a = texture(inputSampler, vec2(texCoord.x - 2.0*x, texCoord.y + 2.0*y)).rgb;
+    vec3 b = texture(inputSampler, vec2(texCoord.x,       texCoord.y + 2.0*y)).rgb;
+    vec3 c = texture(inputSampler, vec2(texCoord.x + 2.0*x, texCoord.y + 2.0*y)).rgb;
 
-    vec3 d = texture(inputSampler, vec2(texCoord.x - 2*x, texCoord.y)).rgb;
+    vec3 d = texture(inputSampler, vec2(texCoord.x - 2.0*x, texCoord.y)).rgb;
     vec3 e = texture(inputSampler, vec2(texCoord.x,       texCoord.y)).rgb;
-    vec3 f = texture(inputSampler, vec2(texCoord.x + 2*x, texCoord.y)).rgb;
+    vec3 f = texture(inputSampler, vec2(texCoord.x + 2.0*x, texCoord.y)).rgb;
 
-    vec3 g = texture(inputSampler, vec2(texCoord.x - 2*x, texCoord.y - 2*y)).rgb;
-    vec3 h = texture(inputSampler, vec2(texCoord.x,       texCoord.y - 2*y)).rgb;
-    vec3 i = texture(inputSampler, vec2(texCoord.x + 2*x, texCoord.y - 2*y)).rgb;
+    vec3 g = texture(inputSampler, vec2(texCoord.x - 2.0*x, texCoord.y - 2.0*y)).rgb;
+    vec3 h = texture(inputSampler, vec2(texCoord.x,       texCoord.y - 2.0*y)).rgb;
+    vec3 i = texture(inputSampler, vec2(texCoord.x + 2.0*x, texCoord.y - 2.0*y)).rgb;
 
     vec3 j = texture(inputSampler, vec2(texCoord.x - x, texCoord.y + y)).rgb;
     vec3 k = texture(inputSampler, vec2(texCoord.x + x, texCoord.y + y)).rgb;

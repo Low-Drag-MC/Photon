@@ -149,7 +149,8 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
         @Override
         protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
             // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change
-            additionalGPUDataSetting.setMaterialMask(shaderGraphChannelMask(materials));
+            additionalGPUDataSetting.setMaterialMask(materialChannelMask(materials));
+            additionalGPUDataSetting.setCustomDataMaterialUsed(materialsUseCustomData(materials));
             if (additionalGPUDataSetting.attribRelayoutNeeded()) {
                 clearInstance();
             }
@@ -158,9 +159,11 @@ public class TrailConfig implements IConfigurable, IPersistedSerializable {
             // upload to vbo
             if (trailParticleRenderer.uploadInstances(particles, camera, partialTicks)) {
                 for (MaterialSetting materialSetting : materials) {
-                    materialSetting.pre();
-                    renderInstanceWithMaterial(materialSetting.getMaterial(), MaterialContext.TRAIL_INSTANCE);
-                    materialSetting.post();
+                    for (int pass = 0, passes = materialSetting.passes(); pass < passes; pass++) {
+                        materialSetting.pre(pass);
+                        renderInstanceWithMaterial(materialSetting.getMaterial(), MaterialContext.TRAIL_INSTANCE);
+                        materialSetting.post();
+                    }
                 }
                 drew = true;
             }
