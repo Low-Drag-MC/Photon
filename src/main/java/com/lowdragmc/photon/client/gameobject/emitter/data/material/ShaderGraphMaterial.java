@@ -33,6 +33,7 @@ import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import dev.vfyjxf.taffy.style.AlignItems;
 import net.minecraft.client.renderer.ShaderInstance;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.ByteTag;
 import net.minecraft.nbt.CompoundTag;
@@ -302,6 +303,14 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
                     sampler.map(RenderPassPipeline.SceneSamplers::colorTexture).orElse(-1));
             shader.setSampler(PhotonShaderCompiler.SCENE_DEPTH,
                     sampler.map(RenderPassPipeline.SceneSamplers::depthTexture).orElse(-1));
+        }
+        var terrainValid = shader.getUniform(com.lowdragmc.photon.client.shadergraph.nodes.TerrainDepthNode.VALID);
+        if (terrainValid != null) {
+            int terrain = com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.TerrainDepthCapture.requestTexture();
+            shader.setSampler(com.lowdragmc.photon.client.shadergraph.nodes.TerrainDepthNode.SAMPLER,
+                    terrain > 0 ? terrain : Minecraft.getInstance().getTextureManager()
+                            .getTexture(net.minecraft.client.renderer.texture.MissingTextureAtlasSprite.getLocation()).getId());
+            terrainValid.set(terrain > 0 ? 1f : 0f);
         }
     }
 

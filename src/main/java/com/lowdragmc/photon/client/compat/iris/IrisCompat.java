@@ -79,6 +79,10 @@ public final class IrisCompat {
         return BRIDGE.isShadowPass();
     }
 
+    public static @Nullable IrisDepthSource terrainDepthSource() {
+        return BRIDGE.terrainDepthSource();
+    }
+
     public static String packName() {
         return BRIDGE.packName();
     }

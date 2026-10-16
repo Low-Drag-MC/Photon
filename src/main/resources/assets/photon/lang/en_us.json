@@ -1,4 +1,6 @@
 {
+  "kg.node.photon_terrain_depth": "Terrain Depth",
+  "kg.node.photon_terrain_depth.tooltip": "Shares a pre-entity terrain depth snapshot. visible rejects foreground occluders, including entities, and returns zero without a valid capture. One on-demand depth-only copy per view per frame; no terrain redraw. Iris uses the actual gbuffer depth and dimensions, never an entity-inclusive substitute. Depth-writing terrain only.",
   "photon.configuration.title": "Photon Settings",
   "photon.configuration.enable_bloom": "Enable Bloom",
   "photon.configuration.enable_bloom.tooltip": "Photon's built-in bloom pass for FX highlights. Only HDR overbright pixels glow: the scene itself is clamped to 1 by the main render target, so it never reaches the threshold below.",

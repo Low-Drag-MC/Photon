@@ -408,6 +408,7 @@ public class RenderPassPipeline extends BufferBuilder {
     /** Frame boundary: mask textures are only valid for the frame their sub-pass ran in — a
      *  no-particle frame must not feed post effects last frame's (stale) mask. */
     public static void clearFrameMask() {
+        TerrainDepthCapture.endFrame();
         maskColorTexture = -1;
         maskDepthTexture = -1;
         // a frame that produced a deferred layer but never reached the composite hook (screenshot

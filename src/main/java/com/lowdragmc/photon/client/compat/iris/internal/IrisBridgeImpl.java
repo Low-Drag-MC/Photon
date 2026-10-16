@@ -3,7 +3,11 @@ package com.lowdragmc.photon.client.compat.iris.internal;
 import com.lowdragmc.photon.client.compat.iris.IrisBridge;
 import com.lowdragmc.photon.client.compat.iris.IrisCompositeMode;
 import com.lowdragmc.photon.client.compat.iris.IrisFrameTarget;
+import com.lowdragmc.photon.client.compat.iris.IrisDepthSource;
+import com.lowdragmc.photon.client.PhotonParticleManager;
+import com.lowdragmc.photon.core.mixins.iris.IrisRenderingPipelineAccessor;
 import net.irisshaders.iris.Iris;
+import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.irisshaders.iris.gl.blending.BlendModeStorage;
 import net.irisshaders.iris.gl.blending.DepthColorStorage;
@@ -35,6 +39,21 @@ public final class IrisBridgeImpl implements IrisBridge {
     @Override
     public boolean isShadowPass() {
         return ShadowRenderer.ACTIVE;
+    }
+
+    @Override
+    public @Nullable IrisDepthSource terrainDepthSource() {
+        if (!isUsingShaderPack() || isShadowPass() || PhotonParticleManager.getRenderingManager() != null) return null;
+        if (!(Iris.getPipelineManager().getPipelineNullable() instanceof IrisRenderingPipeline pipeline)) return null;
+        var accessor = (IrisRenderingPipelineAccessor) pipeline;
+        if (!accessor.photon$isRenderingWorld()) return null;
+        var targets = accessor.photon$renderTargets();
+        var framebuffer = accessor.photon$defaultFB();
+        if (targets == null || framebuffer == null || !framebuffer.hasDepthAttachment()) return null;
+        int version = Minecraft.getInstance().getMainRenderTarget() instanceof Blaze3dRenderTargetExt ext
+                ? ext.iris$getDepthBufferVersion() : -1;
+        return new IrisDepthSource(framebuffer.getId(), targets.getDepthTexture(),
+                targets.getCurrentWidth(), targets.getCurrentHeight(), version);
     }
 
     @Override

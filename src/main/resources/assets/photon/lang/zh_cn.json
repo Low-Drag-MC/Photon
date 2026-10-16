@@ -1,4 +1,6 @@
 {
+  "kg.node.photon_terrain_depth": "地形深度",
+  "kg.node.photon_terrain_depth.tooltip": "复用实体绘制前的地形深度快照。visible 排除被实体或其他前景遮挡的像素；无有效快照时为 0。按需每视图每帧共享一次纯深度复制，不重画地形。Iris 使用实际 gbuffer 深度与尺寸，不使用含实体的深度替代。仅包含写入深度的地形。",
   "photon.configuration.title": "Photon 设置",
   "photon.configuration.enable_bloom": "启用Bloom泛光",
   "photon.configuration.enable_bloom.tooltip": "Photon 内置的泛光通道，用于特效高光。只有 HDR 过亮像素会发光：场景本身被主渲染目标钳制到 1，永远达不到下面的阈值。",

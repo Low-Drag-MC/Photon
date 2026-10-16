@@ -52,6 +52,7 @@ public class PhotonClientListeners {
     @SubscribeEvent
     public static void onChunkLoad(ChunkEvent.Load event) {
         if (event.getLevel() instanceof Level level && level.isClientSide()) {
+            com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.TerrainDepthCapture.release();
             DynamicLightManager.chunkLoaded(level, event.getChunk().getPos().x, event.getChunk().getPos().z);
         }
     }
@@ -99,7 +100,9 @@ public class PhotonClientListeners {
         PostFXCamera.capture(event.getModelViewMatrix(), event.getProjectionMatrix(),
                 event.getCamera().getPosition());
         DynamicLightRenderer.onStage(event);
-        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) {
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_CUTOUT_BLOCKS) {
+            com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.TerrainDepthCapture.captureWorld();
+        } else if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) {
             OpaqueDepthCapture.capture();
         } else if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
             PhotonPostFX.onLevelStageAfterParticles();
