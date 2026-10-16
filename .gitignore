@@ -13,6 +13,11 @@ libs/
 .project
 .idea/
 classes/
+**/build/
+**/.gradle/
+**/logs/
+/local.properties
+/local-build/
 .metadata
 .vscode
 .settings

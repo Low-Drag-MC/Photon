@@ -28,6 +28,10 @@ import com.lowdragmc.photon.client.gameobject.forcefield.ForceFieldObject;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.SpawnFrame;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
+import com.lowdragmc.photon.client.gameobject.particle.collision.CollisionRuntime;
+import com.lowdragmc.photon.client.gameobject.particle.collision.CollisionDataFix;
+import com.lowdragmc.photon.client.gameobject.particle.collision.SweptCollisionParticle;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CollisionSettings;
 import com.lowdragmc.photon.client.light.DynamicLightManager;
 import com.lowdragmc.photon.client.light.LightProvider;
 import com.lowdragmc.photon.client.light.LightSink;
@@ -68,7 +72,12 @@ public class ParticleEmitter extends Emitter {
 
         @Override
         public int version() {
-            return 2;
+            return 3;
+        }
+
+        @Override
+        public net.minecraft.nbt.CompoundTag fixData(net.minecraft.nbt.CompoundTag data, int oldVersion) {
+            return CollisionDataFix.migrate(data);
         }
 
         @Override
@@ -279,6 +288,18 @@ public class ParticleEmitter extends Emitter {
 
     /** Per-instance runtime layer: named override slots (timeline-driven) over the immutable config. */
     private ParticleRuntime runtime;
+    private CollisionRuntime collisionRuntime;
+
+    public CollisionRuntime collisionRuntime() {
+        if (collisionRuntime == null) collisionRuntime = new CollisionRuntime(this);
+        return collisionRuntime;
+    }
+
+    public Map<String, Object> collisionStatistics() {
+        return collisionRuntime == null
+                ? Map.of("hits", 0L, "simulationMilliseconds", 0.0, "cache", Map.of(), "recentHits", List.of())
+                : collisionRuntime.statistics();
+    }
 
     /** Below this queue size, parallelStream scheduling overhead outweighs the win — stay serial. */
     private static final int PARALLEL_UPDATE_MIN_PARTICLES = 128;
@@ -336,7 +357,8 @@ public class ParticleEmitter extends Emitter {
     }
 
     protected TileParticle createNewParticle() {
-        return new TileParticle(this, config);
+        return config.physics.collision.backend == CollisionSettings.Backend.CACHED_SWEEP
+                ? new SweptCollisionParticle(this, config) : new TileParticle(this, config);
     }
 
     /** Read-only identity fallbacks for world simulation space (never mutated by callers). */
@@ -494,6 +516,19 @@ public class ParticleEmitter extends Emitter {
 
     @Override
     public void update(float dt) {
+        if (config.physics.collision.backend != CollisionSettings.Backend.CACHED_SWEEP) {
+            updateParticles(dt);
+            return;
+        }
+        long started = System.nanoTime();
+        try {
+            updateParticles(dt);
+        } finally {
+            collisionRuntime().recordSimulationTime(System.nanoTime() - started);
+        }
+    }
+
+    private void updateParticles(float dt) {
         if (!hasFirstUpdate) {
             hasFirstUpdate = true;
             int prewarm = runtime().prewarm.get();
@@ -610,6 +645,10 @@ public class ParticleEmitter extends Emitter {
     @Override
     public void reset() {
         super.reset();
+        if (collisionRuntime != null) {
+            collisionRuntime.reset();
+            collisionRuntime = null;
+        }
         if (runtime != null) {
             runtime.clear(); // drop timeline overrides; fall back to authored config
         }
