@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -37,6 +38,11 @@ public abstract class ShaderInstanceMaterial implements IMaterial {
     public ShaderInstance begin(MaterialContext context) {
         setupUniform(context);
         return getShader(context);
+    }
+
+    @Override
+    public void preload(MaterialContext context, PreloadContext preload) {
+        preload.onRenderThread(() -> getShader(context));
     }
 
     @Override

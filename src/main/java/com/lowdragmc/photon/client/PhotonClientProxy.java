@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonCommonProxy;
 import com.lowdragmc.photon.client.fx.FXHelper;
+import com.lowdragmc.photon.client.fx.FXPreloader;
 import com.lowdragmc.photon.client.fx.fxpack.FXPacks;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMeshCache;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
@@ -47,7 +48,10 @@ public class PhotonClientProxy extends PhotonCommonProxy {
         event.registerReloadListener(PhotonMeshCache.INSTANCE);
         // both the loaded effects and the list of loadable ones are answers about the packs, so a reload
         // (a pack toggled, an .fxpack mounted, F3+T) is exactly when they stop being true
-        event.registerReloadListener((ResourceManagerReloadListener) manager -> FXHelper.clearCache());
+        event.registerReloadListener((ResourceManagerReloadListener) manager -> {
+            FXHelper.clearCache();
+            FXPreloader.onResourcesReloaded();
+        });
     }
 
     @SubscribeEvent

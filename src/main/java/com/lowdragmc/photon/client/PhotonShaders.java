@@ -17,6 +17,7 @@ import java.io.IOException;
 
 @OnlyIn(Dist.CLIENT)
 public class PhotonShaders {
+    private static int shaderInstancesCreated;
     private static Shader CATMULL_ROM;
     private static ShaderProgram CATMULL_ROM_PROGRAM;
     @Getter
@@ -67,6 +68,16 @@ public class PhotonShaders {
     private static ShaderInstance kilaPreviewShader;
     @Getter
     private static ShaderInstance kilaStackShader;
+
+    /** How many {@link ShaderInstance}s were created this session; a draw that raises it compiled on the spot. */
+    public static int shaderInstancesCreated() {
+        return shaderInstancesCreated;
+    }
+
+    /** Called by {@code ShaderInstanceMixin} for every created {@link ShaderInstance}. */
+    public static void onShaderInstanceCreated() {
+        shaderInstancesCreated++;
+    }
 
     public static void init() {
         if (LDLibShaders.supportComputeShader()) {

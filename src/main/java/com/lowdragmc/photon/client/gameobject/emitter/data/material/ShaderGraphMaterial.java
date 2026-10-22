@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
 import com.lowdragmc.kilagraph.rendertype.compiler.GlslType;
+import com.lowdragmc.kilagraph.rendertype.compiler.SamplerDefault;
 import com.lowdragmc.kilagraph.rendertype.runtime.KGBuiltinUniforms;
 import com.lowdragmc.kilagraph.rendertype.runtime.KGMaterialValues;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
@@ -24,6 +25,7 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.PhotonShaders;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.lowdragmc.photon.client.shadergraph.runtime.ShaderGraphRuntime;
@@ -228,6 +230,25 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
     public boolean usesCustomData() {
         var entry = refreshEntry();
         return entry != null && entry.isValid() && entry.isUsesCustomData();
+    }
+
+    @Override
+    public void preload(MaterialContext context, PreloadContext preload) {
+        preload.onRenderThread(() -> {
+            var entry = refreshEntry();
+            if (entry == null || !entry.isValid()) return;
+            entry.variant(context.getVariantKey(), context.getShaderDefines());
+            var compiled = entry.getCompiled();
+            if (compiled == null) return;
+            var samplers = new HashMap<>(compiled.samplerDefaults());
+            overrides.forEach((name, value) -> {
+                var sampler = SamplerDefault.of(value);
+                if (sampler != null) samplers.put(compiled.variableSamplers().getOrDefault(name, name), sampler);
+            });
+            for (var sampler : samplers.values()) {
+                if (sampler.texture() != null) preload.texture(sampler.texture());
+            }
+        });
     }
 
     @Override

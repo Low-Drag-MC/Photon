@@ -9,6 +9,7 @@
     "GameRendererMixin",
     "MinecraftMixin",
     "ParticleEngineMixin",
+    "ShaderInstanceMixin",
     "accessor.LightTextureAccessor",
     "accessor.ParticleEngineAccessor",
     "iris.BlendOverrideAccessors$BlendModeOverrideAccessor",

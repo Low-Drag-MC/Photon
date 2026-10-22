@@ -15,6 +15,7 @@ import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonShaders;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
 import com.mojang.blaze3d.shaders.Program;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -137,6 +138,12 @@ public class TextureMaterial extends ShaderInstanceMaterial {
                 });
             }
         }
+    }
+
+    @Override
+    public void preload(MaterialContext context, PreloadContext preload) {
+        preload.texture(texture);
+        super.preload(context, preload);
     }
 
     @Override

@@ -43,6 +43,7 @@ import org.joml.Vector3f;
 import javax.annotation.Nonnull;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 
 import static org.lwjgl.opengl.GL30.glBindVertexArray;
 
@@ -233,9 +234,14 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
 
         @Override
         protected boolean useInstancing() {
+            return renderRuntime.isUseGPUInstance() && instancedContext() != null;
+        }
+
+        @Override
+        protected MaterialContext instancedContext() {
+            if (section.isEnable()) return MaterialContext.ARA_TRAIL_TUBE_INSTANCE;
             // high-quality corners emit a data-dependent fan topology (flat mode only) -> CPU path
-            return renderRuntime.isUseGPUInstance()
-                    && (section.isEnable() || !(highQualityCorners && alignment != TrailAlignment.Local));
+            return highQualityCorners && alignment != TrailAlignment.Local ? null : MaterialContext.ARA_TRAIL_INSTANCE;
         }
 
         @Override
@@ -251,8 +257,7 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
             var drew = false;
             // upload to vbo + point texture
             if (trailRenderer.uploadInstances(particles, camera, partialTicks)) {
-                var context = section.isEnable() ? MaterialContext.ARA_TRAIL_TUBE_INSTANCE
-                        : MaterialContext.ARA_TRAIL_INSTANCE;
+                var context = Objects.requireNonNull(instancedContext());
                 for (MaterialSetting materialSetting : materials) {
                     for (int pass = 0, passes = materialSetting.passes(); pass < passes; pass++) {
                         materialSetting.pre(pass);

@@ -18,6 +18,8 @@ import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlendMode;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
@@ -299,6 +301,31 @@ public class KilaMaterial extends ShaderInstanceMaterial {
         depthTestLifted = slotRenderState && !context.isRenderingPreview() && active(projection, layout);
         if (depthTestLifted) RenderSystem.disableDepthTest();
         return shader;
+    }
+
+    @Override
+    public void preload(MaterialContext context, PreloadContext preload) {
+        preload.onRenderThread(() -> {
+            var stacks = screenDistortion.isEnable() && screenDistortion.stack && debugView == DebugView.OFF
+                    && !context.isRenderingPreview();
+            // the pipeline decides per draw whether a distortion stacks, and may refuse under a shader pack
+            if (stacks) preloadLayout(true, context, preload);
+            if (!stacks || Photon.isUsingShaderPack()) preloadLayout(false, context, preload);
+            syncStacking(context.isRenderingPreview());
+        });
+    }
+
+    private void preloadLayout(boolean stacking, MaterialContext context, PreloadContext preload) {
+        screenDistortion.stacking = stacking;
+        var layout = layout();
+        for (var texture : layout.textures) {
+            if (texture.texture() != null) {
+                preload.texture(texture.texture().getTexture());
+            } else if (texture.dynamic() != null) {
+                texture.dynamic().getAsInt();
+            }
+        }
+        layout.variant(context);
     }
 
     /** Stacked only in a build that can bend the frame, and not while a debug view replaces the output. */

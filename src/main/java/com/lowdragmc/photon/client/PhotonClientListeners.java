@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.compat.iris.IrisOverlay;
+import com.lowdragmc.photon.client.fx.FXPreloader;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.OpaqueDepthCapture;
 import com.lowdragmc.photon.client.light.DynamicLightManager;
 import com.lowdragmc.photon.client.light.DynamicLightRenderer;
@@ -39,6 +40,11 @@ public class PhotonClientListeners {
         if (Platform.isDevEnv()) {
             dispatcher.register(LightCommands.create());
         }
+    }
+
+    @SubscribeEvent
+    public static void onRenderFrameStart(RenderFrameEvent.Pre event) {
+        FXPreloader.onFrameStart();
     }
 
     /** Fires once per render frame (in-world and in the editor screen alike) — the post-effect

@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.renderpipeline;
 
  import com.lowdragmc.lowdraglib2.client.utils.MeshDataSorter;
  import com.lowdragmc.photon.Photon;
+ import com.lowdragmc.photon.client.fx.PreloadContext;
  import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
  import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
  import com.lowdragmc.photon.client.gameobject.emitter.data.material.*;
@@ -17,6 +18,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -185,6 +187,51 @@ public abstract class PhotonFXRenderPass {
      * changed). No-op for passes without an instanced path.
      */
     public void clearInstance() {
+    }
+
+    /**
+     * The context the instanced path draws with, or null when this pass cannot draw instanced. Shared by the
+     * draw and {@link #preload}, so the variant warmed is the variant drawn.
+     */
+    @Nullable
+    protected MaterialContext instancedContext() {
+        return null;
+    }
+
+    /**
+     * Whether {@link #beginCpuRecords} can ever return true, i.e. whether CPU-path materials that read particle
+     * data draw with {@link MaterialContext#PARTICLE_CPU_DATA}.
+     */
+    protected boolean supportsCpuRecords() {
+        return false;
+    }
+
+    /**
+     * Warm every program variant this pass draws with: each material on the path the pass takes, plus the mask
+     * sub-pass when it writes a mask.
+     *
+     * @param bothPaths  warm the CPU and the instanced path, for a pass whose instancing the timeline toggles
+     * @param writesMask warm the mask sub-pass even if the config does not write one, for a timeline that turns it on
+     */
+    public void preload(PreloadContext context, boolean bothPaths, boolean writesMask) {
+        context.onRenderThread(() -> {
+            var instanced = useInstancing();
+            var instancedContext = instanced || bothPaths ? instancedContext() : null;
+            var materials = new ArrayList<>(renderer.getMaterials());
+            if (writesMask || renderer.isWriteCustomMask()) {
+                materials.add(MASK_MATERIAL);
+            }
+            for (var materialSetting : materials) {
+                var material = materialSetting.getMaterial();
+                if (instancedContext != null) {
+                    material.preload(instancedContext, context);
+                }
+                if (!instanced || bothPaths) {
+                    material.preload(supportsCpuRecords() && readsParticleRecords(material)
+                            ? MaterialContext.PARTICLE_CPU_DATA : MaterialContext.NORMAL, context);
+                }
+            }
+        });
     }
 
     /** Union of the additional-data channels the pass's materials read, for {@code setMaterialMask}. */

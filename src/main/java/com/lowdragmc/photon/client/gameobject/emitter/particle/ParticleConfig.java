@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.TransformRef;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialContext;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
@@ -34,6 +35,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 
 import static org.lwjgl.opengl.GL30.glBindVertexArray;
 
@@ -241,20 +243,45 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
         }
 
         @Override
-        protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+        protected boolean supportsCpuRecords() {
+            return renderRuntime.getRenderMode() != ParticleRendererSetting.Mode.None;
+        }
+
+        @Override
+        protected MaterialContext instancedContext() {
+            var mode = renderRuntime.getRenderMode();
+            if (mode == ParticleRendererSetting.Mode.None) return null;
+            if (mode != ParticleRendererSetting.Mode.Model) return MaterialContext.PARTICLE_INSTANCE;
             // The user decides whether to upload tangent vertex data (renderer settings, Model mode only —
             // only a mesh has tangents). Every material on the pass then compiles against that one layout.
-            var isModel = renderRuntime.getRenderMode() == ParticleRendererSetting.Mode.Model;
-            var wantsTangent = isModel && renderRuntime.isTangent();
-            // toggling tangents changes the static mesh VBO, so the backend rebuilds (see uploadInstances)
-            tileParticleRenderer.setWantsTangent(wantsTangent);
-            var vat = isModel && tileParticleRenderer.usesVertexAnimation();
-            var context = !isModel ? MaterialContext.PARTICLE_INSTANCE
-                    : vat
-                    ? (wantsTangent ? MaterialContext.PARTICLE_MODEL_INSTANCE_VAT_TANGENT
+            var tangent = renderRuntime.isTangent();
+            return tileParticleRenderer.usesVertexAnimation()
+                    ? (tangent ? MaterialContext.PARTICLE_MODEL_INSTANCE_VAT_TANGENT
                             : MaterialContext.PARTICLE_MODEL_INSTANCE_VAT)
-                    : (wantsTangent ? MaterialContext.PARTICLE_MODEL_INSTANCE_TANGENT
+                    : (tangent ? MaterialContext.PARTICLE_MODEL_INSTANCE_TANGENT
                             : MaterialContext.PARTICLE_MODEL_INSTANCE);
+        }
+
+        @Override
+        public void preload(PreloadContext context, boolean bothPaths, boolean writesMask) {
+            var mode = renderRuntime.getRenderMode();
+            if (mode == ParticleRendererSetting.Mode.None) return;
+            if (mode == ParticleRendererSetting.Mode.Model) {
+                context.onRenderThread(() -> {
+                    var source = renderRuntime.getModelSource();
+                    source.getMesh();
+                    source.vertexAnimation();
+                });
+            }
+            super.preload(context, bothPaths, writesMask);
+        }
+
+        @Override
+        protected boolean drawInstanced(List<MaterialSetting> materials, RenderPassPipeline pipeline, Collection<IParticle> particles, Camera camera, float partialTicks) {
+            var context = Objects.requireNonNull(instancedContext());
+            // toggling tangents changes the static mesh VBO, so the backend rebuilds (see uploadInstances)
+            tileParticleRenderer.setWantsTangent(context.isTangent());
+            var vat = context.isVat();
 
             // auto-enable whatever channels the shadergraph materials read; rebuild the layout on change.
             // ⚠️ A baked pose table reads the per-particle random and t out of the same record, so those

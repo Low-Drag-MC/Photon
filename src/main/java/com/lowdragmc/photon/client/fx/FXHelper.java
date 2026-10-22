@@ -16,11 +16,14 @@ import net.minecraft.resources.ResourceLocation;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Loads and caches {@link FX} definitions from {@code assets/<ns>/fx/<path>.fx} resources (resource
@@ -38,13 +41,68 @@ public class FXHelper {
     // volatile: listAllFX is called from search worker threads as well as the game thread
     @Nullable
     private static volatile List<ResourceLocation> idCache = null;
+    private static final AtomicInteger generation = new AtomicInteger();
     public static final String FX_PATH = "fx/";
 
     public static int clearCache() {
         var count = CACHE.size();
         CACHE.clear();
         idCache = null;
+        generation.incrementAndGet();
         return count;
+    }
+
+    static int generation() {
+        return generation.get();
+    }
+
+    /**
+     * Preload an effect in the background, so its first play does not stall on loading. Warms the shader
+     * variants it draws with, its textures and the effects its sub-emitters spawn: file reads and image
+     * decoding run on worker threads, GL work runs on the render thread a few milliseconds per frame.
+     * <p>
+     * Callable from any thread. The future completes on the render thread with the cached definition, or null
+     * if the effect cannot be loaded. Never {@code join()} it on the render thread; use {@link #preloadNow} there.
+     */
+    public static CompletableFuture<FX> preload(ResourceLocation fxLocation) {
+        return FXPreloader.preload(fxLocation);
+    }
+
+    /** {@link #preload(ResourceLocation)} for several effects; completes once all of them are warm. */
+    public static CompletableFuture<Void> preload(Collection<ResourceLocation> fxLocations) {
+        return FXPreloader.preload(fxLocations);
+    }
+
+    /**
+     * {@link #preload(ResourceLocation)} done synchronously: everything is warm when it returns. Render thread
+     * only, e.g. behind a loading screen of your own.
+     *
+     * @return the cached definition, or null if the effect cannot be loaded
+     */
+    @Nullable
+    public static FX preloadNow(ResourceLocation fxLocation) {
+        return FXPreloader.preloadNow(fxLocation);
+    }
+
+    /**
+     * Keep effects warm for the whole session. A resource reload drops every loaded effect, so these are
+     * preloaded again during each reload, behind the loading screen. Once the game has loaded, newly kept
+     * effects are also preloaded right away in the background. Callable from any thread, including mod
+     * construction and setup.
+     */
+    public static void keepPreloaded(ResourceLocation... fxLocations) {
+        FXPreloader.keep(List.of(fxLocations));
+    }
+
+    /** {@link #keepPreloaded(ResourceLocation...)} for a collection. */
+    public static void keepPreloaded(Collection<ResourceLocation> fxLocations) {
+        FXPreloader.keep(fxLocations);
+    }
+
+    /** The cached definition of an effect, or null if it has not been loaded. Never loads it. */
+    @Nullable
+    public static FX getCachedFX(ResourceLocation fxLocation) {
+        return CACHE.get(fxLocation);
     }
 
     @Nullable
@@ -89,6 +147,12 @@ public class FXHelper {
 
     @Nullable
     private static FX loadFX(ResourceLocation fxLocation) {
+        var tag = readTag(fxLocation);
+        return tag == null ? null : deserialize(fxLocation, tag);
+    }
+
+    @Nullable
+    static CompoundTag readTag(ResourceLocation fxLocation) {
         ResourceLocation resourceLocation = ResourceLocation.fromNamespaceAndPath(fxLocation.getNamespace(), FX_PATH + fxLocation.getPath() + FX.SUFFIX);
         try (var inputStream = Minecraft.getInstance().getResourceManager().open(resourceLocation);) {
             var tag = NbtIo.readCompressed(inputStream, NbtAccounter.unlimitedHeap());
@@ -98,12 +162,33 @@ public class FXHelper {
                 Photon.LOGGER.warn("fx {} carries an embedded 'resources' section, which is no longer "
                         + "supported — re-export it (assets travel in .fxpack files now)", fxLocation);
             }
+            return tag;
+        } catch (Exception e) {
+            Photon.LOGGER.warn("Failed to load fx {} ({})", fxLocation, resourceLocation, e);
+            return null;
+        }
+    }
+
+    /** Render thread only: a custom shader material compiles while it deserializes. */
+    @Nullable
+    static FX publish(ResourceLocation fxLocation, CompoundTag tag) {
+        var cached = CACHE.get(fxLocation);
+        if (cached != null) return cached;
+        var fx = deserialize(fxLocation, tag);
+        if (fx == null) return null;
+        var existing = CACHE.putIfAbsent(fxLocation, fx);
+        return existing != null ? existing : fx;
+    }
+
+    @Nullable
+    private static FX deserialize(ResourceLocation fxLocation, CompoundTag tag) {
+        try {
             var fx = new FX();
             fx.setFxLocation(fxLocation);
             fx.deserializeNBT(Platform.getFrozenRegistry(), tag);
             return fx;
         } catch (Exception e) {
-            Photon.LOGGER.warn("Failed to load fx {} ({})", fxLocation, resourceLocation, e);
+            Photon.LOGGER.warn("Failed to load fx {}", fxLocation, e);
             return null;
         }
     }

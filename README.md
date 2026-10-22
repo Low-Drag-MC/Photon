@@ -125,6 +125,19 @@ new BlockEffectExecutor(fx, level, pos).start();
 new EntityEffectExecutor(fx, level, entity, AutoRotate.NONE).start();
 ```
 
+The first play of an effect loads its shaders and textures on the spot, which can hitch. Preload it beforehand:
+
+```java
+// in the background: file reads and decoding off-thread, GL work spread over frames
+FXHelper.preload(ResourceLocation.parse("photon:fire"));
+
+// right now, on the render thread (e.g. behind your own loading screen)
+FXHelper.preloadNow(ResourceLocation.parse("photon:fire"));
+
+// for the whole session: preloaded now and again behind the loading screen of every resource reload
+FXHelper.keepPreloaded(ResourceLocation.parse("photon:fire"));
+```
+
 For custom lifecycles, implement `IEffectExecutor` and drive an `FXRuntime` yourself — see the [Java Integration guide](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/Java%20Integration/).
 
 ## Links

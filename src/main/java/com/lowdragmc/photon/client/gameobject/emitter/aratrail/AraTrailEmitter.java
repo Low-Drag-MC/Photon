@@ -7,6 +7,7 @@ import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import com.lowdragmc.photon.client.gameobject.FXObject;
@@ -157,6 +158,11 @@ public class AraTrailEmitter extends Emitter {
     @Override
     public AraTrailEmitter shallowCopy() {
         return new AraTrailEmitter(config);
+    }
+
+    @Override
+    public void preload(PreloadContext context) {
+        config.particleRenderType.preload(context, false, context.isAnimated(this, "renderer.writeCustomMask"));
     }
 
     @Override

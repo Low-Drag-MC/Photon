@@ -12,6 +12,7 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.PhotonRegistries;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import dev.vfyjxf.taffy.style.AlignItems;
@@ -67,6 +68,11 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
         }
 
         @Override
+        public void preload(MaterialContext context, PreloadContext preload) {
+            fallback().preload(context, preload);
+        }
+
+        @Override
         public IGuiTexture preview() {
             return IGuiTexture.MISSING_TEXTURE;
         }
@@ -93,6 +99,14 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
 
     default void end(MaterialContext context) {
 
+    }
+
+    /**
+     * Report what drawing with {@code context} would otherwise compile or load on first use: the program
+     * variant and the textures it binds. Called on the render thread outside any draw, so it must not bind
+     * state. Does nothing by default; {@link ShaderInstanceMaterial} compiles its variant.
+     */
+    default void preload(MaterialContext context, PreloadContext preload) {
     }
 
     /** {@code PhotonGpuChannels} bits of the additional-data channels this material reads; passes upload them. */

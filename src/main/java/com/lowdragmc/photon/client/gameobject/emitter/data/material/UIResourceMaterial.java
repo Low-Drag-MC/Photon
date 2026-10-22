@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import net.minecraft.client.renderer.ShaderInstance;
 
@@ -60,6 +61,11 @@ public final class UIResourceMaterial implements IMaterial {
     @Override
     public void end(@Nonnull MaterialContext context) {
         getInternalMaterial().end(context);
+    }
+
+    @Override
+    public void preload(MaterialContext context, PreloadContext preload) {
+        getInternalMaterial().preload(context, preload);
     }
 
     @Override

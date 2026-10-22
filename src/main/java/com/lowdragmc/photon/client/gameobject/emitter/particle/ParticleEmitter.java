@@ -10,6 +10,7 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.FXRuntime;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import com.lowdragmc.photon.client.gameobject.FXObject;
@@ -20,6 +21,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.TrailsSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ValueSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
@@ -325,6 +327,25 @@ public class ParticleEmitter extends Emitter {
     @Override
     public ParticleEmitter shallowCopy() {
         return new ParticleEmitter(config);
+    }
+
+    @Override
+    public void preload(PreloadContext context) {
+        config.particleRenderType.preload(context, context.isAnimated(this, "renderer.useGPUInstance"),
+                context.isAnimated(this, "renderer.writeCustomMask"));
+        var trails = config.trails;
+        if (trails.isEnable() || context.isAnimated(this, "trails.enable")) {
+            var trailPass = trails.getTrailType() == TrailsSetting.TrailType.ARA_TRAIL
+                    ? trails.araConfig.particleRenderType : trails.config.particleRenderType;
+            trailPass.preload(context, false, false);
+        }
+        if (config.subEmitters.isEnable() || context.isAnimated(this, "subEmitters.enable")) {
+            for (var subEmitter : config.subEmitters.getEmitters()) {
+                if (subEmitter.getFxLocation() != null) {
+                    context.fx(subEmitter.getFxLocation());
+                }
+            }
+        }
     }
 
     @Override

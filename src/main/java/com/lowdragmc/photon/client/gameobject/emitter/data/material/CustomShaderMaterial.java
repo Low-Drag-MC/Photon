@@ -20,6 +20,7 @@ import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.lowdragmc.photon.client.PhotonShaders;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.RenderPassPipeline;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -239,6 +240,24 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                 ));
             });
         }
+    }
+
+    @Override
+    public void preload(MaterialContext context, PreloadContext preload) {
+        preload.onRenderThread(() -> {
+            getShader(context);
+            var holder = shaderHolder;
+            if (holder == null) return;
+            var samplers = holder.serializeNBT(Platform.getFrozenRegistry()).getCompound("samplers");
+            for (var name : samplers.getAllKeys()) {
+                if (holder.deserializeSampler(samplers.getCompound(name)) instanceof ResourceLocation texture) {
+                    preload.texture(texture);
+                }
+            }
+            var samplerNames = holder.baseInstance.getShaderInstanceAccessor().getSamplerNames();
+            if (samplerNames.contains("SamplerCurve")) curveTexture.getCurveTexture();
+            if (samplerNames.contains("SamplerGradient")) gradientTexture.getGradientTexture();
+        });
     }
 
     @Override
