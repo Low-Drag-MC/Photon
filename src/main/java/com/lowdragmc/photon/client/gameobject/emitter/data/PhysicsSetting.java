@@ -12,6 +12,9 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCu
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import lombok.Getter;
 import lombok.Setter;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
@@ -27,6 +30,21 @@ import net.neoforged.api.distmarker.OnlyIn;
 @Setter
 @Getter
 public class PhysicsSetting extends ToggleGroup {
+
+    @Override
+    public CompoundTag serializeNBT(HolderLookup.Provider provider) {
+        var tag = super.serializeNBT(provider);
+        tag.put("collision", collision.serializeNBT(provider));
+        return tag;
+    }
+
+    @Override
+    public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
+        super.deserializeNBT(provider, tag);
+        if (!isEnable() && tag.contains("collision", Tag.TAG_COMPOUND)) {
+            collision.deserializeNBT(provider, tag.getCompound("collision"));
+        }
+    }
 
     @Configurable(name = "PhysicsSetting.hasCollision", tips = "photon.emitter.config.physics.hasCollision")
     protected boolean hasCollision = true;
@@ -50,6 +68,9 @@ public class PhysicsSetting extends ToggleGroup {
     @Configurable(name = "PhysicsSetting.bounceSpreadRate", tips = "photon.emitter.config.physics.bounceSpreadRate")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "spread"))
     protected NumberFunction bounceSpreadRate = NumberFunction.constant(0);
+
+    @Configurable(name = "photon.collision.title", subConfigurable = true, collapse = true, tips = "photon.collision.title.tips")
+    public final CollisionSettings collision = new CollisionSettings();
 
     /** Create this setting's per-emitter runtime layer. */
     public Runtime createRuntime() {

@@ -31,6 +31,10 @@ public interface IrisBridge {
         return false;
     }
 
+    default @Nullable IrisDepthSource terrainDepthSource() {
+        return null;
+    }
+
     /** Name of the active shader pack, or {@code ""}. */
     default String packName() {
         return "";
