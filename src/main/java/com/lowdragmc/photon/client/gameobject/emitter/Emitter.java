@@ -1,6 +1,9 @@
 package com.lowdragmc.photon.client.gameobject.emitter;
 
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
+import com.lowdragmc.photon.client.collision.BlockBoxSource;
+import com.lowdragmc.photon.client.collision.CollisionScene;
+import com.lowdragmc.photon.client.collision.CollisionWorld;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.ParticleQueueRenderType;
@@ -41,6 +44,10 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     private volatile boolean parallelLightPhase = false;
     /** Positions particles asked for during the parallel phase; refreshed on the game thread post-loop. */
     private final Set<BlockPos> lightQueryQueue = ConcurrentHashMap.newKeySet();
+    /** Blocks only, for trail points: frozen at tick begin while {@link #needsBlockScene()} says so. */
+    @Nullable
+    private CollisionScene blockScene;
+    private static final CollisionScene.Stats BLOCK_SCENE_STATS = new CollisionScene.Stats();
 
     protected Emitter() {
         this.friction = 1;
@@ -63,7 +70,23 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         if (clearsLightCacheOnTickBegin()) {
             lightCache.clear();
         }
+        var level = getLevel();
+        blockScene = needsBlockScene() && level != null
+                ? new CollisionScene(CollisionWorld.of(level), BlockBoxSource.BLOCKS, null, CollisionScene.NO_ENTITIES,
+                CollisionScene.NO_COLLIDERS, BLOCK_SCENE_STATS)
+                : null;
         updateOrigin(); // snapshot render origin once per tick (see FXObject.tick)
+    }
+
+    /** Whether something this emitter drives (trail points) collides with blocks this tick. */
+    protected boolean needsBlockScene() {
+        return false;
+    }
+
+    /** The blocks-only scene for this tick, or null; see {@link #needsBlockScene()}. */
+    @Nullable
+    public CollisionScene blockScene() {
+        return blockScene;
     }
 
     @Override

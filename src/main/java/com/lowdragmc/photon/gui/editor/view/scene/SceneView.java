@@ -19,6 +19,9 @@ import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.light.LightObject;
+import com.lowdragmc.photon.client.collision.CollisionDebug;
+import com.lowdragmc.photon.client.collision.CollisionWorld;
+import com.lowdragmc.photon.client.gameobject.collider.ColliderObject;
 import com.lowdragmc.photon.client.light.DynamicLightManager;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.FXProjectEffectExecutor;
@@ -116,6 +119,7 @@ public class SceneView extends View implements FXSceneOptions {
 
     public void clearScene() {
         level.clear();
+        CollisionWorld.blocksReplaced(level);
         reset();
         fxObjectAnimationView.clear();
         fxObjectInfoView.clear();
@@ -231,6 +235,7 @@ public class SceneView extends View implements FXSceneOptions {
         }
         sceneEditor.scene.setRenderedCore(level.getFilledBlocks().longStream().mapToObj(BlockPos::of).toList());
         DynamicLightManager.blocksReplaced(level);
+        CollisionWorld.blocksReplaced(level);
         isSceneLoaded = true;
     }
 
@@ -381,6 +386,10 @@ public class SceneView extends View implements FXSceneOptions {
                             SceneView.this::setCullBoxVisible)
                             .icon(PhotonIcons.CULL_BOX)
                             .tooltipKey("photon.is_cull_visible")
+                            .build(),
+                    new SceneToggleBuilder(() -> CollisionDebug.enabled, on -> CollisionDebug.enabled = on)
+                            .icon(ColliderObject.ICON)
+                            .tooltipKey("photon.is_collision_visible")
                             .build(),
                     new SceneToggleBuilder(fxObjectAnimationView::isDisplayed,
                             fxObjectAnimationView::setDisplay)

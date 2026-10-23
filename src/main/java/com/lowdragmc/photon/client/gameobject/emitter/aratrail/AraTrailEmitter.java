@@ -199,6 +199,11 @@ public class AraTrailEmitter extends Emitter {
     }
 
     @Override
+    protected boolean needsBlockScene() {
+        return runtime().physics.collides();
+    }
+
+    @Override
     protected void update(float dt) {
         if (trailParticle.isAlive()) {
             trailParticle.updateTick(dt);

@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.PhotonParticleManager;
+import com.lowdragmc.photon.client.collision.ContactMemory;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomSpace;
@@ -19,15 +20,12 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
 import org.joml.*;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.lang.Math;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
@@ -38,7 +36,6 @@ import java.util.function.Function;
 @ParametersAreNonnullByDefault
 public class TileParticle implements IParticle {
     public static final Direction[] MODEL_SIDES = new Direction[]{Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST, Direction.UP, Direction.DOWN, null};
-    private static final double MAXIMUM_COLLISION_VELOCITY_SQUARED = Mth.square(100.0);
     /**
      * Basic data
      */
@@ -80,6 +77,29 @@ public class TileParticle implements IParticle {
     protected Vector3f initialRotation;
     protected Vector4f initialColor;
     protected boolean isFirstCollision;
+    /** Contact state carried between collision steps. */
+    protected int contactAxes;
+    protected long contactTarget = -1;
+    /** The triggers this particle is inside, by contact identity. */
+    @Nullable
+    protected long[] triggers;
+    protected int triggerCount;
+    /**
+     * What it is stuck to, as a contact kind (-1: nothing), and where its collision box came to rest: in the world
+     * on a block or fluid, from the centre of an entity, in the frame of a collider. For blocks, the surface normal
+     * and the box's half extents, to probe for the surface when blocks change.
+     */
+    protected byte stuckKind = -1;
+    protected long stuckKey;
+    protected int stuckVersion;
+    protected float stuckX, stuckY, stuckZ, stuckNx, stuckNy, stuckNz, stuckHx, stuckHy, stuckHz;
+    protected int bounces, impacts;
+    /** Targets this particle already reported, for per-particle de-duplication; game thread. */
+    @Nullable
+    private ContactMemory reportedTargets;
+    /** Emission order within the emitter; orders deferred spawns deterministically. */
+    protected int serial;
+    private int spawnSequence;
     @Getter
     protected ParticleConfig config;
     /** The owning emitter's per-instance runtime layer (timeline overrides + moved value behaviour). */
@@ -108,6 +128,7 @@ public class TileParticle implements IParticle {
         if (emitter instanceof ParticleEmitter particleEmitter) {
             particleBatchIndex = particleEmitter.nextParticleBatchIndex();
             particleBatchCount = particleEmitter.getParticleBatchCount();
+            serial = particleEmitter.nextParticleSerial();
         } else {
             particleBatchIndex = 0;
             particleBatchCount = 1;
@@ -138,6 +159,9 @@ public class TileParticle implements IParticle {
                     : new SpawnFrame(emitterToWorld, emitter.transform().worldToLocalMatrix(),
                             worldToSim, emitter.getSimToWorld());
         }
+        runtime.shape.snapToGround(this, emitter);
+        // no ground to stand on, and it should not live without: the emitter drops it
+        if (isRemoved) return;
         if (runtime.inheritVelocity.isEnable() && runtime.inheritVelocity.getMode() == InheritVelocitySetting.Mode.INITIAL) {
             addInternalVelocity(getSpaceTransformInverse().transformDirection(runtime.inheritVelocity.getVelocity(emitter)));
         }
@@ -502,8 +526,8 @@ public class TileParticle implements IParticle {
         if (PhotonParticleManager.isFastSimulation()) {
             // seek replay of a tick that will never be rendered: color/rotation/light are pure
             // per-tick recomputes from initial values + curves (the final full ticks restore them
-            // exactly). Size is NOT pure downstream when (a) collision reads the boundingBox that
-            // setSize updates, or (b) trails bake getRealSize into persisted tail lifetimes.
+            // exactly). Size is NOT pure downstream when (a) collision reads the size that setSize
+            // updates, or (b) trails bake getRealSize into persisted tail lifetimes.
             var sizeAffectsSimulation = (runtime.physics.isEnable() && runtime.physics.hasCollision())
                     || runtime.trails.isEnable();
             if (sizeAffectsSimulation) {
@@ -518,29 +542,30 @@ public class TileParticle implements IParticle {
     }
 
     protected void updatePositionAndInternalVelocity(float dt) {
-        var velocity = getRealVelocity();           // per-tick velocity (rate)
-        var desiredX = velocity.x * dt;             // displacement this step
-        var desiredY = velocity.y * dt;
-        var desiredZ = velocity.z * dt;
-        var moveX = desiredX;
-        var moveY = desiredY;
-        var moveZ = desiredZ;
-
-        var level = emitter.getLevel();
-        if (runtime.physics.isEnable() && runtime.physics.hasCollision() && level != null &&
-                (moveX != 0.0 || moveY != 0.0 || moveZ != 0.0) && moveX * moveX + moveY * moveY + moveZ * moveZ < MAXIMUM_COLLISION_VELOCITY_SQUARED) {
-            var vec3 = Entity.collideBoundingBox(null, new Vec3(moveX, moveY, moveZ), getRealBoundingBox(0), level, List.of());
-            moveX = (float) vec3.x;
-            moveY = (float) vec3.y;
-            moveZ = (float) vec3.z;
+        if (runtime.physics.isEnable() && runtime.physics.hasCollision()
+                && emitter instanceof ParticleEmitter particleEmitter) {
+            var scene = particleEmitter.collisionScene();
+            if (scene != null) {
+                ParticlePhysics.step(this, particleEmitter, scene, dt);
+                return;
+            }
         }
-
-        // update bounding box and position
+        var velocity = getRealVelocity();           // per-tick velocity (rate)
+        var moveX = velocity.x * dt;                // displacement this step
+        var moveY = velocity.y * dt;
+        var moveZ = velocity.z * dt;
         if (moveX != 0.0 || moveY != 0.0 || moveZ != 0.0) {
             var moveLocal = getSpaceTransformInverse().transformDirection(new Vector3f(moveX, moveY, moveZ));
             setSimPos(localX + moveLocal.x, localY + moveLocal.y, localZ + moveLocal.z, false);
         }
+        applyForces(dt, false, 0, 0, 0, 0, 0, 0);
+    }
 
+    /**
+     * Folds this step's forces into the stored velocity: force fields, gravity, friction, and contact friction
+     * along a surface the step {@code touched} (normal {@code n}, moving at {@code s}).
+     */
+    void applyForces(float dt, boolean touched, double nx, double ny, double nz, double sx, double sy, double sz) {
         // external force fields: fold into the stored velocity once per tick (direction/gravity/vortex
         // integrate as force * dt, drag damps). Deliberately not part of getRealVelocity(), which must
         // stay side-effect-free and is called several times per tick/frame.
@@ -560,19 +585,7 @@ public class TileParticle implements IParticle {
             }
         }
 
-        // update internal velocity
         if (!runtime.physics.isEnable()) return;
-        // detect collision by comparing the desired displacement vs the collided one (dt-independent);
-        // NaN (0/0, unmoved axis with zero desire) compares false, so it is not treated as blocked
-        if (runtime.physics.hasCollision() && !this.collided) {
-            var blockedX = Math.abs(desiredX) / Math.abs(moveX) > 1.001;
-            var blockedY = Math.abs(desiredY) / Math.abs(moveY) > 1.001;
-            var blockedZ = Math.abs(desiredZ) / Math.abs(moveZ) > 1.001;
-            if (blockedX || blockedY || blockedZ) {
-                updateCollisionBounce(blockedX, blockedY, blockedZ);
-            }
-        }
-
         var gravity = runtime.physics.getGravity(this);
         if (gravity != 0) {
             this.addInternalVelocity(getSpaceTransformInverse().transformDirection(new Vector3f(0, -gravity * 0.04f * dt, 0)));
@@ -583,48 +596,44 @@ public class TileParticle implements IParticle {
         this.velocityY *= friction;
         this.velocityZ *= friction;
 
-        if (this.collided) {
-            var collidedFriction = (float) Math.pow(runtime.physics.getCollidedFriction(this), dt);
-            this.velocityX *= collidedFriction;
-            this.velocityY *= collidedFriction;
-            this.velocityZ *= collidedFriction;
-        }
-    }
-
-    private void updateCollisionBounce(boolean blockedX, boolean blockedY, boolean blockedZ) {
-        var bounceChance = runtime.physics.getBounceChance(this);
-        if (bounceChance < 1 && bounceChance < randomSource.nextFloat()) {
-            this.collided = true;
-        } else {
-            var bounceRate = runtime.physics.getBounceRate(this);
-            var bounceSpreadRate = runtime.physics.getBounceSpreadRate(this);
-            // reflect only the STORED velocity (projected to world for axis alignment) — reflecting
-            // getRealVelocity() would bake the per-call VOL/force/inherit/multiplier contributions
-            // into the stored velocity, compounding on every bounce
-            var velocity = getSpaceTransform().transformDirection(new Vector3f(velocityX, velocityY, velocityZ));
-            velocity.set(
-                    blockedX ? -velocity.x * bounceRate : spread(velocity.x, bounceSpreadRate),
-                    blockedY ? -velocity.y * bounceRate : spread(velocity.y, bounceSpreadRate),
-                    blockedZ ? -velocity.z * bounceRate : spread(velocity.z, bounceSpreadRate));
-            setInternalVelocity(getSpaceTransformInverse().transformDirection(velocity));
-        }
-        if (runtime.physics.isEnable() && runtime.physics.isRemovedWhenCollided()) {
-            this.setRemoved(true);
-            if (runtime.subEmitters.isEnable()) {
-                runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Death);
-            }
-        }
-        if (runtime.subEmitters.isEnable()) {
-            runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Collision);
-            if (!isFirstCollision) {
-                isFirstCollision = true;
-                runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.FirstCollision);
+        if (touched) {
+            var keep = (float) Math.pow(runtime.physics.getCollidedFriction(this), dt);
+            if (keep != 1) {
+                // only the slide along the surface slows, relative to the surface (which may be moving)
+                var world = getSpaceTransform().transformDirection(new Vector3f(velocityX, velocityY, velocityZ));
+                double rx = world.x - sx, ry = world.y - sy, rz = world.z - sz;
+                double along = rx * nx + ry * ny + rz * nz;
+                world.set((float) (sx + along * nx + (rx - along * nx) * keep),
+                        (float) (sy + along * ny + (ry - along * ny) * keep),
+                        (float) (sz + along * nz + (rz - along * nz) * keep));
+                setInternalVelocity(getSpaceTransformInverse().transformDirection(world));
             }
         }
     }
 
-    private float spread(float velocity, float spreadRate) {
-        return spreadRate > 0 ? velocity + (float) (spreadRate * randomSource.nextGaussian()) : velocity;
+    /** The current position plus this tick's noise offset, in world space: where a collision step starts. */
+    Vector3f collisionCenter(Vector3f dest) {
+        return collisionNoise(dest).add(localX, localY, localZ).mulPosition(getSpaceTransform());
+    }
+
+    /** This tick's noise offset, in simulation space. */
+    Vector3f collisionNoise(Vector3f dest) {
+        return runtime.noise.isEnable() ? dest.set(runtime.noise.getPosition(this, 0)) : dest.zero();
+    }
+
+    public ContactMemory reportedTargets() {
+        if (reportedTargets == null) reportedTargets = new ContactMemory();
+        return reportedTargets;
+    }
+
+    /** The stored velocity alone, in simulation space: without velocity over lifetime or forces. */
+    public Vector3f getStoredVelocity() {
+        return new Vector3f(velocityX, velocityY, velocityZ);
+    }
+
+    /** Ordering key for this particle's next deferred sub-emitter spawn (see {@link #serial}). */
+    public long nextSpawnOrder() {
+        return ((long) serial << 20) | (spawnSequence++ & 0xFFFFF);
     }
 
     /**

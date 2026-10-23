@@ -11,6 +11,9 @@ import com.lowdragmc.lowdraglib2.gui.ui.utils.UIElementProvider;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.ReadOnlyManaged;
+import com.lowdragmc.photon.client.collision.BlockFilter;
+import com.lowdragmc.photon.client.collision.CollisionEvent;
+import com.lowdragmc.photon.client.collision.Contact;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
@@ -26,9 +29,11 @@ import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.nbt.IntTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Quaternionf;
@@ -75,9 +80,14 @@ public class SubEmittersSetting extends ToggleGroup {
         }
 
         public void triggerEvent(TileParticle father, Event event) {
+            triggerEvent(father, event, null);
+        }
+
+        /** {@code contact} is the collision behind the event, if any: emitters can spawn at its point. */
+        public void triggerEvent(TileParticle father, Event event, @Nullable CollisionEvent contact) {
             for (Emitter candidate : emitters.get()) {
-                if (candidate.event == event) {
-                    candidate.spawnEmitter(father);
+                if (candidate.event == event && candidate.accepts(contact)) {
+                    candidate.spawnEmitter(father, contact);
                 }
             }
         }
@@ -116,7 +126,9 @@ public class SubEmittersSetting extends ToggleGroup {
     }
 
     private Emitter addDefaultEmitter() {
-        return new Emitter();
+        var emitter = new Emitter();
+        emitter.spawnAtContact = true;
+        return emitter;
     }
 
     private IntTag emittersSerialize(List<Emitter> bursts) {
@@ -126,7 +138,7 @@ public class SubEmittersSetting extends ToggleGroup {
     private List<Emitter> emittersDeserialize(IntTag tag) {
         var groups = new ArrayList<Emitter>();
         for (int i = 0; i < tag.getAsInt(); i++) {
-            groups.add(addDefaultEmitter());
+            groups.add(new Emitter());
         }
         return groups;
     }
@@ -136,7 +148,22 @@ public class SubEmittersSetting extends ToggleGroup {
         Death,
         Collision,
         FirstCollision,
-        Tick
+        Tick,
+        TriggerEnter,
+        TriggerExit;
+
+        /** Whether a contact can be behind it, which is what {@link Surface} filters. */
+        public boolean fromContact() {
+            return this != Birth && this != Tick;
+        }
+    }
+
+    public enum Surface {
+        Any,
+        Blocks,
+        Fluids,
+        Entities,
+        Colliders
     }
 
     @Setter
@@ -163,32 +190,113 @@ public class SubEmittersSetting extends ToggleGroup {
         protected boolean inheritLifetime = false;
         @Configurable(name = "Emitter.inheritDuration", tips = "photon.emitter.config.sub_emitters.emitter.inherit_duration")
         protected boolean inheritDuration = false;
+        /** False for entries saved before the option existed; new entries start with it on. */
+        @Configurable(name = "Emitter.spawnAtContact", tips = "photon.emitter.config.sub_emitters.emitter.spawn_at_contact")
+        protected boolean spawnAtContact = false;
+        @Configurable(name = "Emitter.alignToNormal", tips = "photon.emitter.config.sub_emitters.emitter.align_to_normal")
+        protected boolean alignToNormal = false;
+        @Configurable(name = "Emitter.surface", tips = "photon.emitter.config.sub_emitters.emitter.surface")
+        protected Surface surface = Surface.Any;
+        @Configurable(name = "Emitter.surfaceBlocks", tips = "photon.emitter.config.sub_emitters.emitter.surface_blocks")
+        @ConfigList(configuratorMethod = "buildBlockEntry", addDefaultMethod = "addEmptyEntry")
+        @ReadOnlyManaged(serializeMethod = "stringsSerialize", deserializeMethod = "stringsDeserialize")
+        protected List<String> surfaceBlocks = new ArrayList<>();
+        /** The resolved {@link #surfaceBlocks}; read from particle workers, so replaced whole, never changed. */
+        @Nullable
+        private volatile SurfaceFilter surfaceFilter;
+
+        private record SurfaceFilter(List<String> entries, int tags, @Nullable BlockFilter filter) {
+        }
+
+        /** Whether the contact behind an event passes {@link #surface}; events without one pass only {@link Surface#Any}. Any thread. */
+        public boolean accepts(@Nullable CollisionEvent contact) {
+            var surface = getSurface();
+            if (surface == Surface.Any || event == null || !event.fromContact()) return true;
+            if (contact == null) return false;
+            byte kind = switch (surface) {
+                case Blocks -> Contact.BLOCK;
+                case Fluids -> Contact.FLUID;
+                case Entities -> Contact.ENTITY;
+                default -> Contact.COLLIDER;
+            };
+            if (contact.kind() != kind) return false;
+            if (surface != Surface.Blocks && surface != Surface.Fluids) return true;
+            var filter = blockFilter();
+            return filter == null || (contact.target() instanceof BlockState state && filter.test(state));
+        }
+
+        public Surface getSurface() {
+            return surface == null ? Surface.Any : surface;
+        }
+
+        @Nullable
+        private BlockFilter blockFilter() {
+            var cached = surfaceFilter;
+            int tags = BlockFilter.tagGeneration();
+            if (cached == null || cached.tags != tags || !cached.entries.equals(surfaceBlocks)) {
+                var entries = List.copyOf(surfaceBlocks.stream().map(entry -> entry == null ? "" : entry).toList());
+                cached = new SurfaceFilter(entries, tags, BlockFilter.of(entries, List.of()));
+                surfaceFilter = cached;
+            }
+            return cached.filter;
+        }
+
+        private String addEmptyEntry() {
+            return "";
+        }
+
+        private Configurator buildBlockEntry(Supplier<String> getter, Consumer<String> setter) {
+            return IdLists.blockEntry(getter, setter);
+        }
+
+        private ListTag stringsSerialize(List<String> values) {
+            return IdLists.serialize(values);
+        }
+
+        private List<String> stringsDeserialize(ListTag tag) {
+            return IdLists.deserialize(tag);
+        }
 
         public void spawnEmitter(TileParticle father) {
+            spawnEmitter(father, null);
+        }
+
+        public void spawnEmitter(TileParticle father, @Nullable CollisionEvent contact) {
             if (fxLocation == null) {
                 return;
             }
             // probability roll stays here: the particle's RandomSource is confined to its update thread
-            if (father.getRandomSource().nextFloat() >= emitProbability.get(father.getT(0),
-                    () -> father.getMemRandom("sub_emitter_probability")).floatValue()) {
-                return;
-            }
+            boolean spawns = father.getRandomSource().nextFloat() < emitProbability.get(father.getT(0),
+                    () -> father.getMemRandom("sub_emitter_probability")).floatValue();
             // FXHelper.getFX + FXRuntime.emit (particle engine) are not thread-safe: particle updates
             // may run on parallelStream workers, so defer the spawn to the game thread — the owning
             // emitter drains it at the end of the same tick (deferred in serial mode too, so ordering
             // is mode-independent; a dead particle's fields stay valid until next tick's removal).
             if (father.getEmitter() instanceof ParticleEmitter particleEmitter) {
-                particleEmitter.scheduleSubEmitterSpawn(() -> doSpawn(father));
-            } else {
-                doSpawn(father); // non-ParticleEmitter owners never parallel-update TileParticles
+                // a de-duplicated contact counts as reported whether or not this roll spawns
+                boolean dedupes = contact != null && particleEmitter.dedupes(contact);
+                if (!spawns && !dedupes) return;
+                particleEmitter.scheduleSubEmitterSpawn(father.nextSpawnOrder(), () -> {
+                    if (dedupes && !particleEmitter.passesDedupe(father, contact)) return;
+                    if (spawns) doSpawn(father, contact);
+                });
+            } else if (spawns) {
+                doSpawn(father, contact); // non-ParticleEmitter owners never parallel-update TileParticles
             }
         }
 
-        private void doSpawn(TileParticle father) {
+        private void doSpawn(TileParticle father, @Nullable CollisionEvent contact) {
             var fx = FXHelper.getFX(fxLocation);
             if (fx == null) return;
             var runtime = fx.createRuntime();
-            runtime.root.updatePos(father.getWorldPos());
+            runtime.root.updatePos(contact != null && spawnAtContact ? contact.position() : father.getWorldPos());
+            if (contact != null && alignToNormal) {
+                var normal = contact.normal();
+                // trigger exits have no surface, so no normal
+                if (normal.lengthSquared() > 0.5f) {
+                    runtime.root.updateRotation(new Quaternionf().rotationTo(0, 1, 0, normal.x, normal.y, normal.z));
+                }
+            }
             for (var value : runtime.objects.values()) {
                 if (value instanceof IParticleEmitter particleEmitter) {
                     if (inheritLifetime) {

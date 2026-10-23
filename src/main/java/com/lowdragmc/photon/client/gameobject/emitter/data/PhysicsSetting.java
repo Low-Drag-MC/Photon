@@ -51,6 +51,9 @@ public class PhysicsSetting extends ToggleGroup {
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, curveConfig = @CurveConfig(bound = {0, 1}, xAxis = "duration", yAxis = "spread"))
     protected NumberFunction bounceSpreadRate = NumberFunction.constant(0);
 
+    @Configurable(name = "PhysicsSetting.collision", subConfigurable = true, tips = "photon.emitter.config.physics.collision")
+    public final CollisionSetting collision = new CollisionSetting();
+
     /** Create this setting's per-emitter runtime layer. */
     public Runtime createRuntime() {
         return new Runtime(this);
@@ -72,6 +75,7 @@ public class PhysicsSetting extends ToggleGroup {
         public final RuntimeValue<NumberFunction> bounceChance;
         public final RuntimeValue<NumberFunction> bounceRate;
         public final RuntimeValue<NumberFunction> bounceSpreadRate;
+        public final CollisionSetting.Runtime collision;
 
         public Runtime(PhysicsSetting config) {
             this.config = config;
@@ -84,6 +88,7 @@ public class PhysicsSetting extends ToggleGroup {
             this.bounceChance = new RuntimeValue<>(() -> config.bounceChance);
             this.bounceRate = new RuntimeValue<>(() -> config.bounceRate);
             this.bounceSpreadRate = new RuntimeValue<>(() -> config.bounceSpreadRate);
+            this.collision = config.collision.createRuntime();
         }
 
         public boolean isEnable() {
@@ -132,6 +137,7 @@ public class PhysicsSetting extends ToggleGroup {
             bounceChance.clear();
             bounceRate.clear();
             bounceSpreadRate.clear();
+            collision.clear();
         }
     }
 }

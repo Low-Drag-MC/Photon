@@ -3,6 +3,8 @@ package com.lowdragmc.photon.client.gameobject.emitter.particle;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialRequirements;
 import com.google.common.collect.Queues;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.gui.ColorPattern;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
@@ -19,6 +21,7 @@ import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CollisionSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.RendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.TrailsSetting;
@@ -30,23 +33,41 @@ import com.lowdragmc.photon.client.gameobject.forcefield.ForceFieldObject;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.SpawnFrame;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
+import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
+import com.lowdragmc.photon.PhotonConfig;
+import com.lowdragmc.photon.client.collision.CollisionDebug;
+import com.lowdragmc.photon.client.collision.ContactMemory;
+import com.lowdragmc.photon.client.collision.CollisionEvent;
+import com.lowdragmc.photon.client.collision.CollisionScene;
+import com.lowdragmc.photon.client.collision.CollisionWorld;
+import com.lowdragmc.photon.client.collision.ColliderTarget;
+import com.lowdragmc.photon.client.collision.EntityTarget;
+import com.lowdragmc.photon.client.collision.BlockBoxSource;
+import com.lowdragmc.photon.client.gameobject.collider.ColliderObject;
+import com.lowdragmc.photon.client.gameobject.collider.CollisionGizmos;
 import com.lowdragmc.photon.client.light.DynamicLightManager;
 import com.lowdragmc.photon.client.light.LightProvider;
 import com.lowdragmc.photon.client.light.LightSink;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
+import com.mojang.blaze3d.vertex.PoseStack;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+import oshi.util.tuples.Pair;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.*;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * @author KilaBash
@@ -147,6 +168,18 @@ public class ParticleEmitter extends Emitter {
                     o -> ((ParticleEmitter) o).runtime().physics.bounceRate),
             new RuntimeBinding("physics.bounceSpreadRate", "PhysicsSetting.bounceSpreadRate", ConfigValueType.NUMBER_FUNCTION,
                     o -> ((ParticleEmitter) o).runtime().physics.bounceSpreadRate),
+            new RuntimeBinding("physics.collision.blocks", "CollisionSetting.blocks", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().physics.collision.blocks),
+            new RuntimeBinding("physics.collision.fluids", "CollisionSetting.fluids", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().physics.collision.fluids),
+            new RuntimeBinding("physics.collision.entities", "CollisionSetting.entities", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().physics.collision.entities),
+            new RuntimeBinding("physics.collision.colliders", "CollisionSetting.colliders", ConfigValueType.BOOL,
+                    o -> ((ParticleEmitter) o).runtime().physics.collision.colliders),
+            new RuntimeBinding("physics.collision.response.dampen", "CollisionSetting.dampen", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().physics.collision.dampen),
+            new RuntimeBinding("physics.collision.response.lifetimeLoss", "CollisionSetting.lifetimeLoss", ConfigValueType.NUMBER_FUNCTION,
+                    o -> ((ParticleEmitter) o).runtime().physics.collision.lifetimeLoss),
             new RuntimeBinding("sizeOverLifetime.size", "NoiseSetting.size", ConfigValueType.NUMBER_FUNCTION3,
                     o -> ((ParticleEmitter) o).runtime().sizeOverLifetime.size),
             new RuntimeBinding("rotationOverLifetime.roll", "RotationBySpeedSetting.roll", ConfigValueType.NUMBER_FUNCTION,
@@ -468,6 +501,7 @@ public class ParticleEmitter extends Emitter {
             CustomSpace.warm(araConfig.customSpace, getScene());
         }
         activeForceFields = gatherForceFields();
+        collisionScene = buildCollisionScene();
         for (var queue : particles.values()) {
             for (var particle : queue) {
                 particle.syncOrigin();
@@ -479,12 +513,42 @@ public class ParticleEmitter extends Emitter {
      *  by parallel particle updates; see {@link #gatherForceFields}). */
     private List<ForceFieldObject> activeForceFields = List.of();
 
-    /** Sub-emitter spawns scheduled from particle updateTick (possibly on parallelStream workers);
-     *  drained on the game thread at the end of {@link #emitParticle(float)}, same tick. */
-    private final Queue<Runnable> pendingSubEmitterSpawns = new ConcurrentLinkedQueue<>();
+    /** Sub-emitter spawns from particle updates (possibly on workers), drained in particle order at the end of the tick. */
+    private final Queue<Deferred> pendingSubEmitterSpawns = new ConcurrentLinkedQueue<>();
+
+    private record Deferred(long order, Runnable action) {
+    }
 
     public void scheduleSubEmitterSpawn(Runnable spawn) {
-        pendingSubEmitterSpawns.add(spawn);
+        scheduleSubEmitterSpawn(Long.MAX_VALUE, spawn);
+    }
+
+    /** @param order a particle's {@code nextSpawnOrder()}: lower runs first */
+    public void scheduleSubEmitterSpawn(long order, Runnable spawn) {
+        pendingSubEmitterSpawns.add(new Deferred(order, spawn));
+    }
+
+    private boolean deferredFailed;
+    /** Removed with force: what is still queued, even mid-drain, is dropped. */
+    private boolean forceRemoved;
+
+    private void drainInOrder(Queue<Deferred> queue) {
+        if (queue.isEmpty()) return;
+        var batch = new ArrayList<Deferred>(queue.size());
+        for (Deferred deferred; (deferred = queue.poll()) != null; ) batch.add(deferred);
+        batch.sort(Comparator.comparingLong(Deferred::order));
+        for (var deferred : batch) {
+            if (forceRemoved) return;
+            // a listener or sub-emitter that throws must not take the game down with it
+            try {
+                deferred.action().run();
+            } catch (RuntimeException e) {
+                if (!deferredFailed) {
+                    deferredFailed = true;
+                    Photon.LOGGER.error("A collision listener or sub-emitter spawn of {} failed; later failures are not logged", getName(), e);
+                }
+            }
+        }
     }
 
     public List<ForceFieldObject> getActiveForceFields() {
@@ -511,6 +575,296 @@ public class ParticleEmitter extends Emitter {
             }
         }
         return list == null ? List.of() : List.copyOf(list);
+    }
+
+    /** Everything this emitter's particles collide with this tick; null while collision is off. */
+    @Nullable
+    private CollisionScene collisionScene;
+    @Nullable
+    private CollisionWorld collisionWorld;
+    private final CollisionScene.Stats collisionStats = new CollisionScene.Stats();
+    private final List<CollisionListener> collisionListeners = new CopyOnWriteArrayList<>();
+    private final ContactMemory reportedTargets = new ContactMemory();
+    /** This tick's de-duplication verdicts, so every consumer of one event (sub-emitters, listeners) agrees. */
+    private final Map<CollisionEvent, Boolean> dedupeVerdicts = new IdentityHashMap<>();
+    /** Per effect, the memories its emitters share by group name. */
+    private static final Map<Object, Map<String, ContactMemory>> GROUP_MEMORY = Collections.synchronizedMap(new WeakHashMap<>());
+    /** Entities that were around where the effect started; see {@code sourceExclusionRadius}. */
+    @Nullable
+    private IntOpenHashSet sourceEntities;
+    /** Around the emitter, where the particles emitted this tick may already have got to. */
+    private static final double NEW_PARTICLE_REACH = 8;
+    private final Queue<Deferred> pendingCollisionReports = new ConcurrentLinkedQueue<>();
+    private int particleSerial;
+    private long collisionNanos;
+    private boolean collisionParallel;
+    private final Vector3f simOrigin = new Vector3f();
+    private boolean simOriginValid;
+    private double simMotionX, simMotionY, simMotionZ;
+    private double targetMotionScale = 1;
+    /** Last tick's stats for the editor: casts, box tests, contacts, depenetrations, misses. */
+    private final long[] lastCollisionStats = new long[5];
+    private double lastCollisionMillis;
+    private boolean lastCollisionParallel;
+    /** Recent contacts for the editor's collision view, position and normal each. */
+    private static final int CONTACT_LOG = 256;
+    @Nullable
+    private float[] contactLog;
+    private int contactLogSize;
+    private int contactLogNext;
+
+    /** Receives this emitter's particle collisions on the game thread, at the end of each tick. */
+    @FunctionalInterface
+    public interface CollisionListener {
+        void onCollision(ParticleEmitter emitter, IParticle particle, CollisionEvent event);
+    }
+
+    public void addCollisionListener(CollisionListener listener) {
+        collisionListeners.add(listener);
+    }
+
+    public void removeCollisionListener(CollisionListener listener) {
+        collisionListeners.remove(listener);
+    }
+
+    @Nullable
+    public CollisionScene collisionScene() {
+        return collisionScene;
+    }
+
+    /** Whether anything consumes collision events: listeners, or the editor's collision view. */
+    public boolean wantsCollisionEvents() {
+        return !collisionListeners.isEmpty() || (CollisionDebug.enabled && getLevel() instanceof DummyWorld);
+    }
+
+    /** Queues an event for delivery on the game thread at the end of this tick. Any thread. */
+    public void reportCollision(TileParticle particle, CollisionEvent event) {
+        if (wantsCollisionEvents()) {
+            pendingCollisionReports.add(new Deferred(particle.nextSpawnOrder(), () -> deliver(particle, event)));
+        }
+    }
+
+    private void deliver(TileParticle particle, CollisionEvent event) {
+        if (CollisionDebug.enabled && event.type() != CollisionEvent.Type.TRIGGER_EXIT) {
+            if (contactLog == null) contactLog = new float[CONTACT_LOG * 6];
+            int base = contactLogNext * 6;
+            var position = event.position();
+            var normal = event.normal();
+            contactLog[base] = position.x;
+            contactLog[base + 1] = position.y;
+            contactLog[base + 2] = position.z;
+            contactLog[base + 3] = normal.x;
+            contactLog[base + 4] = normal.y;
+            contactLog[base + 5] = normal.z;
+            contactLogNext = (contactLogNext + 1) % CONTACT_LOG;
+            contactLogSize = Math.min(contactLogSize + 1, CONTACT_LOG);
+        }
+        if (!passesDedupe(particle, event)) return;
+        for (var listener : collisionListeners) {
+            listener.onCollision(this, particle, event);
+        }
+    }
+
+    /** Whether de-duplication applies to the event: impacts and contact deaths, while it is on. Any thread. */
+    public boolean dedupes(CollisionEvent event) {
+        return runtime().physics.collision.config().events.getDedupe() != CollisionSetting.Dedupe.Off
+                && (event.type() == CollisionEvent.Type.IMPACT || event.type() == CollisionEvent.Type.DEATH);
+    }
+
+    /**
+     * Whether a collision event survives this emitter's de-duplication; the first of its consumers decides for all.
+     * Game thread, while the tick's deferred effects drain.
+     */
+    public boolean passesDedupe(TileParticle particle, CollisionEvent event) {
+        if (!dedupes(event)) return true;
+        var events = runtime().physics.collision.config().events;
+        var dedupe = events.getDedupe();
+        var verdict = dedupeVerdicts.get(event);
+        if (verdict != null) return verdict;
+        var memory = switch (dedupe) {
+            case PerParticle -> particle.reportedTargets();
+            case PerGroup -> groupMemory(events.getGroup());
+            default -> reportedTargets;
+        };
+        // a target's impacts and its contact deaths are remembered apart
+        long key = event.identity() << 1 | (event.type() == CollisionEvent.Type.DEATH ? 1 : 0);
+        boolean passes = memory.tryReport(key, effectTick(), events.getCooldown());
+        dedupeVerdicts.put(event, passes);
+        return passes;
+    }
+
+    private ContactMemory groupMemory(@Nullable String group) {
+        var scene = getScene();
+        if (group == null || group.isBlank() || scene == null) return reportedTargets;
+        return GROUP_MEMORY.computeIfAbsent(scene, key -> new HashMap<>()).computeIfAbsent(group, key -> new ContactMemory());
+    }
+
+    /** The effect's clock, the same for all of its emitters: its root's ticks. */
+    private long effectTick() {
+        return getScene() instanceof FXRuntime fxRuntime && fxRuntime.root instanceof FXObject root ? root.getLastTick() : getLastTick();
+    }
+
+    private void drainCollisionReports() {
+        drainInOrder(pendingCollisionReports);
+    }
+
+    @Nullable
+    private CollisionScene buildCollisionScene() {
+        lastCollisionStats[0] = collisionStats.casts.sumThenReset();
+        lastCollisionStats[1] = collisionStats.boxTests.sumThenReset();
+        lastCollisionStats[2] = collisionStats.contacts.sumThenReset();
+        lastCollisionStats[3] = collisionStats.depenetrations.sumThenReset();
+        lastCollisionStats[4] = collisionStats.misses.sumThenReset();
+        lastCollisionMillis = collisionNanos / 1e6;
+        lastCollisionParallel = collisionParallel;
+        collisionNanos = 0;
+        collisionParallel = false;
+        var physics = runtime().physics;
+        var level = getLevel();
+        if (!physics.isEnable() || !physics.hasCollision() || level == null) {
+            collisionWorld = null;
+            simOriginValid = false;
+            return null;
+        }
+        // targets move relative to the simulation space, which drags Local and Custom particles along
+        var origin = getSimToWorld().getTranslation(new Vector3f());
+        simMotionX = simMotionY = simMotionZ = 0;
+        if (simOriginValid && origin.distanceSquared(simOrigin) <= CollisionScene.MAX_TARGET_MOTION * CollisionScene.MAX_TARGET_MOTION) {
+            simMotionX = origin.x - simOrigin.x;
+            simMotionY = origin.y - simOrigin.y;
+            simMotionZ = origin.z - simOrigin.z;
+        }
+        simOrigin.set(origin);
+        simOriginValid = true;
+        // motions are measured per game tick, and a tick's sub-steps simulate timeScale ticks
+        float timeScale = timeScale();
+        targetMotionScale = timeScale > 1e-6f ? 1 / timeScale : 0;
+        var collision = physics.collision;
+        collisionWorld = CollisionWorld.of(level);
+        int mask = (collision.blocks.get() ? BlockBoxSource.BLOCKS : 0) | (collision.fluids.get() ? BlockBoxSource.FLUIDS : 0);
+        var entities = collision.entities.get() ? gatherEntities(level, collision) : CollisionScene.NO_ENTITIES;
+        var colliders = collision.colliders.get() ? gatherColliders(collision) : CollisionScene.NO_COLLIDERS;
+        return new CollisionScene(mask == 0 ? null : collisionWorld, mask, mask == 0 ? null : collision.blockFilter(),
+                entities, colliders, collisionStats);
+    }
+
+    private EntityTarget[] gatherEntities(Level level, CollisionSetting.Runtime collision) {
+        var bounds = particleBounds();
+        var filters = collision.config().filters;
+        var executor = getEffectExecutor();
+        var owner = filters.isIgnoreOwner() && executor != null ? executor.owner() : null;
+        double radius = filters.getSourceExclusionRadius();
+        if (radius > 0 && sourceEntities == null) sourceEntities = entitiesNearSource(level, radius);
+        var excluded = radius > 0 ? sourceEntities : null;
+        boolean trigger = filters.getEntityResponse() == CollisionSetting.EntityResponse.Trigger;
+        var found = level.getEntities((Entity) null, bounds, entity -> entity != owner && entity.isAlive()
+                && (excluded == null || !excluded.contains(entity.getId())) && collision.acceptsEntity(entity));
+        if (found.isEmpty()) return CollisionScene.NO_ENTITIES;
+        var targets = new EntityTarget[found.size()];
+        for (int i = 0; i < targets.length; i++) {
+            var entity = found.get(i);
+            var box = entity.getBoundingBox();
+            double mx = entity.getX() - entity.xo, my = entity.getY() - entity.yo, mz = entity.getZ() - entity.zo;
+            if (mx * mx + my * my + mz * mz > CollisionScene.MAX_TARGET_MOTION * CollisionScene.MAX_TARGET_MOTION) {
+                mx = my = mz = 0;
+            }
+            double k = targetMotionScale;
+            targets[i] = new EntityTarget(entity, entity.getId(), box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
+                    (mx - simMotionX) * k, (my - simMotionY) * k, (mz - simMotionZ) * k, trigger);
+        }
+        return targets;
+    }
+
+    /** The entities within {@code radius} of where the effect started, taken once per playback. */
+    private IntOpenHashSet entitiesNearSource(Level level, double radius) {
+        var origin = getScene() instanceof FXRuntime fxRuntime ? fxRuntime.root.transform().position() : transform().position();
+        var near = new IntOpenHashSet();
+        for (var entity : level.getEntities((Entity) null, new AABB(origin.x - radius, origin.y - radius, origin.z - radius,
+                origin.x + radius, origin.y + radius, origin.z + radius), entity -> true)) {
+            var box = entity.getBoundingBox();
+            double dx = Math.max(0, Math.max(box.minX - origin.x, origin.x - box.maxX));
+            double dy = Math.max(0, Math.max(box.minY - origin.y, origin.y - box.maxY));
+            double dz = Math.max(0, Math.max(box.minZ - origin.z, origin.z - box.maxZ));
+            if (dx * dx + dy * dy + dz * dz <= radius * radius) near.add(entity.getId());
+        }
+        return near;
+    }
+
+    /**
+     * Where this emitter's particles can get to this tick: where they are, grown by how far the fastest moves,
+     * plus a margin around the emitter for the ones it is about to emit.
+     */
+    private AABB particleBounds() {
+        var origin = transform().position();
+        double minX = origin.x - NEW_PARTICLE_REACH, minY = origin.y - NEW_PARTICLE_REACH, minZ = origin.z - NEW_PARTICLE_REACH;
+        double maxX = origin.x + NEW_PARTICLE_REACH, maxY = origin.y + NEW_PARTICLE_REACH, maxZ = origin.z + NEW_PARTICLE_REACH;
+        float steps = Math.max(1, timeScale());
+        double reach = 1;
+        for (var queue : particles.values()) {
+            for (var particle : queue) {
+                if (!(particle instanceof TileParticle tile) || !tile.isAlive()) continue;
+                var pos = tile.getWorldPos(1);
+                minX = Math.min(minX, pos.x);
+                minY = Math.min(minY, pos.y);
+                minZ = Math.min(minZ, pos.z);
+                maxX = Math.max(maxX, pos.x);
+                maxY = Math.max(maxY, pos.y);
+                maxZ = Math.max(maxZ, pos.z);
+                var size = tile.getRealSize(1);
+                reach = Math.max(reach, tile.getRealVelocity().length() * steps + Math.max(size.x, Math.max(size.y, size.z)));
+            }
+        }
+        return new AABB(minX, minY, minZ, maxX, maxY, maxZ).inflate(reach + 1);
+    }
+
+    private ColliderTarget[] gatherColliders(CollisionSetting.Runtime collision) {
+        if (!(getScene() instanceof FXRuntime fxRuntime)) return CollisionScene.NO_COLLIDERS;
+        var filters = collision.config().filters;
+        List<ColliderTarget> list = null;
+        for (var object : fxRuntime.objects.values()) {
+            if (object instanceof ColliderObject collider && collider.isActive() && !collider.isRemoved()
+                    && filters.accepts(collider)) {
+                var target = collider.target();
+                if (target == null) continue;
+                if (list == null) list = new ArrayList<>();
+                list.add(target.relativeTo(simMotionX, simMotionY, simMotionZ, targetMotionScale));
+            }
+        }
+        return list == null ? CollisionScene.NO_COLLIDERS : list.toArray(new ColliderTarget[0]);
+    }
+
+    private void drawCollisionDebug() {
+        if (contactLogSize == 0 || contactLog == null) return;
+        var lines = new ArrayList<Pair<Vector3f, Vector3f>>(contactLogSize * 4);
+        for (int i = 0; i < contactLogSize; i++) {
+            int base = i * 6;
+            var point = new Vector3f(contactLog[base], contactLog[base + 1], contactLog[base + 2]);
+            float s = 0.05f;
+            lines.add(new Pair<>(new Vector3f(point).add(-s, 0, 0), new Vector3f(point).add(s, 0, 0)));
+            lines.add(new Pair<>(new Vector3f(point).add(0, -s, 0), new Vector3f(point).add(0, s, 0)));
+            lines.add(new Pair<>(new Vector3f(point).add(0, 0, -s), new Vector3f(point).add(0, 0, s)));
+            lines.add(new Pair<>(point, new Vector3f(point).add(
+                    contactLog[base + 3] * 0.3f, contactLog[base + 4] * 0.3f, contactLog[base + 5] * 0.3f)));
+        }
+        CollisionGizmos.draw(new PoseStack(), lines, ColorPattern.ORANGE.color, 2);
+    }
+
+    @Override
+    public void inspectSceneInformation(SceneView sceneView, UIElement container) {
+        super.inspectSceneInformation(sceneView, container);
+        var info = sceneView.fxObjectInfoView;
+        container.addChildren(
+                info.createInformation(Component.translatable("photon.gui.editor.fx_info.collision"),
+                        () -> Component.literal(collisionScene == null ? "-"
+                                : "%d casts, %d tests, %d contacts".formatted(lastCollisionStats[0], lastCollisionStats[1],
+                                lastCollisionStats[2]))),
+                info.createInformation(Component.translatable("photon.gui.editor.fx_info.collision_time"),
+                        () -> Component.literal(collisionScene == null ? "-"
+                                : "%.3f ms, %s".formatted(lastCollisionMillis, lastCollisionParallel ? "parallel" : "serial"))),
+                info.createInformation(Component.translatable("photon.gui.editor.fx_info.collision_world"),
+                        () -> Component.literal(collisionWorld == null ? "-"
+                                : "%d sections, %d depenetrated, %d misses".formatted(collisionWorld.sectionCount(),
+                                lastCollisionStats[3], lastCollisionStats[4]))));
     }
 
     @Override
@@ -563,13 +917,19 @@ public class ParticleEmitter extends Emitter {
         }
 
         var parallelAllowed = useParallelUpdate();
+        var trailScene = blockScene();
+        var world = collisionScene != null ? collisionWorld : trailScene != null ? (CollisionWorld) trailScene.blocks : null;
+        long updateStart = System.nanoTime();
         for (var queue : particles.values()) {
             if (parallelAllowed && queue.size() >= PARALLEL_UPDATE_MIN_PARTICLES) { // parallel stream for particles tick.
                 queue.removeIf(p -> !p.isAlive());
                 setParallelLightPhase(true);
+                if (world != null) world.beginParallel();
+                collisionParallel = true;
                 try {
                     queue.parallelStream().forEach(p -> p.updateTick(dt));
                 } finally {
+                    if (world != null) world.endParallel();
                     setParallelLightPhase(false);
                 }
             } else {
@@ -590,15 +950,30 @@ public class ParticleEmitter extends Emitter {
             rebuildLightCache();
         }
 
-        // drain sub-emitter spawns collected during (possibly parallel) particle updates
-        for (Runnable spawn; (spawn = pendingSubEmitterSpawns.poll()) != null; ) {
-            spawn.run();
-        }
+        if (collisionScene != null) collisionNanos += System.nanoTime() - updateStart;
+
+        // side effects of the (possibly parallel) particle updates, in particle order
+        drainInOrder(pendingSubEmitterSpawns);
+        drainCollisionReports();
+        dedupeVerdicts.clear();
+        // a finished emitter must not keep the entities (and their level) of its last tick
+        if (collisionScene != null && particles.values().stream().allMatch(Collection::isEmpty)) collisionScene = null;
     }
 
-    /** Parallel particle updates are allowed when enabled and collision is off (level reads). */
+    @Override
+    protected boolean needsBlockScene() {
+        var trails = config.trails;
+        return runtime().trails.isEnable() && trails.getTrailType() == TrailsSetting.TrailType.ARA_TRAIL
+                && trails.araConfig.physicsSetting.isEnable() && trails.araConfig.physicsSetting.collideWithBlocks;
+    }
+
+    /** Parallel particle updates, when enabled; with collision only where {@link CollisionWorld#isParallelSafe} allows. */
     private boolean useParallelUpdate() {
-        return runtime().parallelUpdate.get() && (!runtime().physics.isEnable() || !runtime().physics.hasCollision());
+        if (!runtime().parallelUpdate.get()) return false;
+        var physics = runtime().physics;
+        if ((!physics.isEnable() || !physics.hasCollision()) && !needsBlockScene()) return true;
+        var level = getLevel();
+        return PhotonConfig.INSTANCE.collisionParallel.get() && CollisionWorld.isParallelSafe(level);
     }
 
     @Override
@@ -614,7 +989,14 @@ public class ParticleEmitter extends Emitter {
     }
 
     public void emitParticle(IParticle particle) {
+        // it can die while being set up (no ground to snap to)
+        if (particle instanceof TileParticle tile && tile.isRemoved()) return;
         waitToAdded.add(particle);
+    }
+
+    /** Emission order of the next particle; orders what particle updates defer. */
+    public int nextParticleSerial() {
+        return particleSerial++;
     }
 
     @Override
@@ -636,6 +1018,19 @@ public class ParticleEmitter extends Emitter {
         }
         this.particles.clear();
         this.pendingSubEmitterSpawns.clear();
+        this.pendingCollisionReports.clear();
+        this.collisionScene = null;
+        this.simOriginValid = false;
+        this.reportedTargets.clear();
+        this.dedupeVerdicts.clear();
+        this.sourceEntities = null;
+        var groups = getScene() == null ? null : GROUP_MEMORY.get(getScene());
+        if (groups != null) groups.remove(config.physics.collision.events.getGroup());
+        this.collisionStats.reset();
+        this.contactLogSize = 0;
+        this.contactLogNext = 0;
+        this.forceRemoved = false;
+        this.particleSerial = 0;
         this.hasFirstUpdate = false;
         this.particleBatchCount = 1;
         this.particleBatchCursor = 0;
@@ -714,15 +1109,21 @@ public class ParticleEmitter extends Emitter {
     public void onDestroy() {
         super.onDestroy();
         registerLights(null);
+        collisionScene = null;
+        collisionWorld = null;
     }
 
     @Override
     public void remove(boolean force) {
         super.remove(force);
         if (force) {
+            forceRemoved = true;
             registerLights(null);
             particles.clear();
             pendingSubEmitterSpawns.clear();
+            pendingCollisionReports.clear();
+            collisionScene = null;
+            collisionWorld = null;
             if (runtime != null) {
                 runtime.clearRenderOverride(); // free the per-instance override pass's GL on force removal
             }
@@ -733,6 +1134,9 @@ public class ParticleEmitter extends Emitter {
     public void drawEditorAfterWorld(SceneView.ParticleSceneEditor scene, MultiBufferSource bufferSource, float partialTicks) {
         if(scene.sceneView().isShapeVisible()) {
             runtime().shape.drawGuideLines(bufferSource, partialTicks, this);
+        }
+        if (CollisionDebug.enabled) {
+            drawCollisionDebug();
         }
     }
 
