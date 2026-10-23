@@ -52,6 +52,24 @@ public class FXHelper {
         return count;
     }
 
+    /**
+     * Forget these effects, e.g. after the pack providing them was rewritten, so the next play loads them
+     * again. Unlike {@link #clearCache()} every other loaded effect stays cached; preloads under way start
+     * over, so none of them publishes what it read before, and kept effects are preloaded again in the
+     * background.
+     */
+    public static void invalidate(Collection<ResourceLocation> fxLocations) {
+        fxLocations.forEach(CACHE::remove);
+        idCache = null;
+        generation.incrementAndGet();
+        FXPreloader.onInvalidated();
+    }
+
+    /** The resource an fx id is read from: {@code photon:example} → {@code photon:fx/example.fx}. */
+    public static ResourceLocation fileLocation(ResourceLocation fxLocation) {
+        return fxLocation.withPath(path -> FX_PATH + path + FX.SUFFIX);
+    }
+
     static int generation() {
         return generation.get();
     }
@@ -153,8 +171,8 @@ public class FXHelper {
 
     @Nullable
     static CompoundTag readTag(ResourceLocation fxLocation) {
-        ResourceLocation resourceLocation = ResourceLocation.fromNamespaceAndPath(fxLocation.getNamespace(), FX_PATH + fxLocation.getPath() + FX.SUFFIX);
-        try (var inputStream = Minecraft.getInstance().getResourceManager().open(resourceLocation);) {
+        var resourceLocation = fileLocation(fxLocation);
+        try (var inputStream = Minecraft.getInstance().getResourceManager().open(resourceLocation)) {
             var tag = NbtIo.readCompressed(inputStream, NbtAccounter.unlimitedHeap());
             tag = applyVersionFixes(tag);
             if (tag.contains("resources", Tag.TAG_COMPOUND)) {
@@ -199,7 +217,7 @@ public class FXHelper {
      * versions and the deserializers' inline legacy fallbacks already handle them — running the
      * V1→current fixers on data of unknown true version would risk double-migration.
      */
-    private static CompoundTag applyVersionFixes(CompoundTag tag) {
+    public static CompoundTag applyVersionFixes(CompoundTag tag) {
         if (!tag.contains("version", Tag.TAG_INT)) {
             return tag;
         }

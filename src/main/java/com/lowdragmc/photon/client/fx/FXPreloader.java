@@ -86,6 +86,17 @@ public final class FXPreloader {
         Photon.LOGGER.info("Preloaded {} effects in {} ms", sink.effects.size(), (System.nanoTime() - start) / 1_000_000);
     }
 
+    /**
+     * Called by {@link FXHelper#invalidate}: every kept effect is walked again, not only the forgotten ones
+     * among them, since a kept effect can spawn a forgotten one as a sub-emitter. What is still warm costs
+     * the walk only.
+     */
+    static void onInvalidated() {
+        if (reloaded && !KEPT.isEmpty()) {
+            preload(List.copyOf(KEPT));
+        }
+    }
+
     /** Called at the start of every frame: runs queued render-thread work within the budget, at least one job. */
     public static void onFrameStart() {
         if (RENDER_JOBS.isEmpty() || Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) return;

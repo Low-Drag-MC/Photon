@@ -6,6 +6,7 @@ import com.lowdragmc.lowdraglib2.editor.resource.FilePath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.editor.resource.ResourceInstance;
 import com.lowdragmc.photon.client.fx.FX;
+import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.gui.editor.FXProject;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.lowdragmc.photon.gui.editor.resource.MeshResource;
@@ -28,7 +29,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -102,7 +102,11 @@ public final class FXPackExporter {
 
     /**
      * Export {@code fx} into {@code fxpackFile} (created if absent) as {@code <namespace>:<fxName>}.
-     * Names are sanitized to valid resource-location characters.
+     * Names are sanitized to valid resource-location characters. Render thread only. When the pack is
+     * mounted, the next play of the fx loads the new version ({@link FXPacks#rewrite}); a pack the game has
+     * not mounted yet needs a resource reload first ({@link FXPacks#resolve}).
+     *
+     * @throws FXPacks.PackInUseException when another program holds the pack file open
      */
     public static Result exportInto(File fxpackFile, String namespace, String fxName, FX fx,
                                     HolderLookup.Provider provider) throws IOException {
@@ -118,20 +122,18 @@ public final class FXPackExporter {
         if (fxpackFile.getParentFile() != null) {
             fxpackFile.getParentFile().mkdirs();
         }
-        try (var zip = FileSystems.newFileSystem(fxpackFile.toPath(), Map.of("create", "true"))) {
+        // replacing an fx orphans its previous version's resources: the rewrite's gc sweeps them out
+        FXPacks.rewrite(fxpackFile, zip -> {
             var mcmeta = zip.getPath("pack.mcmeta");
             if (!Files.exists(mcmeta)) {
                 Files.writeString(mcmeta, PACK_MCMETA);
             }
-            writeEntry(zip.getPath("assets", fxId.getNamespace(), "fx", fxId.getPath() + FX.SUFFIX),
-                    fxBytes.toByteArray());
+            writeEntry(FXPacks.entryPath(zip, FXHelper.fileLocation(fxId)), fxBytes.toByteArray());
             for (var entry : exporter.files.entrySet()) {
-                var location = entry.getKey();
-                writeEntry(zip.getPath("assets", location.getNamespace(), location.getPath()), entry.getValue());
+                writeEntry(FXPacks.entryPath(zip, entry.getKey()), entry.getValue());
             }
-            // replacing an fx orphans its previous version's resources — sweep them out
-            FXPacks.gc(zip);
-        }
+        });
+        FXHelper.invalidate(List.of(fxId));
         return new Result(fxId, exporter.files.size() + 1, List.copyOf(exporter.warnings));
     }
 

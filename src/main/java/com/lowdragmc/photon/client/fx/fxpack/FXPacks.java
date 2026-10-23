@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.fx.fxpack;
 
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.Photon;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.packs.FilePackResources;
 import net.minecraft.server.packs.PackLocationInfo;
@@ -20,6 +21,9 @@ import com.google.gson.JsonParser;
 import com.lowdragmc.lowdraglib2.editor.resource.FilePath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.photon.client.fx.FX;
+import com.lowdragmc.photon.client.fx.FXHelper;
+import com.lowdragmc.photon.core.mixins.accessor.FilePackResourcesAccessor;
+import com.lowdragmc.photon.core.mixins.accessor.SharedZipFileAccessAccessor;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
@@ -33,15 +37,20 @@ import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 
 /**
@@ -58,7 +67,8 @@ import java.util.function.Consumer;
  * reskin a packed fx with an ordinary resource pack and an author's local files always win. Vanilla
  * serves everything lazily from the zip (no parsing, no memory copies at reload); the fx definitions
  * inside load through the normal {@code FXHelper} path by id ({@code <ns>:<name>}). Dropping a new
- * file in requires a resource reload (F3+T) to be discovered, like any resource pack.
+ * file in requires a resource reload (F3+T) to be discovered, like any resource pack; the editor's
+ * edits of a pack that is already mounted ({@link #rewrite}) are served right away.
  * <p>
  * Mods have three options, all equivalent at runtime: merge the layout straight into their
  * {@code assets/} (a mod jar already IS a resource pack), put an unzipped pack folder under
@@ -104,12 +114,29 @@ public final class FXPacks {
     }
 
     private static void mountFolderPacks(Consumer<Pack> consumer) {
+        deleteLeftoverCopies();
         var files = getFxPacksDir().listFiles(file -> file.isFile() && file.getName().endsWith(SUFFIX));
         if (files == null) return;
         for (var file : files) {
-            consumer.accept(createPack("fxpack/" + file.getName(), file.getName(),
+            consumer.accept(createPack(folderPackId(file), file.getName(),
                     new FilePackResources.FileResourcesSupplier(file.toPath())));
             Photon.LOGGER.info("mounted fx pack {}", file.getName());
+        }
+    }
+
+    private static String folderPackId(File packFile) {
+        return "fxpack/" + packFile.getName();
+    }
+
+    /** Copies a {@link #rewrite} left behind when the game died mid-edit, and the zip-fs temp files of one. */
+    private static void deleteLeftoverCopies() {
+        var leftovers = getFxPacksDir().listFiles(file -> file.isFile() && (file.getName().endsWith(SUFFIX + COPY_SUFFIX)
+                || file.getName().startsWith("zipfstmp") && file.getName().endsWith(".tmp")));
+        if (leftovers == null) return;
+        for (var file : leftovers) {
+            if (file.delete()) {
+                Photon.LOGGER.info("fxpacks: deleted leftover {}", file.getName());
+            }
         }
     }
 
@@ -191,15 +218,103 @@ public final class FXPacks {
 
     // ---- pack file management (editor side) -----------------------------------------------------------
 
+    /** Suffix of the private copy {@link #rewrite} edits; not {@link #SUFFIX}, so it is never mounted. */
+    static final String COPY_SUFFIX = ".editing";
+    private static final int REPLACE_ATTEMPTS = 3;
+
+    /** A pack file another program holds open, so it cannot be replaced. */
+    public static final class PackInUseException extends IOException {
+        PackInUseException(File packFile, IOException cause) {
+            super("fx pack " + packFile + " is in use", cause);
+        }
+    }
+
+    /** One edit of a pack's zip file system, run by {@link #rewrite}. */
+    @FunctionalInterface
+    interface ZipEdit {
+        void apply(FileSystem zip) throws IOException;
+    }
+
     /**
-     * Whether the pack file is currently held open by another handle. A mounted pack that has served
-     * at least one read keeps a {@code ZipFile} open until the next resource reload closes it — and
-     * on Windows that blocks the rename-over-original jdk.zipfs commits edits with, so exports into /
-     * removals from the file would fail. The rename-onto-itself probe is a cheap, side-effect-free
-     * lock detector; callers should tell the user to reload resources (F3+T) and retry.
+     * Whether the pack file is held open by another handle (the rename-onto-itself probe: free of side
+     * effects, and on Windows the very thing an open handle refuses).
      */
     public static boolean isFileLocked(File file) {
         return file.isFile() && !file.renameTo(file);
+    }
+
+    /** Whether the running game has this pack file mounted, i.e. serves its fx without a resource reload. */
+    public static boolean isMounted(File packFile) {
+        return !livePacks(packFile).isEmpty();
+    }
+
+    /** Whether a resource reload mounts this file: only {@code .fxpack}s directly in {@link #getFxPacksDir()} are. */
+    public static boolean isLoadable(File packFile) {
+        var folder = packFile.getAbsoluteFile().getParentFile();
+        return packFile.getName().endsWith(SUFFIX) && folder != null && identity(folder).equals(identity(getFxPacksDir()));
+    }
+
+    /** How the running game resolves an fx of this pack — what a command playing it would load. */
+    public static Resolution resolve(File packFile, ResourceLocation fxId) {
+        var resource = Minecraft.getInstance().getResourceManager().getResource(FXHelper.fileLocation(fxId)).orElse(null);
+        if (resource == null) {
+            return new Resolution(Resolution.Status.NOT_MOUNTED, null);
+        }
+        var source = resource.sourcePackId();
+        var live = livePacks(packFile).stream().anyMatch(pack -> pack.packId().equals(source));
+        return new Resolution(live ? Resolution.Status.LIVE : Resolution.Status.SHADOWED, source);
+    }
+
+    /**
+     * @param sourcePackId the pack the game loads the fx from, null when nothing provides it
+     */
+    public record Resolution(Status status, @Nullable String sourcePackId) {
+        public enum Status {
+            /** loaded from this pack */
+            LIVE,
+            /** a pack of higher priority provides the same id, so that one is loaded */
+            SHADOWED,
+            /** not loadable until a resource reload mounts the pack */
+            NOT_MOUNTED
+        }
+    }
+
+    /**
+     * The resource manager's packs reading this file. Its {@code ZipFile} stays open from the reload that
+     * mounted the pack until the next one: on Windows that refuses any replacement of the file, elsewhere
+     * it keeps serving the replaced one.
+     */
+    private static List<FilePackResources> livePacks(File packFile) {
+        var target = identity(packFile);
+        return Minecraft.getInstance().getResourceManager().listPacks()
+                .filter(pack -> pack instanceof FilePackResources)
+                .map(FilePackResources.class::cast)
+                .filter(pack -> identity(zipAccess(pack).getFile()).equals(target))
+                .toList();
+    }
+
+    /**
+     * Closes the resource manager's handle on the file; vanilla reopens it on the next read. A read on
+     * another thread that raced a replacement and failed to reopen it has marked it failed, which vanilla
+     * never retries, so that mark goes too.
+     */
+    static void release(File packFile) {
+        for (var pack : livePacks(packFile)) {
+            pack.close();
+            zipAccess(pack).setFailedToLoad(false);
+        }
+    }
+
+    private static SharedZipFileAccessAccessor zipAccess(FilePackResources pack) {
+        return (SharedZipFileAccessAccessor) ((FilePackResourcesAccessor) pack).getZipFileAccess();
+    }
+
+    private static Path identity(File file) {
+        try {
+            return file.getCanonicalFile().toPath();
+        } catch (IOException e) {
+            return file.getAbsoluteFile().toPath().normalize();
+        }
     }
 
     /** The fx ids contained in a pack file ({@code assets/<ns>/fx/**.fx} → {@code <ns>:<name>}). */
@@ -213,11 +328,77 @@ public final class FXPacks {
         return result;
     }
 
-    /** Remove one fx from a pack file, then garbage-collect resources nothing references anymore. */
+    /**
+     * Remove one fx from a pack file, then garbage-collect resources nothing references anymore. Render
+     * thread only, see {@link #rewrite}.
+     */
     public static void removeFx(File fxpackFile, ResourceLocation fxId) throws IOException {
-        try (var zip = FileSystems.newFileSystem(fxpackFile.toPath())) {
-            Files.deleteIfExists(zip.getPath("assets", fxId.getNamespace(), "fx", fxId.getPath() + FX.SUFFIX));
-            gc(zip);
+        if (!fxpackFile.isFile()) {
+            throw new NoSuchFileException(fxpackFile.toString()); // a rewrite would create an empty pack there
+        }
+        rewrite(fxpackFile, zip -> Files.deleteIfExists(entryPath(zip, FXHelper.fileLocation(fxId))));
+        FXHelper.invalidate(List.of(fxId));
+    }
+
+    /** Where a resource lives inside a pack's zip file system. */
+    public static Path entryPath(FileSystem zip, ResourceLocation location) {
+        return zip.getPath("assets", location.getNamespace(), location.getPath());
+    }
+
+    /**
+     * Rewrites a pack file: {@code edit} and the {@link #gc} after it run on a private copy, which then
+     * replaces the pack in one move, so a failed edit leaves the pack as it was. The resource manager's
+     * handle is released around the move, and since vanilla reopens a closed pack on its next read, a
+     * mounted pack serves the new content straight away — no resource reload. Render thread only: the
+     * release closes a {@code ZipFile} the game reads from.
+     *
+     * @throws PackInUseException when the file stays locked, e.g. by another program
+     */
+    static void rewrite(File packFile, ZipEdit edit) throws IOException {
+        rewrite(packFile, edit, () -> release(packFile));
+    }
+
+    static void rewrite(File packFile, ZipEdit edit, Runnable release) throws IOException {
+        var pack = packFile.toPath();
+        var copy = pack.resolveSibling(packFile.getName() + COPY_SUFFIX);
+        Files.deleteIfExists(copy);
+        try {
+            if (Files.exists(pack)) {
+                Files.copy(pack, copy);
+            }
+            try (var zip = FileSystems.newFileSystem(copy, Map.of("create", "true"))) {
+                edit.apply(zip);
+                gc(zip);
+            }
+            replace(copy, pack, release);
+        } finally {
+            Files.deleteIfExists(copy);
+        }
+    }
+
+    private static void replace(Path copy, Path pack, Runnable release) throws IOException {
+        for (int attempt = 1; ; attempt++) {
+            release.run();
+            try {
+                move(copy, pack);
+                break;
+            } catch (IOException e) {
+                // a read on another thread can reopen the pack between the release and the move
+                if (attempt == REPLACE_ATTEMPTS) {
+                    throw isFileLocked(pack.toFile()) ? new PackInUseException(pack.toFile(), e) : e;
+                }
+                LockSupport.parkNanos(20_000_000L);
+            }
+        }
+        // whatever read the old file before the move still holds it on systems that allow the move anyway
+        release.run();
+    }
+
+    private static void move(Path copy, Path pack) throws IOException {
+        try {
+            Files.move(copy, pack, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(copy, pack, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
@@ -252,7 +433,8 @@ public final class FXPacks {
     /**
      * Mark-and-sweep over the pack: keep {@code pack.mcmeta}, every fx entry, and everything the fx
      * (transitively, through packed library {@code .nbt} files) still reference; delete the rest.
-     * Run after every mutation so replaced/removed effects don't leave orphaned resources behind.
+     * {@link #rewrite} runs it after every edit, so replaced/removed effects don't leave orphaned
+     * resources behind.
      * An {@code .fxpack} is machine-managed — hand-added extras belong in a real resource pack.
      * <p>
      * CONTRACT with {@link FXPackExporter}: gc runs right after every export, so every file the

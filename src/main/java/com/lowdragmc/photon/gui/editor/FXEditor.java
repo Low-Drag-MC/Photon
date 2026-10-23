@@ -50,6 +50,8 @@ public class FXEditor extends Editor {
     protected void initMenus() {
         super.initMenus();
         fileMenu.addProjectProvider(FXProject.TYPE);
+        // the editor's, not the project's: converting and managing packs need no project open
+        fileMenu.registerMenuCreator((tab, menu) -> FXFileActions.appendTo(this, menu));
     }
 
     @Override
