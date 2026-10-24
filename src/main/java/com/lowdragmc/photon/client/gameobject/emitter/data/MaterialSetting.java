@@ -138,18 +138,26 @@ public class MaterialSetting implements IConfigurable, IPersistedSerializable {
     // EFFECTIVE state, so a material that brings its own render state is followed on every draw path.
     public PhotonPipelines.ParticlePipelineKey pipelineKey(
             VertexFormat.Mode mode) {
-        var effectiveBlend = getEffectiveBlendMode();
-        var blend = effectiveBlend.toBlendFunction();
-        var equation = blend != null && effectiveBlend.getBlendFunc() != null
-                ? effectiveBlend.getBlendFunc().op
-                : PhotonPipelines.BLEND_EQUATION_ADD;
-        var key = new PhotonPipelines.ParticlePipelineKey(blend, equation,
-                isEffectiveCull() || isBackFacesFirst(), isEffectiveDepthTest(), isEffectiveDepthMask(), mode, false);
+        var key = authoredPipelineKey(mode);
         // Drawing into a transparent layer rather than onto the scene changes what the alpha half of the
         // blend must do — see PremultipliedBlendPlan. Consulted here, at the one place every material's
         // pipeline is chosen, so no draw path can bypass it.
         return PremultipliedBlendPlan.accumulating()
                 ? PremultipliedBlendPlan.premultiply(key) : key;
+    }
+
+    /**
+     * The key as authored, whatever the bake is accumulating into: what deciding whether to accumulate at all
+     * must look at ({@code RendererSetting.Runtime.effectiveStage}), or the group baked before would decide it.
+     */
+    public PhotonPipelines.ParticlePipelineKey authoredPipelineKey(VertexFormat.Mode mode) {
+        var effectiveBlend = getEffectiveBlendMode();
+        var blend = effectiveBlend.toBlendFunction();
+        var equation = blend != null && effectiveBlend.getBlendFunc() != null
+                ? effectiveBlend.getBlendFunc().op
+                : PhotonPipelines.BLEND_EQUATION_ADD;
+        return new PhotonPipelines.ParticlePipelineKey(blend, equation,
+                isEffectiveCull() || isBackFacesFirst(), isEffectiveDepthTest(), isEffectiveDepthMask(), mode, false);
     }
 
     /** The RenderType this material slot draws with (material + this setting's pipeline state +

@@ -613,6 +613,13 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                                                InstanceFiller filler) {
         var shaded = settings.shaded();
         var wireframe = settings.wireframe();
+        var stage = renderer.effectiveStage();
+        // Deferred groups accumulate into a transparent layer, which changes what every material's
+        // blend must do to the alpha channel. Set before the render types below are asked for — their
+        // keys are where it is read — and around the geometry this group generates, so a group drawn in
+        // place in the same bake is unaffected.
+        PremultipliedBlendPlan.setAccumulating(
+                PremultipliedBlendPlan.isLayerStage(stage));
         var infos = new ArrayList<PhotonRenderTypes.PhotonDrawInfo>();
         var slices = new ArrayList<GpuBufferSlice>();
         for (var materialSetting : renderer.getMaterials()) {
@@ -706,12 +713,6 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         }
         var eye = PhotonCameraUtils.facingEye(camera);
         var distanceSq = transform.position().distanceSquared(eye);
-        var stage = renderer.effectiveStage();
-        // Deferred groups accumulate into a transparent layer, which changes what every material's
-        // blend must do to the alpha channel. Set around the geometry this group generates, so a
-        // group drawn in place in the same bake is unaffected.
-        PremultipliedBlendPlan.setAccumulating(
-                PremultipliedBlendPlan.isLayerStage(stage));
         if (shaded) {
             for (int m = 0; m < infos.size(); m++) {
                 var info = infos.get(m);
