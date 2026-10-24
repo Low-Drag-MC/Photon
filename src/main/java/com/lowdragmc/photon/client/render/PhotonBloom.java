@@ -130,6 +130,8 @@ public final class PhotonBloom implements AutoCloseable {
     private static final Map<Float, RenderPipeline> BRIGHT_VARIANTS = new HashMap<>();
     private static final Map<Float, RenderPipeline> BLIT_VARIANTS = new HashMap<>();
     @Nullable
+    private static RenderPipeline brightStartPipeline;
+    @Nullable
     private static RenderPipeline downPipeline;
     @Nullable
     private static RenderPipeline upPipeline;
@@ -138,17 +140,29 @@ public final class PhotonBloom implements AutoCloseable {
         return PhotonFullscreenPass.builder(Photon.id("core/" + fragment)).withSampler("inputSampler");
     }
 
-    /** The converted 1.21 bright_pass: Threshold/Knee ride in the PhotonBloom UBO; outputScale 1 starts
-     *  the chain (plain overwrite into mip 0), = intensity for the full-res sharp-highlight pass
-     *  (REVERSE_SUBTRACT onto the target). */
+    /** The converted 1.21 bright_pass, starting the chain: a plain overwrite into mip 0. Threshold/Knee ride in
+     *  the PhotonBloom UBO. */
+    private static RenderPipeline brightStartPipeline() {
+        if (brightStartPipeline == null) {
+            brightStartPipeline = fullscreenBuilder("bright_pass")
+                    .withLocation(Photon.id("pipeline/bloom_bright_start"))
+                    .withUniform("PhotonBloom", UniformType.UNIFORM_BUFFER)
+                    .withShaderDefine("OUTPUT_SCALE", 1f)
+                    .withColorTargetState(ColorTargetState.DEFAULT)
+                    .build();
+        }
+        return brightStartPipeline;
+    }
+
+    /** The same pass at {@code outputScale} = intensity for the full-res sharp highlight, blended
+     *  (REVERSE_SUBTRACT) onto the target — at full intensity too, so it is never the chain start's overwrite. */
     private static RenderPipeline brightPipeline(float outputScale) {
         return BRIGHT_VARIANTS.computeIfAbsent(outputScale, scale ->
                 fullscreenBuilder("bright_pass")
                         .withLocation(Photon.id("pipeline/bloom_bright_" + BRIGHT_VARIANTS.size()))
                         .withUniform("PhotonBloom", UniformType.UNIFORM_BUFFER)
                         .withShaderDefine("OUTPUT_SCALE", scale)
-                        .withColorTargetState(scale == 1f
-                                ? ColorTargetState.DEFAULT : ADDITIVE_RGB)
+                        .withColorTargetState(ADDITIVE_RGB)
                         .build());
     }
 
@@ -169,7 +183,7 @@ public final class PhotonBloom implements AutoCloseable {
         if (!PhotonConfig.INSTANCE.enableBloom.get()) return;
         var intensity = PhotonConfig.INSTANCE.bloomIntensity.get().floatValue();
         var device = RenderSystem.getDevice();
-        for (var pipeline : List.of(copyPipeline(), brightPipeline(1f), downPipeline(), upPipeline(),
+        for (var pipeline : List.of(copyPipeline(), brightStartPipeline(), downPipeline(), upPipeline(),
                 brightPipeline(intensity), blitPipeline(intensity))) {
             device.precompilePipeline(pipeline);
         }
@@ -297,7 +311,7 @@ public final class PhotonBloom implements AutoCloseable {
         // full-screen copy buys that separation; it replaces re-drawing every emitter a second time.
         fullscreenPass(copyPipeline(), sourceView, targetColor, null);
 
-        fullscreenPass(brightPipeline(1f), mipViews[0], sourceView, brightParams(threshold));
+        fullscreenPass(brightStartPipeline(), mipViews[0], sourceView, brightParams(threshold));
         for (int i = 1; i < mips.length; i++) {
             fullscreenPass(downPipeline(), mipViews[i], mipViews[i - 1],
                     resolutionParams(mips[i - 1].getWidth(0), mips[i - 1].getHeight(0)));
