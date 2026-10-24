@@ -1,4 +1,32 @@
 ## ChangeLogs
+## v26.1.2.9
+* Added FX instances (like Unity prefabs): place an .fx inside another effect, at any depth, and override, disable or delete what it places; only the overrides are saved, so it keeps following its source
+* Added a new particle collision system with colliders, triggers, entities and fluids; collision is swept, so fast particles no longer pass through walls
+* Added preloading effects ahead of their first play (FXHelper.preload), warming their shaders, textures and sub-emitter effects in the background
+* Added converting an .fx into an editable project, from the File menu or the FXPack manager, and removing effects from an FXPack
+* Added dynamic lights: clustered point and spot lights with voxel soft shadows, a Light object, particle light emission and lit particles
+* Added volumetric lights and fog volumes
+* Added dynamic lights to shader graphs (Dynamic Light node) and custom shaders
+* Added KilaMaterial, a built-in all-in-one VFX material, with 27 presets grouped by category
+* Added exporting a KilaMaterial as a shader graph, and an optional render state on shader graph materials
+* Added a custom space to force, velocity, rotation and ara trail gravity
+* Added copy, paste and duplicate for FX objects
+* Fixed FXPack updates not taking effect until a resource reload
+* Fixed stacked screen distortion falling back under after-pack shader packs
+* Fixed ara trail physics stutter
+* Fixed speed and loop being ignored by per-particle animation phase
+* Fixed removed FX objects' children staying in the project and coming back after reopening
+* Fixed hierarchy shortcuts doing nothing right after a context menu action
+* Fixed integer literals in float math breaking particle and bloom shaders on GLSL ES translators (mobile launchers)
+* Fixed fullscreen post effects drawing only the top-right quadrant
+* Fixed beam raycast crashing and look-at facing aiming at the origin in the editor
+* Fixed voxel shadows breaking into a grid while the view bobs
+* Fixed light markers drawn with the view rotation applied twice
+* Fixed a shadowed volumetric light breaking the editor scene
+* Fixed bloom at full intensity blacking out everything below the threshold
+* Fixed late-composited effects picking their layer and blend by what was drawn before them
+* Bump up ldlib2 and kilagraph
+
 ## v26.1.2.3
 * Added animated glTF models: rigged glb import, animation picker, per-particle animation phase and optional frame blend
 * Added dynamic mesh injection, so other mods can feed geometry that changes while it is drawn
