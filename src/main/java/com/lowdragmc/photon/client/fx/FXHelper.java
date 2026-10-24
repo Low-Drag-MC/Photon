@@ -47,6 +47,7 @@ public class FXHelper {
     public static int clearCache() {
         var count = CACHE.size();
         CACHE.clear();
+        FXInstances.clear();
         idCache = null;
         generation.incrementAndGet();
         return count;
@@ -59,6 +60,8 @@ public class FXHelper {
      * background.
      */
     public static void invalidate(Collection<ResourceLocation> fxLocations) {
+        // and every effect that places one of them as an FX instance, at any depth
+        FXInstances.invalidate(fxLocations).forEach(CACHE::remove);
         fxLocations.forEach(CACHE::remove);
         idCache = null;
         generation.incrementAndGet();
@@ -70,7 +73,8 @@ public class FXHelper {
         return fxLocation.withPath(path -> FX_PATH + path + FX.SUFFIX);
     }
 
-    static int generation() {
+    /** Bumped whenever loaded effects are forgotten (a reload, {@link #invalidate}, {@link #clearCache}). */
+    public static int generation() {
         return generation.get();
     }
 
@@ -170,7 +174,7 @@ public class FXHelper {
     }
 
     @Nullable
-    static CompoundTag readTag(ResourceLocation fxLocation) {
+    public static CompoundTag readTag(ResourceLocation fxLocation) {
         var resourceLocation = fileLocation(fxLocation);
         try (var inputStream = Minecraft.getInstance().getResourceManager().open(resourceLocation)) {
             var tag = NbtIo.readCompressed(inputStream, NbtAccounter.unlimitedHeap());

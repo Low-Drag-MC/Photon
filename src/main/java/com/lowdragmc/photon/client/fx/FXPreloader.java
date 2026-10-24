@@ -2,6 +2,8 @@ package com.lowdragmc.photon.client.fx;
 
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.timeline.AnimationTrack;
+import com.lowdragmc.photon.client.fx.timeline.Timeline;
+import com.lowdragmc.photon.client.gameobject.FXInstanceObject;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigPropertyType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -115,22 +117,44 @@ public final class FXPreloader {
 
     private static void walk(FX fx, Sink sink) {
         var animated = new HashMap<UUID, Set<String>>();
-        for (var track : fx.getFxData().timeline().leafTracks(false)) {
-            if (track.mute() || !(track instanceof AnimationTrack animation) || animation.targetId() == null) continue;
-            for (var property : animation.properties()) {
-                if (property.type() instanceof ConfigPropertyType config) {
-                    animated.computeIfAbsent(animation.targetId(), id -> new HashSet<>()).add(config.storeKey());
+        var timelines = new ArrayList<Timeline>();
+        timelines.add(fx.getFxData().timeline());
+        // an FX instance's own timeline drives what the instance placed
+        for (var object : fx.getFxData().objects()) {
+            if (object instanceof FXInstanceObject instance) timelines.add(instance.getTimeline());
+        }
+        for (var timeline : timelines) {
+            for (var track : timeline.leafTracks(false)) {
+                if (track.mute() || !(track instanceof AnimationTrack animation) || animation.targetId() == null) continue;
+                for (var property : animation.properties()) {
+                    if (property.type() instanceof ConfigPropertyType config) {
+                        animated.computeIfAbsent(animation.targetId(), id -> new HashSet<>()).add(config.storeKey());
+                    }
                 }
             }
         }
         var context = new EffectContext(sink, animated);
+        var byId = new HashMap<UUID, IFXObject>();
+        fx.getFxData().objects().forEach(object -> byId.put(object.id(), object));
         for (var object : fx.getFxData().objects()) {
+            // switched off for good: no timeline can bring it back
+            if (!isEnabled(object, byId)) continue;
             try {
                 object.preload(context);
             } catch (Throwable e) {
                 Photon.LOGGER.warn("Failed to preload {} of fx {}", object.getName(), fx.getFxLocation(), e);
             }
         }
+    }
+
+    /** Whether {@code object} and every object it hangs under are switched on (the definition's transforms are not linked). */
+    private static boolean isEnabled(IFXObject object, Map<UUID, IFXObject> byId) {
+        var at = object;
+        for (int depth = 0; at != null && depth <= byId.size(); depth++) {
+            if (!at.isEnabled()) return false;
+            at = byId.get(at.transform()._getInternalParentID());
+        }
+        return true;
     }
 
     private interface Sink {
@@ -245,7 +269,12 @@ public final class FXPreloader {
             var cached = FXHelper.getCachedFX(fxLocation);
             var read = cached != null
                     ? CompletableFuture.<CompoundTag>completedFuture(null)
-                    : CompletableFuture.supplyAsync(() -> FXHelper.readTag(fxLocation), Util.backgroundExecutor());
+                    : CompletableFuture.supplyAsync(() -> {
+                        var tag = FXHelper.readTag(fxLocation);
+                        // the sources its FX instances place too, so placing them reads no file on the render thread
+                        if (tag != null) FXInstances.prefetchSources(tag);
+                        return tag;
+                    }, Util.backgroundExecutor());
             read.whenComplete((tag, error) -> RENDER_JOBS.add(() -> {
                 FX fx = null;
                 try {

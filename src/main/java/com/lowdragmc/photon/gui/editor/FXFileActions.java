@@ -13,6 +13,8 @@ import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.client.fx.FXHelper;
+import com.lowdragmc.photon.client.fx.FXInstances;
+import com.lowdragmc.photon.client.gameobject.FXInstanceObject;
 import com.lowdragmc.photon.client.fx.fxpack.FXPackExporter;
 import com.lowdragmc.photon.client.fx.fxpack.FXPacks;
 import com.lowdragmc.photon.gui.editor.resource.ResourceDialogs;
@@ -24,6 +26,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.util.List;
@@ -48,11 +51,11 @@ public final class FXFileActions {
             }
             // plain .fx: pure definition data (references only) — usable wherever the
             // referenced resources already exist (this machine, a mod jar, an .fxpack)
-            export.leaf("photon.export_fx", () -> showExportFxDialog(editor, project.getFx()));
+            export.leaf("photon.export_fx", () -> showExportFxDialog(editor, project));
             // .fxpack: a resource-pack zip carrying the fx plus everything it references —
             // the self-contained distribution format (additive: exports into the same pack
             // accumulate, shared resources are stored once)
-            export.leaf("photon.export_fxpack", () -> showExportFxPackDialog(editor, project.getFx()));
+            export.leaf("photon.export_fxpack", () -> showExportFxPackDialog(editor, project));
         });
         menu.leaf(Icons.IMPORT, "photon.convert_fx", () -> showConvertFxDialog(editor));
         menu.leaf(Icons.FOLDER, "photon.manage_fxpack", () -> showManageFxPackDialog(editor));
@@ -60,17 +63,21 @@ public final class FXFileActions {
 
     // ---- export ------------------------------------------------------------------------------------
 
-    private static void showExportFxDialog(Editor editor, FX fx) {
+    private static void showExportFxDialog(Editor editor, FXProject project) {
+        var fx = project.getFx();
         Dialog.showFileDialog("ldlib.gui.editor.tips.save_as", new File(LDLib2.getAssetsDir(), "%s/fx/".formatted(Photon.MOD_ID)), false,
                 Dialog.suffixFilter(FX.SUFFIX), file -> {
                     if (file == null || file.isDirectory()) return;
                     var target = withSuffix(file, FX.SUFFIX);
+                    var id = FXInstanceEditing.idOf(target);
+                    if (id != null && refuseCycle(editor, project, id)) return;
                     try {
                         var fileData = fx.serializeNBT(Platform.getFrozenRegistry());
                         // stamp the format version so FXHelper can run the datafixer on future loads
                         fileData.putInt("version", FXProject.VERSION);
                         NbtIo.writeCompressed(fileData, target.toPath());
                         FXHelper.clearCache();
+                        if (id != null) project.addKnownAs(id);
                     } catch (Exception e) {
                         Photon.LOGGER.error("Failed to export fx to {}", target, e);
                         showError(editor, "photon.export_fx", e);
@@ -78,7 +85,8 @@ public final class FXFileActions {
                 }).show(editor);
     }
 
-    private static void showExportFxPackDialog(Editor editor, FX fx) {
+    private static void showExportFxPackDialog(Editor editor, FXProject project) {
+        var fx = project.getFx();
         Dialog.showFileDialog("ldlib.gui.editor.tips.save_as", FXPacks.getFxPacksDir(), false,
                 Dialog.suffixFilter(FXPacks.SUFFIX), file -> {
                     if (file == null || file.isDirectory()) return;
@@ -87,14 +95,17 @@ public final class FXFileActions {
                     var projectFile = editor.getCurrentProjectFile();
                     var defaultName = projectFile != null ? baseName(projectFile, FXProject.TYPE.getSuffix()) : "effect";
                     Dialog.stringEditorDialog("photon.export_fxpack.fx_name", defaultName, null,
-                            name -> exportIntoFxPack(editor, fx, packFile, name)).show(editor);
+                            name -> exportIntoFxPack(editor, project, packFile, name)).show(editor);
                 }).show(editor);
     }
 
-    private static void exportIntoFxPack(Editor editor, FX fx, File packFile, String fxName) {
+    private static void exportIntoFxPack(Editor editor, FXProject project, File packFile, String fxName) {
+        var fx = project.getFx();
+        var namespace = baseName(packFile, FXPacks.SUFFIX);
+        var fxId = FXPackExporter.fxId(namespace, fxName);
+        if (refuseCycle(editor, project, fxId)) return;
         FXPackExporter.Result result;
         try {
-            var namespace = baseName(packFile, FXPacks.SUFFIX);
             result = FXPackExporter.exportInto(packFile, namespace, fxName, fx, Platform.getFrozenRegistry());
         } catch (Exception e) {
             Photon.LOGGER.error("Failed to export fx into {}", packFile, e);
@@ -102,6 +113,7 @@ public final class FXFileActions {
             return;
         }
         result.warnings().forEach(warning -> Photon.LOGGER.warn("fxpack export: {}", warning));
+        project.addKnownAs(result.fxId());
         Photon.LOGGER.info("Exported fx '{}' into {} ({} files)", result.fxId(), packFile, result.fileCount());
         Component message = Component.translatable("photon.fxpack.exported", result.fxId().toString(), packFile.getName());
         if (!result.warnings().isEmpty()) {
@@ -283,7 +295,53 @@ public final class FXFileActions {
                 : Component.translatable("photon.fxpack.failed", String.valueOf(e.getMessage())));
     }
 
-    private static void notify(Editor editor, String title, Component message) {
+    /**
+     * Whether exporting {@code project} as {@code id} would make one of its FX instances place it inside
+     * itself; if so the author is told through which effect.
+     */
+    private static boolean refuseCycle(Editor editor, FXProject project, ResourceLocation id) {
+        var through = cycleThrough(project, id);
+        if (through == null) return false;
+        notify(editor, "photon.fx_instance", Component.translatable("photon.fx_instance.export_cycle", id.toString(), through.toString()));
+        return true;
+    }
+
+    /** The effect through which {@code project} exported as {@code id} would place itself, or null. */
+    @Nullable
+    public static ResourceLocation cycleThrough(FXProject project, ResourceLocation id) {
+        for (var object : project.getFx().getFxData().objects()) {
+            if (!(object instanceof FXInstanceObject instance) || instance.getFx() == null) continue;
+            if (instance.getFx().equals(id)) return id;
+            for (var placed : FXInstances.templates().closure(instance.getFx())) {
+                if (placed.equals(id)) return instance.getFx();
+            }
+        }
+        return null;
+    }
+
+    /** Open the source of an FX instance: the {@code .fx} under the editor's assets folder, converted into a project. */
+    public static void openSource(Editor editor, @Nullable ResourceLocation fx) {
+        if (fx == null) return;
+        var file = new File(LDLib2.getAssetsDir(), fx.getNamespace() + "/fx/" + fx.getPath() + FX.SUFFIX);
+        if (!file.isFile()) {
+            notify(editor, "photon.fx_instance", Component.translatable("photon.fx_instance.open_source.elsewhere", fx.toString()));
+            return;
+        }
+        convertAndOpen(editor, file);
+    }
+
+    static void convertAndOpen(Editor editor, File file) {
+        pickProjectFile(editor, baseName(file, FX.SUFFIX), projectFile -> openConverted(editor, projectFile,
+                () -> FXProjectConverter.convertFile(file, projectFile)));
+    }
+
+    /** An {@code .fx} outside an assets folder's {@code <namespace>/fx/} has no id an effect can load it by. */
+    public static void notifyOutsideAssets(Editor editor, File file) {
+        notify(editor, "photon.fx_instance", Component.translatable(FXInstanceEditing.isUnderFxFolder(file)
+                ? "photon.fx_instance.add_file.invalid_named" : "photon.fx_instance.add_file.outside_named", file.getName()));
+    }
+
+    static void notify(Editor editor, String title, Component message) {
         var dialog = new Dialog();
         dialog.setTitle(title);
         dialog.addContent(wrappedLabel(message));

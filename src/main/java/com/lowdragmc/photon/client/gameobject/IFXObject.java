@@ -107,7 +107,7 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
      * ancestor is hidden.
      */
     default boolean isVisible() {
-        if (!isSelfVisible() || !isSelfTimelineVisible()) return false;
+        if (!isEnabled() || !isSelfVisible() || !isSelfTimelineVisible()) return false;
         var parent = transform().parent();
         if (parent != null && parent.sceneObject() instanceof IFXObject ifxObject) {
             return ifxObject.isVisible();
@@ -121,11 +121,19 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
      * to active for objects the timeline does not control.
      */
     default boolean isActive() {
-        if (!isSelfActive()) return false;
+        if (!isEnabled() || !isSelfActive()) return false;
         var parent = transform().parent();
         if (parent != null && parent.sceneObject() instanceof IFXObject ifxObject) {
             return ifxObject.isActive();
         }
+        return true;
+    }
+
+    /**
+     * The saved switch: off takes this object and everything under it out of the effect, whatever the
+     * timeline says. On by default.
+     */
+    default boolean isEnabled() {
         return true;
     }
 

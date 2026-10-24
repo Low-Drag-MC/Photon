@@ -6,8 +6,10 @@ import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.timeline.TimelinePlayer;
 import com.lowdragmc.photon.client.gameobject.EmptyFXObject;
+import com.lowdragmc.photon.client.gameobject.FXInstanceObject;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
+import lombok.AccessLevel;
 import lombok.Getter;
 import org.jetbrains.annotations.Nullable;
 
@@ -28,6 +30,10 @@ public class FXRuntime implements IScene {
     public final Map<UUID, IFXObject> objects = new LinkedHashMap<>();
     public final IFXObject root;
     public final TimelinePlayer timelinePlayer;
+    @Getter(AccessLevel.NONE)
+    private final List<FXInstanceObject> instances = new ArrayList<>();
+    @Getter(AccessLevel.NONE)
+    private boolean beginningInstances;
     /** Whether {@link #emit} ran (a runtime is never finished/valid before its first emit). */
     private boolean emitted = false;
     /** Whether {@link #destroy} ran (re-{@link #emit}ting revives the runtime, e.g. editor replay). */
@@ -103,16 +109,24 @@ public class FXRuntime implements IScene {
     public void addSceneObjectInternal(ISceneObject sceneObject) {
         if (sceneObject instanceof IFXObject fxObject) {
             var previous = objects.put(fxObject.id(), fxObject);
+            if (fxObject instanceof FXInstanceObject instance && !instances.contains(instance)) {
+                instances.add(instance);
+            }
             if (previous != null) {
                 if (previous != fxObject) {
                     Photon.LOGGER.warn("Duplicate fx runtime object id %s is replaced".formatted(fxObject.id()));
+                    if (previous instanceof FXInstanceObject replaced) {
+                        instances.remove(replaced);
+                        replaced.stopAudio();
+                    }
                 }
             }
             // while the timeline has future content, every object must stay in the particle engine:
             // the root to drive the clock, the rest so clips can reactivate/restart them (an empty
             // timeline is always finished, so the supplier is inert for legacy FX)
             if (fxObject instanceof FXObject object) {
-                object.setKeepAlive(() -> !timelinePlayer.isFinished());
+                // ... and an FX instance's timeline keeps what the instance placed, the same way
+                object.setKeepAlive(() -> !timelinePlayer.isFinished() || hasInstances() && FXInstanceObject.keepsAlive(object));
             }
         } else {
             throw new IllegalArgumentException("%s is not an instance of IFXObject".formatted(sceneObject));
@@ -123,6 +137,10 @@ public class FXRuntime implements IScene {
     public void removeSceneObjectInternal(ISceneObject sceneObject) {
         if (sceneObject instanceof IFXObject fxObject) {
             objects.remove(fxObject.id());
+            if (fxObject instanceof FXInstanceObject instance) {
+                instances.remove(instance);
+                instance.stopAudio();
+            }
         } else {
             throw new IllegalArgumentException("%s is not an instance of IFXObject".formatted(sceneObject));
         }
@@ -185,6 +203,47 @@ public class FXRuntime implements IScene {
             fxObject.setDelay(delay);
         }
         timelinePlayer.begin(effect);
+    }
+
+    /**
+     * Start the timeline of every FX instance that is active and has not started since its last reset, until
+     * none is left: starting one can activate another inside it. Re-entrant calls return at once.
+     */
+    public void beginActiveInstances(IEffectExecutor effect) {
+        if (instances.isEmpty() || beginningInstances) {
+            return;
+        }
+        beginningInstances = true;
+        try {
+            boolean started;
+            do {
+                started = false;
+                for (int i = 0; i < instances.size(); i++) {
+                    if (instances.get(i).beginIfActive(effect)) {
+                        started = true;
+                    }
+                }
+            } while (started);
+        } finally {
+            beginningInstances = false;
+        }
+    }
+
+    public boolean hasInstances() {
+        return !instances.isEmpty();
+    }
+
+    /** Whether an FX instance's timeline is still playing, which outlasts this runtime's own. */
+    public boolean hasRunningInstanceTimeline() {
+        for (var instance : instances) {
+            if (instance.isTimelinePlaying()) return true;
+        }
+        return false;
+    }
+
+    /** Silence what the FX instances' timelines play, which only their own evaluations would stop. */
+    public void stopInstanceAudio() {
+        instances.forEach(FXInstanceObject::stopAudio);
     }
 
     /** @deprecated typo; use {@link #emit(IEffectExecutor)}. */

@@ -1,8 +1,9 @@
 package com.lowdragmc.photon.gui.editor.view;
 
 import com.lowdragmc.lowdraglib2.configurator.EditAction;
-import com.lowdragmc.lowdraglib2.editor.ui.View;
 import com.lowdragmc.lowdraglib2.editor.ClipboardManager;
+import com.lowdragmc.lowdraglib2.editor.ui.View;
+import com.lowdragmc.lowdraglib2.editor.ui.browser.AssetBrowser;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
 import com.lowdragmc.lowdraglib2.gui.ColorPattern;
 import com.lowdragmc.lowdraglib2.gui.texture.DynamicTexture;
@@ -11,20 +12,27 @@ import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.TextWrap;
 import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.*;
+import com.lowdragmc.lowdraglib2.gui.ui.event.CommandEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvent;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.gui.ui.event.CommandEvents;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.photon.PhotonRegistries;
+import com.lowdragmc.photon.client.PhotonIcons;
+import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.client.fx.FXData;
 import com.lowdragmc.photon.client.fx.FXRuntime;
+import com.lowdragmc.photon.client.gameobject.FXInstanceObject;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.FXEditor;
+import com.lowdragmc.photon.gui.editor.FXFileActions;
+import com.lowdragmc.photon.gui.editor.FXInstanceEditing;
+import com.lowdragmc.photon.gui.editor.FXInstanceInspector;
+import com.lowdragmc.photon.gui.editor.FXInstanceStyle;
 import com.lowdragmc.photon.gui.editor.FXObjectClipboard;
+import dev.vfyjxf.taffy.style.FlexDirection;
 import lombok.Getter;
 import net.minecraft.network.chat.Component;
-import dev.vfyjxf.taffy.style.FlexDirection;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -60,6 +68,11 @@ public class FXHierarchyView extends View {
         });
         this.addChild(this.scrollerView);
         scrollerView.addEventListener(UIEvents.MOUSE_DOWN, this::onMouseDown, true);
+        addEventListener(UIEvents.DRAG_PERFORM, e -> {
+            if (runtime != null && dropFx(e.dragHandler.getDraggingObject(), runtime.root.transform())) {
+                e.stopPropagation();
+            }
+        });
         scrollerView.addScrollViewChild(treeList
                 .setSupportMultipleSelection(true)
                 .setDraggable(true)
@@ -69,10 +82,19 @@ public class FXHierarchyView extends View {
                     if (req.mode() != TreeList.DropMode.INTO && target.parent() == null) {
                         return false;
                     }
+                    var instances = fxEditor.instances;
+                    // among what an instance placed only its source decides the order (Unity: "Cannot restructure Prefab instance")
+                    if (req.mode() != TreeList.DropMode.INTO
+                            && instances.role(req.target().getKey()) == FXInstanceEditing.Role.PLACED) {
+                        return false;
+                    }
                     for (var dragged : req.dragged()) {
                         var toMoved = dragged.getKey().transform();
                         // can't drop onto self, nor into a node's own subtree
                         if (toMoved == target || target.isInheritedParent(toMoved)) {
+                            return false;
+                        }
+                        if (instances.role(dragged.getKey()) == FXInstanceEditing.Role.PLACED) {
                             return false;
                         }
                     }
@@ -98,9 +120,9 @@ public class FXHierarchyView extends View {
                         layout.heightPercent(100.0F);
                         layout.flex(1.0F);
                     }).setOverflowVisible(false).addEventListener(UIEvents.TICK, e -> {
-                        label.setText(Component.literal(node.getKey().getName()));
+                        label.setText(Component.literal(rowText(node.getKey())));
                     }).addEventListener(UIEvents.TICK, e -> {
-                        label.getTextStyle().textColor(node.getKey().isVisible() ? ColorPattern.WHITE.color : ColorPattern.LIGHT_GRAY.color);
+                        label.getTextStyle().textColor(rowColor(node.getKey()));
                     });
                     return container.addChildren(icon, label);
                 })
@@ -125,6 +147,11 @@ public class FXHierarchyView extends View {
                         layout.height(7);
                     });
                     nodeUI.addChildAt(eyeButton, 0);
+                    nodeUI.addEventListener(UIEvents.DRAG_PERFORM, e -> {
+                        if (dropFx(e.dragHandler.getDraggingObject(), node.getKey().transform())) {
+                            e.stopPropagation();
+                        }
+                    });
                     nodeUI.addEventListener(UIEvents.MOUSE_UP, e -> {
                         if (e.button != 0) {
                             return;
@@ -139,7 +166,8 @@ public class FXHierarchyView extends View {
                                 // building a multi-selection: the single-object inspector doesn't apply
                                 fxEditor.inspectorView.clear();
                             } else if (fxEditor.inspectorView.inspector.getInspectedConfigurable() != fxObject) {
-                                fxEditor.inspectorView.inspect(fxObject, null, this::onNodeInspectorClosed);
+                                var group = fxEditor.inspectorView.inspect(fxObject, null, this::onNodeInspectorClosed);
+                                FXInstanceInspector.decorate(fxEditor, group, fxObject);
                                 fxEditor.sceneView.sceneEditor.setTransformGizmoTarget(fxObject.transform(), () ->
                                         fxEditor.historyView.recordSerializableObject(
                                                 Component.translatable("photon.transform"), fxObject.transform(), fxObject));
@@ -274,6 +302,8 @@ public class FXHierarchyView extends View {
             // add fx objects
             menu.branch(Icons.ADD_FILE, "ldlib.gui.editor.menu.new", m -> {
                 for (var fx : PhotonRegistries.FX_OBJECTS) {
+                    // an instance is nothing without the effect it places: added below, picking one
+                    if (fx == FXInstanceObject.TYPE) continue;
                     m.leaf(fx.icon(), fx.name(), thenFocus(() -> {
                         var fxObject = fx.create();
                         var father = treeList.getSelected().stream().findFirst()
@@ -295,8 +325,23 @@ public class FXHierarchyView extends View {
                     }));
                 }
             });
+            // opens a dialog, which taking the focus back would close
+            menu.leaf(PhotonIcons.FX_FILE, "photon.fx_instance.add", () -> {
+                var father = treeList.getSelected().stream().findFirst()
+                        .map(FXObjectTreeNode::getKey)
+                        .map(ISceneObject::transform)
+                        .map(Transform::parent)
+                        .orElse(runtime.getRoot().transform());
+                FXInstanceStyle.pickFx(fxEditor, fx -> {
+                    var created = fxEditor.instances.create(fx, father);
+                    if (created != null) select(List.of(created));
+                });
+            });
         }
         var selected = treeList.getSelected();
+        if (selected.size() == 1) {
+            appendInstanceMenu(menu, selected.iterator().next().getKey());
+        }
         if (isSelectedNodeValid(selected)) {
             menu.leaf(Icons.REMOVE_FILE, "ldlib.gui.editor.menu.remove", thenFocus(() -> {
                 var nodes = treeList.getSelected();
@@ -373,7 +418,7 @@ public class FXHierarchyView extends View {
                 || !(ClipboardManager.INSTANCE.paste() instanceof FXObjectClipboard clipboard)) return false;
         var parents = treeList.getSelected().stream().map(node -> node.getKey().transform().parent()).distinct().toList();
         var parent = parents.size() == 1 && parents.getFirst() != null ? parents.getFirst() : runtime.root.transform();
-        paste(runtime, clipboard.instantiate(original -> parent.id()), "photon.paste_fx_object");
+        paste(runtime, clipboard.instantiate(original -> parent.id(), fxEditor.instances.knownAs()), "photon.paste_fx_object");
         return true;
     }
 
@@ -383,7 +428,7 @@ public class FXHierarchyView extends View {
         if (runtime == null || roots.isEmpty()) return false;
         var rootId = runtime.root.id();
         var duplicated = new FXObjectClipboard(roots, runtime.fxData.timeline())
-                .instantiate(original -> original == null ? rootId : original);
+                .instantiate(original -> original == null ? rootId : original, fxEditor.instances.knownAs());
         paste(runtime, duplicated, "photon.duplicate_fx_object");
         return true;
     }
@@ -409,11 +454,13 @@ public class FXHierarchyView extends View {
         objects.forEach(object -> ids.add(object.id()));
         var roots = objects.stream().filter(object -> !ids.contains(object.transform()._getInternalParentID())).toList();
         var tracks = runtime.fxData.timeline().tracks();
+        fxEditor.instances.reportCycles(pasted);
         fxEditor.historyView.pushHistory(Component.translatable(historyKey), EditAction.of(
                 () -> {
                     objects.forEach(this::addSceneObject);
                     objects.forEach(object -> object.transform().rebuildChildOrder());
                     tracks.addAll(pasted.timeline().tracks());
+                    fxEditor.instances.changed();
                     fxEditor.timelineView.rebuild();
                     fxEditor.reloadEffect();
                     select(roots);
@@ -421,6 +468,7 @@ public class FXHierarchyView extends View {
                 () -> {
                     objects.reversed().forEach(this::removeSceneObject);
                     tracks.removeAll(pasted.timeline().tracks());
+                    fxEditor.instances.changed();
                     fxEditor.timelineView.rebuild();
                     fxEditor.reloadEffect();
                 }));
@@ -470,5 +518,65 @@ public class FXHierarchyView extends View {
         });
         fxEditor.sceneView.fxObjectInfoView.clear();
         runtime.removeSceneObject(fxObject);
+    }
+
+    // ---- FX instances --------------------------------------------------------------------------------
+
+    private String rowText(IFXObject object) {
+        return fxEditor.instances.isAddedTop(object) ? "+ " + object.getName() : object.getName();
+    }
+
+    private int rowColor(IFXObject object) {
+        if (!object.isVisible()) return ColorPattern.LIGHT_GRAY.color;
+        return switch (fxEditor.instances.role(object)) {
+            case INSTANCE, PLACED -> FXInstanceStyle.PLACED_COLOR;
+            case MISSING -> FXInstanceStyle.MISSING_COLOR;
+            default -> ColorPattern.WHITE.color;
+        };
+    }
+
+    /** Places every {@code .fx} the drag carries under {@code parent}; whether it carried any. */
+    private boolean dropFx(@Nullable Object payload, Transform parent) {
+        if (runtime == null || !(payload instanceof AssetBrowser.DraggedAssets assets)) return false;
+        var any = false;
+        IFXObject last = null;
+        for (var file : assets.files()) {
+            if (!file.getName().endsWith(FX.SUFFIX)) continue;
+            any = true;
+            var id = FXInstanceEditing.idOf(file);
+            if (id == null) {
+                FXFileActions.notifyOutsideAssets(fxEditor, file);
+                continue;
+            }
+            var created = fxEditor.instances.create(id, parent);
+            if (created != null) last = created;
+        }
+        if (last != null) select(List.of(last));
+        return any;
+    }
+
+    private void appendInstanceMenu(TreeBuilder.Menu menu, IFXObject object) {
+        var instances = fxEditor.instances;
+        switch (instances.role(object)) {
+            case INSTANCE, MISSING -> {
+                menu.crossLine();
+                menu.branch(PhotonIcons.FX_FILE, "photon.fx_instance", m -> FXInstanceInspector.instanceActions(fxEditor,
+                        (FXInstanceObject) object, m, this::thenFocus));
+            }
+            case PLACED -> {
+                menu.crossLine();
+                if (instances.isOverridden(object)) {
+                    menu.leaf(Icons.REPLAY, "photon.fx_instance.revert_object", thenFocus(() -> instances.revertObject(object)));
+                } else {
+                    menu.disabledLeaf("photon.fx_instance.revert_object");
+                }
+            }
+            default -> {
+            }
+        }
+        if (runtime != null && object != runtime.root) {
+            menu.leaf(object.isEnabled() ? "photon.fx_instance.disable" : "photon.fx_instance.enable",
+                    thenFocus(() -> instances.setEnabled(object, !object.isEnabled())));
+        }
     }
 }

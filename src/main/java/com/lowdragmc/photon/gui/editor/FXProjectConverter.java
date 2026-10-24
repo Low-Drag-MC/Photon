@@ -60,7 +60,7 @@ public final class FXProjectConverter {
         try (var in = Files.newInputStream(fxFile.toPath())) {
             tag = NbtIo.readCompressed(in, NbtAccounter.unlimitedHeap());
         }
-        return convert(tag, projectFile, FXProjectConverter::readLoaded);
+        return convert(tag, projectFile, FXProjectConverter::readLoaded, FXInstanceEditing.idOf(fxFile));
     }
 
     /** Converts one fx of a pack file and saves the project, reading only the file itself, mounted or not. */
@@ -73,11 +73,13 @@ public final class FXProjectConverter {
             return convert(tag, projectFile, location -> {
                 var entry = FXPacks.entryPath(zip, location);
                 return Files.isRegularFile(entry) ? Files.readAllBytes(entry) : null;
-            });
+            }, fxId);
         }
     }
 
-    private static Result convert(CompoundTag fxTag, File projectFile, LibrarySource source) throws Exception {
+    /** @param knownAs the id the effect was loaded by, so the project knows an FX instance leading back to it is a cycle */
+    private static Result convert(CompoundTag fxTag, File projectFile, LibrarySource source,
+                                  @Nullable ResourceLocation knownAs) throws Exception {
         var tag = FXHelper.applyVersionFixes(fxTag);
         var unpacker = new Unpacker(source, resourceDirectory(projectFile));
         if (tag.contains("resources", Tag.TAG_COMPOUND)) {
@@ -88,7 +90,8 @@ public final class FXProjectConverter {
         tag.remove("resources");
         unpacker.rewrite(tag);
         var project = new FXProject();
-        project.getFx().deserializeNBT(Platform.getFrozenRegistry(), tag);
+        if (knownAs != null) project.addKnownAs(knownAs);
+        project.getFx().deserializeNBT(Platform.getFrozenRegistry(), tag, project.getKnownAs());
         // what opening it does anyway (FXRuntime parents every object whose parent it can't find to its root):
         // saved without it, a definition that never was in the editor reads as modified once it is opened
         var objects = project.getFx().getFxData().objects();

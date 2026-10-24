@@ -10,6 +10,8 @@ import net.neoforged.neoforge.common.util.INBTSerializable;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.Collection;
+import java.util.List;
 
 /**
  * An FX definition: the authored object tree + timeline, as saved by the editor / a {@code .fx} file.
@@ -41,7 +43,12 @@ public class FX implements INBTSerializable<CompoundTag> {
 
     @Override
     public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
-        fxData.deserializeNBT(provider, tag.getCompound("fxData"));
+        deserializeNBT(provider, tag, fxLocation == null ? List.of() : List.of(fxLocation));
+    }
+
+    /** @param as the ids this effect is known by, so an FX instance that leads back to one of them is a cycle */
+    public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag, Collection<ResourceLocation> as) {
+        fxData.deserializeNBT(provider, tag.getCompound("fxData"), as);
     }
 
     /**
