@@ -71,6 +71,10 @@ public class PhotonConfig {
     public final ModConfigSpec.ConfigValue<Integer> volumetricSamples;
     public final ModConfigSpec.ConfigValue<Boolean> volumetricWithShaderPacks;
 
+    /** Off = collision-enabled emitters always update serially (for mods whose blocks break when read off-thread). */
+    public final ModConfigSpec.ConfigValue<Boolean> collisionParallel;
+    public final ModConfigSpec.ConfigValue<Integer> collisionSectionCacheLimit;
+
     private PhotonConfig(ModConfigSpec.Builder builder) {
         enableBloom = builder.define("enable_bloom", true);
         bloomMipLevel = builder.defineInRange("bloom_mip_level", 5, 2, 10);
@@ -116,6 +120,16 @@ public class PhotonConfig {
         volumetricSamples = light(builder, "volumetric_samples").defineInRange("volumetric_samples", 4, 1, 16);
         volumetricWithShaderPacks = light(builder, "volumetric_with_shader_packs").define("volumetric_with_shader_packs", true);
         builder.pop();
+
+        builder.push("collision");
+        collisionParallel = collision(builder, "parallel").define("parallel", true);
+        collisionSectionCacheLimit = collision(builder, "section_cache_limit")
+                .defineInRange("section_cache_limit", 4096, 64, 16384);
+        builder.pop();
+    }
+
+    private static ModConfigSpec.Builder collision(ModConfigSpec.Builder builder, String key) {
+        return builder.translation("photon.configuration.collision." + key);
     }
 
     // the screen derives value keys from the leaf name alone, which other sections may reuse

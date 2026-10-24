@@ -95,7 +95,7 @@ public class DynamicLightBenchScenario implements UIScenario {
                     // 26.1 throttles to 30 FPS after a minute without input, which a long run reaches by this point
                     LightTestConfig.set(options.inactivityFpsLimit(), InactivityFpsLimit.MINIMIZED);
                     ctx.mc().getWindow().updateVsync(false);
-                    options.hideGui = true;
+                    HiddenGui.hide(ctx.mc());
                     LightDemoScene.frozenSeconds = 3f;
                     ROWS.clear();
                     COLD.clear();
@@ -137,7 +137,7 @@ public class DynamicLightBenchScenario implements UIScenario {
             options.framerateLimit().set(restore[0] == 0 ? 120 : restore[0]);
             options.enableVsync().set(restore[1] == 1);
             ctx.mc().getWindow().updateVsync(restore[1] == 1);
-            options.hideGui = false;
+            HiddenGui.restore(ctx.mc());
             LightTestConfig.restore();
             LightPassTimer.recording = false;
             LightDemoScene.stopLights();
@@ -183,7 +183,7 @@ public class DynamicLightBenchScenario implements UIScenario {
         @Override
         public void define(ScenarioBuilder s) {
             s.step("pin the lights", ctx -> {
-                        ctx.mc().options.hideGui = true;
+                        HiddenGui.hide(ctx.mc());
                         LightDemoScene.frozenSeconds = 3f;
                         COLD.clear();
                     })
@@ -201,7 +201,7 @@ public class DynamicLightBenchScenario implements UIScenario {
             coldBuild(s);
             s.teardownServer("put the world back", sc -> LightSite.release(sc.player()));
             s.teardown("restore", ctx -> {
-                ctx.mc().options.hideGui = false;
+                HiddenGui.restore(ctx.mc());
                 LightTestConfig.restore();
                 LightDemoScene.stopLights();
             });

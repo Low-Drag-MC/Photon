@@ -34,7 +34,7 @@ import java.util.function.Supplier;
  * Objects not referenced by any track are left untouched (default active + visible).
  */
 public class TimelinePlayer {
-    private final FXRuntime runtime;
+    protected final FXRuntime runtime;
     private final Timeline timeline;
     /** Per-object previously-active control clip, used to detect restart (enter/switch) transitions. */
     private final Map<UUID, Clip> lastControlClip = new HashMap<>();
@@ -42,8 +42,10 @@ public class TimelinePlayer {
     private final Set<UUID> lastControlled = new HashSet<>();
     /** Objects speed-controlled on the previous evaluation, to revert ones that stop (back to speed 1). */
     private final Set<UUID> lastSpeedControlled = new HashSet<>();
+    /** Animated property keys per object on the previous evaluation, for {@link #animates}. */
+    private final Map<UUID, Set<String>> lastAnimated = new HashMap<>();
     @Nullable
-    private IEffectExecutor effect;
+    protected IEffectExecutor effect;
     /**
      * The master clock, in ticks. <b>Fractional</b>, because a playback can run at a rate other
      * than 1 ({@link FXRuntime#setRate}); every track samples at a {@code double} time already.
@@ -81,6 +83,14 @@ public class TimelinePlayer {
         return timeline.isEmpty();
     }
 
+    public FXRuntime runtime() {
+        return runtime;
+    }
+
+    public double localTime() {
+        return localTime;
+    }
+
     /** Called from {@code FXRuntime.emit} after all objects are emitted; resets the clock. */
     public void begin(IEffectExecutor effect) {
         this.effect = effect;
@@ -91,6 +101,7 @@ public class TimelinePlayer {
         this.lastControlClip.clear();
         this.lastControlled.clear();
         this.lastSpeedControlled.clear();
+        this.lastAnimated.clear();
         stopAllAudio();
         // apply the t=0 state before any object ticks (avoids a one-tick artifact)
         evaluate(0);
@@ -148,7 +159,7 @@ public class TimelinePlayer {
         // post effects are per-render-frame requests (stop submitting = effect stops next frame);
         // they keep applying in record mode — recording only freezes transform animation
         applyPostProcess(lastEvalTime + partialTicks);
-        if (recording) return; // keep the user's live edits to the recording target
+        if (recording()) return; // keep the user's live edits to the recording target
         applyAnimations(lastEvalTime + partialTicks);
     }
 
@@ -182,7 +193,10 @@ public class TimelinePlayer {
     public void setAudioDispatch(boolean audioEnabled) {
         if (this.audioEnabled == audioEnabled) return;
         this.audioEnabled = audioEnabled;
-        if (!audioEnabled) stopAllAudio();
+        if (!audioEnabled) {
+            stopAllAudio();
+            runtime.stopInstanceAudio();
+        }
     }
 
     /** Editor-only: force non-positional playback so 3D clips are still audible in the preview. */
@@ -197,8 +211,7 @@ public class TimelinePlayer {
         // revert objects that are no longer controlled (e.g. their track/clip was deleted)
         for (var id : lastControlled) {
             if (!controlled.contains(id) && runtime.objects.get(id) instanceof FXObject object) {
-                object.setSelfActive(true);
-                object.setSelfTimelineVisible(true);
+                release(object);
                 lastControlClip.remove(id);
             }
         }
@@ -247,14 +260,17 @@ public class TimelinePlayer {
             }
 
             var state = TimelineState.resolve(hasActivator, activatorActive, hasControl, controlClip != null);
-            object.setSelfActive(state.tick());
-            object.setSelfTimelineVisible(state.render());
+            gate(object, state.tick(), state.render());
         }
 
         applyAnimations(time);
         applySpeed(leaves, time);
         dispatchSignals(leaves, time);
         applyAudio(leaves, time);
+        // an FX instance this evaluation activated starts its own timeline before anything under it ticks
+        if (effect != null) {
+            runtime.beginActiveInstances(effect);
+        }
     }
 
     /**
@@ -264,7 +280,7 @@ public class TimelinePlayer {
      * the clip end, a longer clip loops (the sound engine handles the looping).
      */
     private void applyAudio(List<Track> leaves, double time) {
-        if (!audioEnabled) {
+        if (!audioDispatch()) {
             stopAllAudio();
             return;
         }
@@ -320,7 +336,7 @@ public class TimelinePlayer {
      */
     @Nullable
     private Supplier<Vector3f> attenuatedSupplier(AudioTrack track, AudioClip clip) {
-        if (editorPreview || !clip.attenuation() || track.targetId() == null) {
+        if (editorPreview() || !clip.attenuation() || track.targetId() == null) {
             return null;
         }
         var id = track.targetId();
@@ -349,14 +365,14 @@ public class TimelinePlayer {
         for (var track : leaves) {
             if (track.mute() || !(track instanceof SpeedTrack speed)) continue;
             var id = speed.targetId();
-            if (id != null && runtime.objects.get(id) instanceof FXObject target) {
-                target.setSelfTimeScale(speed.sampleSpeed(time));
+            if (id != null && drivesSpeedOf(id) && runtime.objects.get(id) instanceof FXObject target) {
+                speed(target, speed.sampleSpeed(time));
                 controlled.add(id);
             }
         }
         for (var id : lastSpeedControlled) {
-            if (!controlled.contains(id) && runtime.objects.get(id) instanceof FXObject target) {
-                target.setSelfTimeScale(1f);
+            if (!controlled.contains(id) && drivesSpeedOf(id) && runtime.objects.get(id) instanceof FXObject target) {
+                speed(target, 1f);
             }
         }
         lastSpeedControlled.clear();
@@ -369,7 +385,7 @@ public class TimelinePlayer {
      * any double-fire (the {@code evaluate(0)} repeat, or a replay seek).
      */
     private void dispatchSignals(List<Track> leaves, double time) {
-        if (!dispatchSignals || time <= lastSignalTick) return;
+        if (!signalDispatch() || time <= lastSignalTick) return;
         for (var track : leaves) {
             if (track.mute() || !(track instanceof SignalTrack signalTrack)) continue;
             var channel = signalTrack.displayName();
@@ -389,6 +405,9 @@ public class TimelinePlayer {
      * not gate active/visible, so it is a separate pass from {@link #controlledObjectIds(List)} ()}.
      */
     private void applyAnimations(double time) {
+        // only FX instances' players ask; cleared in place, as the same objects are animated frame after frame
+        var tracked = runtime.hasInstances();
+        if (tracked) lastAnimated.values().forEach(Set::clear);
         for (var track : timeline.leafTracks(false)) {
             // SpeedTrack is an AnimationTrack subclass but drives timeScale (see applySpeed), not transform
             if (track.mute() || !(track instanceof AnimationTrack animation) || track instanceof SpeedTrack) {
@@ -396,19 +415,27 @@ public class TimelinePlayer {
             }
             var id = animation.targetId();
             if (id != null && runtime.objects.get(id) instanceof FXObject target) {
-                animation.sampleInto(target, time);
+                for (var property : animation.properties()) {
+                    var key = property.type().key();
+                    if (drivesProperty(id, key)) {
+                        property.apply(target, time);
+                        if (tracked) lastAnimated.computeIfAbsent(id, k -> new HashSet<>()).add(key);
+                    }
+                }
             }
         }
     }
 
-    private void restart(FXObject object, Clip clip) {
-        // restart the whole subtree so a control clip bound to a parent (e.g. an empty) also
-        // restarts its children from age 0 (not just the bound object itself).
+    /**
+     * Restart {@code object} for a control clip: the whole subtree from age 0, so a clip bound to a parent
+     * (e.g. an empty) also restarts its children. An FX instance in it starts its timeline again from 0 once active.
+     */
+    protected void restart(FXObject object, Clip clip) {
         var seed = effect != null && clip.randomSeed() ? effect.getRandomSource().nextLong() : clip.seed();
         resetSubtree(object, seed);
     }
 
-    private void resetSubtree(FXObject object, long seed) {
+    protected void resetSubtree(FXObject object, long seed) {
         object.reset();
         if (effect != null) {
             object.setRandomSeed(seed);
@@ -421,7 +448,7 @@ public class TimelinePlayer {
     }
 
     /** Union of all objects referenced by activator track targets and control clip targets. */
-    private Set<UUID> controlledObjectIds(List<Track> leaves) {
+    protected Set<UUID> controlledObjectIds(List<Track> leaves) {
         var ids = new HashSet<UUID>();
         for (var track : leaves) {
             if (track.mute()) {
@@ -440,5 +467,60 @@ public class TimelinePlayer {
             }
         }
         return ids;
+    }
+
+    // ---- what this player writes; a nested player overrides these ----
+
+    protected void gate(FXObject object, boolean tick, boolean render) {
+        object.setSelfActive(tick);
+        object.setSelfTimelineVisible(render);
+    }
+
+    /** An object this player stopped gating goes back to active and visible. */
+    protected void release(FXObject object) {
+        gate(object, true, true);
+    }
+
+    protected void speed(FXObject object, float speed) {
+        object.setSelfTimeScale(speed);
+    }
+
+    protected boolean drivesSpeedOf(UUID id) {
+        return true;
+    }
+
+    protected boolean drivesProperty(UUID id, String key) {
+        return true;
+    }
+
+    protected boolean signalDispatch() {
+        return dispatchSignals;
+    }
+
+    protected boolean audioDispatch() {
+        return audioEnabled;
+    }
+
+    protected boolean editorPreview() {
+        return editorPreview;
+    }
+
+    protected boolean recording() {
+        return recording;
+    }
+
+    // ---- what this player drove on its last evaluation, so a nested player can give way ----
+
+    public boolean gates(UUID id) {
+        return lastControlled.contains(id);
+    }
+
+    public boolean speeds(UUID id) {
+        return lastSpeedControlled.contains(id);
+    }
+
+    public boolean animates(UUID id, String key) {
+        var keys = lastAnimated.get(id);
+        return keys != null && keys.contains(key);
     }
 }

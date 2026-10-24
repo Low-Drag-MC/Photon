@@ -49,6 +49,10 @@ public class ShapeSetting implements IConfigurable, IPersistedSerializable {
     @NumberFunction3Config(allowSeperated = false, isSeperatedDefault = true, common = @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, min = 0, max = 1000, curveConfig = @CurveConfig(bound = {0, 3}, xAxis = "duration", yAxis = "scale")))
     private NumberFunction3 scale = new NumberFunction3(1, 1, 1);
 
+    /** Not @Configurable: its group is added by hand after the shape selector. */
+    @Persisted(subPersisted = true)
+    private final GroundSnapSetting groundSnap = new GroundSnapSetting();
+
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         IConfigurable.super.buildConfigurator(father);
@@ -56,6 +60,10 @@ public class ShapeSetting implements IConfigurable, IPersistedSerializable {
                 "Shape", () -> shape.name(), name -> shape = PhotonRegistries.SHAPES.get(name).value().get(),
                 "Sphere", true, PhotonRegistries.SHAPES.keys().stream().toList(),
                 s -> s, (shapeName, group) -> shape.buildConfigurator(group)));
+        var snap = new ConfiguratorGroup("ShapeSetting.groundSnap", true);
+        snap.setTips("photon.emitter.config.shape.groundSnap");
+        groundSnap.buildConfigurator(snap);
+        father.addConfigurator(snap);
     }
 
     public Runtime createRuntime() {
@@ -81,6 +89,13 @@ public class ShapeSetting implements IConfigurable, IPersistedSerializable {
                     position.get().get(t, () -> emitter.getMemRandom("shape_position")),
                     new Vector3f(rotation.get().get(t, () -> emitter.getMemRandom("shape_rotation")).mul(Mth.TWO_PI / 360)),
                     new Vector3f(scale.get().get(t, () -> emitter.getMemRandom("shape_scale"))));
+        }
+
+        /** Drop a freshly set-up particle onto the ground, when the shape asks for it. */
+        public void snapToGround(TileParticle particle, IParticleEmitter emitter) {
+            if (config.groundSnap.isEnable()) {
+                config.groundSnap.snap(particle, emitter);
+            }
         }
 
         public void drawGuideLines(MultiBufferSource bufferSource, float partialTicks, IParticleEmitter emitter) {

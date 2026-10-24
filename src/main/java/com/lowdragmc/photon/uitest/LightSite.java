@@ -3,13 +3,14 @@ package com.lowdragmc.photon.uitest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Relative;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Set;
 
 /**
  * Where the light scenarios build the demo scene, and how they put the world back. ⚠️ The scene wipes a
- * box, sets a clear midnight and stops the daylight cycle: left at the player's feet, every later scenario
+ * box, sets a clear midnight, stops the daylight cycle and random ticks: left at the player's feet, every later scenario
  * in the run renders a different world (soft_particle failed on exactly that).
  */
 final class LightSite {
@@ -22,6 +23,7 @@ final class LightSite {
     private static boolean daylight;
     private static int clearTime, rainTime;
     private static boolean raining, thundering;
+    private static int randomTickSpeed;
 
     private LightSite() {
     }
@@ -44,7 +46,10 @@ final class LightSite {
             rainTime = weather.getRainTime();
             raining = weather.isRaining();
             thundering = weather.isThundering();
+            randomTickSpeed = level.getGameRules().get(GameRules.RANDOM_TICK_SPEED);
         }
+        // blocks stay what the scene built: grass under a slab, say, would turn to dirt within the run
+        player.level().getGameRules().set(GameRules.RANDOM_TICK_SPEED, 0, player.level().getServer());
         NoMobs.claim(player);
         return BlockPos.containing(home).below().offset(OFFSET, 0, 0);
     }
@@ -57,6 +62,7 @@ final class LightSite {
         if (dayTime != null) TestClock.set(level, dayTime);
         server.setWeatherParameters(clearTime, rainTime, raining, thundering);
         TestClock.setAdvancing(level, daylight);
+        level.getGameRules().set(GameRules.RANDOM_TICK_SPEED, randomTickSpeed, server);
         NoMobs.release(player);
         player.getAbilities().flying = flying;
         player.onUpdateAbilities();

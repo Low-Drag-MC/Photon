@@ -213,7 +213,7 @@ public class DynamicLightVolumetricBenchScenario implements UIScenario {
                     // 26.1 throttles to 30 FPS after a minute without input, which a long run reaches by this point
                     LightTestConfig.set(options.inactivityFpsLimit(), InactivityFpsLimit.MINIMIZED);
                     ctx.mc().getWindow().updateVsync(false);
-                    options.hideGui = true;
+                    HiddenGui.hide(ctx.mc());
                     LightTestConfig.set(options.fov(), 70);
                     LightDemoScene.frozenSeconds = 3f;
                     TABLES.clear();
@@ -260,7 +260,7 @@ public class DynamicLightVolumetricBenchScenario implements UIScenario {
             options.framerateLimit().set(restore[0] == 0 ? 120 : restore[0]);
             options.enableVsync().set(restore[1] == 1);
             ctx.mc().getWindow().updateVsync(restore[1] == 1);
-            options.hideGui = false;
+            HiddenGui.restore(ctx.mc());
             PhotonLights.removeProvider(PROVIDER);
             PhotonLights.removeFogProvider(FOG_PROVIDER);
             LIGHTS.clear();

@@ -1,16 +1,9 @@
 package com.lowdragmc.photon.client.gameobject.light;
 
-import com.lowdragmc.lowdraglib2.client.utils.RenderBufferUtils;
-import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.FXObject;
-import com.mojang.blaze3d.pipeline.DepthStencilState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.CompareOp;
+import com.lowdragmc.photon.client.render.PhotonGizmoLines;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.rendertype.RenderSetup;
-import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.world.level.Level;
 import org.joml.Vector3f;
 import oshi.util.tuples.Pair;
@@ -111,19 +104,10 @@ public abstract class LifetimeFXObject extends FXObject {
         return looping() ? (time % lifetime) / lifetime : Math.min(time / lifetime, 1f);
     }
 
-    /** Lines drawn over the scene (no depth test): a light's reach shows through walls. 26.1's line types all
-     *  depth-test. */
-    private static final RenderType GIZMO_LINES = RenderType.create("photon_gizmo_lines",
-            RenderSetup.builder(RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
-                    .withLocation(Photon.id("pipeline/gizmo_lines"))
-                    .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
-                    .build()).createRenderSetup());
-
-    /** Editor gizmo lines in the object's space, drawn over the scene. */
+    /** Editor gizmo lines in the object's space, drawn over the scene: a light's reach shows through walls. */
     protected void drawGizmo(MultiBufferSource bufferSource, List<Pair<Vector3f, Vector3f>> edges, int color) {
-        if (edges.isEmpty()) return;
         var poseStack = new PoseStack();
         poseStack.mulPose(transform().localToWorldMatrix());
-        RenderBufferUtils.drawEdges(poseStack, bufferSource.getBuffer(GIZMO_LINES), edges, color, 5);
+        PhotonGizmoLines.draw(poseStack, bufferSource, edges, color, 5);
     }
 }

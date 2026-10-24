@@ -39,6 +39,7 @@ import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.fx.timeline.TrackGroup;
 import com.lowdragmc.photon.client.fx.timeline.property.ColorAnimatedProperty;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigAnimatedProperty;
+import com.lowdragmc.photon.client.gameobject.FXInstanceObject;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
@@ -1603,6 +1604,10 @@ public class FXTimelineView extends View implements TimelineContext {
 
     private int subtreeLifetime(FXObject object) {
         var max = object instanceof Emitter emitter ? Math.max(0, emitter.getStartDelay() + emitter.getLifetime()) : 0;
+        // an instance plays its source's timeline once started, so a clip that restarts it should hold all of it
+        if (object instanceof FXInstanceObject instance) {
+            max = Math.max(max, (int) Math.ceil(instance.getTimeline().getDuration()));
+        }
         for (var child : object.transform().children()) {
             if (child.sceneObject() instanceof FXObject childObject) {
                 max = Math.max(max, subtreeLifetime(childObject));
@@ -1727,7 +1732,7 @@ public class FXTimelineView extends View implements TimelineContext {
         var pm = fxEditor.sceneView.particleManager;
         boolean ended;
         if (endMode == EndMode.TIMELINE_END && !runtime.fxData.timeline().isEmpty()) {
-            ended = pm.getTime() > runtime.timelinePlayer.getDuration();
+            ended = pm.getTime() > runtime.timelinePlayer.getDuration() && !runtime.hasRunningInstanceTimeline();
         } else {
             ended = runtime.isFinished();
         }

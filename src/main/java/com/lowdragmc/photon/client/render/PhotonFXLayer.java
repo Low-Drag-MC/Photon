@@ -122,6 +122,12 @@ public final class PhotonFXLayer implements AutoCloseable {
      * alpha is the coverage the pack's own blend pass reads back. Destinations whose alpha is not ours
      * to touch are handled by the caller passing a masked variant.
      */
+    /** Compile both composites ahead of the first merge ({@code PhotonFramePasses}). */
+    static void preload() {
+        RenderSystem.getDevice().precompilePipeline(compositePipeline(true));
+        RenderSystem.getDevice().precompilePipeline(compositePipeline(false));
+    }
+
     private static RenderPipeline compositePipeline(boolean writeAlpha) {
         if (writeAlpha) {
             if (compositeWriteAlpha == null) {

@@ -108,7 +108,7 @@ public class TileParticleRenderer {
     private ModelPass modelPass() {
         var source = renderer.getModelSource();
         var mesh = source.getMesh();
-        var animation = vertexAnimationFor(mesh);
+        var animation = vertexAnimationFor(renderer, mesh);
         return new ModelPass(mesh,
                 source.hasAtlasUV() && !renderer.isUseBlockUV() && mesh.spriteBounds().length > 0,
                 renderer.isShade(), renderer.getModelPivot(),
@@ -498,15 +498,21 @@ public class TileParticleRenderer {
     /** The pose table this pass would draw from, or null for an ordinary (or mismatched) model. */
     @Nullable
     public VertexAnimation vertexAnimation() {
+        return vertexAnimationOf(renderer);
+    }
+
+    /** The pose table {@code renderer} draws from, or null for an ordinary (or mismatched) model. */
+    @Nullable
+    public static VertexAnimation vertexAnimationOf(ParticleRendererSetting.Runtime renderer) {
         var source = renderer.getModelSource();
-        return source == null ? null : vertexAnimationFor(source.getMesh());
+        return source == null ? null : vertexAnimationFor(renderer, source.getMesh());
     }
 
     /** The source's pose table, but only when it matches the mesh it would be indexed against — a table
      *  baked for a different vertex count would be read past its end, and the rest pose is the safe
      *  reading of "these two disagree". */
     @Nullable
-    private VertexAnimation vertexAnimationFor(@Nullable PhotonMesh mesh) {
+    private static VertexAnimation vertexAnimationFor(ParticleRendererSetting.Runtime renderer, @Nullable PhotonMesh mesh) {
         if (mesh == null || renderer.getRenderMode() != ParticleRendererSetting.Mode.Model) {
             return null;
         }

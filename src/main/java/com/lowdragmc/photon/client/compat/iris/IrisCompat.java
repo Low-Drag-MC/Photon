@@ -105,6 +105,17 @@ public final class IrisCompat {
     }
 
     /**
+     * How the pack's world frame takes Photon's FX, or null without a pack (or a layout the resolver cannot read).
+     * Answers anywhere — while a draw is set up, in a preload at the start of a frame — and, unlike
+     * {@link #resolveFrameTarget}, is not taken for what the world's particle pass saw ({@link #diagnosticsTarget}).
+     */
+    public static @Nullable IrisCompositeMode compositeMode() {
+        if (!isUsingShaderPack()) return null;
+        var target = BRIDGE.resolveForDiagnostics(true, effectiveMode());
+        return target == null ? null : target.compositeMode();
+    }
+
+    /**
      * What to show in a report. Prefers what the last real particle pass resolved — a command runs
      * outside {@code LevelRenderer.renderLevel}, so a live probe there can only ever say "not
      * rendering the world" and would hide the answer we actually want.

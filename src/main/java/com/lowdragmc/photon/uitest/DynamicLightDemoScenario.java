@@ -42,7 +42,7 @@ public class DynamicLightDemoScenario implements UIScenario {
     @Override
     public void define(ScenarioBuilder s) {
         s.step("hide the gui and pin the light clock", ctx -> {
-                    ctx.mc().options.hideGui = true;
+                    HiddenGui.hide(ctx.mc());
                     LightTestConfig.set(PhotonConfig.INSTANCE.dynamicLights, true);
                     LightTestConfig.set(PhotonConfig.INSTANCE.lightShadowMode, ShadowMode.VOXEL);
                     LightTestConfig.volumetricDefaults();
@@ -145,7 +145,7 @@ public class DynamicLightDemoScenario implements UIScenario {
 
         s.teardownServer("put the world back", sc -> LightSite.release(sc.player()));
         s.teardown("restore", ctx -> {
-            ctx.mc().options.hideGui = false;
+            HiddenGui.restore(ctx.mc());
             LightTestConfig.restore();
             LightDemoScene.stopLights();
         });

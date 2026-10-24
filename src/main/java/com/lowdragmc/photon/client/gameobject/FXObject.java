@@ -1,6 +1,8 @@
 package com.lowdragmc.photon.client.gameobject;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.BooleanConfigurator;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.IScene;
 import com.lowdragmc.lowdraglib2.math.Transform;
 import com.lowdragmc.photon.Photon;
@@ -15,6 +17,10 @@ import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.EndTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 
@@ -75,6 +81,9 @@ public abstract class FXObject extends Particle implements IFXObject {
     private Level realLevel;
     @Setter
     protected boolean selfVisible = true;
+    /** Saved, unlike the flags above; see {@link IFXObject#isEnabled()}. Written only when off, so files of enabled objects do not change. */
+    @Setter
+    protected boolean enabled = true;
     @Nullable
     @Getter
     protected IEffectExecutor effectExecutor;
@@ -118,8 +127,48 @@ public abstract class FXObject extends Particle implements IFXObject {
         if (!deep) {
             copied.setName(name);
             copied.copyTransformFrom(this);
+            if (copied instanceof FXObject object) {
+                object.enabled = enabled;
+            }
         }
         return copied;
+    }
+
+    public static final String ENABLED_ROW = "photon_fx_object_enabled";
+
+    @Override
+    public void buildConfigurator(ConfiguratorGroup father) {
+        // the root is not saved, so it has no saved switch
+        if (!(getScene() instanceof FXRuntime runtime && runtime.root == this)) {
+            var row = new BooleanConfigurator("photon.fx_object.enabled", this::isEnabled, this::setEnabled, true, true);
+            row.setId(ENABLED_ROW);
+            father.addConfigurators(row);
+        }
+        IFXObject.super.buildConfigurator(father);
+    }
+
+    @Override
+    public void beforeDeserialize() {
+        // a saved enabled object has no "enabled" key, so it must not keep a value read before
+        enabled = true;
+    }
+
+    @Override
+    public Tag serializeAdditionalNBT(HolderLookup.Provider provider) {
+        if (enabled) {
+            return EndTag.INSTANCE;
+        }
+        var tag = new CompoundTag();
+        tag.putBoolean("enabled", false);
+        return tag;
+    }
+
+    @Override
+    public void deserializeAdditionalNBT(Tag tag, HolderLookup.Provider provider) {
+        if (tag instanceof CompoundTag compound && compound.contains("enabled")) {
+            // what 1.21's getBoolean read a value that is no number as
+            enabled = compound.getBooleanOr("enabled", false);
+        }
     }
 
     @Override

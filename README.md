@@ -125,13 +125,26 @@ photon_version=26.1.2.2
 Load an effect and bind it to a block or an entity:
 
 ```java
-FX fx = FXHelper.getFX(ResourceLocation.parse("photon:fire"));
+FX fx = FXHelper.getFX(Identifier.parse("photon:fire"));
 
 // bind it to a block
 new BlockEffectExecutor(fx, level, pos).start();
 
 // bind it to an entity
 new EntityEffectExecutor(fx, level, entity, AutoRotate.NONE).start();
+```
+
+The first play of an effect loads its shaders and textures on the spot, which can hitch. Preload it beforehand:
+
+```java
+// in the background: file reads and decoding off-thread, GL work spread over frames
+FXHelper.preload(Identifier.parse("photon:fire"));
+
+// right now, on the render thread (e.g. behind your own loading screen)
+FXHelper.preloadNow(Identifier.parse("photon:fire"));
+
+// for the whole session: preloaded now and again behind the loading screen of every resource reload
+FXHelper.keepPreloaded(Identifier.parse("photon:fire"));
 ```
 
 For custom lifecycles, implement `IEffectExecutor` and drive an `FXRuntime` yourself — see the [Java Integration guide](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/Java%20Integration/).

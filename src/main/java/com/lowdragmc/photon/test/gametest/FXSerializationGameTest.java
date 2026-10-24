@@ -5,6 +5,9 @@ import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.lowdraglib2.math.HDRColor;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.fx.FX;
+import com.lowdragmc.photon.client.fx.instance.InstanceTags;
+import com.lowdragmc.photon.client.fx.timeline.Clip;
+import com.lowdragmc.photon.client.gameobject.FXInstanceObject;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomData;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
@@ -14,6 +17,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Color;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRColorFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.HDRConstantColor;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
+import com.lowdragmc.photon.gui.editor.FXProject;
+import com.lowdragmc.photon.gui.editor.view.timeline.PhotonTrackTypes;
 import com.lowdragmc.photon.utils.ValueIONbt;
 import net.minecraft.core.Holder;
 import net.minecraft.gametest.framework.TestEnvironmentDefinition;
@@ -21,8 +26,13 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.event.RegisterGameTestsEvent;
+
+import java.util.List;
+import java.util.UUID;
 
 /**
  * FX serialization round-trip coverage (the user-facing .fx format must stay stable across the
@@ -37,6 +47,8 @@ public final class FXSerializationGameTest {
     private static final String EMPTY_FX_ROUND_TRIP = "empty_fx_round_trip";
     private static final String LEGACY_SHADER_SAMPLERS = "legacy_custom_shader_sampler_format";
     private static final String LEGACY_GRADIENT = "legacy_gradient_color_format";
+    private static final String INSTANCE_TIMELINE_ROUND_TRIP = "fx_instance_timeline_round_trip";
+    private static final String PROJECT_KNOWN_AS_ROUND_TRIP = "fx_project_known_as_round_trip";
 
     private FXSerializationGameTest() {}
 
@@ -189,6 +201,69 @@ public final class FXSerializationGameTest {
             helper.succeed();
         });
 
+        PhotonGameTests.registerFunction(INSTANCE_TIMELINE_ROUND_TRIP, helper -> {
+            // An FX instance keeps its source's timeline as a @Persisted field, which 26.1 saves through ValueIO. It
+            // must land in the shape the instance code reads back raw: the compound Timeline.serializeNBT writes.
+            var provider = Platform.getFrozenRegistry();
+            var instance = new FXInstanceObject(Identifier.fromNamespaceAndPath("photon", "gametest/source"));
+            var target = UUID.fromString("11111111-2222-3333-4444-555555555555");
+            var track = PhotonTrackTypes.ACTIVATOR.create().targetId(target);
+            track.clips().add(new Clip(5, 20, 1));
+            instance.getTimeline().tracks().add(track);
+            var first = instance.serializeWrapper();
+            if (first == null) {
+                helper.fail(Component.literal("fx_instance failed to serialize"));
+                return;
+            }
+            var saved = InstanceTags.data(first).getCompoundOrEmpty(InstanceTags.TIMELINE);
+            var expected = instance.getTimeline().serializeNBT(provider);
+            if (!saved.equals(expected)) {
+                helper.fail(Component.literal("the instance's timeline is saved as\n" + saved + "\nnot as\n" + expected));
+                return;
+            }
+            if (!(IFXObject.deserializeWrapper(first) instanceof FXInstanceObject reloaded)
+                    || reloaded.getTimeline().tracks().size() != 1
+                    || !target.equals(reloaded.getTimeline().tracks().getFirst().targetId())
+                    || reloaded.getTimeline().tracks().getFirst().clips().size() != 1
+                    || reloaded.getTimeline().tracks().getFirst().clips().getFirst().start() != 5) {
+                helper.fail(Component.literal("the instance's timeline did not come back: " + first));
+                return;
+            }
+            var second = reloaded.serializeWrapper();
+            if (!first.equals(second)) {
+                helper.fail(Component.literal("fx_instance round-trip mismatch:\nfirst= " + first + "\nsecond=" + second));
+                return;
+            }
+            helper.succeed();
+        });
+
+        PhotonGameTests.registerFunction(PROJECT_KNOWN_AS_ROUND_TRIP, helper -> {
+            // What a project was converted from or exported to survives saving, and an id that no longer parses
+            // drops out alone rather than taking the list with it.
+            var provider = Platform.getFrozenRegistry();
+            var a = Identifier.fromNamespaceAndPath("photon", "gametest/a");
+            var b = Identifier.fromNamespaceAndPath("photon", "gametest/b");
+            var project = new FXProject();
+            project.addKnownAs(a);
+            project.addKnownAs(b);
+            var tag = ValueIONbt.toTag(project, provider);
+            var reloaded = new FXProject();
+            ValueIONbt.fromTag(reloaded, provider, tag);
+            if (!List.copyOf(reloaded.getKnownAs()).equals(List.of(a, b))) {
+                helper.fail(Component.literal("knownAs came back as " + reloaded.getKnownAs() + " from " + tag));
+                return;
+            }
+            var damaged = tag.copy();
+            damaged.getCompoundOrEmpty("data").getListOrEmpty("knownAs").add(StringTag.valueOf("Not An Id"));
+            var tolerant = new FXProject();
+            ValueIONbt.fromTag(tolerant, provider, damaged);
+            if (!List.copyOf(tolerant.getKnownAs()).equals(List.of(a, b))) {
+                helper.fail(Component.literal("a damaged id took knownAs with it: " + tolerant.getKnownAs()));
+                return;
+            }
+            helper.succeed();
+        });
+
         PhotonGameTests.registerFunction(EMPTY_FX_ROUND_TRIP, helper -> {
             var fx = new FX();
             var provider = Platform.getFrozenRegistry();
@@ -214,5 +289,7 @@ public final class FXSerializationGameTest {
         PhotonGameTests.registerFunctionTest(event, EMPTY_FX_ROUND_TRIP, testData);
         PhotonGameTests.registerFunctionTest(event, LEGACY_SHADER_SAMPLERS, testData);
         PhotonGameTests.registerFunctionTest(event, LEGACY_GRADIENT, testData);
+        PhotonGameTests.registerFunctionTest(event, INSTANCE_TIMELINE_ROUND_TRIP, testData);
+        PhotonGameTests.registerFunctionTest(event, PROJECT_KNOWN_AS_ROUND_TRIP, testData);
     }
 }

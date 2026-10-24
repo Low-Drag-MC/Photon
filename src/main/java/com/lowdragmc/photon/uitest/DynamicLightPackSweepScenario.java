@@ -40,7 +40,7 @@ public class DynamicLightPackSweepScenario implements UIScenario {
     @Override
     public void define(ScenarioBuilder s) {
         s.step("hide the gui, pin the clock", ctx -> {
-                    ctx.mc().options.hideGui = true;
+                    HiddenGui.hide(ctx.mc());
                     LightTestConfig.volumetricDefaults();
                     LightDemoScene.frozenSeconds = 3f;
                     ROWS.clear();
@@ -104,7 +104,7 @@ public class DynamicLightPackSweepScenario implements UIScenario {
         s.step("write the table", DynamicLightPackSweepScenario::writeTable);
         s.teardownServer("put the world back", sc -> LightSite.release(sc.player()));
         s.teardown("restore", ctx -> {
-            ctx.mc().options.hideGui = false;
+            HiddenGui.restore(ctx.mc());
             LightTestConfig.restore();
             LightDemoScene.stopLights();
         });

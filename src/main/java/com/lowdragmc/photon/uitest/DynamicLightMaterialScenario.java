@@ -109,7 +109,7 @@ public class DynamicLightMaterialScenario implements UIScenario {
                 .step("the lit graph links on every path", DynamicLightMaterialScenario::compileMatrix)
                 .step("a lit custom shader hides and skips the light uniforms", DynamicLightMaterialScenario::customShaderRows)
                 .step("settings", ctx -> {
-                    ctx.mc().options.hideGui = true;
+                    HiddenGui.hide(ctx.mc());
                     LightTestConfig.set(PhotonConfig.INSTANCE.dynamicLights, true);
                     LightTestConfig.set(PhotonConfig.INSTANCE.volumetricLights, false);
                     LightDemoScene.stopLights();
@@ -153,7 +153,7 @@ public class DynamicLightMaterialScenario implements UIScenario {
                     stop(ctx);
                     removeLight(ctx);
                     LightTestConfig.restore();
-                    ctx.mc().options.hideGui = false;
+                    HiddenGui.restore(ctx.mc());
                 })
                 .teardown("delete the converted shader", ctx -> {
                     for (var extension : new String[]{".json", ".fsh"}) {

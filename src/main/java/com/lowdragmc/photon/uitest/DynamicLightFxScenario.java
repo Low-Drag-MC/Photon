@@ -46,7 +46,7 @@ public class DynamicLightFxScenario implements UIScenario {
     @Override
     public void define(ScenarioBuilder s) {
         s.step("hide the gui", ctx -> {
-                    ctx.mc().options.hideGui = true;
+                    HiddenGui.hide(ctx.mc());
                     LightTestConfig.set(PhotonConfig.INSTANCE.dynamicLights, true);
                     LightDemoScene.stopLights();
                 })
@@ -178,7 +178,7 @@ public class DynamicLightFxScenario implements UIScenario {
             if (fog != null) PhotonLights.removeFog(fog);
             WeakReference<FogProvider> fogProvider = ctx.get("fogProvider");
             if (fogProvider != null && fogProvider.get() != null) PhotonLights.removeFogProvider(fogProvider.get());
-            ctx.mc().options.hideGui = false;
+            HiddenGui.restore(ctx.mc());
             LightTestConfig.restore();
         });
     }

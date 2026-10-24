@@ -7,6 +7,8 @@ import com.lowdragmc.lowdraglib2.editor.resource.FilePath;
 import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.editor.resource.ResourceInstance;
 import com.lowdragmc.photon.client.fx.FX;
+import com.lowdragmc.photon.client.fx.FXHelper;
+import com.lowdragmc.photon.client.fx.instance.InstanceBaker;
 import com.lowdragmc.photon.gui.editor.FXProject;
 import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
@@ -22,6 +24,7 @@ import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.resources.Resource;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayOutputStream;
@@ -29,7 +32,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -58,7 +60,9 @@ import java.util.Set;
  *       mods and user resource packs override them naturally (user-reskinnable);</li>
  *   <li>the fx itself is written as a plain (references-only) definition at
  *       {@code assets/<ns>/fx/<name>.fx}, loaded by {@code FXHelper} under the id
- *       {@code <ns>:<name>}.</li>
+ *       {@code <ns>:<name>};</li>
+ *   <li>the effects its FX instances place, at any depth, travel like raw assets: each under its own id,
+ *       walked like the fx itself.</li>
  * </ul>
  * The exporter works on the serialized NBT (a scratch copy — the live project is never touched) with
  * one recursive walk. Assets that resolve from vanilla or a mod jar are skipped (the recipient's game
@@ -103,7 +107,11 @@ public final class FXPackExporter {
 
     /**
      * Export {@code fx} into {@code fxpackFile} (created if absent) as {@code <namespace>:<fxName>}.
-     * Names are sanitized to valid resource-location characters.
+     * Names are sanitized to valid resource-location characters. Render thread only. When the pack is
+     * mounted, the next play of the fx loads the new version ({@link FXPacks#rewrite}); a pack the game has
+     * not mounted yet needs a resource reload first ({@link FXPacks#resolve}).
+     *
+     * @throws FXPacks.PackInUseException when another program holds the pack file open
      */
     public static Result exportInto(File fxpackFile, String namespace, String fxName, FX fx,
                                     HolderLookup.Provider provider) throws IOException {
@@ -112,28 +120,33 @@ public final class FXPackExporter {
         exporter.walk(root);
         root.putInt("version", FXProject.VERSION);
 
-        var fxId = Identifier.fromNamespaceAndPath(sanitize(namespace), sanitize(fxName));
+        var fxId = fxId(namespace, fxName);
         var fxBytes = new ByteArrayOutputStream();
         NbtIo.writeCompressed(root, fxBytes);
+        var sources = exporter.packSources(root, fxId);
 
         if (fxpackFile.getParentFile() != null) {
             fxpackFile.getParentFile().mkdirs();
         }
-        try (var zip = FileSystems.newFileSystem(fxpackFile.toPath(), Map.of("create", "true"))) {
+        // replacing an fx orphans its previous version's resources: the rewrite's gc sweeps them out
+        FXPacks.rewrite(fxpackFile, zip -> {
             var mcmeta = zip.getPath("pack.mcmeta");
             if (!Files.exists(mcmeta)) {
                 Files.writeString(mcmeta, PACK_MCMETA);
             }
-            writeEntry(zip.getPath("assets", fxId.getNamespace(), "fx", fxId.getPath() + FX.SUFFIX),
-                    fxBytes.toByteArray());
-            for (var entry : exporter.files.entrySet()) {
-                var location = entry.getKey();
-                writeEntry(zip.getPath("assets", location.getNamespace(), location.getPath()), entry.getValue());
+            writeEntry(FXPacks.entryPath(zip, FXHelper.fileLocation(fxId)), fxBytes.toByteArray());
+            for (var entry : sources.entrySet()) {
+                writeEntry(FXPacks.entryPath(zip, FXHelper.fileLocation(entry.getKey())), entry.getValue());
             }
-            // replacing an fx orphans its previous version's resources — sweep them out
-            FXPacks.gc(zip);
-        }
-        return new Result(fxId, exporter.files.size() + 1, List.copyOf(exporter.warnings));
+            for (var entry : exporter.files.entrySet()) {
+                writeEntry(FXPacks.entryPath(zip, entry.getKey()), entry.getValue());
+            }
+        });
+        var exported = new ArrayList<Identifier>();
+        exported.add(fxId);
+        exported.addAll(sources.keySet());
+        FXHelper.invalidate(exported);
+        return new Result(fxId, exporter.files.size() + sources.size() + 1, List.copyOf(exporter.warnings));
     }
 
     private static void writeEntry(Path path, byte[] bytes) throws IOException {
@@ -143,12 +156,54 @@ public final class FXPackExporter {
         Files.write(path, bytes);
     }
 
+    /** The id an effect exported into a pack named {@code namespace} as {@code fxName} is loaded by. */
+    public static Identifier fxId(String namespace, String fxName) {
+        return Identifier.fromNamespaceAndPath(sanitize(namespace), sanitize(fxName));
+    }
+
     /** Lowercase + replace everything outside {@code [a-z0-9/._-]} so ids are always valid. */
     private static String sanitize(String name) {
         var sanitized = name.toLowerCase().replaceAll("[^a-z0-9/._-]", "_");
         // a name with no usable characters (e.g. a file literally called ".fxpack") must not
         // produce an empty namespace/path — Identifier would reject it and abort the export
         return sanitized.isBlank() ? "fx" : sanitized;
+    }
+
+    // ---- the effects FX instances place ------------------------------------------------------------
+
+    /**
+     * The effects {@code fxRoot}'s FX instances place, and theirs, each as the bytes to write under its own id.
+     * They go the way raw assets go: one the game or a mod ships stays out, and one the recipient has from
+     * elsewhere wins over the copy. Each is walked like the exported fx, so what it references travels too.
+     */
+    private Map<Identifier, byte[]> packSources(CompoundTag fxRoot, Identifier self) throws IOException {
+        var out = new LinkedHashMap<Identifier, byte[]>();
+        var seen = new HashSet<Identifier>();
+        seen.add(self);
+        var queue = new ArrayList<>(InstanceBaker.directSources(fxRoot.getCompoundOrEmpty("fxData")));
+        while (!queue.isEmpty()) {
+            var id = queue.removeFirst();
+            if (!seen.add(id)) continue;
+            var resource = Minecraft.getInstance().getResourceManager().getResource(FXHelper.fileLocation(id)).orElse(null);
+            if (resource == null) {
+                warnings.add("FX instance source %s does not resolve, so it is not packed".formatted(id));
+                continue;
+            }
+            if (shipsWithTheGame(resource)) continue;
+            var tag = FXHelper.readTag(id);
+            if (tag == null) {
+                warnings.add("FX instance source %s could not be read, so it is not packed".formatted(id));
+                continue;
+            }
+            // as read: its version says what shape it has, so it is not stamped like a fresh serialization
+            tag = tag.copy();
+            walk(tag);
+            var bytes = new ByteArrayOutputStream();
+            NbtIo.writeCompressed(tag, bytes);
+            out.put(id, bytes.toByteArray());
+            queue.addAll(InstanceBaker.directSources(tag.getCompoundOrEmpty("fxData")));
+        }
+        return out;
     }
 
     // ---- the walk --------------------------------------------------------------------------------
@@ -389,9 +444,8 @@ public final class FXPackExporter {
                     .formatted(location));
             return null;
         }
-        var packId = resource.sourcePackId();
-        if ("vanilla".equals(packId) || packId.startsWith("mod")) {
-            return null; // ships with the game / a mod — no need to carry it
+        if (shipsWithTheGame(resource)) {
+            return null; // no need to carry it
         }
         try (var in = resource.open()) {
             return in.readAllBytes();
@@ -402,6 +456,12 @@ public final class FXPackExporter {
     }
 
     // ---- helpers -----------------------------------------------------------------------------------
+
+    /** Provided by vanilla or a mod jar, so the recipient's game has it too. */
+    private static boolean shipsWithTheGame(Resource resource) {
+        var packId = resource.sourcePackId();
+        return "vanilla".equals(packId) || packId.startsWith("mod");
+    }
 
     private static byte[] nbtBytes(CompoundTag tag) {
         try {

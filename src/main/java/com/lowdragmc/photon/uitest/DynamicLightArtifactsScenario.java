@@ -121,7 +121,7 @@ public class DynamicLightArtifactsScenario implements UIScenario {
 
     static void softShadows(ScenarioBuilder s) {
         s.step("hide the gui, pin the lights", ctx -> {
-                    ctx.mc().options.hideGui = true;
+                    HiddenGui.hide(ctx.mc());
                     LightTestConfig.set(ctx.mc().options.bobView(), true);
                     LightDemoScene.frozenSeconds = 0f;
                     LightTestConfig.set(PhotonConfig.INSTANCE.lightShadowMode, ShadowMode.VOXEL);
@@ -154,7 +154,7 @@ public class DynamicLightArtifactsScenario implements UIScenario {
     static void restore(ScenarioBuilder s) {
         s.teardownServer("put the world back", sc -> LightSite.release(sc.player()));
         s.teardown("restore", ctx -> {
-            ctx.mc().options.hideGui = false;
+            HiddenGui.restore(ctx.mc());
             LightTestConfig.restore();
             LightDemoScene.stopLights();
         });

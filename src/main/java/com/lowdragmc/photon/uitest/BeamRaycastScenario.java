@@ -57,12 +57,12 @@ public class BeamRaycastScenario implements UIScenario {
     private static void world(TestContext ctx) {
         var player = ctx.requirePlayer();
         float ground = (float) player.getY();
-        // not ENTITIES: as in 1.21 it sweeps a box at the world origin, not along the beam
+        // beside the player, not through them: entity raycasts stop at any entity but the effect's owner
         for (var mode : new BeamConfig.RaycastMode[]{BeamConfig.RaycastMode.NONE, BeamConfig.RaycastMode.BLOCKS,
                 BeamConfig.RaycastMode.BLOCKS_AND_ENTITIES}) {
             var emitter = beam(mode);
             emitter.setLevel(player.level());
-            var from = new Vector3f((float) player.getX(), ground + HEIGHT, (float) player.getZ());
+            var from = new Vector3f((float) player.getX() + 3, ground + HEIGHT, (float) player.getZ());
             emitter.transform().position(from);
             var end = new BeamParticle(emitter, emitter.getConfig()).getRealEnd(new Vector3f(from));
             if (mode == BeamConfig.RaycastMode.NONE) {

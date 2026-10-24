@@ -161,6 +161,20 @@ public final class PhotonBloom implements AutoCloseable {
                         .build());
     }
 
+    /**
+     * Compile the chain's passes for the current settings ahead of its first run, which would otherwise stall on them
+     * ({@code PhotonFramePasses}).
+     */
+    static void preload() {
+        if (!PhotonConfig.INSTANCE.enableBloom.get()) return;
+        var intensity = PhotonConfig.INSTANCE.bloomIntensity.get().floatValue();
+        var device = RenderSystem.getDevice();
+        for (var pipeline : List.of(copyPipeline(), brightPipeline(1f), downPipeline(), upPipeline(),
+                brightPipeline(intensity), blitPipeline(intensity))) {
+            device.precompilePipeline(pipeline);
+        }
+    }
+
     @Nullable
     private static RenderPipeline copyPipeline;
 

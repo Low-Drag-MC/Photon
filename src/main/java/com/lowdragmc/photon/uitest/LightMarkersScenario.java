@@ -35,7 +35,7 @@ public class LightMarkersScenario implements UIScenario {
                 .step("markers on, a still view", ctx -> {
                     LightTestConfig.set(PhotonConfig.INSTANCE.dynamicLights, true);
                     LightTestConfig.set(ctx.mc().options.bobView(), false);
-                    ctx.mc().options.hideGui = true;
+                    HiddenGui.hide(ctx.mc());
                     LightDebug.markers = true;
                     NeoForge.EVENT_BUS.addListener(FrameGraphSetupEvent.class, CAPTURE);
                     var player = ctx.requirePlayer();
@@ -65,7 +65,7 @@ public class LightMarkersScenario implements UIScenario {
                     if (light != null) PhotonLights.remove(light);
                     LightDebug.markers = false;
                     NeoForge.EVENT_BUS.unregister(CAPTURE);
-                    ctx.mc().options.hideGui = false;
+                    HiddenGui.restore(ctx.mc());
                     LightTestConfig.restore();
                 })
                 .teardownServer("animals back", sc -> NoMobs.release(sc.player()));

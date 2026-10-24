@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
+import com.lowdragmc.kilagraph.rendertype.compiler.SamplerDefault;
 import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeFactory;
 import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeGraphMaterial;
 import com.lowdragmc.lowdraglib2.Platform;
@@ -26,6 +27,7 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.api.type.TypeHandle;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.AutoCloseCleaner;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.render.MaterialPreviewRenderer;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
@@ -313,6 +315,22 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
             current.renderTypes.put(key, created);
         }
         return created;
+    }
+
+    /** The graph's sampler textures, its defaults under what this material overrides: KilaGraph binds them itself. */
+    @Override
+    public void preload(PreloadContext context) {
+        var entry = refreshEntry();
+        var compiled = entry == null || !entry.isValid() ? null : entry.getCompiled();
+        if (compiled == null) return;
+        var samplers = new HashMap<>(compiled.samplerDefaults());
+        overrides.forEach((name, value) -> {
+            var sampler = SamplerDefault.of(value);
+            if (sampler != null) samplers.put(compiled.variableSamplers().getOrDefault(name, name), sampler);
+        });
+        for (var sampler : samplers.values()) {
+            if (sampler.texture() != null) context.texture(sampler.texture());
+        }
     }
 
     // ---- overrides -----------------------------------------------------------------------------

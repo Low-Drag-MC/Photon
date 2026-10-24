@@ -3,6 +3,9 @@ package com.lowdragmc.photon.client;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.compat.iris.IrisOverlay;
+import com.lowdragmc.photon.client.collision.BlockFilter;
+import com.lowdragmc.photon.client.collision.CollisionWorld;
+import com.lowdragmc.photon.client.fx.FXPreloader;
 import com.lowdragmc.photon.client.light.DynamicLightManager;
 import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.light.PhotonLights;
@@ -49,11 +52,21 @@ public class PhotonClientListeners {
         }
     }
 
-    /** A chunk (re)arriving may differ from what was voxelised for the light shadows. */
+    /** A chunk (re)arriving may differ from what was voxelised or snapshotted for collision. */
     @SubscribeEvent
     public static void onChunkLoad(ChunkEvent.Load event) {
         if (event.getLevel() instanceof Level level && level.isClientSide()) {
-            DynamicLightManager.chunkLoaded(level, event.getChunk().getPos().x(), event.getChunk().getPos().z());
+            var pos = event.getChunk().getPos();
+            DynamicLightManager.chunkLoaded(level, pos.x(), pos.z());
+            CollisionWorld.chunkChanged(level, pos.x(), pos.z());
+        }
+    }
+
+    @SubscribeEvent
+    public static void onChunkUnload(ChunkEvent.Unload event) {
+        if (event.getLevel() instanceof Level level && level.isClientSide()) {
+            var pos = event.getChunk().getPos();
+            CollisionWorld.chunkChanged(level, pos.x(), pos.z());
         }
     }
 
@@ -61,6 +74,7 @@ public class PhotonClientListeners {
     public static void onTagsUpdated(TagsUpdatedEvent event) {
         if (event.getUpdateCause() != TagsUpdatedEvent.UpdateCause.CLIENT_PACKET_RECEIVED) return;
         VoxelWorld.clearMasks();
+        BlockFilter.tagsChanged();
         var level = Minecraft.getInstance().level;
         if (level != null) DynamicLightManager.blocksReplaced(level);
     }
@@ -70,6 +84,7 @@ public class PhotonClientListeners {
         if (event.getLevel() instanceof Level level && level.isClientSide()) {
             DynamicLightRenderer.release(level);
             PhotonLights.onLevelUnload(level);
+            CollisionWorld.levelUnloaded(level);
         }
     }
 
@@ -84,6 +99,7 @@ public class PhotonClientListeners {
      *  before opening its own pass (see {@code MaterialPreviewRenderer.renderInto}). */
     @SubscribeEvent
     public static void onRenderFramePre(RenderFrameEvent.Pre event) {
+        FXPreloader.onFrameStart();
         MaterialPreviewRenderer.processPending();
         PostFXPreview.processPending();
     }

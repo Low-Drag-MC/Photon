@@ -12,6 +12,7 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.PhotonRegistries;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.serialization.Codec;
@@ -96,6 +97,15 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
     @Nullable
     default RenderType getPreviewRenderType(MaterialSetting setting, VertexFormat.Mode mode) {
         return getRenderType(setting, mode);
+    }
+
+    /**
+     * Report what this material loads on its first draw that its render type does not name ({@code FXHelper.preload}):
+     * textures it binds itself, such as a shader graph's sampler defaults. The pipelines and the textures of the
+     * render type's bindings are warmed from {@link #getRenderType} by the emitter. Render thread, outside any draw.
+     * Nothing by default.
+     */
+    default void preload(PreloadContext context) {
     }
 
     /** Small, cached preview: resource-panel tiles and inline material slots (many on screen at once). */

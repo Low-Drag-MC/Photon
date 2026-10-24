@@ -22,6 +22,7 @@ public final class PhotonIcons {
     public static final IGuiTexture MARKER = Icons.icon(Photon.MOD_ID, "marker");
     public static final IGuiTexture RECORDING = Icons.icon(Photon.MOD_ID, "recording");
     public static final IGuiTexture PHOTON_PROJECT = Icons.icon(Photon.MOD_ID, "photon_project");
+    public static final IGuiTexture FX_FILE = Icons.icon(Photon.MOD_ID, "fx_file");
 
     // Timeline transport, in the order they sit on the bar.
     public static final SpriteTexture TRANSPORT_TO_START = Icons.icon(Photon.MOD_ID, "transport_to_start");

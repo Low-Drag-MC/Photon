@@ -112,7 +112,7 @@ public class DynamicLightVolumetricScenario implements UIScenario {
         s.step("set up", ctx -> {
                     var config = PhotonConfig.INSTANCE;
                     var options = ctx.mc().options;
-                    options.hideGui = true;
+                    HiddenGui.hide(ctx.mc());
                     LightTestConfig.set(config.dynamicLights, true);
                     LightTestConfig.set(config.lightShadowMode, ShadowMode.VOXEL);
                     LightTestConfig.set(config.lightResolution, 0.5);
@@ -317,7 +317,7 @@ public class DynamicLightVolumetricScenario implements UIScenario {
             LIGHTS.clear();
             SCATTERED.clear();
             LightPassTimer.recording = false;
-            ctx.mc().options.hideGui = false;
+            HiddenGui.restore(ctx.mc());
             LightTestConfig.restore();
         });
     }

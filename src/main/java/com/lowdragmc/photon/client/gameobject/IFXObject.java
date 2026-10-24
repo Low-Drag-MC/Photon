@@ -9,6 +9,7 @@ import com.lowdragmc.lowdraglib2.utils.LDLibExtraCodecs;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import com.mojang.serialization.Codec;
@@ -106,7 +107,7 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
      * ancestor is hidden.
      */
     default boolean isVisible() {
-        if (!isSelfVisible() || !isSelfTimelineVisible()) return false;
+        if (!isEnabled() || !isSelfVisible() || !isSelfTimelineVisible()) return false;
         var parent = transform().parent();
         if (parent != null && parent.sceneObject() instanceof IFXObject ifxObject) {
             return ifxObject.isVisible();
@@ -120,11 +121,19 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
      * to active for objects the timeline does not control.
      */
     default boolean isActive() {
-        if (!isSelfActive()) return false;
+        if (!isEnabled() || !isSelfActive()) return false;
         var parent = transform().parent();
         if (parent != null && parent.sceneObject() instanceof IFXObject ifxObject) {
             return ifxObject.isActive();
         }
+        return true;
+    }
+
+    /**
+     * The saved switch: off takes this object and everything under it out of the effect, whatever the
+     * timeline says. On by default.
+     */
+    default boolean isEnabled() {
         return true;
     }
 
@@ -182,6 +191,14 @@ public interface IFXObject extends ISceneObject, IPersistedSerializable, IConfig
      * reset runtime data
      */
     void reset();
+
+    /**
+     * Report what this object's first frame would otherwise load lazily, such as the program variants and
+     * textures its renderer uses (see {@code FXHelper.preload}). Called on the render thread, on the cached
+     * definition that runtimes are copied from. Does nothing by default.
+     */
+    default void preload(PreloadContext context) {
+    }
 
     /**
      * copy this object

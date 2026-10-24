@@ -2,6 +2,9 @@ package com.lowdragmc.photon.client.gameobject.particle;
 
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.PhotonParticleManager;
+import com.lowdragmc.photon.client.collision.CollisionQuery;
+import com.lowdragmc.photon.client.collision.CollisionWorld;
+import com.lowdragmc.photon.client.collision.Contact;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.beam.BeamEmitter;
@@ -12,16 +15,9 @@ import lombok.Setter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.CollisionContext;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
@@ -170,26 +166,25 @@ public class BeamParticle implements IParticle {
 
     public Vector3f getRealEnd(Vector3f from) {
         var end = new Vector3f(from).add(emitter.transform().localToWorldMatrix().transformDirection(config.getEnd(), new Vector3f()));
-        // not the camera entity's level: an editor scene's camera has none
+        var mode = config.getRaycast();
         var level = emitter.getLevel();
-        if (level == null) return end;
-        if (config.getRaycast() == BeamConfig.RaycastMode.BLOCKS || config.getRaycast() == BeamConfig.RaycastMode.BLOCKS_AND_ENTITIES) {
-            var result = level.clip(
-                    new ClipContext(new Vec3(from.x, from.y, from.z),
-                            new Vec3(end.x, end.y, end.z),
-                            config.getRaycastBlockMode(),
-                            config.getRaycastFluidMode(),
-                            CollisionContext.empty()));
-            if (result.getType() != HitResult.Type.MISS) {
-                end = result.getLocation().toVector3f();
+        if (mode == BeamConfig.RaycastMode.NONE || level == null) return end;
+        var query = CollisionQuery.get();
+        var contact = new Contact();
+        if (mode == BeamConfig.RaycastMode.BLOCKS || mode == BeamConfig.RaycastMode.BLOCKS_AND_ENTITIES) {
+            if (query.raycast(CollisionWorld.of(level), from.x, from.y, from.z, end.x, end.y, end.z,
+                    config.getRaycastBlockMode(), config.getRaycastFluidMode(), contact) == CollisionQuery.HIT) {
+                end.set(contact.px, contact.py, contact.pz);
             }
         }
-        if (config.getRaycast() == BeamConfig.RaycastMode.ENTITIES || config.getRaycast() == BeamConfig.RaycastMode.BLOCKS_AND_ENTITIES) {
-            var size = getRealWidth(0);
-            var velocity = new Vector3f(end).sub(from);
-            var vec3 = Entity.collideBoundingBox(null, new Vec3(velocity),
-                    AABB.ofSize(Vec3.ZERO, size, size, size), level, List.of());
-            end = new Vector3f(from).add(vec3.toVector3f());
+        if (mode == BeamConfig.RaycastMode.ENTITIES || mode == BeamConfig.RaycastMode.BLOCKS_AND_ENTITIES) {
+            // inflated by the beam's half width (it is drawn width to either side), so a wide beam stops at the skin
+            var executor = emitter.getEffectExecutor();
+            var owner = executor == null ? null : executor.owner();
+            if (query.raycastEntities(level, from.x, from.y, from.z, end.x, end.y, end.z, getRealWidth(0),
+                    entity -> entity != owner && !entity.isSpectator() && entity.isPickable(), contact)) {
+                end.set(contact.px, contact.py, contact.pz);
+            }
         }
         return end;
     }

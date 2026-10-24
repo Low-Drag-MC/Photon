@@ -32,6 +32,11 @@ public class EntityEffectExecutor extends FXEffectExecutor {
     }
 
     @Override
+    public Entity owner() {
+        return entity;
+    }
+
+    @Override
     public void updateFXObjectTick(IFXObject fxObject) {
         if (runtime == null || fxObject != runtime.root) {
             return;

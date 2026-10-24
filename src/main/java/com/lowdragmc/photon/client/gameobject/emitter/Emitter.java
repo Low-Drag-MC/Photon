@@ -3,6 +3,10 @@ package com.lowdragmc.photon.client.gameobject.emitter;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.AutoCloseCleaner;
+import com.lowdragmc.photon.client.collision.BlockBoxSource;
+import com.lowdragmc.photon.client.collision.CollisionScene;
+import com.lowdragmc.photon.client.collision.CollisionWorld;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.AdditionalGPUDataSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
@@ -16,6 +20,7 @@ import com.lowdragmc.photon.client.render.PremultipliedBlendPlan;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
@@ -42,6 +47,7 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -65,6 +71,10 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     private volatile boolean parallelLightPhase = false;
     /** Positions particles asked for during the parallel phase; refreshed on the game thread post-loop. */
     private final Set<BlockPos> lightQueryQueue = ConcurrentHashMap.newKeySet();
+    /** Blocks only, for trail points: frozen at tick begin while {@link #needsBlockScene()} says so. */
+    @Nullable
+    private CollisionScene blockScene;
+    private static final CollisionScene.Stats BLOCK_SCENE_STATS = new CollisionScene.Stats();
 
     protected Emitter() {
         this.friction = 1;
@@ -87,7 +97,23 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         if (clearsLightCacheOnTickBegin()) {
             lightCache.clear();
         }
+        var level = getLevel();
+        blockScene = needsBlockScene() && level != null
+                ? new CollisionScene(CollisionWorld.of(level), BlockBoxSource.BLOCKS, null, CollisionScene.NO_ENTITIES,
+                CollisionScene.NO_COLLIDERS, BLOCK_SCENE_STATS)
+                : null;
         updateOrigin(); // snapshot render origin once per tick (see FXObject.tick)
+    }
+
+    /** Whether something this emitter drives (trail points) collides with blocks this tick. */
+    protected boolean needsBlockScene() {
+        return false;
+    }
+
+    /** The blocks-only scene for this tick, or null; see {@link #needsBlockScene()}. */
+    @Nullable
+    public CollisionScene blockScene() {
+        return blockScene;
     }
 
     @Override
@@ -693,21 +719,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                 // what this material bound as Sampler0 (1.21 hunted for a TextureMaterial to the same end)
                 var mask = PhotonWorldRenderState.MaskWrite.of(renderer,
                         info.bindings().textures().get("Sampler0"));
-                var recipe = info.instanced();
-                var key = recipe.key();
-                RenderPipeline pipeline;
-                if (info.bindings().graph() != null) {
-                    // shader graphs compile the same generated GLSL against the instanced format + define
-                    var graph = info.bindings().graph();
-                    pipeline = PhotonPipelines.graphShader(graph.compiled(), variant, key,
-                            graph.usedChannelMask(), graph.usesCustomData());
-                } else if (recipe.source() != null) {
-                    pipeline = recipe.source().pipeline(variant, false);
-                } else if (recipe.customShaderKey() != null) {
-                    pipeline = PhotonPipelines.instancedCustomShader(variant, recipe.customShaderKey());
-                } else {
-                    pipeline = PhotonPipelines.instancedHdrParticle(variant, recipe.hdrFragment(), key);
-                }
+                var key = info.instanced().key();
+                var pipeline = instancedPipeline(info, variant);
                 var customUniforms = info.bindings().customUniforms();
                 out.add(new PhotonWorldRenderState.InstancedJob(
                         new PhotonRenderTypes.PhotonDrawInfo.Programs(pipeline),
@@ -748,6 +761,113 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                     variant, null, false)); // an editor overlay is not content — it never writes the mask
         }
         return true;
+    }
+
+    /**
+     * The pipeline {@code info}'s material draws with as {@code variant}, or null when a material deriving its own
+     * failed to compile it. {@code info} must have an instanced recipe.
+     */
+    @Nullable
+    private static RenderPipeline instancedPipeline(PhotonRenderTypes.PhotonDrawInfo info,
+                                                    PhotonPipelines.InstancedVariant variant) {
+        var recipe = Objects.requireNonNull(info.instanced());
+        var key = recipe.key();
+        if (info.bindings().graph() != null) {
+            // shader graphs compile the same generated GLSL against the instanced format + define
+            var graph = info.bindings().graph();
+            return PhotonPipelines.graphShader(graph.compiled(), variant, key,
+                    graph.usedChannelMask(), graph.usesCustomData());
+        } else if (recipe.source() != null) {
+            return recipe.source().pipeline(variant, false);
+        } else if (recipe.customShaderKey() != null) {
+            return PhotonPipelines.instancedCustomShader(variant, recipe.customShaderKey());
+        }
+        return PhotonPipelines.instancedHdrParticle(variant, recipe.hdrFragment(), key);
+    }
+
+    // ---- preload (FXHelper.preload) --------------------------------------------------------------------------
+
+    /**
+     * Warm what the first bake of a geometry group would build on the spot: each material's render type at the
+     * group's stage, the pipelines it is drawn with — over the CPU geometry, with the per-particle records,
+     * instanced as {@code variant}, into the custom mask — and the textures they bind. 26.1 compiles a pipeline on
+     * its first draw and a texture loads on its first bind; that is the hitch this takes ahead. Derived the way
+     * {@link #bakeGroup} and {@link #bakeInstancedGroup} derive them, so what is warmed is what is drawn.
+     *
+     * @param variant the instanced variant the group draws as, or null when it never draws instanced; a group a
+     *                material of which cannot draw instanced bakes on the CPU instead, as {@link #bakeInstancedGroup}
+     *                hands it back
+     * @param cpu     whether the group (also) bakes on the CPU: it is not instanced, or the timeline toggles that
+     * @param records whether its CPU geometry carries per-particle records ({@link CpuRecordSource})
+     * @param mask    whether it writes the custom mask, now or once the timeline turns that on
+     */
+    protected static void preloadGroup(PreloadContext context, RendererSetting.Runtime renderer, VertexFormat.Mode mode,
+                                       @Nullable PhotonPipelines.InstancedVariant variant, boolean cpu,
+                                       boolean records, boolean mask) {
+        context.onRenderThread(() -> {
+            // the stage decides how a material's pipeline key blends (see bakeGroup); put back after, as a preloadNow
+            // may run inside a bake
+            var accumulating = PremultipliedBlendPlan.accumulating();
+            PremultipliedBlendPlan.setAccumulating(PremultipliedBlendPlan.isLayerStage(renderer.effectiveStage()));
+            try {
+                var instanced = variant != null && instances(renderer, variant);
+                var onCpu = cpu || !instanced;
+                for (var materialSetting : renderer.getMaterials()) {
+                    materialSetting.getMaterial().preload(context);
+                    if (onCpu) {
+                        var info = preloadRenderType(context, materialSetting.getRenderType(mode));
+                        if (info != null) {
+                            precompile(info.programs().main());
+                            if (records && readsParticleRecords(materialSetting)) {
+                                precompile(PhotonRenderTypes.cpuDataPipeline(info));
+                            }
+                        }
+                    }
+                    if (instanced) {
+                        var info = preloadRenderType(context, materialSetting.getRenderType(VertexFormat.Mode.QUADS));
+                        if (info != null) {
+                            precompile(instancedPipeline(info, variant));
+                        }
+                    }
+                }
+                if (mask) {
+                    if (onCpu) precompile(PhotonPipelines.mask(null, mode));
+                    if (instanced) precompile(PhotonPipelines.mask(variant, VertexFormat.Mode.QUADS));
+                }
+            } finally {
+                PremultipliedBlendPlan.setAccumulating(accumulating);
+            }
+        });
+    }
+
+    /** Whether every material of the group takes the instanced vertex stage — {@link #bakeInstancedGroup}'s test. */
+    private static boolean instances(RendererSetting.Runtime renderer, PhotonPipelines.InstancedVariant variant) {
+        for (var materialSetting : renderer.getMaterials()) {
+            var renderType = materialSetting.getRenderType(VertexFormat.Mode.QUADS);
+            var info = renderType == null ? null : PhotonRenderTypes.drawInfo(renderType);
+            if (info == null || info.instanced() == null) return false;
+            var source = info.instanced().source();
+            if (source != null && info.bindings().graph() == null && source.pipeline(variant, false) == null) return false;
+        }
+        return true;
+    }
+
+    /** The draw info of a render type a material built, its textures reported; null for none or a foreign type. */
+    @Nullable
+    private static PhotonRenderTypes.PhotonDrawInfo preloadRenderType(PreloadContext context,
+                                                                      @Nullable RenderType renderType) {
+        var info = renderType == null ? null : PhotonRenderTypes.drawInfo(renderType);
+        if (info != null) {
+            info.bindings().textures().values().forEach(context::texture);
+        }
+        return info;
+    }
+
+    private static void precompile(@Nullable RenderPipeline pipeline) {
+        if (pipeline == null) return;
+        RenderSystem.getDevice().precompilePipeline(pipeline);
+        // a stacked distortion's first draw also builds the pass that bends the frame by it
+        if (StackedDistortion.isStacked(pipeline)) StackedDistortion.preload();
     }
 
     private void bakeJob(List<PhotonWorldRenderState.DrawJob> out,

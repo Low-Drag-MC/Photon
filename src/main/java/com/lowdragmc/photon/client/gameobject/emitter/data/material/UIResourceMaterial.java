@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import com.mojang.blaze3d.vertex.VertexFormat;
@@ -65,6 +66,11 @@ public final class UIResourceMaterial implements IMaterial {
             MaterialSetting setting,
             VertexFormat.Mode mode) {
         return getRawMaterial().getPreviewRenderType(setting, mode);
+    }
+
+    @Override
+    public void preload(PreloadContext context) {
+        getInternalMaterial().preload(context);
     }
 
     @Override

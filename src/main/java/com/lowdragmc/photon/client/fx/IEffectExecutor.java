@@ -4,7 +4,9 @@ import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * The context an {@link com.lowdragmc.photon.client.fx.FXRuntime} plays inside: supplies the level
@@ -40,6 +42,15 @@ public interface IEffectExecutor {
 
     default RandomSource getRandomSource() {
         return getLevel().getRandom();
+    }
+
+    /**
+     * The entity this effect belongs to, if any: beam raycasts skip it, and so does particle collision while its
+     * "ignore owner" option is on, so a mob's own effect does not bounce off the mob. Game thread.
+     */
+    @Nullable
+    default Entity owner() {
+        return null;
     }
 
     /**

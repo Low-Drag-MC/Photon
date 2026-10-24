@@ -18,6 +18,7 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.client.AutoCloseCleaner;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.BlendMode;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
@@ -306,6 +307,18 @@ public class KilaMaterial extends ShaderInstanceMaterial {
 
     private boolean active(KilaModule module, KilaLayout layout) {
         return module.isEnable() && !layout.dropped.contains(module);
+    }
+
+    /** Its file textures, which the binder loads on the first draw, and its baked gradients. */
+    @Override
+    public void preload(PreloadContext context) {
+        for (var texture : layout().textures) {
+            if (texture.texture() != null) {
+                context.texture(texture.texture().getTexture());
+            } else if (texture.dynamic() != null) {
+                texture.dynamic().textureView();
+            }
+        }
     }
 
     /** Stacked only where the frame can be bent, and not while a debug view replaces the output. */

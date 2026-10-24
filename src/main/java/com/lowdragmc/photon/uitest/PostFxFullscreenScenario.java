@@ -32,7 +32,7 @@ public class PostFxFullscreenScenario implements UIScenario {
                 .step("a still frame", ctx -> {
                     LightTestConfig.set(ctx.mc().options.cloudStatus(), CloudStatus.OFF);
                     LightTestConfig.set(ctx.mc().options.bobView(), false);
-                    ctx.mc().options.hideGui = true;
+                    HiddenGui.hide(ctx.mc());
                 })
                 .frames(20)
                 .screenshot("plain")
@@ -46,7 +46,7 @@ public class PostFxFullscreenScenario implements UIScenario {
                 .step("every quadrant is grey", PostFxFullscreenScenario::checkGrey)
                 .teardown("effect off", ctx -> {
                     PhotonPostFX.clearTestEffect();
-                    ctx.mc().options.hideGui = false;
+                    HiddenGui.restore(ctx.mc());
                     LightTestConfig.restore();
                 })
                 .teardownServer("animals back", sc -> NoMobs.release(sc.player()));

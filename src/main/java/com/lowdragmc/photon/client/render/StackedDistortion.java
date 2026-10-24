@@ -1,7 +1,9 @@
 package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.compat.iris.IrisCompat;
+import com.lowdragmc.photon.client.compat.iris.IrisCompositeMode;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.shaders.UniformType;
@@ -26,8 +28,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Distortions that add up: each adds its push into a frame-sized RGBA16F sum, and the frame is bent once by the total,
  * so hazes in front of each other bend together. rg is the push in screen uv, b how far the tints darken, a the nearest
  * one's {@code 1 / (1 + eye)} kept by {@code GL_MAX} (a 26.1 clear is 8-bit, so 1.21's MIN over a far clear is out).
- * {@link #INLINE} is bent at the end of each in-place drain, {@link #LAYER} once the deferred layer is merged. Not under
- * a shader pack: the frame is the pack's.
+ * {@link #INLINE} is bent at the end of each in-place drain, {@link #LAYER} once the deferred layer is merged. Under a
+ * shader pack only for {@link IrisCompositeMode#AFTER_PACK}: every other mode merges the FX into the pack's own targets
+ * mid-frame, and the frame is the pack's.
  */
 public final class StackedDistortion {
     private static final int USAGE = GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT;
@@ -46,9 +49,20 @@ public final class StackedDistortion {
     private StackedDistortion() {
     }
 
-    /** Whether a distortion drawing now can stack: in a frame Photon owns, with float targets. */
+    /**
+     * Whether a distortion drawing now can stack: with float targets, in a frame Photon owns — an editor scene is
+     * one under a shader pack too — or one the pack finishes before Photon's layer is merged onto it
+     * ({@link IrisCompositeMode#AFTER_PACK}), which is when {@link #LAYER} bends the finished frame.
+     */
     public static boolean available() {
-        return RenderSystem.tryGetDevice() != null && !IrisCompat.isUsingShaderPack() && PhotonFloatTextures.isSupported();
+        if (RenderSystem.tryGetDevice() == null || !PhotonFloatTextures.isSupported()) return false;
+        if (!IrisCompat.isUsingShaderPack() || PhotonParticleManager.isEditorSceneRendering()) return true;
+        return IrisCompat.compositeMode() == IrisCompositeMode.AFTER_PACK;
+    }
+
+    /** Compile the pass that bends the frame ahead of the first stacked draw ({@code FXHelper.preload}). */
+    public static void preload() {
+        RenderSystem.getDevice().precompilePipeline(bendPipeline());
     }
 
     public static RenderPipeline mark(RenderPipeline pipeline) {
