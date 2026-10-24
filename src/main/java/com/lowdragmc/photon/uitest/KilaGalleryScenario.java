@@ -171,7 +171,7 @@ public class KilaGalleryScenario implements UIScenario {
         return 1.4;
     }
 
-    private static ParticleEmitter showcase(KilaPresets.Preset preset) {
+    static ParticleEmitter showcase(KilaPresets.Preset preset) {
         var material = preset.create();
         var emitter = new ParticleEmitter();
         var config = emitter.config;
