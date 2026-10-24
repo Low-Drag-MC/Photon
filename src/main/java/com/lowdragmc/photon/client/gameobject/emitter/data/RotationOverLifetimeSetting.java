@@ -14,6 +14,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.RandomConstant
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -89,6 +90,16 @@ public class RotationOverLifetimeSetting extends ToggleGroup {
         public boolean isLocal() {
             var value = space.get();
             return value == null || value == ValueSpace.Local;
+        }
+
+        /**
+         * Whether the spin goes into the particle's own euler rather than being applied about world or custom axes.
+         * A camera-facing billboard has no world orientation to turn, so it keeps spinning in its own plane.
+         */
+        public boolean spinsOwnAxes(ParticleRendererSetting.Mode mode) {
+            return isLocal() || mode == ParticleRendererSetting.Mode.Billboard
+                    || mode == ParticleRendererSetting.Mode.VerticalBillboard
+                    || mode == ParticleRendererSetting.Mode.StretchedBillboard;
         }
 
         @Nullable

@@ -21,6 +21,7 @@ import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMeshCache;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
@@ -94,6 +95,7 @@ public class PhotonClientListeners {
     public static void onClientTick(ClientTickEvent.Post event) {
         PhotonLights.tick();
         DynamicLightRenderer.tick();
+        PhotonMeshCache.INSTANCE.tick();
     }
 
     /**

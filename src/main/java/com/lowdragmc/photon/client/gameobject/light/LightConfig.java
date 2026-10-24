@@ -1,8 +1,11 @@
 package com.lowdragmc.photon.client.gameobject.light;
 
+import com.lowdragmc.lowdraglib2.configurator.ConfiguratorParser;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
@@ -23,6 +26,8 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector4f;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.function.Supplier;
 
 /** Colour, intensity and range are curves over the normalized lifetime; {@link Runtime} holds the timeline overrides. */
@@ -36,7 +41,11 @@ public class LightConfig implements IConfigurable, IPersistedSerializable {
         Spot
     }
 
+    /** Only a spot has a cone, so its angles are built under the type rather than in the list. */
+    private static final List<String> SPOT_FIELDS = List.of("innerAngle", "outerAngle");
+
     @Configurable(name = "LightConfig.type", tips = "photon.light.type")
+    @ConfigSelector(subConfiguratorBuilder = "buildTypeConfigurator")
     protected Type type = Type.Point;
 
     @Configurable(name = "LightConfig.lifetime", tips = "photon.light.lifetime")
@@ -85,6 +94,26 @@ public class LightConfig implements IConfigurable, IPersistedSerializable {
 
     @Configurable(name = "LightConfig.volumetric", subConfigurable = true, tips = "photon.light.volumetric")
     protected final VolumetricSetting volumetric = new VolumetricSetting();
+
+    @Override
+    public void buildConfigurator(ConfiguratorGroup father) {
+        for (var field : LightConfig.class.getDeclaredFields()) {
+            if (SPOT_FIELDS.contains(field.getName())) continue;
+            ConfiguratorParser.createFieldConfigurator(field, father, LightConfig.class, new HashMap<>(), this);
+        }
+    }
+
+    private void buildTypeConfigurator(Type type, ConfiguratorGroup group) {
+        if (type != Type.Spot) return;
+        for (var name : SPOT_FIELDS) {
+            try {
+                ConfiguratorParser.createFieldConfigurator(LightConfig.class.getDeclaredField(name), group,
+                        LightConfig.class, new HashMap<>(), this);
+            } catch (NoSuchFieldException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+    }
 
     public static class Runtime {
         public final RuntimeValue<NumberFunction> color;

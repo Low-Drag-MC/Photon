@@ -227,6 +227,7 @@ public final class FXFileActions {
             return;
         }
         var dialog = new Dialog();
+        dialog.overlay.layout(layout -> layout.width(260).maxWidthPercent(95));
         dialog.setTitle(packFile.getName());
         var list = new UIElement().layout(layout -> {
             layout.widthPercent(100);
@@ -253,7 +254,10 @@ public final class FXFileActions {
             });
             var name = fxId.getPath().substring(fxId.getPath().lastIndexOf('/') + 1);
             row.addChildren(
-                    new Label().setText(fxId.toString()).layout(layout -> layout.flex(1)),
+                    // a long id is cut at the buttons and rolls while hovered
+                    new Label().setText(fxId.toString())
+                            .textStyle(style -> style.textWrap(TextWrap.HOVER_ROLL))
+                            .layout(layout -> layout.flex(1)),
                     ResourceDialogs.iconButton(Icons.IMPORT, "photon.manage_fxpack.convert", e ->
                             pickProjectFile(editor, name, projectFile -> {
                                 dialog.close();

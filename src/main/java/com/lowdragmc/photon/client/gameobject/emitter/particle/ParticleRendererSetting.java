@@ -225,10 +225,10 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     public void buildSubConfigurator(Mode mode, ConfiguratorGroup group) {
         if (mode == Mode.StretchedBillboard) {
             group.addConfigurators(
-		            new NumberConfigurator("lengthScale", this::getLengthScale, value -> setLengthScale(value.floatValue()), 2.0f, true)
+		            new NumberConfigurator("ParticleRendererSetting.lengthScale", this::getLengthScale, value -> setLengthScale(value.floatValue()), 2.0f, true)
 				            .setWheel(0.1f)
 				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.lengthScale"),
-		            new NumberConfigurator("velocityScale", this::getVelocityScale, value -> setVelocityScale(value.floatValue()), 0.0f, true)
+		            new NumberConfigurator("ParticleRendererSetting.velocityScale", this::getVelocityScale, value -> setVelocityScale(value.floatValue()), 0.0f, true)
 				            .setWheel(0.1f)
 				            .setTips("photon.emitter.config.renderer.renderMode.stretchedBillboard.velocityScale"));
         }
@@ -239,14 +239,14 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
             group.addConfigurators(
                     // drag a mesh resource in, or click the button to open the resource dialog;
                     // shade/useBlockUV are functional no-ops for raw-UV (obj) meshes by construction
-                    new MeshDataConfigurator("model", this::getModel, this::setModel, new MeshData(), true),
-                    new BooleanConfigurator("shade", this::isShade, this::setShade, true, true)
+                    new MeshDataConfigurator("ParticleRendererSetting.model", this::getModel, this::setModel, new MeshData(), true),
+                    new BooleanConfigurator("ParticleRendererSetting.shade", this::isShade, this::setShade, true, true)
                             .setTips("photon.emitter.config.renderer.renderMode.model.shade"),
-                    new BooleanConfigurator("useBlockUV", this::isUseBlockUV, this::setUseBlockUV, true, true)
+                    new BooleanConfigurator("ParticleRendererSetting.useBlockUV", this::isUseBlockUV, this::setUseBlockUV, true, true)
                             .setTips("photon.emitter.config.renderer.renderMode.model.useBlockUV"),
-                    new BooleanConfigurator("tangent", this::isTangent, this::setTangent, false, true)
+                    new BooleanConfigurator("ParticleRendererSetting.tangent", this::isTangent, this::setTangent, false, true)
                             .setTips("photon.emitter.config.renderer.renderMode.model.tangent"),
-                    new Vector3fAccessor().create("modelPivot", this::getModelPivot, this::setModelPivot,
+                    new Vector3fAccessor().create("ParticleRendererSetting.modelPivot", this::getModelPivot, this::setModelPivot,
                             true, getModelPivotField(), this)
                             .setTips("photon.emitter.config.renderer.renderMode.model.modelPivot")
                     );

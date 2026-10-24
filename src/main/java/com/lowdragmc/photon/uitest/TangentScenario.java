@@ -6,6 +6,10 @@ import com.lowdragmc.kilagraph.rendertype.nodes.math.basic.MultiplyNode;
 import com.lowdragmc.kilagraph.test.gametest.KGGameTestHelpers;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.ICustomNodeModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.NodeModel;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
+import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
+import net.minecraft.client.resources.language.I18n;
 import com.lowdragmc.lowdraglib2.registry.RegistrationEnvironment;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.uitest.ScenarioBuilder;
@@ -52,8 +56,30 @@ public class TangentScenario implements UIScenario {
             "ARA_TRAIL_TUBE_INSTANCE", MaterialContext.ARA_TRAIL_TUBE_INSTANCE,
             "BEAM_INSTANCE", MaterialContext.BEAM_INSTANCE);
 
+    private static void collectLabels(com.lowdragmc.lowdraglib2.gui.ui.UIElement element, List<String> out) {
+        if (element instanceof com.lowdragmc.lowdraglib2.configurator.ui.Configurator configurator) {
+            out.add(configurator.label.getText().getString());
+        }
+        for (var child : element.getChildren()) collectLabels(child, out);
+    }
+
     @Override
     public void define(ScenarioBuilder s) {
+        s.step("the Model and Stretched Billboard rows have names, not field names", ctx -> {
+            var renderer = new ParticleEmitter().config.renderer;
+            var model = new ConfiguratorGroup("", false);
+            renderer.buildSubConfigurator(ParticleRendererSetting.Mode.Model, model);
+            var stretched = new ConfiguratorGroup("", false);
+            renderer.buildSubConfigurator(ParticleRendererSetting.Mode.StretchedBillboard, stretched);
+            var labels = new ArrayList<String>();
+            collectLabels(model, labels);
+            collectLabels(stretched, labels);
+            for (var row : List.of("model", "shade", "useBlockUV", "tangent", "modelPivot", "lengthScale", "velocityScale")) {
+                var key = "ParticleRendererSetting." + row;
+                ctx.check(key + " is translated", I18n.exists(key), "a translation", key);
+                ctx.check(row + " is shown by its name", labels.contains(I18n.get(key)) && !labels.contains(row), I18n.get(key), labels);
+            }
+        });
         s.step("every particle.glsl variant compiles on the driver", ctx -> {
             var material = new TextureMaterial();
             VARIANTS.forEach((name, context) -> {

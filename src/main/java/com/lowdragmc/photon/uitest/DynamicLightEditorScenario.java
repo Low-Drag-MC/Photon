@@ -4,6 +4,7 @@ import com.electronwill.nightconfig.core.UnmodifiableConfig;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorSelectorConfigurator;
 import com.lowdragmc.lowdraglib2.editor.ui.EditorWindow;
 import com.lowdragmc.lowdraglib2.gui.holder.ModularUIScreen;
 import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
@@ -96,7 +97,9 @@ public class DynamicLightEditorScenario implements UIScenario {
             }
         })
         .step("the inspectors build and carry the new rows", ctx -> {
-            rows(ctx, "light", new LightObject(), List.of("LightConfig.type", "LightConfig.intensity",
+            var spot = new LightObject();
+            spot.config.setType(LightConfig.Type.Spot);
+            rows(ctx, "spot light", spot, List.of("LightConfig.type", "LightConfig.intensity", "LightConfig.innerAngle",
                     "LightConfig.outerAngle", "LightConfig.sourceRadius", "LightConfig.flicker", "LightConfig.volumetric",
                     "VolumetricSetting.strength"));
             rows(ctx, "particle emitter", new ParticleEmitter(), List.of("ParticleConfig.lightEmission"));
@@ -108,6 +111,7 @@ public class DynamicLightEditorScenario implements UIScenario {
                     "FogVolumeConfig.absorption", "FogVolumeConfig.emission", "FogVolumeConfig.noise", "FogVolumeConfig.noise.wind"));
             rows(ctx, "sprite material", new SpriteMaterial(), List.of("TextureMaterial.litParticles"));
         })
+        .step("a point light has no cone rows; turned into a spot it gets them", DynamicLightEditorScenario::spotRows)
         .step("light, emission and lit settings survive save and load", DynamicLightEditorScenario::roundTrip)
 
         .openModularUI("photon editor", ctx -> new ModularUI(UI.of(
@@ -195,6 +199,34 @@ public class DynamicLightEditorScenario implements UIScenario {
             var text = I18n.get(key);
             ctx.check(what + " shows " + key, labels.contains(text), text, labels.size() + " rows");
         }
+    }
+
+    private static void spotRows(TestContext ctx) {
+        var light = new LightObject();
+        var group = new ConfiguratorGroup("test", false);
+        light.buildConfigurator(group);
+        var cone = List.of(I18n.get("LightConfig.innerAngle"), I18n.get("LightConfig.outerAngle"));
+        var labels = new ArrayList<String>();
+        collectLabels(group, labels);
+        ctx.check("a point light shows no cone angles", cone.stream().noneMatch(labels::contains), "none", labels);
+        light.config.setType(LightConfig.Type.Spot);
+        var selectors = new ArrayList<ConfiguratorSelectorConfigurator<?>>();
+        collectSelectors(group, selectors);
+        ctx.require("the type is a selector with its own rows", !selectors.isEmpty());
+        selectors.forEach(ConfiguratorSelectorConfigurator::screenTick);
+        labels.clear();
+        collectLabels(group, labels);
+        ctx.check("a spot shows both cone angles", labels.containsAll(cone), cone, labels);
+        int type = labels.indexOf(I18n.get("LightConfig.type"));
+        int inner = labels.indexOf(cone.getFirst());
+        int lifetime = labels.indexOf(I18n.get("LightConfig.lifetime"));
+        ctx.check("under the type, before the rest", type < inner && inner < lifetime, "type < angles < lifetime",
+                type + " / " + inner + " / " + lifetime);
+    }
+
+    private static void collectSelectors(UIElement element, List<ConfiguratorSelectorConfigurator<?>> out) {
+        if (element instanceof ConfiguratorSelectorConfigurator<?> selector) out.add(selector);
+        for (var child : element.getChildren()) collectSelectors(child, out);
     }
 
     private static void collectLabels(UIElement element, List<String> out) {

@@ -19,7 +19,6 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.Objects;
 
@@ -98,14 +97,9 @@ public class GltfModelSource implements IModelSource {
         if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
             return null;
         }
+        PhotonMeshCache.INSTANCE.trackAssetFile(key(), modelLocation);
         try (var in = Minecraft.getInstance().getResourceManager().open(modelLocation)) {
-            var model = GltfMeshParser.parseModel(in, flipV);
-            // track the editable disk copy (if any) so pollFileChanges can hot-reload it
-            var file = new File(LDLib2.getAssetsDir(), modelLocation.getNamespace() + "/" + modelLocation.getPath());
-            if (file.isFile()) {
-                PhotonMeshCache.INSTANCE.trackFile(key(), file);
-            }
-            return model;
+            return GltfMeshParser.parseModel(in, flipV);
         } catch (FileNotFoundException e) {
             // a source whose file has not been picked yet; a stack trace says nothing extra
             Photon.LOGGER.warn("glTF model {} does not exist", modelLocation);

@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.uitest;
 
+import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.VertexAnimationBake;
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.registry.RegistrationEnvironment;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
@@ -255,6 +256,57 @@ public class AnimatedGltfScenario implements UIScenario {
             }
         })
 
+        .step("a pose table over the limit is refused, and the model animates in lockstep", ctx -> {
+            var location = write("huge.glb", glb(skinnedGltf()));
+            var source = new AnimatedGltfModelSource(location);
+            source.setPerParticlePhase(true);
+            source.setFrames(VertexAnimationBake.MAX_TEXELS);
+            source.invalidate();
+            ctx.check("no table", source.vertexAnimation() == null, "none", "baked");
+            ctx.check("asked again, still none", source.vertexAnimation() == null, "none", "baked");
+            ctx.check("it poses on the CPU instead of freezing", source.asDynamic() != null, "dynamic", "static");
+            source.setFrames(30);
+            ctx.check("a size that fits bakes", source.vertexAnimation() != null, "baked", "none");
+            ctx.check("and the CPU stops posing it", source.asDynamic() == null, "static", "dynamic");
+        })
+
+        // hot reload: the cache looks at the tracked files once a second
+        .step("edit a glb the editor's assets folder holds", ctx -> {
+            var location = write("hot.glb", glb(staticGltf()));
+            var source = new GltfModelSource(location);
+            ctx.put("hotSource", source);
+            ctx.put("hotBefore", source.getMesh());
+            touch("hot.glb", glb(skinnedGltf()));
+        })
+        .ticks(30)
+        .step("the edited file is the one drawn now", ctx -> {
+            GltfModelSource source = ctx.get("hotSource");
+            PhotonMesh before = ctx.get("hotBefore");
+            var after = source.getMesh();
+            ctx.check("the mesh was read again", after != before, "a fresh mesh", "the same one");
+            ctx.check("and it loaded", !after.isEmpty(), "non-empty", "empty");
+        })
+        .step("edit an animation file a model is combined with", ctx -> {
+            var model = write("hot_base.glb", glb(skinnedGltf()));
+            var donor = write("hot_donor.glb", glb(animationOnlyGltf()));
+            var source = new AnimatedGltfModelSource(model);
+            source.getAnimationFiles().add(donor);
+            source.setPerParticlePhase(true);
+            source.invalidate();
+            var bake = source.vertexAnimation();
+            ctx.require("the combined model baked", bake != null);
+            ctx.put("hotCombined", source);
+            ctx.put("hotBake", bake);
+            touch("hot_donor.glb", glb(animationOnlyGltf()));
+        })
+        .ticks(30)
+        .step("the combined model is built again", ctx -> {
+            AnimatedGltfModelSource source = ctx.get("hotCombined");
+            var after = source.vertexAnimation();
+            ctx.check("it baked from a fresh combination", after != null && after != ctx.get("hotBake"), "a new bake", after);
+            source.setPerParticlePhase(false);
+        })
+
         .step("clean up the fixtures", ctx -> {
             int deleted = 0;
             for (var file : fixtures) {
@@ -262,6 +314,17 @@ public class AnimatedGltfScenario implements UIScenario {
             }
             ctx.check("every fixture was removed", deleted == fixtures.size(), fixtures.size(), deleted);
         });
+    }
+
+    /** Rewrites a fixture with a modification time the cache cannot mistake for the old one. */
+    private void touch(String name, byte[] bytes) {
+        var file = new File(LDLib2.getAssetsDir(), DIR + PREFIX + name);
+        try {
+            Files.write(file.toPath(), bytes);
+        } catch (IOException e) {
+            throw new IllegalStateException("could not rewrite the glTF fixture " + name, e);
+        }
+        if (!file.setLastModified(file.lastModified() + 5000)) throw new IllegalStateException("could not touch " + name);
     }
 
     private ResourceLocation write(String name, byte[] bytes) {

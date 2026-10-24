@@ -25,6 +25,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -417,15 +418,22 @@ public final class FXInstanceEditing {
 
     /** Put {@code path} of {@code object} back to its source's value, and whatever overlapping override covers it. */
     public void revert(IFXObject object, List<String> path) {
+        revert(object, List.of(path));
+    }
+
+    /** {@link #revert(IFXObject, List)} for several paths, as one step. */
+    public void revert(IFXObject object, Collection<List<String>> paths) {
         var pristine = pristineData(object);
         if (pristine == null) return;
         var before = currentData(object);
         var after = before.copy();
         var reverted = new LinkedHashSet<List<String>>();
         for (var change : changesOf(object)) {
-            if (!NbtPatch.overlaps(change.path(), path)) continue;
-            // the longer of the two is inside the shorter: revert the shorter, which covers both
-            reverted.add(change.path().size() <= path.size() ? change.path() : path);
+            for (var path : paths) {
+                if (!NbtPatch.overlaps(change.path(), path)) continue;
+                // the longer of the two is inside the shorter: revert the shorter, which covers both
+                reverted.add(change.path().size() <= path.size() ? change.path() : path);
+            }
         }
         for (var at : reverted) {
             var value = NbtPatch.get(pristine, at);

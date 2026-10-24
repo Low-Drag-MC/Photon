@@ -3,6 +3,7 @@ package com.lowdragmc.photon.gui.editor;
 import com.lowdragmc.lowdraglib2.configurator.ui.ArrayConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorSelectorConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
@@ -28,7 +29,7 @@ import java.util.function.UnaryOperator;
  * differs from the source and a Revert entry on its menu.
  */
 public final class FXInstanceInspector {
-    private static final List<String> ENABLED_PATH = List.of("_additional");
+    static final List<String> ENABLED_PATH = List.of("_additional");
     private static final List<String> CONFIG = List.of("config");
     /** The key a read-only managed field (a final list, say) saves its value under. */
     private static final String PAYLOAD = "payload";
@@ -86,6 +87,8 @@ public final class FXInstanceInspector {
                 }
             } else if (row instanceof ConfiguratorGroup inner) {
                 key = key * 31 + rowsKey(inner);
+            } else if (row instanceof ConfiguratorSelectorConfigurator<?> selector) {
+                key = key * 31 + rowsKey(selector.container);
             }
         }
         return key;
@@ -194,6 +197,9 @@ public final class FXInstanceInspector {
                 }
             } else if (row instanceof ConfiguratorGroup inner) {
                 collect(inner, path, false, data, into);
+            } else if (row instanceof ConfiguratorSelectorConfigurator<?> selector) {
+                // the rows a choice shows are the owner's fields, siblings of the choice itself
+                collect(selector.container, at, top, data, into);
             }
         }
     }

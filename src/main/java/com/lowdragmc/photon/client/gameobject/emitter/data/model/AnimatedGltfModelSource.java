@@ -34,7 +34,6 @@ import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.List;
@@ -142,6 +141,11 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     private SkinnedModel bakedModel;
     private String bakedAnimation = "";
     private int bakedFrames;
+    /** The inputs of the last bake that was refused, so it is not tried (and logged) again every frame. */
+    @Nullable
+    private SkinnedModel refusedModel;
+    private String refusedAnimation = "";
+    private int refusedFrames;
 
     /** Test seam: whether a deformation ran is invisible in the picture, so asserting reuse means
      *  holding the clock still and watching the revision not move. Null restores the real clock. */
@@ -234,12 +238,23 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
             refreshPhase(model); // the clock moved even though the table did not
             return vertexAnimation;
         }
+        if (isBakeRefused(model)) return null;
         dropBake();
         var clip = animation.isEmpty() ? model.clipAt(0) : model.clip(animation);
         var table = VertexAnimationBake.bake(model, clip, frames);
         if (table == null) {
-            Photon.LOGGER.warn("could not bake {} frames of {} — too large, or nothing to pose",
-                    frames, modelLocation);
+            refusedModel = model;
+            refusedAnimation = animation;
+            refusedFrames = frames;
+            long texels = ((long) frames + 1) * model.mesh().vertexCount();
+            if (texels > VertexAnimationBake.MAX_TEXELS) {
+                Photon.LOGGER.warn("{}: baking {} frames of {} vertices needs {} texels, over the {} limit; posing it on the "
+                                + "CPU without Per-Particle Phase instead. Lower Baked Frames to bake it.", modelLocation,
+                        frames, model.mesh().vertexCount(), texels, VertexAnimationBake.MAX_TEXELS);
+            } else {
+                Photon.LOGGER.warn("{}: nothing to bake for Per-Particle Phase (no skin or no frames); posing it on the CPU",
+                        modelLocation);
+            }
             return null;
         }
         vertexAnimation = new VertexAnimation(table, model.mesh().vertexCount(), frames);
@@ -290,6 +305,11 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
             return null;
         }
         var base = PhotonMeshCache.INSTANCE.getModel(key(), k -> load(modelLocation));
+        var combined = new CombinedKey(modelLocation, flipV, List.copyOf(animationFiles));
+        PhotonMeshCache.INSTANCE.dependOn(combined, key());
+        for (var file : animationFiles) {
+            PhotonMeshCache.INSTANCE.dependOn(combined, new PhotonMeshCache.GltfKey(file, flipV));
+        }
         var skeleton = base.skeleton();
         if (skeleton == null) {
             // nothing to retarget onto; the files are silently unusable, so say why once
@@ -366,7 +386,13 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
     @Override
     @Nullable
     public IDynamicMesh asDynamic() {
-        return !perParticlePhase && model().isAnimated() ? this : null;
+        var model = model();
+        // a refused bake still animates, in lockstep, rather than freezing in the rest pose
+        return model.isAnimated() && (!perParticlePhase || isBakeRefused(model)) ? this : null;
+    }
+
+    private boolean isBakeRefused(SkinnedModel model) {
+        return refusedModel == model && refusedAnimation.equals(animation) && refusedFrames == frames;
     }
 
     // ---- IDynamicMesh ----------------------------------------------------------------------------
@@ -511,13 +537,9 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         if (Minecraft.getInstance().getOverlay() instanceof LoadingOverlay) {
             return null;
         }
+        PhotonMeshCache.INSTANCE.trackAssetFile(new PhotonMeshCache.GltfKey(location, flipV), location);
         try (var in = Minecraft.getInstance().getResourceManager().open(location)) {
-            var model = GltfMeshParser.parseModel(in, flipV);
-            var file = new File(LDLib2.getAssetsDir(), location.getNamespace() + "/" + location.getPath());
-            if (file.isFile()) {
-                PhotonMeshCache.INSTANCE.trackFile(new PhotonMeshCache.GltfKey(location, flipV), file);
-            }
-            return model;
+            return GltfMeshParser.parseModel(in, flipV);
         } catch (FileNotFoundException e) {
             // a source whose file has not been picked yet; a stack trace says nothing extra
             Photon.LOGGER.warn("glTF {} does not exist", location);
@@ -566,6 +588,7 @@ public class AnimatedGltfModelSource implements IModelSource, IDynamicMesh {
         var clips = new SelectorConfigurator<>("AnimatedGltfModelSource.animation",
                 this::getAnimation, this::setAnimation, "", true, names,
                 name -> name.isEmpty() ? "photon.model_source.animated_gltf_model.first_animation" : name);
+        clips.setTips("photon.model_source.animated_gltf_model.animation.tips");
 
         var reloadButton = new Configurator().addInlineChild(new Button()
                 .setOnClick(event -> {

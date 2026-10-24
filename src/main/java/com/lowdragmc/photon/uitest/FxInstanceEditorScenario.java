@@ -1,5 +1,7 @@
 package com.lowdragmc.photon.uitest;
 
+import com.lowdragmc.photon.client.gameobject.light.LightObject;
+import com.lowdragmc.photon.client.gameobject.light.LightConfig;
 import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.configurator.EditAction;
@@ -47,11 +49,14 @@ import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.FXInstanceEditing;
 import com.lowdragmc.photon.gui.editor.FXInstanceInspector;
+import java.util.function.BiFunction;
+import com.lowdragmc.photon.gui.editor.FXInstanceOverridesDialog;
 import com.lowdragmc.photon.gui.editor.FXInstanceStyle;
 import com.lowdragmc.photon.gui.editor.FXObjectClipboard;
 import com.lowdragmc.photon.gui.editor.FXProject;
 import com.lowdragmc.photon.gui.editor.view.FXObjectTreeNode;
 import com.lowdragmc.photon.gui.editor.view.timeline.PhotonTrackTypes;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.network.chat.Component;
@@ -89,6 +94,21 @@ public class FxInstanceEditorScenario implements UIScenario {
 
     @Override
     public void define(ScenarioBuilder s) {
+        s.step("an override is named by the rows it runs through", ctx -> {
+            var emitter = new ParticleEmitter();
+            BiFunction<String, String, Void> named = (path, expected) -> {
+                var name = FXInstanceOverridesDialog.describe(emitter, List.of(path.split("/")));
+                ctx.check(path, name.equals(expected), expected, name);
+                return null;
+            };
+            named.apply("config/duration", I18n.get("ParticleConfig.duration"));
+            named.apply("config/startColor/data/number", I18n.get("ParticleConfig.startColor"));
+            named.apply("_additional", I18n.get("photon.fx_object.enabled"));
+            named.apply("nothing/like/this", "nothing/like/this");
+            var material = FXInstanceOverridesDialog.describe(emitter, List.of("config", "renderer", "materials", "payload", "0"));
+            ctx.check("a list element is numbered", material.startsWith(I18n.get("ParticleConfig.renderer")) && material.endsWith("#1"),
+                    I18n.get("ParticleConfig.renderer") + " › … › #1", material);
+        });
         s.step("write the fixtures", FxInstanceEditorScenario::writeFixtures)
                 .openModularUI("photon editor", ctx -> new ModularUI(UI.of(
                                 EditorWindow.open(FXEditor.WINDOW_ID, FXEditor::new).setId("fx_editor")))
@@ -909,6 +929,53 @@ public class FxInstanceEditorScenario implements UIScenario {
             });
         });
 
+        s.group("a placed spot's cone rows are marked, though they hang under its type", g -> {
+            g.step("widen a placed spot light", ctx -> {
+                var editor = openPlain(ctx);
+                var instance = editor.instances.create(fx("spot"), editor.runtime.root.transform());
+                ctx.require("spot is placed", instance != null);
+                ctx.put("instance", instance);
+                ((LightObject) editor.runtime.objects.get(InstanceIds.xor(instance.id(), id("lamp")))).config.setOuterAngle(50);
+                editor.instances.changed();
+                expand(ctx, instance);
+            });
+            g.frames(2);
+            clickRow(g, "lamp");
+            g.frames(4);
+            g.step("Outer Angle is marked, Inner Angle is not", ctx -> {
+                Configurator outer = null, inner = null;
+                for (var ref : ctx.query().type(Configurator.class).list()) {
+                    var row = ref.as(Configurator.class);
+                    var label = row.label.getText().getString();
+                    if (label.equals(I18n.get("LightConfig.outerAngle"))) outer = row;
+                    if (label.equals(I18n.get("LightConfig.innerAngle"))) inner = row;
+                }
+                ctx.require("both cone rows are shown", outer != null && inner != null);
+                ctx.check("the changed one is marked", outer.isOverridden(), "marked", "unmarked");
+                ctx.check("the other is not", !inner.isOverridden(), "unmarked", "marked");
+            });
+        });
+
+        s.group("one row of the overrides list reverts all it stands for, as one step", g -> g.step(
+                "change two values and revert both", ctx -> {
+                    var editor = openPlain(ctx);
+                    var instance = editor.instances.create(fx("base"), editor.runtime.root.transform());
+                    ctx.require("base is placed", instance != null);
+                    ctx.put("instance", instance);
+                    var emit = (ParticleEmitter) placedObject(ctx, B_EMIT);
+                    int duration = emit.config.getDuration();
+                    boolean looping = emit.config.isLooping();
+                    emit.config.setDuration(duration + 37);
+                    emit.config.setLooping(!looping);
+                    editor.instances.changed();
+                    int steps = stackSize(ctx, "undoStack");
+                    editor.instances.revert(emit, List.of(List.of("config", "duration"), List.of("config", "looping")));
+                    ctx.check("duration is the source's", emit.config.getDuration() == duration, duration, emit.config.getDuration());
+                    ctx.check("looping is the source's", emit.config.isLooping() == looping, looping, emit.config.isLooping());
+                    ctx.check("one history step", stackSize(ctx, "undoStack") == steps + 1, steps + 1, stackSize(ctx, "undoStack"));
+                    ctx.check("nothing is overridden any more", !editor.instances.isOverridden(emit), "pristine", "overridden");
+                }));
+
         s.group("copying an instance leaves what a timeline drives out of its record", g -> g.step(
                 "copy an instance whose placed emitter an outer track moves", ctx -> {
                     var editor = openPlain(ctx);
@@ -1140,6 +1207,9 @@ public class FxInstanceEditorScenario implements UIScenario {
             var activator = PhotonTrackTypes.ACTIVATOR.create().targetId(otherEmit.id());
             activator.clips().add(new Clip(0, 60, 1));
             write("other", List.of(otherEmit), List.of(activator));
+            var lamp = named(new LightObject(), "lamp");
+            lamp.config.setType(LightConfig.Type.Spot);
+            write("spot", List.of(lamp));
         } catch (IOException e) {
             ctx.require("the fixtures were written: " + e, false);
         }

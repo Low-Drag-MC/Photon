@@ -1,5 +1,7 @@
 package com.lowdragmc.photon.uitest;
 
+import com.lowdragmc.lowdraglib2.configurator.accessors.EnumAccessor;
+import net.minecraft.client.resources.language.I18n;
 import com.lowdragmc.lowdraglib2.registry.RegistrationEnvironment;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.uitest.ScenarioBuilder;
@@ -74,6 +76,13 @@ public class SoftParticleScenario implements UIScenario {
 
     @Override
     public void define(ScenarioBuilder s) {
+        s.step("the fade targets show names", ctx -> {
+            for (var fade : SoftParticles.Fade.values()) {
+                var key = EnumAccessor.getEnumDisplayKey(fade);
+                ctx.check(fade + " has a translated name", !key.equals(EnumAccessor.getEnumName(fade)) && I18n.exists(key),
+                        "a translation", key);
+            }
+        });
         s.step("every particle program compiles with the soft-particle include", ctx -> {
             // All three fragment shaders import it. The plain variants are built at launch; these are the
             // #defined ones, which nothing else in the build ever compiles.

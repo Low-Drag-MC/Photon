@@ -708,7 +708,8 @@ public class TileParticle implements IParticle {
         if (runtime.rotationOverLifetime.isEnable() || runtime.rotationBySpeed.isEnable() || runtime.noise.isEnable()) {
             var rotation = new Vector3f(initialRotation);
 
-            if (runtime.rotationOverLifetime.isEnable() && runtime.rotationOverLifetime.isLocal()) {
+            if (runtime.rotationOverLifetime.isEnable()
+                    && runtime.rotationOverLifetime.spinsOwnAxes(runtime.renderer.getRenderMode())) {
                 rotation.add(runtime.rotationOverLifetime.getRotation(this, 0));
             }
 
