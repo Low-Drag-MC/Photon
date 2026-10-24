@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**A real-time VFX toolkit for Minecraft — particles, trails, beams, timelines, shader graphs, and post-processing, all authored in-game.**
+**A real-time VFX toolkit for Minecraft — particles, trails, beams, dynamic lights, timelines, shader graphs, and post-processing, all authored in-game.**
 
 [![GitHub stars](https://img.shields.io/github/stars/low-drag-mc/photon?style=for-the-badge&logo=github)](https://github.com/Low-Drag-MC/Photon/stargazers)
 [![CurseForge](https://img.shields.io/badge/CurseForge-Photon-F16436?style=for-the-badge&logo=curseforge)](https://www.curseforge.com/minecraft/mc-mods/photon)
@@ -12,8 +12,9 @@
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-EF9421?style=for-the-badge)](LICENSE)
 
 [Documentation](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/) |
+[Getting Started](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/getting-started.html) |
 [Commands](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/commands.html) |
-[Java Integration](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/Java%20Integration/) |
+[Java API](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/java-api/) |
 [Discord](https://discord.com/invite/sDdf2yD9bh) |
 [CurseForge](https://www.curseforge.com/minecraft/mc-mods/photon) |
 [Modrinth](https://modrinth.com/mod/photon-editor)
@@ -22,7 +23,7 @@
 
 ---
 
-Photon is a VFX editor mod for Minecraft, inspired by Unity. It brings a Unity-style particle system, trail and beam rendering, a non-linear timeline, node-based shader and post-processing graphs, and a full in-game editor to Minecraft — so mod authors can build effects for their content, and players can create and play effects with commands.
+Photon is a VFX editor mod for Minecraft, inspired by Unity. It brings a Unity-style particle system, trail and beam rendering, dynamic lights with soft shadows, a non-linear timeline, node-based shader and post-processing graphs, and a full in-game editor to Minecraft — so mod authors can build effects for their content, and players can create and play effects with commands.
 
 Its original intention is to let people who love VFX create without being blocked by technical skill and math problems. If you know Unity's particle system, you already know most of Photon.
 
@@ -33,7 +34,7 @@ Its original intention is to let people who love VFX create without being blocke
 <td width="50%">
 <a href="https://www.youtube.com/watch?v=jr800pFgZBw"><img src="https://img.youtube.com/vi/jr800pFgZBw/maxresdefault.jpg" alt="Photon 2.2 showcase"></a><br>
 <strong><a href="https://www.youtube.com/watch?v=jr800pFgZBw">Photon 2.2 — Timeline, Shader Graph, Post-Processing</a></strong><br>
-The latest release in action: sequencing effects on a timeline, authoring materials as node graphs, and stacking fullscreen post effects.
+Sequencing effects on a timeline, authoring materials as node graphs, and stacking fullscreen post effects.
 </td>
 <td width="50%">
 <a href="https://www.youtube.com/watch?v=1fXFaWheYvc"><img src="https://img.youtube.com/vi/1fXFaWheYvc/maxresdefault.jpg" alt="What is Photon"></a><br>
@@ -43,75 +44,104 @@ An overview of the editor, the particle system, and how to build and play your f
 </tr>
 </table>
 
+## New Since the 2.2 Showcase
+
+<table>
+<tr>
+<td width="50%">
+<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/dynamic-lights/"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/assets/photon2/lights-overview.webp" alt="A night square lit only by Photon lights"></a><br>
+<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/dynamic-lights/">Dynamic Lights</a></strong> <sub>2.2.8</sub><br>
+Point and spot lights that light blocks, entities, and particles, with voxel soft shadows that never leak through walls. Place a Light object, let particles emit light with the Light Emission module, or add lights from Java. Works under Iris shader packs too.
+</td>
+<td width="50%">
+<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/dynamic-lights/lights-and-fog.html#volumetric-lights"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/assets/photon2/lights-volumetric-fog.webp" alt="Light shafts from a temple doorway through a low fog volume"></a><br>
+<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/dynamic-lights/lights-and-fog.html#volumetric-lights">Volumetric Lights and Fog Volumes</a></strong> <sub>2.2.8</sub><br>
+Halos around point lights, beams from spot lights, and box or sphere fog volumes for them to shine through. Shadowed lights cast real light shafts through doors and windows.
+</td>
+</tr>
+<tr>
+<td width="50%">
+<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/shaders-and-gpu/kila-material.html"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/assets/photon2/kila-showcase.webp" alt="Kila Material presets glowing at night"></a><br>
+<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/shaders-and-gpu/kila-material.html">Kila Material</a></strong> <sub>2.2.8</sub><br>
+An all-in-one VFX material: switch on flipbooks, masks, dissolve, distortion, color ramps, soft edges, fresnel, lighting, and decals instead of building a graph. Start from one of 27 presets, and export the material as a Shader Graph when you need more.
+</td>
+<td width="50%">
+<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/fx-instances.html"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/assets/photon2/fx-instance-editor.webp" alt="An FX instance in the editor hierarchy"></a><br>
+<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/fx-instances.html">FX Instances</a></strong> <sub>2.2.9</sub><br>
+Unity-style prefabs for effects: place one <code>.fx</code> inside another, at any depth, then override, disable, delete, or add objects. Only your changes are saved, so the instance keeps following its source.
+</td>
+</tr>
+<tr>
+<td width="50%">
+<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/particle-system/collision.html"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/assets/photon2/collision-overview.webp" alt="Sparks bouncing and coming to rest on stairs and slabs"></a><br>
+<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/particle-system/collision.html">Particle Collision</a></strong> <sub>2.2.9</sub><br>
+Swept collision against block shapes, fluid surfaces, entities, and Collider objects, so fast particles no longer pass through walls. Bounce, slide, stick, or die on contact; triggers report particles entering and leaving, and contacts can fire sub-emitters or a Java listener.
+</td>
+<td width="50%">
+<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/particle-system/gltf-models.html"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/assets/photon2/gltf-animated-swarm.webp" alt="A swarm of animated hologram foxes"></a><br>
+<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/particle-system/gltf-models.html">Animated glTF Models</a></strong> <sub>2.2.7</sub><br>
+Drop a <code>.glb</code> into the editor and use it as a particle mesh or an emission shape. Rigged files play their animations, and a per-particle animation phase keeps a swarm from moving in lockstep.
+</td>
+</tr>
+</table>
+
 ## Feature Highlights
 
 <table>
 <tr>
 <td width="50%">
-<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/en/photon2/assets/photonn_editor.png" alt="Photon in-game FX editor"></a><br>
-<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/">In-game FX Editor</a></strong><br>
-A Unity-style editor with real-time preview, dockable views, a resource browser, and an FX hierarchy. Run <code>/photon_editor</code> and start building — no restart, no external tools.
+<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/editor-and-projects.html"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/assets/photon2/photonn_editor.png" alt="Photon in-game FX editor"></a><br>
+<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/editor-and-projects.html">In-game FX Editor</a></strong><br>
+A Unity-style editor with real-time preview, dockable views, a resource browser, an FX hierarchy, undo history, and keyboard shortcuts. Run <code>/photon_editor</code> and start building — no restart, no external tools.
 </td>
 <td width="50%">
-<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/Materials/"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/en/photon2/assets/ShaderMaterialInspector.png" alt="Shader material inspector"></a><br>
-<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/Materials/">Materials and Shader Graph</a></strong><br>
-Author particle / trail / beam materials as node graphs instead of writing GLSL — scene color and depth, geometry and camera nodes, UVs, math, textures, curve and gradient values, plus reusable subgraphs. Hand-written shaders still work.
+<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/shaders-and-gpu/"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/assets/photon2/ShaderMaterialInspector.png" alt="Shader material inspector"></a><br>
+<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/shaders-and-gpu/">Materials and Shader Graph</a></strong><br>
+Author particle / trail / beam materials as node graphs instead of writing GLSL — scene color and depth, geometry and camera nodes, UVs, math, textures, curve and gradient values, dynamic lights, plus reusable subgraphs. Hand-written shaders still work.
 </td>
 </tr>
 <tr>
 <td width="50%">
-<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/Materials/CustomShaderMaterial/AdditionalGPUData.html"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/en/photon2/assets/GPUData.png" alt="Custom GPU data"></a><br>
-<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/Materials/CustomShaderMaterial/AdditionalGPUData.html">Custom GPU Data</a></strong><br>
+<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/shaders-and-gpu/additional-gpu-data.html"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/assets/photon2/GPUData.png" alt="Custom GPU data"></a><br>
+<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/shaders-and-gpu/additional-gpu-data.html">Custom GPU Data</a></strong><br>
 Per-emitter custom data streams (vector / color functions) readable per particle in shader graphs and hand-written shaders, on tile, trail, beam, and ara-trail particles, with selectable time sources.
 </td>
 <td width="50%">
-<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/en/photon2/assets/CurveAndGradient.png" alt="Curve and gradient editors"></a><br>
-<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/">Curves, Gradients, and Modules</a></strong><br>
+<a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/particle-system/value-functions.html"><img src="https://raw.githubusercontent.com/Low-Drag-MC/LowDragMC-Doc/v2/docs/assets/photon2/CurveAndGradient.png" alt="Curve and gradient editors"></a><br>
+<strong><a href="https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/particle-system/value-functions.html">Curves, Gradients, and Modules</a></strong><br>
 Almost every value is a curve, a gradient, a random range, or a constant, edited inline. Emitter modules mirror Unity's: shape, velocity / rotation / size / color over lifetime, noise, collision, sub-emitters, external forces, and more.
 </td>
 </tr>
 </table>
 
-### Also in Photon 2.2
-
-- **Timeline** — a non-linear timeline for sequencing effects: animation tracks that keyframe almost any emitter property (curve, gradient, and expression clips), record mode, signal / seed / audio / speed / control tracks, and post-process clips.
-- **Post-Processing** — an Effect Graph chains fullscreen passes, each pass its own shader graph. Ships with bloom, depth of field, blurs, vignette, chromatic aberration, glitch, film grain, outline, color grading, and more. Effects are requested with an animatable weight and per-parameter overrides; overlapping requests blend by weight.
-- **Custom Mask / Custom Depth** — Unreal-style per-object masking: flag emitters into named groups, then cull or outline post effects to just those pixels.
-- **Simulation space and force fields** — Local / World / Custom simulation space, a Force Field object (directional, gravity, drag, vortex), and an External Forces module.
-- **Models and meshes** — particles can render as 3D meshes; OBJ and JSON model sources plus built-in primitives back both the Shape module and the Model render mode.
-- **GPU instancing** — dedicated renderers for tile, trail, and beam particles, with per-instance render overrides drivable from the timeline.
-- **FX Packs** — export an effect and everything it references (materials, graphs, meshes, textures, shaders) into a single `.fxpack`, a standard resource-pack zip with content-addressed shared resources.
-
-See [CHANGELOGS.md](CHANGELOGS.md) for the full history.
-
 ## Getting Started
 
-1. Install [LDLib2](https://modrinth.com/mod/ldlib) and Photon (Minecraft `1.21.1`, NeoForge `21.1+`).
+1. Install [LDLib2](https://modrinth.com/mod/ldlib) and Photon (Minecraft `1.21.1`, NeoForge `21.1+`). Photon `2.2.9` needs LDLib2 `2.2.43` or newer; KilaGraph is bundled inside Photon.
 2. Enter a creative world and run `/photon_editor` to launch the editor.
 3. Create a new FX project and start experimenting.
 4. Play the result with `/photon` commands, or bind it from Java (below).
 
-Photon focuses on effect *creation*, not usage logic — use commands or code to bind an effect to entities, blocks, or your own lifecycle manager. Full walkthrough in the [documentation](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/) and [command reference](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/commands.html).
+Photon focuses on effect *creation*, not usage logic — use commands or code to bind an effect to entities, blocks, or your own lifecycle manager. Full walkthrough in the [documentation](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/getting-started.html) and [command reference](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/commands.html).
 
 ## Java Integration
 
-Photon is published to the FirstDark Maven snapshots repository.
+Photon, LDLib2, and KilaGraph are published to the FirstDark Maven snapshots repository.
 
 ```gradle
 repositories {
-    maven { url = "https://maven.firstdark.dev/snapshots" } // LDLib2, Photon
+    maven { url = "https://maven.firstdark.dev/snapshots" } // LDLib2, KilaGraph, Photon
 }
 
 dependencies {
     // LDLib2
     implementation("com.lowdragmc.ldlib2:ldlib2-neoforge-${minecraft_version}:${ldlib2_version}:all")
 
-    // Photon
-    implementation("com.lowdragmc.photon:photon-neoforge-${minecraft_version}:${photon_version}") {
-        transitive = false
-    }
+    // Photon: the `all` jar bundles KilaGraph
+    implementation("com.lowdragmc.photon:photon-neoforge-${minecraft_version}:${photon_version}:all")
 }
 ```
+
+Photon's Maven metadata lists no compile dependencies, so declare LDLib2 yourself. Add KilaGraph as `compileOnly` only if your code imports KilaGraph classes. The [Java API guide](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/java-api/) covers the `neoforge.mods.toml` entries and Jar-in-Jar bundling.
 
 Load an effect and bind it to a block or an entity:
 
@@ -138,7 +168,17 @@ FXHelper.preloadNow(ResourceLocation.parse("photon:fire"));
 FXHelper.keepPreloaded(ResourceLocation.parse("photon:fire"));
 ```
 
-For custom lifecycles, implement `IEffectExecutor` and drive an `FXRuntime` yourself — see the [Java Integration guide](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/Java%20Integration/).
+Add dynamic lights without an effect:
+
+```java
+// a light that follows an entity, 1 block above its feet
+PhotonLights.Handle handle = PhotonLights.attach(entity, new DynamicLight().color(1f, .5f, .2f).range(8), new Vec3(0, 1, 0));
+
+// a flash that fades out over 10 ticks
+PhotonLights.flash(new DynamicLight().at(x, y, z).intensity(40).range(16), 10);
+```
+
+For custom lifecycles, implement `IEffectExecutor` and drive an `FXRuntime` yourself — see the [Java API guide](https://low-drag-mc.github.io/LowDragMC-Doc/en/photon2/java-api/).
 
 ## Links
 
