@@ -8,6 +8,8 @@ import net.minecraft.resources.Identifier;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.Collection;
+import java.util.List;
 
 /**
  * An FX definition: the authored object tree + timeline, as saved by the editor / a {@code .fx} file.
@@ -22,7 +24,8 @@ import javax.annotation.ParametersAreNonnullByDefault;
  * Serialization note (26.1): NeoForge removed INBTSerializable. The .fx file format is Photon-owned
  * tag composition, so these classes keep their Tag-based serializeNBT/deserializeNBT methods as plain
  * methods to stay byte-compatible with existing assets; ValueIOSerializable is only adopted where
- * LDLib2's PersistedParser requires it (see CurveTexture/GradientTexture/MeshData).
+ * LDLib2's PersistedParser requires it (see CurveTexture/GradientTexture/MeshData, and Timeline for
+ * FXInstanceObject's persisted copy of its source's timeline).
  */
 public class FX {
     public static final String SUFFIX = ".fx";
@@ -42,7 +45,12 @@ public class FX {
     }
 
     public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
-        fxData.deserializeNBT(provider, tag.getCompoundOrEmpty("fxData"));
+        deserializeNBT(provider, tag, fxLocation == null ? List.of() : List.of(fxLocation));
+    }
+
+    /** @param as the ids this effect is known by, so an FX instance that leads back to one of them is a cycle */
+    public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag, Collection<Identifier> as) {
+        fxData.deserializeNBT(provider, tag.getCompoundOrEmpty("fxData"), as);
     }
 
     /**

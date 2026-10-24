@@ -21,6 +21,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
  * — which is demand-driven, so a frame with no soft-particle material takes no depth copy.
  */
 public class SoftParticles extends ToggleGroup {
+    public static final String INCLUDE = "photon:soft_particle.glsl";
 
     public enum Fade {
         /** Scale the whole result — right for additive, and for the premultiplied late-composite layer. */

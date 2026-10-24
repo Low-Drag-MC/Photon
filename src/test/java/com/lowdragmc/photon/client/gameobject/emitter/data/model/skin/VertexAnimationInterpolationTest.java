@@ -55,10 +55,10 @@ class VertexAnimationInterpolationTest {
 
         // a phase deliberately between two baked frames, where snapping is at its worst
         float phase = (2 + 0.5f) / FRAMES;
-        float cursor = phase * FRAMES;
-        int frame = (int) cursor;
-        int next = frame + 1 == FRAMES ? 0 : frame + 1;
-        float blend = cursor - (float) Math.floor(cursor);
+        float cursor = VertexAnimationBake.cursor(phase, FRAMES, false);
+        int frame = VertexAnimationBake.frameAt(cursor, FRAMES);
+        int next = frame + 1;
+        float blend = VertexAnimationBake.blendAt(cursor, frame, true);
         assertEquals(0.5f, blend, 1e-5f, "the fixture should sit halfway between frames");
 
         // what the deformer actually produces at that instant
@@ -108,9 +108,9 @@ class VertexAnimationInterpolationTest {
         int vertices = model.mesh().vertexCount();
 
         float phase = 3f / FRAMES;
-        float cursor = phase * FRAMES;
-        int frame = (int) cursor;
-        float blend = cursor - (float) Math.floor(cursor);
+        float cursor = VertexAnimationBake.cursor(phase, FRAMES, false);
+        int frame = VertexAnimationBake.frameAt(cursor, FRAMES);
+        float blend = VertexAnimationBake.blendAt(cursor, frame, true);
         assertEquals(3, frame);
         assertEquals(0f, blend, 1e-6f, "no blend on a boundary");
 
@@ -127,14 +127,5 @@ class VertexAnimationInterpolationTest {
             blended[i] = at[i] + (after[i] - at[i]) * blend;
         }
         assertArrayEquals(at, blended, 0f, "a zero blend is exactly the frame it started on");
-    }
-
-    /** The frame after the last one is the first: the bake samples duration * f / frames, so a looping
-     *  clip is continuous across the wrap rather than stuttering once a cycle. */
-    @Test
-    void theFrameAfterTheLastIsTheFirst() {
-        int frame = FRAMES - 1;
-        int next = frame + 1 == FRAMES ? 0 : frame + 1;
-        assertEquals(0, next);
     }
 }

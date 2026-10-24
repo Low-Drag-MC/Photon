@@ -2,10 +2,10 @@ package com.lowdragmc.photon.client.render;
 
 import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
-import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
+import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.mojang.blaze3d.ProjectionType;
 import com.mojang.blaze3d.buffers.GpuBuffer;
@@ -79,8 +79,8 @@ public final class MaterialPreviewRenderer {
     private static final int MAX_ENTRIES = 64;
     /** Tile renders per frame — they fill in over a few frames instead of bursting. */
     private static final int MAX_TILE_RENDERS_PER_FRAME = 8;
-    /** Defensive cap; the inspector normally has a handful of material slots at most. */
-    private static final int MAX_LIVE_RENDERS_PER_FRAME = 8;
+    /** Defensive cap: the inspector's material slots, and a KilaMaterial's texture slots, one each. */
+    private static final int MAX_LIVE_RENDERS_PER_FRAME = 16;
     /** Tile refresh cadence: content can move without a new RenderType (GameTime animation, and
      *  custom-shader uniform edits, whose values live in a UBO the RenderType doesn't key on). */
     private static final long REFRESH_MS = 100;
@@ -133,9 +133,11 @@ public final class MaterialPreviewRenderer {
     private static final Map<IMaterial, Integer> LIVE_REQUESTS = new IdentityHashMap<>();
     /** material -> epoch millis before which we don't retry (failed render / not previewable). */
     private static final Map<IMaterial, Long> FAILED = new IdentityHashMap<>();
-    /** Entries whose render failed: released on the NEXT frame, because GUI elements already hold their
-     *  texture Identifier and closing one mid-frame crashes the GuiRenderer on a closed view. */
+    /** Entries dropped this frame (failed, evicted, resized, stale): released on the NEXT frame. 26.2 extracts
+     *  the GUI before {@code RenderFrameEvent.Pre}, so this frame's draw list already holds their views and
+     *  closing one here crashes the GuiRenderer ("Texture view Sampler0 has been closed!"). */
     private static final List<Entry> RELEASE_NEXT_FRAME = new ArrayList<>();
+    private static int deferredReleases;
     /** When a preview was last drawn — drives {@link #IDLE_RELEASE_MS}. */
     private static long lastRequestMs;
 
@@ -166,7 +168,7 @@ public final class MaterialPreviewRenderer {
      * Inspector preview: re-rendered every frame at the resolution it is drawn at. Use for the single
      * large preview; for many-on-screen tiles use {@link #previewOf}.
      */
-    public static IGuiTexture livePreviewOf(IMaterial material) {
+    public static GuiTexture livePreviewOf(IMaterial material) {
         return GuiTexture.of((context, x, y, width, height) -> {
             lastRequestMs = System.currentTimeMillis();
             LIVE_REQUESTS.put(material, targetPixels(width, height));
@@ -175,7 +177,7 @@ public final class MaterialPreviewRenderer {
     }
 
     /** Tile / inline-slot preview: cached, refreshed on change or on the slow cadence. */
-    public static IGuiTexture previewOf(IMaterial material) {
+    public static GuiTexture previewOf(IMaterial material) {
         return GuiTexture.of((context, x, y, width, height) -> {
             lastRequestMs = System.currentTimeMillis();
             PENDING.add(material); // re-validated next frame
@@ -206,8 +208,9 @@ public final class MaterialPreviewRenderer {
      */
     public static void processPending() {
         if (!RenderSystem.isOnRenderThread()) return;
-        // a full frame has passed since these failed, so no GUI draw list can still reference them
+        // a full frame has passed since these were dropped, so no GUI draw list can still reference them
         if (!RELEASE_NEXT_FRAME.isEmpty()) {
+            deferredReleases += RELEASE_NEXT_FRAME.size();
             RELEASE_NEXT_FRAME.forEach(Entry::close);
             RELEASE_NEXT_FRAME.clear();
         }
@@ -268,7 +271,7 @@ public final class MaterialPreviewRenderer {
             var entry = LIVE.get(material);
             if (entry != null && entry.size != size) {
                 // the slot resized — rebuild at the new resolution rather than scaling
-                entry.close();
+                RELEASE_NEXT_FRAME.add(entry);
                 LIVE.remove(material);
                 entry = null;
             }
@@ -334,7 +337,7 @@ public final class MaterialPreviewRenderer {
         RenderType renderType;
         PhotonRenderTypes.PhotonDrawInfo info;
         try {
-            renderType = material.getRenderType(DEFAULT_SETTING, PrimitiveTopology.QUADS);
+            renderType = material.getPreviewRenderType(DEFAULT_SETTING, PrimitiveTopology.QUADS);
             info = renderType == null ? null : PhotonRenderTypes.drawInfo(renderType);
         } catch (Exception e) {
             markFailed(material, now, "render type resolution failed", e);
@@ -374,9 +377,7 @@ public final class MaterialPreviewRenderer {
             if (!FAILED.containsKey(material)) {
                 Photon.LOGGER.warn("Material preview render failed: {}", material.getClass().getSimpleName(), e);
             }
-            // NOT closed here: this entry's texture is registered under an Identifier that GUI elements
-            // already hold, and releasing it mid-frame left the GuiRenderer drawing a closed view
-            // ("Texture view Sampler0 has been closed!" — a hard crash). Release a frame later instead.
+            // NOT closed here: this frame's GUI draw list may already hold its view (see RELEASE_NEXT_FRAME)
             if (entry != null) RELEASE_NEXT_FRAME.add(entry);
             return null;
         }
@@ -393,11 +394,16 @@ public final class MaterialPreviewRenderer {
     private static void dropStaleLive(long now) {
         LIVE.entrySet().removeIf(e -> {
             if (now - e.getValue().lastUsed > LIVE_STALE_MS) {
-                e.getValue().close();
+                RELEASE_NEXT_FRAME.add(e.getValue());
                 return true;
             }
             return false;
         });
+    }
+
+    /** Previews released a frame after they were dropped, since the start; for tests. */
+    public static int deferredReleases() {
+        return deferredReleases;
     }
 
     /** Free every cached target and drop the material references (render thread only). */
@@ -445,7 +451,8 @@ public final class MaterialPreviewRenderer {
                 if (oldest == null || e.getValue().lastUsed < oldest.getValue().lastUsed) oldest = e;
             }
             if (oldest == null) break;
-            oldest.getValue().close();
+            // usually still on screen: the GUI drew it this frame
+            RELEASE_NEXT_FRAME.add(oldest.getValue());
             CACHE.remove(oldest.getKey());
         }
     }
@@ -486,6 +493,9 @@ public final class MaterialPreviewRenderer {
         if (info.bindings().graph() != null) {
             info.bindings().graph().material().prepareUniforms();
         }
+        if (info.bindings().binder() != null) {
+            info.bindings().binder().prepare();
+        }
 
         // Same rule for the scene stand-ins: creating them CLEARS them, and clearColorTexture throws
         // "Close the existing render pass before creating a new one!" inside a pass. They used to be
@@ -499,6 +509,8 @@ public final class MaterialPreviewRenderer {
         }
         if (needsSceneColor) dummyColorView();
         if (needsSceneDepth) dummyDepthView();
+        var lit = PhotonPipelines.isLit(info.programs().main());
+        if (lit) DynamicLightRenderer.ensureBindings();
         var legacy = info.bindings().legacyDepth();
         var legacyDepth = legacy && needsSceneDepth ? PhotonSceneCapture.legacyStandInDepth() : null;
 
@@ -541,7 +553,14 @@ public final class MaterialPreviewRenderer {
             if (info.bindings().graph() != null) {
                 info.bindings().graph().material().bindCustomUniforms(pass);
             }
-            // Photon-owned scene samplers, after the graph's own binds — see PhotonWorldRenderState.drawRun.
+            if (info.bindings().binder() != null) {
+                info.bindings().binder().bind(pass);
+            }
+            if (lit) {
+                // a preview has no lights of its own; the material just has to have its buffers bound
+                DynamicLightRenderer.bindNoLights(pass);
+            }
+            // Photon-owned scene samplers, after the graph's own binds — see PhotonWorldRenderState.recordDraws.
             if (PhotonPipelines.isWireframe(info.programs().main())) {
                 pass.bindTexture("SamplerSceneColor",
                         previewSceneColor != null ? previewSceneColor : dummyColorView(), sceneSampler);

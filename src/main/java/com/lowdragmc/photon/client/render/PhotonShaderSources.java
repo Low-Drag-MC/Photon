@@ -15,8 +15,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Custom-shader sources after {@link CustomShaderAdapter}, served by {@code ShaderManagerMixin} under
- * {@code photon:adapted/<hash>}. Unchanged pairs keep their own ids.
+ * Custom-shader sources after {@link CustomShaderAdapter}, and fragment shaders for the reversed-winding pass, served
+ * by {@code ShaderManagerMixin} under {@code photon:adapted/<hash>}. Unchanged pairs keep their own ids.
  */
 public final class PhotonShaderSources {
 
@@ -65,6 +65,19 @@ public final class PhotonShaderSources {
                     String.join("; ", result.notes()));
         }
         return new Adapted(id, id, result.tailInputs());
+    }
+
+    /**
+     * {@code fragment} reading {@code gl_FrontFacing} inverted, for a pass whose triangles are wound the other way;
+     * null when it never reads it.
+     */
+    @Nullable
+    public static Identifier reversedWinding(Identifier fragment) {
+        var source = Minecraft.getInstance().getShaderManager().getShader(fragment, ShaderType.FRAGMENT);
+        if (source == null || !source.contains("gl_FrontFacing")) return null;
+        var id = Photon.id(PREFIX + "reversed_" + hash(source));
+        SOURCES.putIfAbsent(new Key(id, ShaderType.FRAGMENT), source.replace("gl_FrontFacing", "(!gl_FrontFacing)"));
+        return id;
     }
 
     private static String hash(String text) {

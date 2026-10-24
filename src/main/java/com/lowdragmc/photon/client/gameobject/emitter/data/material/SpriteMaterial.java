@@ -38,6 +38,9 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
     @Configurable(name = "TextureMaterial.softParticles", subConfigurable = true)
     @Getter
     protected final SoftParticles softParticles = new SoftParticles();
+    @Configurable(name = "TextureMaterial.litParticles", subConfigurable = true)
+    @Getter
+    protected final LitParticles litParticles = new LitParticles();
 
     /** 26.1: sprite sets live on {@code ParticleResources} (AT'd public in our accesstransformer.cfg). */
     @Nullable
@@ -64,7 +67,8 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
                     MissingTextureAtlasSprite.getLocation(),
                     fragment, setting.pipelineKey(mode),
                     PhotonMaterialUniforms.Values.of(
-                            emission, discardThreshold, hdrMode.mode, 0, softParticles.params()));
+                            emission, discardThreshold, hdrMode.mode, 0, softParticles.params(),
+                            litParticles.blockIntensity()));
         }
         var sprite = spriteSet.get(0, 1);
         return MaterialRenderTypes.hdrParticle(
@@ -72,7 +76,7 @@ public class SpriteMaterial extends ShaderInstanceMaterial {
                 PhotonMaterialUniforms.Values.ofSprite(
                         emission, discardThreshold, hdrMode.mode,
                         sprite.getU0(), sprite.getV0(), sprite.getU1(), sprite.getV1(),
-                        softParticles.params()));
+                        softParticles.params(), litParticles.blockIntensity()));
     }
 
     @Override

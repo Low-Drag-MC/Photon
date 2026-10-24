@@ -2,6 +2,8 @@ package com.lowdragmc.photon.uitest;
 
 import com.mojang.blaze3d.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.uitest.TestContext;
+import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -37,10 +39,19 @@ final class ParticleShaderVariants {
         check(ctx, "mask / CPU vertex layout", PhotonPipelines.mask(null, quads));
         check(ctx, "wireframe / CPU vertex layout",
                 PhotonPipelines.hdrParticle(PhotonPipelines.ParticlePipelineKey.wireframe(quads)));
+        // the dynamic lights compiled into each of the three material stages, alone and with the depth fade
+        var lit = key.withLitParticles(true);
+        var litSoft = lit.withSoftParticles(true);
+        for (var fragment : new String[]{"core/hdr_particle", "core/pixel_hdr_particle", "core/sprite_hdr_particle"}) {
+            check(ctx, "lit " + fragment + " / CPU vertex layout", PhotonPipelines.hdrParticle(Photon.id(fragment), lit));
+            check(ctx, "lit + soft " + fragment + " / CPU vertex layout",
+                    PhotonPipelines.hdrParticle(Photon.id(fragment), litSoft));
+        }
         for (var variant : PhotonPipelines.InstancedVariant.values()) {
             var defines = String.join("+", variant.defines);
             var geometry = PhotonPipelines.InstancedGeometryKey.of(variant);
             check(ctx, "material / " + defines, PhotonPipelines.instancedHdrParticle(geometry, key));
+            check(ctx, "lit material / " + defines, PhotonPipelines.instancedHdrParticle(geometry, lit));
             check(ctx, "mask / " + defines, PhotonPipelines.mask(geometry, quads));
             check(ctx, "wireframe / " + defines, PhotonPipelines.instancedHdrParticle(geometry,
                     PhotonPipelines.ParticlePipelineKey.wireframe(quads)));
@@ -49,6 +60,8 @@ final class ParticleShaderVariants {
                     variant.usesCustomData);
             check(ctx, "material+data / " + defines, PhotonPipelines.instancedHdrParticle(withData, key));
         }
+        // the dynamic-light passes: fullscreen, so not variants of the include, but just as untested by the build
+        DynamicLightRenderer.passPipelines().forEach((name, pipeline) -> check(ctx, "dynamic light " + name, pipeline));
     }
 
     private static void check(TestContext ctx, String name, RenderPipeline pipeline) {

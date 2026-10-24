@@ -5,7 +5,6 @@ import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.configurator.ui.TransformRefConfigurator;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.TransformRef;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
@@ -19,12 +18,10 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.RandomCurve;
-import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import com.mojang.blaze3d.vertex.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import javax.annotation.Nonnull;
 import javax.annotation.ParametersAreNonnullByDefault;
 
 
@@ -131,6 +128,8 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     public final NoiseSetting noise = new NoiseSetting();
     @Configurable(name = "ParticleConfig.uvAnimation", subConfigurable = true, tips = "photon.emitter.config.uvAnimation")
     public final UVAnimationSetting uvAnimation = new UVAnimationSetting();
+    @Configurable(name = "ParticleConfig.lightEmission", subConfigurable = true, tips = "photon.emitter.config.lightEmission")
+    public final LightEmissionSetting lightEmission = new LightEmissionSetting();
     @Configurable(name = "ParticleConfig.trails", subConfigurable = true, tips = "photon.emitter.config.trails")
     public final TrailsSetting trails = new TrailsSetting();
     @Configurable(name = "ParticleConfig.subEmitters", subConfigurable = true, tips = "photon.emitter.config.sub_emitters")
@@ -169,24 +168,8 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
 
     private void createSpaceConfigurator(Space space, ConfiguratorGroup group) {
         if (space == Space.Custom) {
-            group.addConfigurator(new TransformRefConfigurator("ParticleConfig.customSpace",
-                    () -> this.customSpace,
-                    transformRef -> this.customSpace.setTransformId(transformRef.getTransformId()), new TransformRef(), true) {
-                @Override
-                protected boolean canDropObject(@Nonnull Object object) {
-                    return object instanceof FXHierarchyView.DraggingNode || super.canDropObject(object);
-                }
-
-                @Override
-                protected void onDropObject(@Nonnull Object object) {
-                    if (object instanceof FXHierarchyView.DraggingNode(var draggedNode)) {
-                        onValueUpdatePassively(new TransformRef(draggedNode.key.transform()));
-                        updateValue();
-                    } else {
-                        super.onDropObject(object);
-                    }
-                }
-            }.setTips("photon.emitter.config.customSpace.tips"));
+            group.addConfigurator(CustomSpace.configurator("ParticleConfig.customSpace", customSpace,
+                    "photon.emitter.config.customSpace.tips"));
         }
     }
 

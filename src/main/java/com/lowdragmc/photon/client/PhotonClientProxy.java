@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonCommonProxy;
 import com.lowdragmc.photon.client.fx.FXHelper;
+import com.lowdragmc.photon.client.fx.FXPreloader;
 import com.lowdragmc.photon.client.fx.fxpack.FXPacks;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMeshCache;
 import com.lowdragmc.photon.client.postfx.runtime.CustomShaderPass;
@@ -73,6 +74,10 @@ public class PhotonClientProxy extends PhotonCommonProxy {
                     RenderGraphRuntime.invalidateAll();
                     MaskGroups.clearAll();
                 });
+        // last: applies run in listener order, after every vanilla one, so the pipelines compiled here behind the
+        // loading screen — Photon's frame passes, the kept effects' — use the reloaded shaders and render types
+        event.addListener(Photon.id("fx_preload"),
+                (ResourceManagerReloadListener) resourceManager -> FXPreloader.onResourcesReloaded());
     }
 
     @SubscribeEvent

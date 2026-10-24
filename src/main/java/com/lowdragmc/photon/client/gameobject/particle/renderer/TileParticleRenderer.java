@@ -1,6 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.particle.renderer;
 
 import com.lowdragmc.lowdraglib2.utils.Vector3fHelper;
+import com.lowdragmc.photon.client.AutoCloseCleaner;
+import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
 import com.lowdragmc.photon.client.gameobject.emitter.data.AdditionalGPUDataSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.VertexAnimation;
@@ -10,6 +12,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.particle.FacingOrientation
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
+import com.lowdragmc.photon.client.render.PhotonReversedIndices;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -40,8 +43,13 @@ public class TileParticleRenderer {
      *  for the shared pass, or a per-emitter overriding runtime for an override pass. */
     private final ParticleRendererSetting.Runtime renderer;
 
+    /** Set while a bake collects per-particle records alongside the vertices. */
+    @Nullable
+    private CpuParticleRecords activeRecords;
+
     public TileParticleRenderer(ParticleRendererSetting.Runtime renderer) {
         this.renderer = renderer;
+        AutoCloseCleaner.registerRenderThread(this, model);
     }
 
     // ---------------------------------------------------------------------
@@ -57,11 +65,37 @@ public class TileParticleRenderer {
             notifyDynamicMesh();
             model = modelPass();
         }
+        var records = activeRecords;
+        if (records != null) {
+            records.setVertsPerParticle(model == null ? 4 : 4 * primitiveCount(model.mesh()));
+        }
         for (var particle : particles) {
             if (particle instanceof TileParticle tileParticle && tileParticle.getDelay() <= 0) {
                 renderParticle(buffer, tileParticle, camera, partialTicks, model);
+                if (records != null) {
+                    records.write(tileParticle, partialTicks);
+                }
             }
         }
+    }
+
+    /**
+     * Collect per-particle records during the next {@link #renderQueue}s, for a {@code PHOTON_CPU_DATA} draw; null
+     * stops. The caller owns the records and uploads them — see {@code Emitter.bakeGroup}.
+     */
+    public void setCpuRecords(@Nullable CpuParticleRecords records) {
+        activeRecords = records;
+    }
+
+    /** ⚠️ MIRRORS the primitive walk in {@link #renderParticle}: four vertices per emitted primitive. */
+    private static int primitiveCount(PhotonMesh mesh) {
+        int primitives = 0;
+        int triangle = 0;
+        while (triangle < mesh.triangleCount()) {
+            triangle += mesh.quadPaired(triangle) ? 2 : 1;
+            primitives++;
+        }
+        return primitives;
     }
 
     /**
@@ -77,7 +111,7 @@ public class TileParticleRenderer {
     private ModelPass modelPass() {
         var source = renderer.getModelSource();
         var mesh = source.getMesh();
-        var animation = vertexAnimationFor(mesh);
+        var animation = vertexAnimationFor(renderer, mesh);
         return new ModelPass(mesh,
                 source.hasAtlasUV() && !renderer.isUseBlockUV() && mesh.spriteBounds().length > 0,
                 renderer.isShade(), renderer.getModelPivot(),
@@ -202,20 +236,19 @@ public class TileParticleRenderer {
 
     /**
      * Where this particle's pose starts in the baked table, in texels, or {@code -1} when there is none.
-     * MIRRORED FROM the PHOTON_VAT block of particle.glsl — the same two channels, the same wrap.
+     * MIRRORED FROM the PHOTON_VAT block of particle.glsl.
      */
     private int poseBaseFor(@Nullable VertexAnimation animation, TileParticle particle, float partialTicks) {
         poseBlend = 0f; // reset before the early return, so a stale blend cannot outlive its table
         if (animation == null) return -1;
         var phase = animation.phase();
-        float p = phase[0] + particle.getMemRandom("instance_random") * phase[1]
+        float raw = phase[0] + particle.getMemRandom("instance_random") * phase[1]
                 + particle.getT(partialTicks) * phase[2];
-        p -= (float) Math.floor(p);
-        float cursor = p * animation.frames();
-        int frame = Math.max(0, Math.min((int) cursor, animation.frames() - 1));
-        // the blend and the following frame, for putMeshVertex; see the PHOTON_VAT block of particle.glsl
-        poseBlend = animation.interpolates() ? cursor - (float) Math.floor(cursor) : 0f;
-        poseNextBase = (frame + 1 == animation.frames() ? 0 : frame + 1) * animation.vertexCount();
+        int frames = animation.frames();
+        float cursor = VertexAnimationBake.cursor(raw, frames, animation.clamps());
+        int frame = VertexAnimationBake.frameAt(cursor, frames);
+        poseBlend = VertexAnimationBake.blendAt(cursor, frame, animation.interpolates());
+        poseNextBase = (frame + 1) * animation.vertexCount();
         return frame * animation.vertexCount();
     }
 
@@ -341,21 +374,20 @@ public class TileParticleRenderer {
      *  to vec4 with brightness in w, then tangent4); see {@code PhotonInstanceLayouts.MODEL} /
      *  {@code MODEL_TANGENT}.
      *  <p>
-     *  One vertex per MESH vertex and drawn through {@link #modelIndexBuffer}, not four-per-quad through
+     *  One vertex per MESH vertex and drawn through {@link #modelIndexBuffer()}, not four-per-quad through
      *  the shared sequential-quad indices: {@link PhotonMesh} welds now (glTF keeps the file's own indices,
      *  OBJ welds by v/vt/vn), so vertices are no longer grouped four to a face and the quad pattern would
      *  read the wrong corners entirely.
      *  <p>
      *  ⚠️ The model pivot is NOT baked in — it is a per-instance offset (see {@link #fillInstancesModel}),
      *  which is what lets an animated pivot work without a rebuild and what keeps a baked pose table, whose
-     *  positions never pass through this buffer, honouring it too. */
-    @Nullable
-    private GpuBuffer modelVertexBuffer;
-    @Nullable
-    private GpuBuffer modelIndexBuffer;
+     *  positions never pass through this buffer, honouring it too.
+     *  <p>
+     *  Released with this renderer, which its emitter drops without a word, by a Cleaner. */
+    private final ModelBuffers model = new ModelBuffers();
     @Nullable
     private PhotonMesh modelBuiltMesh;
-    /** Whether {@link #modelVertexBuffer} was baked with the tangent layout — a change forces a rebuild. */
+    /** Whether the mesh buffer was baked with the tangent layout — a change forces a rebuild. */
     private boolean modelBuiltTangent;
     private int modelIndexCount;
 
@@ -371,8 +403,8 @@ public class TileParticleRenderer {
         if (mesh == null) {
             return null;
         }
-        if (modelVertexBuffer == null || modelBuiltMesh != mesh || modelBuiltTangent != withTangent) {
-            closeModelBuffers();
+        if (model.vertices == null || modelBuiltMesh != mesh || modelBuiltTangent != withTangent) {
+            model.closeAtFrameEnd();
             var remapUV = source.hasAtlasUV() && !renderer.isUseBlockUV() && mesh.spriteBounds().length > 0;
             var shade = renderer.isShade();
             var geometry = mesh.geometry();
@@ -416,7 +448,7 @@ public class TileParticleRenderer {
                     }
                 }
                 bytes.flip();
-                modelVertexBuffer = RenderSystem.getDevice().createBuffer(
+                model.vertices = RenderSystem.getDevice().createBuffer(
                         () -> "Photon model mesh", GpuBuffer.USAGE_VERTEX, bytes);
             } finally {
                 MemoryUtil.memFree(bytes);
@@ -427,8 +459,10 @@ public class TileParticleRenderer {
                     indexBytes.putInt(index);
                 }
                 indexBytes.flip();
-                modelIndexBuffer = RenderSystem.getDevice().createBuffer(
+                model.indices = RenderSystem.getDevice().createBuffer(
                         () -> "Photon model indices", GpuBuffer.USAGE_INDEX, indexBytes);
+                model.reversed = PhotonReversedIndices.reverse("Photon model indices (reversed)",
+                        indexBytes.rewind().asIntBuffer());
             } finally {
                 MemoryUtil.memFree(indexBytes);
             }
@@ -436,27 +470,45 @@ public class TileParticleRenderer {
             modelBuiltMesh = mesh;
             modelBuiltTangent = withTangent;
         }
-        return modelVertexBuffer;
+        return model.vertices;
     }
 
     /** The mesh's own triangle indices; always present alongside {@link #modelMeshBuffer}'s result. */
     @Nullable
     public GpuBuffer modelIndexBuffer() {
-        return modelIndexBuffer;
+        return model.indices;
+    }
+
+    /** {@link #modelIndexBuffer()} wound the other way, for back-faces-first materials. */
+    @Nullable
+    public GpuBuffer modelReversedIndexBuffer() {
+        return model.reversed;
     }
 
     public int modelIndexCount() {
         return modelIndexCount;
     }
 
-    private void closeModelBuffers() {
-        if (modelVertexBuffer != null) {
-            modelVertexBuffer.close();
-            modelVertexBuffer = null;
+    private static final class ModelBuffers implements AutoCloseable {
+        @Nullable
+        GpuBuffer vertices, indices, reversed;
+
+        /** A job queued earlier this frame may still draw from them. */
+        void closeAtFrameEnd() {
+            var stale = new ModelBuffers();
+            stale.vertices = vertices;
+            stale.indices = indices;
+            stale.reversed = reversed;
+            vertices = indices = reversed = null;
+            PhotonWorldRenderState.closeAtFrameEnd(stale::close);
         }
-        if (modelIndexBuffer != null) {
-            modelIndexBuffer.close();
-            modelIndexBuffer = null;
+
+        @Override
+        public void close() {
+            if (vertices != null) vertices.close();
+            if (indices != null) indices.close();
+            if (reversed != null) reversed.close();
+            vertices = indices = reversed = null;
         }
     }
 
@@ -468,15 +520,21 @@ public class TileParticleRenderer {
     /** The pose table this pass would draw from, or null for an ordinary (or mismatched) model. */
     @Nullable
     public VertexAnimation vertexAnimation() {
+        return vertexAnimationOf(renderer);
+    }
+
+    /** The pose table {@code renderer} draws from, or null for an ordinary (or mismatched) model. */
+    @Nullable
+    public static VertexAnimation vertexAnimationOf(ParticleRendererSetting.Runtime renderer) {
         var source = renderer.getModelSource();
-        return source == null ? null : vertexAnimationFor(source.getMesh());
+        return source == null ? null : vertexAnimationFor(renderer, source.getMesh());
     }
 
     /** The source's pose table, but only when it matches the mesh it would be indexed against — a table
      *  baked for a different vertex count would be read past its end, and the rest pose is the safe
      *  reading of "these two disagree". */
     @Nullable
-    private VertexAnimation vertexAnimationFor(@Nullable PhotonMesh mesh) {
+    private static VertexAnimation vertexAnimationFor(ParticleRendererSetting.Runtime renderer, @Nullable PhotonMesh mesh) {
         if (mesh == null || renderer.getRenderMode() != ParticleRendererSetting.Mode.Model) {
             return null;
         }
@@ -627,7 +685,25 @@ public class TileParticleRenderer {
         if (!Vector3fHelper.isZero(rotation)) {
             quaternion = new Quaternionf(quaternion).mul(eulerRotation(rotation));
         }
+        if (renderMode == ParticleRendererSetting.Mode.Horizontal || renderMode == ParticleRendererSetting.Mode.Vertical
+                || renderMode == ParticleRendererSetting.Mode.None) {
+            quaternion = applyOuterRotation(particle, partialTicks, quaternion);
+        }
         return quaternion;
+    }
+
+    /** World / Custom rotation over lifetime: {@code F * euler * F⁻¹ * orientation}; Local is already in the particle's euler. */
+    private static Quaternionf applyOuterRotation(TileParticle particle, float partialTicks, Quaternionf orientation) {
+        var rotationOverLifetime = particle.getRuntime().rotationOverLifetime;
+        if (!rotationOverLifetime.isEnable() || rotationOverLifetime.isLocal()) {
+            return orientation;
+        }
+        var spin = eulerRotation(rotationOverLifetime.getRotation(particle, partialTicks));
+        var frame = rotationOverLifetime.getFrameRotation(particle.getEmitter().getScene());
+        if (frame != null) {
+            spin = new Quaternionf(frame).mul(spin).mul(frame.conjugate());
+        }
+        return spin.mul(orientation);
     }
 
     /**
@@ -658,6 +734,6 @@ public class TileParticleRenderer {
                 ? particle.getSpaceRotation()
                 : new Quaternionf(FacingOrientationHelper.compute(
                         facing, renderer.getFacingDirection(), particle, camera, partialTicks));
-        return outer.mul(eulerRotation(rotation));
+        return applyOuterRotation(particle, partialTicks, outer.mul(eulerRotation(rotation)));
     }
 }

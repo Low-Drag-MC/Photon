@@ -1,23 +1,15 @@
 package com.lowdragmc.photon.gui.editor;
 
-import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.editor.project.IProject;
 import com.lowdragmc.lowdraglib2.editor.project.ProjectType;
 import com.lowdragmc.lowdraglib2.editor.resource.ColorsResource;
 import com.lowdragmc.lowdraglib2.editor.resource.Resources;
-import com.lowdragmc.lowdraglib2.editor.ui.Editor;
-import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Dialog;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
-import com.lowdragmc.lowdraglib2.syncdata.ISubscription;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.fx.FX;
-import com.lowdragmc.photon.client.fx.FXHelper;
-import com.lowdragmc.photon.client.fx.fxpack.FXPackExporter;
-import com.lowdragmc.photon.client.fx.fxpack.FXPacks;
+import com.lowdragmc.photon.client.fx.FXRuntime;
+import com.lowdragmc.photon.client.fx.instance.InstanceIds;
 import com.lowdragmc.photon.client.gameobject.emitter.data.fixer.PhotonFXProjectDataFixer;
 import com.lowdragmc.photon.gui.editor.resource.CurveResource;
 import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
@@ -27,11 +19,11 @@ import com.lowdragmc.photon.gui.editor.resource.MeshResource;
 import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.RenderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
-import dev.vfyjxf.taffy.style.AlignItems;
-import dev.vfyjxf.taffy.style.FlexDirection;
+import com.mojang.serialization.Codec;
 import lombok.Getter;
+import lombok.Setter;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.ProblemReporter;
@@ -41,9 +33,16 @@ import net.minecraft.world.level.storage.ValueOutput;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
+/**
+ * An FX editor project: the {@link FX} being authored. Exporting it and turning {@code .fx} files back into
+ * projects live in {@link FXFileActions} and {@link FXProjectConverter}.
+ */
 public class FXProject implements IProject {
     public static int VERSION = 5;
     public static final ProjectType TYPE = ProjectType.of(PhotonIcons.PHOTON_PROJECT, "fx_project", ".fxproj", FXProject::new);
@@ -52,9 +51,13 @@ public class FXProject implements IProject {
     private final Resources resources;
     @Getter
     private final FX fx = new FX();
-    // runtime
+    /** The fx ids this project was converted from or exported to: an FX instance leading back to one is a cycle. */
+    @Getter
+    private final Set<Identifier> knownAs = new LinkedHashSet<>();
+    /** The editor showing this project, so an undo back to the moment it opened shows the objects it restores. */
+    @Setter
     @Nullable
-    private ISubscription exportMenuSubscription;
+    private FXEditor editor;
 
     public FXProject() {
         this.resources = Resources.of(
@@ -85,13 +88,26 @@ public class FXProject implements IProject {
     @Override
     public void serializeProject(@NotNull ValueOutput output) {
         output.store("fx", ExtraCodecs.NBT, fx.serializeNBT(Platform.getFrozenRegistry()));
+        if (!knownAs.isEmpty()) {
+            output.store("knownAs", Codec.STRING.listOf(), knownAs.stream().map(Identifier::toString).toList());
+        }
     }
 
     @Override
     public void deserializeProject(@NotNull ValueInput input) {
-        if (input.read("fx", ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag) {
-            fx.deserializeNBT(Platform.getFrozenRegistry(), tag);
+        knownAs.clear();
+        // one by one: an id that no longer parses is dropped, not the whole list
+        for (var value : input.read("knownAs", Codec.STRING.listOf()).orElse(List.of())) {
+            var id = Identifier.tryParse(value);
+            if (id != null) knownAs.add(id);
         }
+        var tag = input.read("fx", ExtraCodecs.NBT).orElse(null) instanceof CompoundTag compound
+                ? compound : new CompoundTag();
+        fx.deserializeNBT(Platform.getFrozenRegistry(), tag, knownAs);
+    }
+
+    public void addKnownAs(Identifier id) {
+        knownAs.add(id);
     }
 
     @Override
@@ -107,158 +123,53 @@ public class FXProject implements IProject {
         var data = input.read("data", ExtraCodecs.NBT).orElse(null) instanceof CompoundTag tag
                 ? tag : new CompoundTag();
         var fixedData = PhotonFXProjectDataFixer.INSTANCE.applyFixes(version, VERSION, data);
+        if (editor != null) {
+            // an undo back to the moment the project opened restores the whole of it: when that is what it
+            // already is, the objects the editor shows (and the history refers to) must stay the same ones.
+            // What it was exported as since is no edit, so it is neither compared nor forgotten.
+            var current = fx.serializeNBT(Platform.getFrozenRegistry());
+            if (withRootParents(fixedData.getCompoundOrEmpty("fx")).equals(withRootParents(current))) return;
+            var exportedAs = new LinkedHashSet<>(knownAs);
+            readProject(fixedData);
+            knownAs.addAll(exportedAs);
+            editor.showReloadedProject();
+            return;
+        }
+        readProject(fixedData);
+    }
+
+    private void readProject(CompoundTag data) {
         try (var reporter = new ProblemReporter.ScopedCollector(Photon.LOGGER)) {
-            deserializeProject(TagValueInput.create(
-                    reporter, Platform.getFrozenRegistry(), fixedData));
+            deserializeProject(TagValueInput.create(reporter, Platform.getFrozenRegistry(), data));
         }
     }
 
-    @Override
-    public void onLoad(Editor editor) {
-        IProject.super.onLoad(editor);
-        if (exportMenuSubscription != null) {
-            exportMenuSubscription.unsubscribe();
+    /**
+     * {@code fx} with every object whose parent it does not have hanging off the root, which is what opening it
+     * does: a project made in code saves no parent for its top-level objects (the codec's "_NULL_"), and an object
+     * anchored in an FX instance whose source is missing saves a parent nothing places.
+     */
+    private static CompoundTag withRootParents(CompoundTag fx) {
+        var copy = fx.copy();
+        var objects = copy.getCompoundOrEmpty("fxData").getListOrEmpty("fxObjects");
+        var ids = new HashSet<UUID>();
+        for (Tag object : objects) {
+            var id = InstanceIds.parse(transformOf(object).getStringOr("id", ""));
+            if (id != null) ids.add(id);
         }
-        exportMenuSubscription = editor.fileMenu.registerMenuCreator((tab, menu) ->
-                menu.branch("ldlib.gui.editor.menu.export", m -> {
-                    // plain .fx: pure definition data (references only) — usable wherever the
-                    // referenced resources already exist (this machine, a mod jar, an .fxpack)
-                    m.leaf("photon.export_fx", () -> showExportFxDialog(editor));
-                    // .fxpack: a resource-pack zip carrying the fx plus everything it references —
-                    // the self-contained distribution format (additive: exports into the same pack
-                    // accumulate, shared resources are stored once)
-                    m.leaf("photon.export_fxpack", () -> showExportFxPackDialog(editor));
-                    // browse/remove the effects inside an existing pack
-                    m.leaf("photon.manage_fxpack", () -> showManageFxPackDialog(editor));
-                }));
+        for (Tag object : objects) {
+            var transform = transformOf(object);
+            var parent = InstanceIds.parse(transform.getStringOr("_parentId", ""));
+            if (parent == null || !ids.contains(parent)) {
+                transform.putString("_parentId", FXRuntime.ROOT_UUID.toString());
+            }
+        }
+        return copy;
     }
 
-    private void showExportFxDialog(Editor editor) {
-        Dialog.showFileDialog("ldlib.gui.editor.tips.save_as", new File(LDLib2.getAssetsDir(), "%s/fx/".formatted(Photon.MOD_ID)), false,
-                Dialog.suffixFilter(FX.SUFFIX), file -> {
-                    if (file == null || file.isDirectory()) return;
-                    if (!file.getName().endsWith(FX.SUFFIX)) {
-                        file = new File(file.getParentFile(), file.getName() + FX.SUFFIX);
-                    }
-                    try {
-                        var fileData = fx.serializeNBT(Platform.getFrozenRegistry());
-                        // stamp the format version so FXHelper can run the datafixer on future loads
-                        fileData.putInt("version", VERSION);
-                        NbtIo.writeCompressed(fileData, file.toPath());
-                        FXHelper.clearCache();
-                    } catch (Exception e) {
-                        Photon.LOGGER.error("Failed to export fx to {}", file, e);
-                    }
-                }).show(editor);
-    }
-
-    private void showExportFxPackDialog(Editor editor) {
-        Dialog.showFileDialog("ldlib.gui.editor.tips.save_as", FXPacks.getFxPacksDir(), false,
-                Dialog.suffixFilter(FXPacks.SUFFIX), file -> {
-                    if (file == null || file.isDirectory()) return;
-                    if (!file.getName().endsWith(FXPacks.SUFFIX)) {
-                        file = new File(file.getParentFile(), file.getName() + FXPacks.SUFFIX);
-                    }
-                    showFxNameDialog(editor, file);
-                }).show(editor);
-    }
-
-    /** Ask for the fx's name inside the pack (its id becomes {@code <packname>:<name>}). */
-    private void showFxNameDialog(Editor editor, File fxpackFile) {
-        var defaultName = editor.getCurrentProjectFile() != null
-                ? editor.getCurrentProjectFile().getName().replaceAll("\\.fxproj$", "")
-                : "effect";
-        Dialog.stringEditorDialog("photon.export_fxpack.fx_name", defaultName, null,
-                name -> exportIntoFxPack(editor, fxpackFile, name)).show(editor);
-    }
-
-    private void showManageFxPackDialog(Editor editor) {
-        Dialog.showFileDialog("photon.manage_fxpack", FXPacks.getFxPacksDir(), true,
-                Dialog.suffixFilter(FXPacks.SUFFIX), file -> {
-                    if (file != null && file.isFile()) {
-                        showFxPackContents(editor, file);
-                    }
-                }).show(editor);
-    }
-
-    /** List a pack's effects with a remove button each; removal garbage-collects orphaned resources. */
-    private void showFxPackContents(Editor editor, File fxpackFile) {
-        List<Identifier> fxIds;
-        try {
-            fxIds = FXPacks.listFx(fxpackFile);
-        } catch (Exception e) {
-            Photon.LOGGER.error("Failed to read fx pack {}", fxpackFile, e);
-            return;
-        }
-        var dialog = new Dialog();
-        dialog.setTitle(fxpackFile.getName());
-        var list = new UIElement().layout(layout -> {
-            layout.widthPercent(100);
-            layout.gapAll(2);
-        });
-        if (fxIds.isEmpty()) {
-            list.addChild(new Label().setText("photon.manage_fxpack.empty"));
-        }
-        for (var fxId : fxIds) {
-            var row = new UIElement().layout(layout -> {
-                layout.widthPercent(100);
-                layout.flexDirection(FlexDirection.ROW);
-                layout.alignItems(AlignItems.CENTER);
-                layout.gapAll(4);
-            });
-            row.addChildren(
-                    new Label().setText(fxId.toString()).layout(layout -> layout.flex(1)),
-                    new Button().setText("✕").setOnClick(e -> {
-                        if (FXPacks.isFileLocked(fxpackFile)) {
-                            Dialog.showNotification("photon.manage_fxpack", "photon.fxpack.locked", null).show(editor);
-                            return;
-                        }
-                        try {
-                            FXPacks.removeFx(fxpackFile, fxId);
-                            FXHelper.clearCache();
-                        } catch (Exception ex) {
-                            Photon.LOGGER.error("Failed to remove {} from {}", fxId, fxpackFile, ex);
-                        }
-                        dialog.close();
-                        showFxPackContents(editor, fxpackFile); // rebuild with the fresh listing
-                    }));
-            list.addChild(row);
-        }
-        dialog.addContent(list);
-        dialog.addButton(new Button().setOnClick(e -> dialog.close())
-                .setText("ldlib.gui.tips.confirm").addClass("__confirm-button__"));
-        dialog.show(editor);
-    }
-
-    private void exportIntoFxPack(Editor editor, File fxpackFile, String fxName) {
-        if (FXPacks.isFileLocked(fxpackFile)) {
-            // a mounted pack that served a read holds a ZipFile handle; on Windows that blocks the
-            // zipfs rename-over-original commit — tell the user how to release it instead of failing
-            Dialog.showNotification("photon.export_fxpack", "photon.fxpack.locked", null).show(editor);
-            return;
-        }
-        try {
-            var namespace = fxpackFile.getName().substring(0, fxpackFile.getName().length() - FXPacks.SUFFIX.length());
-            var result = FXPackExporter.exportInto(fxpackFile, namespace, fxName, fx, Platform.getFrozenRegistry());
-            result.warnings().forEach(warning -> Photon.LOGGER.warn("fxpack export: {}", warning));
-            Photon.LOGGER.info("Exported fx '{}' into {} ({} files)", result.fxId(), fxpackFile, result.fileCount());
-            FXHelper.clearCache();
-            // the pack mounts on the next resource reload — tell the author how to see it in game
-            Dialog.showNotification("photon.export_fxpack",
-                    "%s → %s%s".formatted(result.fxId(), fxpackFile.getName(),
-                            result.warnings().isEmpty() ? "" : "  (%d warnings, see log)".formatted(result.warnings().size())),
-                    null).show(editor);
-        } catch (Exception e) {
-            Photon.LOGGER.error("Failed to export fx into {}", fxpackFile, e);
-        }
-    }
-
-    @Override
-    public void onClosed(Editor editor) {
-        IProject.super.onClosed(editor);
-        if (exportMenuSubscription != null) {
-            exportMenuSubscription.unsubscribe();
-            exportMenuSubscription = null;
-        }
+    /** The object's live transform compound (written through), or a detached empty one. */
+    private static CompoundTag transformOf(Tag object) {
+        return object instanceof CompoundTag tag && tag.get("data") instanceof CompoundTag data
+                && data.get("transform") instanceof CompoundTag transform ? transform : new CompoundTag();
     }
 }

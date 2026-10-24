@@ -6,6 +6,8 @@ import com.lowdragmc.lowdraglib2.editor.ui.EditorWindow;
 import com.lowdragmc.lowdraglib2.editor.resource.FileResourceProvider;
 import com.lowdragmc.lowdraglib2.editor.ui.browser.FileOps;
 import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceContainer;
+import com.lowdragmc.lowdraglib2.editor.ui.resource.ResourceProviderContainer;
+import com.lowdragmc.photon.client.render.MaterialPreviewRenderer;
 import com.lowdragmc.lowdraglib2.gui.holder.ModularUIScreen;
 import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
 import com.lowdragmc.lowdraglib2.gui.ui.UI;
@@ -19,9 +21,13 @@ import com.lowdragmc.lowdraglib2.editor.resource.FilePath;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.CustomShaderMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.ShaderGraphMaterial;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.kila.KilaMaterial;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.kila.export.KilaGraphExport;
+import com.lowdragmc.photon.client.shadergraph.runtime.ShaderGraphRuntime;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.FXProject;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
+import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.resources.Identifier;
@@ -75,6 +81,9 @@ public class EditorMemoryScenario implements UIScenario {
             resourceDir().mkdirs();
             try {
                 var graphs = shaderGraphFiles();
+                // the run directory starts empty: without graphs of the user's, bring one, or the graph third of
+                // the materials silently becomes hand-written shaders and the check below fails on the fixture
+                if (graphs.length == 0) graphs = new File[]{writeFixtureGraph()};
                 ctx.log("shader graphs available for ShaderGraphMaterial: " + graphs.length);
                 for (int i = 0; i < MATERIAL_COUNT; i++) {
                     // Three kinds, so one run covers all three shader back-ends a user accumulates:
@@ -131,6 +140,15 @@ public class EditorMemoryScenario implements UIScenario {
         })
         // the provider polls the folder on its own tick, so wait for the fixtures to actually be in
         .waitUntil("every material is loaded", ctx -> loadedMaterials(ctx) >= MATERIAL_COUNT)
+        // every tile on screen at once, at any window size: more than the preview cache keeps, so previews are evicted
+        // while the GUI's draw list still holds them
+        .step("shrink the tiles so every material is on screen", ctx -> {
+            ctx.put("uiWidth", MaterialResource.INSTANCE.getResourceInstance().getUiWidth());
+            ctx.put("releasedBefore", MaterialPreviewRenderer.deferredReleases());
+            for (var ref : ctx.query().type(ResourceProviderContainer.class).list()) {
+                ref.as(ResourceProviderContainer.class).setUiWidth(ResourceProviderContainer.MIN_UI_WIDTH, false);
+            }
+        })
         // Validate the fixture before trusting anything it measures: a graph material whose graph did
         // not resolve compiles nothing and owns no GL state, so a flat result would say nothing about
         // the path this scenario was extended to cover.
@@ -181,17 +199,26 @@ public class EditorMemoryScenario implements UIScenario {
             ctx.check("retained heap growth stays under %d MB".formatted(GROWTH_LIMIT_MB),
                     heapGrowth < GROWTH_LIMIT_MB, "< " + GROWTH_LIMIT_MB + " MB", heapGrowth + " MB");
             ctx.check("the UI element count does not grow", elementGrowth <= 0, "<= 0", elementGrowth);
+            int released = MaterialPreviewRenderer.deferredReleases() - ctx.<Integer>get("releasedBefore");
+            ctx.check("evicted previews were released a frame later", released > 0, "> 0", released);
         })
 
         .teardown("close the editor", ctx -> ctx.mc().gui.setScreen(null))
+        .teardown("the tile size back", ctx -> {
+            Integer width = ctx.get("uiWidth");
+            if (width != null) MaterialResource.INSTANCE.getResourceInstance().setUiWidth(width, false);
+        })
         .teardown("delete the fixtures", ctx -> deleteFixtures());
     }
 
-    /** Point the panel at the provider the fixtures were written into, i.e. the folder-backed one. */
+    /**
+     * Point the panel at the provider the fixtures were written into, i.e. the folder-backed one. Found among the
+     * providers, not the entries: it lists the fixtures only once it has polled its folder, and the run directory
+     * starts empty.
+     */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static void selectGlobalProvider(ResourceContainer<?> container) {
-        var provider = MaterialResource.INSTANCE.getResourceInstance().listAllResourceEntries().stream()
-                .map(entry -> entry.provider())
+        var provider = MaterialResource.INSTANCE.getResourceInstance().listWritableProviders().stream()
                 .filter(FileResourceProvider.class::isInstance)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("no file-backed material provider is loaded"));
@@ -227,7 +254,17 @@ public class EditorMemoryScenario implements UIScenario {
         return bytes / (1024 * 1024);
     }
 
-    /** The shader graphs the dev environment happens to have, used to back the graph materials. */
+    /** A KilaMaterial exported as a shader graph resource, among the fixtures (deleted with them). */
+    private static File writeFixtureGraph() throws IOException {
+        var file = new File(resourceDir(), "uitest_mem_graph" + ShaderGraphResource.INSTANCE.getFileExtension());
+        var tag = new CompoundTag();
+        tag.put("data", ShaderGraphResource.INSTANCE.serializeGraph(KilaGraphExport.export(new KilaMaterial()).graph()));
+        tag.putString("type", ShaderGraphResource.INSTANCE.getName());
+        NbtIo.write(tag, file.toPath());
+        ShaderGraphRuntime.invalidate(new FilePath(file));
+        return file;
+    }
+
     private static File[] shaderGraphFiles() {
         var suffix = ".shader_graph.nbt";
         var found = new java.util.ArrayList<File>();

@@ -1,0 +1,10 @@
+{
+    "vertex": "photon:particle",
+    "fragment": "photon:devtest/soft_probe_legacy",
+    "samplers": [
+        { "name": "SamplerSceneDepth" }
+    ],
+    "uniforms": [
+        { "name": "SoftParticleParams", "type": "float", "count": 4, "values": [ 1.5, 1.0, 1.0, 1.0 ] }
+    ]
+}

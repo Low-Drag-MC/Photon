@@ -64,6 +64,9 @@ public class TextureMaterial extends ShaderInstanceMaterial {
     @Configurable(name = "TextureMaterial.softParticles", subConfigurable = true)
     @Getter
     protected final SoftParticles softParticles = new SoftParticles();
+    @Configurable(name = "TextureMaterial.litParticles", subConfigurable = true)
+    @Getter
+    protected final LitParticles litParticles = new LitParticles();
 
     public TextureMaterial() {
     }
@@ -81,6 +84,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
         mat.pixelArt.setEnable(pixelArt.isEnable());
         mat.pixelArt.bits = pixelArt.bits;
         mat.softParticles.copyFrom(softParticles);
+        mat.litParticles.copyFrom(litParticles);
         return mat;
     }
 
@@ -97,7 +101,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
                         // has to be folded in here and the alpha pinned (it means nothing for an offset)
                         hdr.toVector4fOpaque(), discardThreshold, hdrMode.mode,
                         pixelArt.isEnable() ? Math.max(pixelArt.bits, 1) : 0,
-                        softParticles.params()));
+                        softParticles.params(), litParticles.blockIntensity()));
     }
 
 

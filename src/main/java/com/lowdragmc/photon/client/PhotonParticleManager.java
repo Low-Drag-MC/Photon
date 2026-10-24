@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.client.scene.ParticleManager;
 import com.lowdragmc.lowdraglib2.client.scene.SceneCameraContext;
 import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
+import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
 import com.lowdragmc.photon.client.render.PhotonTime;
@@ -18,6 +19,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 
@@ -83,6 +87,15 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
     private final long[] lastFrameTimes = new long[60];
     private int frameIndex = 0;
     /**
+     * The level this scene's FX objects live in, which is what their lights register with — the editor's
+     * {@code TrackedDummyWorld}, not the {@code ClientLevel} proxy LDLib2 hands {@link #setLevel}. Null leaves the
+     * scene unlit.
+     */
+    @Nullable
+    @Setter
+    private Level lightLevel;
+
+    /**
      * {@code options} is the editor's {@link SceneView} when this manager belongs to it, and anything
      * else — {@link FXSceneOptions#DEFAULT} will do — for an FX preview embedded in another mod's
      * LDLib2 scene. One constructor for both: {@code SceneView} implements the interface, so a
@@ -145,14 +158,6 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
                        Frustum frustum,
                        float partialTicks) {
         var frameStart = System.nanoTime();
-        var drawMode = options.getDrawMode();
-        var settings = new PhotonViewSettings(
-                drawMode != SceneView.DrawMode.WIREFRAME,
-                drawMode != SceneView.DrawMode.DRAW,
-                options.isBloomEnabled(),
-                // isolated from the world's stack
-                PostEffectStack.EDITOR_SCENE,
-                options.isEffectsEnabled());
         if (options.isMaskViewEnabled()) {
             // debug toggle: show the CustomMask contents
             PostEffectStack.EDITOR_SCENE.submit(
@@ -175,12 +180,15 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
                 ? new Vector3f((float) cameraRenderState.pos.x,
                         (float) cameraRenderState.pos.y, (float) cameraRenderState.pos.z)
                 : new Vector3f();
+        Matrix4f frameProjection = null;
         if (cameraRenderState != null && cameraRenderState.initialized) {
+            frameProjection = new Matrix4f(cameraRenderState.projectionMatrix);
             PhotonEngineUniforms.update(
                     cameraRenderState.projectionMatrix, cameraRenderState.viewRotationMatrix,
                     eye, targetWidth, targetHeight);
         } else if (SceneCameraContext.isActive()) {
             // LDLib2's camera render state carries no matrices; the scene camera context does
+            frameProjection = new Matrix4f(SceneCameraContext.projection());
             PhotonEngineUniforms.update(
                     SceneCameraContext.projection(),
                     SceneCameraContext.viewRotation(),
@@ -188,6 +196,22 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
         } else {
             PhotonEngineUniforms.updateViewport(targetWidth, targetHeight);
         }
+        // Lit through the matrices the scene's particles are drawn with: vertices are world-relative (the
+        // SceneCamera's position() is zero) and the model-view, set for the whole scene, carries the camera
+        DynamicLightRenderer.SceneLights lights = null;
+        if (lightLevel != null && frameProjection != null && options.isDynamicLightsEnabled()) {
+            lights = new DynamicLightRenderer.SceneLights(lightLevel, RenderSystem.getModelViewMatrixCopy(),
+                    frameProjection, Vec3.ZERO, isPlaying ? partialTicks : 0);
+        }
+        var drawMode = options.getDrawMode();
+        var settings = new PhotonViewSettings(
+                drawMode != SceneView.DrawMode.WIREFRAME,
+                drawMode != SceneView.DrawMode.DRAW,
+                options.isBloomEnabled(),
+                // isolated from the world's stack
+                PostEffectStack.EDITOR_SCENE,
+                options.isEffectsEnabled(),
+                lights);
         editorSceneRendering = true;
         renderingManager = this;
         lastPartialTick = partialTicks;

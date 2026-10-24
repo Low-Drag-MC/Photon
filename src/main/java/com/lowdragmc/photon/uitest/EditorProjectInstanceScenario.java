@@ -45,7 +45,8 @@ public class EditorProjectInstanceScenario implements UIScenario {
         s.step("find the project", ctx -> {
             var file = new File(LDLib2.getAssetsDir(), PROJECT);
             ctx.log("looking for " + file.getAbsolutePath());
-            ctx.put("projectFile", file.isFile() ? file : null);
+            // the state map takes no nulls: an absent file is an absent key, which reads back as null
+            if (file.isFile()) ctx.put("projectFile", file);
             // ⚠️ Passes rather than fails when absent: this reads a hand-authored project out of the run
             // directory, which is not in the repository. The regression it found is covered without any
             // file by editor_model_instance's missing-material steps; this one is the wider net for a

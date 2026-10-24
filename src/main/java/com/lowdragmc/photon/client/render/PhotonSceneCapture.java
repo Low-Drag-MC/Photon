@@ -21,69 +21,8 @@ import javax.annotation.Nullable;
  */
 public final class PhotonSceneCapture {
 
-    private static final int USAGE = GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING
-            | GpuTexture.USAGE_RENDER_ATTACHMENT;
-
-    private static final class Slot {
-        final String label;
-        @Nullable
-        GpuTexture texture;
-        @Nullable
-        GpuTextureView view;
-        int width, height;
-        @Nullable
-        GpuFormat format;
-        boolean warnedUncopyable;
-
-        Slot(String label) {
-            this.label = label;
-        }
-
-        private void ensure(GpuTexture source) {
-            var w = source.getWidth(0);
-            var h = source.getHeight(0);
-            if (texture == null || w != width || h != height || source.getFormat() != format) {
-                if (view != null) {
-                    view.close();
-                }
-                if (texture != null) {
-                    texture.close();
-                }
-                width = w;
-                height = h;
-                format = source.getFormat();
-                var device = RenderSystem.getDevice();
-                // depth formats cannot be colour attachments; the depth slot is only ever a copy target
-                var usage = format.hasDepthAspect() ? USAGE & ~GpuTexture.USAGE_RENDER_ATTACHMENT : USAGE;
-                texture = device.createTexture(() -> label, usage, format, w, h, 1, 1);
-                view = device.createTextureView(texture);
-            }
-        }
-
-        @Nullable
-        GpuTextureView capture(GpuTextureView target) {
-            var source = target.texture();
-            ensure(source);
-            if ((source.usage() & GpuTexture.USAGE_COPY_SRC) != 0) {
-                RenderSystem.getDevice().createCommandEncoder()
-                        .copyTextureToTexture(source, texture, 0, 0, 0, 0, 0, width, height);
-                return view;
-            }
-            if (!format.hasDepthAspect() && (source.usage() & GpuTexture.USAGE_TEXTURE_BINDING) != 0) {
-                PhotonFullscreenPass.copy(label, target, view, null);
-                return view;
-            }
-            if (!warnedUncopyable) {
-                warnedUncopyable = true;
-                Photon.LOGGER.warn("{}: the target being drawn into ({}) can neither be copied nor sampled — "
-                        + "effects reading it get nothing this frame", label, source.getLabel());
-            }
-            return null;
-        }
-    }
-
-    private static final Slot COLOR = new Slot("Photon scene capture");
-    private static final Slot DEPTH = new Slot("Photon scene depth capture");
+    private static final PhotonTextureCopy COLOR = new PhotonTextureCopy("Photon scene capture");
+    private static final PhotonTextureCopy DEPTH = new PhotonTextureCopy("Photon scene depth capture");
 
     private PhotonSceneCapture() {
     }
@@ -91,14 +30,15 @@ public final class PhotonSceneCapture {
     /** Null when the target cannot be copied. */
     @Nullable
     public static GpuTextureView captureColor(GpuTextureView target) {
-        return COLOR.capture(target);
+        colorCaptures++;
+        return COLOR.copyOf(target);
     }
 
     /** Null when the target cannot be copied. */
     @Nullable
     public static GpuTextureView captureDepth(GpuTextureView target) {
         depthCaptures++;
-        return DEPTH.capture(target);
+        return DEPTH.copyOf(target);
     }
 
     /** Depth copies taken since launch, for {@code SoftParticleScenario}. */
@@ -107,16 +47,22 @@ public final class PhotonSceneCapture {
     }
 
     private static int depthCaptures;
+    private static int colorCaptures;
+
+    /** Full-screen copies of either kind taken since launch — what a material reading the scene costs a frame. */
+    public static int captures() {
+        return colorCaptures + depthCaptures;
+    }
 
     /** For renderers without a scene of their own (material previews). */
     @Nullable
     public static GpuTextureView lastColorView() {
-        return COLOR.view;
+        return COLOR.view();
     }
 
     @Nullable
     public static GpuTextureView lastDepthView() {
-        return DEPTH.view;
+        return DEPTH.view();
     }
 
     // ---- the 26.1 depth convention, for legacy custom shaders ----------------------------------------

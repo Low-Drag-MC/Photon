@@ -1,12 +1,14 @@
 package com.lowdragmc.photon.client.gameobject.emitter.aratrail;
 
 import com.mojang.blaze3d.PrimitiveTopology;
+import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialRequirements;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import com.lowdragmc.photon.client.gameobject.FXObject;
@@ -165,10 +167,25 @@ public class AraTrailEmitter extends Emitter {
         return new AraTrailEmitter(config);
     }
 
+    /** The group {@link #bakeBatches} draws (see {@link Emitter#preloadGroup}), from the config's renderer. */
+    @Override
+    public void preload(PreloadContext context) {
+        var renderer = config.defaultRenderRuntime;
+        var tube = config.section.isEnable();
+        // bakeBatches' gate: high-quality corners on a non-Local flat ribbon stay on the CPU
+        var instanced = renderer.isUseGPUInstance()
+                && (tube || !(config.highQualityCorners && config.alignment != AraTrailConfig.TrailAlignment.Local));
+        preloadGroup(context, renderer, config.additionalGPUDataSetting, geometryMode(), instanced
+                        ? tube ? PhotonPipelines.InstancedVariant.ARA_TUBE : PhotonPipelines.InstancedVariant.ARA : null,
+                !instanced, false, renderer.isWriteCustomMask() || context.isAnimated(this, "renderer.writeCustomMask"));
+    }
+
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         super.buildConfigurator(father);
         config.buildConfigurator(father);
+        MaterialRequirements.addRow(father, config.renderer::getMaterials, config.additionalGPUDataSetting, false,
+                config.renderer::isUseGPUInstance, config.renderer::setUseGPUInstance);
     }
 
     //////////////////////////////////////
@@ -194,6 +211,11 @@ public class AraTrailEmitter extends Emitter {
     @Override
     public int getParticleAmount() {
         return trailParticle.isAlive() ? 1 : 0;
+    }
+
+    @Override
+    protected boolean needsBlockScene() {
+        return runtime().physics.collides();
     }
 
     @Override

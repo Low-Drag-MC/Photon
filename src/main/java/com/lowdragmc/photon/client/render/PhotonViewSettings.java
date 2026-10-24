@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.client.render;
 
+import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 
 import javax.annotation.Nullable;
@@ -14,11 +15,18 @@ import javax.annotation.Nullable;
  * @param effects     whether to run that chain (the SceneView toggle)
  */
 public record PhotonViewSettings(boolean shaded, boolean wireframe, boolean bloom,
-                                 @Nullable PostEffectStack postEffects, boolean effects) {
+                                 @Nullable PostEffectStack postEffects, boolean effects,
+                                 @Nullable DynamicLightRenderer.SceneLights lights) {
 
     /** Plain rendering: shaded, no wireframe overlay, bloom allowed, world post effects. */
     public static final PhotonViewSettings DEFAULT =
             new PhotonViewSettings(true, false, true, PostEffectStack.GLOBAL, true);
+
+    /** {@code lights}: an editor scene's own light view; the world lights from the level events instead. */
+    public PhotonViewSettings(boolean shaded, boolean wireframe, boolean bloom,
+                              @Nullable PostEffectStack postEffects, boolean effects) {
+        this(shaded, wireframe, bloom, postEffects, effects, null);
+    }
 
     @Nullable
     private static PhotonViewSettings current;

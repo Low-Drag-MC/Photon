@@ -1,11 +1,15 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
+import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonRegistries;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
+import net.minecraft.util.ExtraCodecs;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.neoforged.neoforge.common.util.ValueIOSerializable;
 
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -21,7 +25,9 @@ import java.util.List;
  * to an empty timeline.
  */
 @ParametersAreNonnullByDefault
-public class Timeline {
+public class Timeline implements ValueIOSerializable {
+    private static final List<String> KEYS = List.of("tracks", "markers");
+
     private final List<Track> tracks = new ArrayList<>();
     /** Named bookmarks on the master clock: snapping aids + visual markers (see {@link Marker}). */
     private final List<Marker> markers = new ArrayList<>();
@@ -155,7 +161,7 @@ public class Timeline {
         return track;
     }
 
-        public CompoundTag serializeNBT(HolderLookup.Provider provider) {
+    public CompoundTag serializeNBT(HolderLookup.Provider provider) {
         var tag = new CompoundTag();
         var list = new ListTag();
         for (var track : tracks) {
@@ -173,7 +179,29 @@ public class Timeline {
         return tag;
     }
 
-        public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
+    /**
+     * As a {@code @Persisted} field (an FX instance's own timeline), which LDLib2 saves through ValueIO: the same
+     * compound {@link #serializeNBT} writes, so files read the same on every version.
+     */
+    @Override
+    public void serialize(ValueOutput output) {
+        var tag = serializeNBT(Platform.getFrozenRegistry());
+        for (var key : KEYS) {
+            var value = tag.get(key);
+            if (value != null) output.store(key, ExtraCodecs.NBT, value);
+        }
+    }
+
+    @Override
+    public void deserialize(ValueInput input) {
+        var tag = new CompoundTag();
+        for (var key : KEYS) {
+            input.read(key, ExtraCodecs.NBT).ifPresent(value -> tag.put(key, value));
+        }
+        deserializeNBT(Platform.getFrozenRegistry(), tag);
+    }
+
+    public void deserializeNBT(HolderLookup.Provider provider, CompoundTag tag) {
         tracks.clear();
         for (var element : tag.getListOrEmpty("tracks")) {
             if (element instanceof CompoundTag entry) {

@@ -37,6 +37,14 @@ public interface IrisBridge {
         return "";
     }
 
+    /**
+     * The share of the screen, from its lower-left corner, the pack draws its world into before upscaling it in
+     * its final pass; 1 when it draws at full size or we can't tell.
+     */
+    default float gbufferRenderScale() {
+        return 1f;
+    }
+
     /** Iris' own version string, or {@code ""}. */
     default String irisVersion() {
         return "";
@@ -80,6 +88,20 @@ public interface IrisBridge {
         return null;
     }
 
+    /**
+     * The pack's scene colour, for the materials that sample {@code SamplerSceneColor}. Under a pack
+     * Minecraft's own colour target holds no world at all — Iris draws the frame into its colortex — so
+     * this, not a capture of that target, is the scene they mean. Null when the layout names none.
+     * Every call must be followed by {@link #endSceneSampling()} once the draws that sample it are done.
+     */
+    default @Nullable GpuTextureView sceneColor(IrisFrameTarget target) {
+        return null;
+    }
+
+    /** Hand back what sampling {@link #sceneColor} changed on the pack's texture. */
+    default void endSceneSampling() {
+    }
+
     /** Drop every cached framebuffer / resolved layout. Safe to call off a pack reload. */
     default void invalidate() {
     }
@@ -97,6 +119,19 @@ public interface IrisBridge {
     /** Runs {@code work} with pack-program substitution off: Photon draws its own programs into its own targets. */
     default void runWithoutPackPrograms(Runnable work) {
         work.run();
+    }
+
+    /** For tests: a pack in shaderpacks/ ({@code null} keeps the current one) and whether shaders are on. */
+    record ShaderPackSelection(@Nullable String name, boolean enabled) {
+    }
+
+    default ShaderPackSelection shaderPackSelection() {
+        return new ShaderPackSelection(null, false);
+    }
+
+    /** For tests: saves the selection to Iris' config and reloads. */
+    default boolean selectShaderPack(ShaderPackSelection selection) {
+        return false;
     }
 
     default void unlockDepthColorIfLocked() {

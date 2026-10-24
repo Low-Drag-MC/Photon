@@ -6,10 +6,12 @@ import com.lowdragmc.lowdraglib2.editor.resource.IResourcePath;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.gui.editor.resource.MaterialResource;
 import net.minecraft.client.renderer.rendertype.RenderType;
 
+import javax.annotation.Nullable;
 import java.util.Objects;
 
 /**
@@ -60,6 +62,18 @@ public final class UIResourceMaterial implements IMaterial {
     }
 
     @Override
+    public RenderType getPreviewRenderType(
+            MaterialSetting setting,
+            PrimitiveTopology mode) {
+        return getRawMaterial().getPreviewRenderType(setting, mode);
+    }
+
+    @Override
+    public void preload(PreloadContext context) {
+        getInternalMaterial().preload(context);
+    }
+
+    @Override
     public IGuiTexture preview() {
         return getInternalMaterial().preview();
     }
@@ -68,6 +82,27 @@ public final class UIResourceMaterial implements IMaterial {
     @Override
     public IGuiTexture previewLive() {
         return getInternalMaterial().previewLive();
+    }
+
+    @Override
+    public long getUsedChannelMask() {
+        return getInternalMaterial().getUsedChannelMask();
+    }
+
+    @Override
+    public boolean usesCustomData() {
+        return getInternalMaterial().usesCustomData();
+    }
+
+    @Override
+    public int[] requiredCustomChannels() {
+        return getInternalMaterial().requiredCustomChannels();
+    }
+
+    @Nullable
+    @Override
+    public MaterialRenderState getPreferredRenderState() {
+        return getInternalMaterial().getPreferredRenderState();
     }
 
     @Override

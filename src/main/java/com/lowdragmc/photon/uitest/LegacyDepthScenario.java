@@ -19,7 +19,7 @@ import java.util.List;
 
 /**
  * Checks the legacy (forward-Z) depth shim: a legacy probe shader must match its reverse-Z twin pixel for pixel,
- * on the CPU and the instanced path.
+ * on the CPU and the instanced path, and so must the soft-particle fade of {@code photon:soft_particle.glsl}.
  */
 @LDLRegisterClient(name = "legacy_depth", group = "photon", registry = UIScenario.REGISTRY,
         environment = RegistrationEnvironment.DEV_ONLY)
@@ -27,14 +27,20 @@ public class LegacyDepthScenario implements UIScenario {
 
     private static final String LEGACY = "devtest/depth_probe_legacy";
     private static final String NATIVE = "devtest/depth_probe_native";
+    private static final String SOFT_LEGACY = "devtest/soft_probe_legacy";
+    private static final String SOFT_NATIVE = "devtest/soft_probe_native";
 
     private record Round(String tag, String shader, boolean instanced) {
     }
 
+    // captures are found by name suffix: no tag may end another
     private static final List<Round> ROUNDS = List.of(
             new Round("native_cpu", NATIVE, false),
             new Round("legacy_cpu", LEGACY, false),
-            new Round("legacy_inst", LEGACY, true));
+            new Round("legacy_inst", LEGACY, true),
+            new Round("native_cpu_fade", SOFT_NATIVE, false),
+            new Round("legacy_cpu_fade", SOFT_LEGACY, false),
+            new Round("legacy_inst_fade", SOFT_LEGACY, true));
 
     @Override
     public void define(ScenarioBuilder s) {
@@ -129,15 +135,27 @@ public class LegacyDepthScenario implements UIScenario {
                 Integer.toHexString(mid) + " vs " + Integer.toHexString(low));
 
         // 2. the legacy probe, through the shim, on both geometry paths: the same picture
-        for (var tag : List.of("legacy_cpu", "legacy_inst")) {
+        matches(ctx, nativeCpu, List.of("legacy_cpu", "legacy_inst"), whole);
+
+        // 3. the fade: clear where the ground is in front of the quad, none against the sky, and the same in a legacy shader
+        var softNative = ScreenshotCompare.load(ctx, "native_cpu_fade");
+        ctx.require("the native fade capture was written", softNative != null);
+        ctx.check("the native fade is gone against the sky", grey(softNative.rgb(x, height / 20)) > 240, "white",
+                Integer.toHexString(softNative.rgb(x, height / 20)));
+        ctx.check("and complete where the ground is nearer than the quad", grey(softNative.rgb(x, height * 19 / 20)) < 16,
+                "black", Integer.toHexString(softNative.rgb(x, height * 19 / 20)));
+        matches(ctx, softNative, List.of("legacy_cpu_fade", "legacy_inst_fade"), whole);
+    }
+
+    private static void matches(TestContext ctx, ScreenshotCompare reference, List<String> tags, ScreenshotCompare.Region whole) {
+        for (var tag : tags) {
             var legacy = ScreenshotCompare.load(ctx, tag);
             if (legacy == null) {
                 ctx.check(tag + " was written", false, "an image", "missing");
                 continue;
             }
-            var diff = nativeCpu.diff(legacy, 8, whole);
-            ctx.log("%s vs native: %d px (%.4f%%) %s".formatted(tag, diff.count(), 100 * diff.fraction(), diff.box()));
-            ctx.check(tag + " matches the native reconstruction", diff.fraction() < 0.001,
+            var diff = reference.diff(legacy, 8, whole);
+            ctx.check(tag + " matches the native picture", diff.fraction() < 0.001,
                     "< 0.1% of the picture", "%.4f%% (%s)".formatted(100 * diff.fraction(), diff.box()));
         }
     }

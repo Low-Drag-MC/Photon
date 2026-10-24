@@ -10,6 +10,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import net.minecraft.client.Minecraft;
 import org.joml.Vector4f;
 
 import javax.annotation.Nullable;
@@ -85,6 +86,13 @@ public final class PhotonFXLayer implements AutoCloseable {
     }
 
     private static final Map<CompositeKey, RenderPipeline> COMPOSITES = new ConcurrentHashMap<>();
+
+    /** Compile the composites onto the main target ahead of the first merge ({@code PhotonFramePasses}). */
+    static void preload() {
+        var format = Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture().getFormat();
+        RenderSystem.getDevice().precompilePipeline(compositePipeline(format, true));
+        RenderSystem.getDevice().precompilePipeline(compositePipeline(format, false));
+    }
 
     /**
      * {@code dst = src + dst * (1 - src.a)}, one pipeline per destination format. Alpha is written only into a

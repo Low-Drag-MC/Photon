@@ -6,6 +6,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailRuntime;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomSpace;
+import com.lowdragmc.photon.client.gameobject.emitter.data.ValueSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.particle.IParticle;
 import it.unimi.dsi.fastutil.floats.Float2ObjectFunction;
@@ -273,16 +275,59 @@ public class AraTrailParticle implements IParticle {
     }
 
     private void physicsStep(float timestep) {
-        float velocity_scale = (float) Math.pow(1 - Mth.clamp(runtime.physics.damping.get(), 0, 1), timestep);
-
+        var gravity = getTrailGravity();
+        float damping = runtime.physics.damping.get();
+        var collision = collision();
         for (Point point : points) {
-            // apply gravity and external forces:
-            point.velocity.add(new Vector3f(runtime.physics.gravity.get()).mul(timestep));
-            point.velocity.mul(velocity_scale);
-
-            // integrate velocity:
-            point.position.add(new Vector3f(point.velocity).mul(timestep));
+            integrate(point.position, point.velocity, gravity, damping, timestep, collision);
         }
+    }
+
+    /** Render-only: advances positions {@code ticks} into the coming tick, sub-stepped like {@code FXObject.tick}; the caller restores them. */
+    public void extrapolatePhysics(float ticks) {
+        var gravity = getTrailGravity();
+        float damping = runtime.physics.damping.get();
+        var collision = collision();
+        var velocity = new Vector3f();
+        for (Point point : points) {
+            velocity.set(point.velocity);
+            for (float owed = ticks; owed > 1e-6f; owed -= 1f) {
+                integrate(point.position, velocity, gravity, damping, Math.min(owed, 1f) / 20f, collision);
+            }
+        }
+    }
+
+    /** Ground collision for this step, or null while it is off (or the emitter has no scene yet). */
+    @Nullable
+    private TrailPointCollision collision() {
+        if (!runtime.physics.collides()) return null;
+        var scene = emitter.self().blockScene();
+        if (scene == null) return null;
+        var worldToTrail = getWorldToTrail();
+        // a zero-scale trail space has no way back to world space
+        if (!(Math.abs(worldToTrail.determinant()) > 1e-12)) return null;
+        return new TrailPointCollision(scene, worldToTrail, runtime.physics.config());
+    }
+
+    private static void integrate(Vector3f position, Vector3f velocity, Vector3f gravity, float damping, float timestep,
+                                  @Nullable TrailPointCollision collision) {
+        velocity.fma(timestep, gravity).mul((float) Math.pow(1 - Mth.clamp(damping, 0, 1), timestep));
+        if (collision != null) {
+            collision.move(position, velocity, timestep);
+        } else {
+            position.fma(timestep, velocity);
+        }
+    }
+
+    private Vector3f getTrailGravity() {
+        var gravity = new Vector3f(runtime.physics.gravity.get());
+        var space = runtime.physics.gravitySpace.get();
+        if (space == ValueSpace.Local) {
+            getTransform().localToWorldMatrix().transformDirection(gravity);
+        } else if (space == ValueSpace.Custom) {
+            CustomSpace.dirToWorld(config.physicsSetting.gravityCustomSpace, emitter.getScene(), gravity);
+        }
+        return getWorldToTrail().transformDirection(gravity);
     }
 
 
@@ -488,6 +533,19 @@ public class AraTrailParticle implements IParticle {
                     p1.thickness - p2.thickness,
                     p1.texcoord - p2.texcoord,
                     p1.life - p2.life
+            );
+        }
+
+        public static Point lerp(Point a, Point b, float t) {
+            return new Point(
+                    new Vector3f(a.position).lerp(b.position, t),
+                    new Vector3f(a.velocity).lerp(b.velocity, t),
+                    new Vector3f(a.tangent).lerp(b.tangent, t),
+                    new Vector3f(a.normal).lerp(b.normal, t),
+                    new Vector4f(a.color).lerp(b.color, t),
+                    Mth.lerp(t, a.thickness, b.thickness),
+                    Mth.lerp(t, a.texcoord, b.texcoord),
+                    Mth.lerp(t, a.life, b.life)
             );
         }
 

@@ -27,6 +27,7 @@ import com.lowdragmc.photon.client.render.PhotonCustomUniforms;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonRenderTypes;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
+import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.mojang.serialization.MapCodec;
 import dev.vfyjxf.taffy.style.AlignItems;
 import lombok.Getter;
@@ -53,6 +54,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * User custom-shader material — the 1.21 {@code LDShaderHolder} contract rebuilt on 26.1:
@@ -89,8 +91,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     public final CurveTexture curveTexture = new CurveTexture(MAX_SAMPLING, MAX_SAMPLER);
     @Configurable(name = "SamplerGradient", subConfigurable = true)
     public final GradientTexture gradientTexture = new GradientTexture(MAX_SAMPLING, MAX_SAMPLER);
-    /** 1.21 saved the LDShaderHolder's uniform values under "shaderData"; carried as an opaque blob
-     *  so M0/M1 round-trips don't lose user data before M2 reattaches it. */
+    /** 1.21's LDShaderHolder values ("shaderData"): the live uniform and sampler store. */
     private CompoundTag pendingShaderData = new CompoundTag();
     @Getter
     private String compiledErrorMessage = "";
@@ -230,7 +231,9 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                               List<String> samplerNames,
                               List<String> sceneSamplers,
                               List<PhotonCustomUniforms.Field> layout,
-                              boolean legacyDepth) {
+                              boolean legacyDepth,
+                              boolean lit,
+                              boolean soft) {
     }
 
     /**
@@ -269,6 +272,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         var sceneSamplers = new TreeSet<String>();
         var layout = new TreeMap<String, PhotonCustomUniforms.Field>();
         var legacyDepth = new boolean[]{true};
+        var lit = new boolean[1];
         readShaderJson(json -> {
             if (json.has(DEPTH_CONVENTION_KEY)) {
                 legacyDepth[0] = !DEPTH_CONVENTION_NATIVE.equals(json.get(DEPTH_CONVENTION_KEY).getAsString());
@@ -278,7 +282,9 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             if (json.has("samplers")) {
                 for (var element : json.getAsJsonArray("samplers")) {
                     var name = element.getAsJsonObject().get("name").getAsString();
-                    if (isSceneSampler(name)) sceneSamplers.add(name);
+                    // the lights are the pipeline's to declare and the drain's to bind (see LitParticles)
+                    if (LitParticles.declares(name)) lit[0] = true;
+                    else if (isSceneSampler(name)) sceneSamplers.add(name);
                     else if (!BUILTIN_SAMPLERS.contains(name)) samplerNames.add(name);
                 }
             }
@@ -286,7 +292,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                 for (var element : json.getAsJsonArray("uniforms")) {
                     var uniform = element.getAsJsonObject();
                     var name = uniform.get("name").getAsString();
-                    if (BUILTIN_UNIFORMS.contains(name) || name.startsWith("U_")) continue;
+                    if (BUILTIN_UNIFORMS.contains(name) || name.startsWith("U_") || LitParticles.declares(name)) continue;
                     var type = jsonUniformType(
                             uniform.has("type") ? uniform.get("type").getAsString() : "float",
                             uniform.has("count") ? uniform.get("count").getAsInt() : 1);
@@ -298,9 +304,28 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
                 }
             }
         });
+        var source = fragmentSource(fragment[0]);
+        // a 26.1 shader need not list the lights in its json: importing the include is what lights it
+        lit[0] |= LitParticles.includedBy(source);
+        // the fade only where the shader imports it and lists SamplerSceneDepth (what the drain binds); its params
+        // are the shader's own SoftParticleParams
+        var soft = source.contains("#moj_import <" + SoftParticles.INCLUDE + ">")
+                && sceneSamplers.contains(PhotonShaderCompiler.SCENE_DEPTH);
         return new ShaderMeta(vertex[0], fragment[0],
                 List.copyOf(samplerNames), List.copyOf(sceneSamplers),
-                List.copyOf(layout.values()), legacyDepth[0]);
+                List.copyOf(layout.values()), legacyDepth[0], lit[0], soft);
+    }
+
+    /** The fragment stage's GLSL, or empty when it cannot be read. */
+    private static String fragmentSource(Identifier fragment) {
+        var source = Identifier.fromNamespaceAndPath(fragment.getNamespace(), "shaders/" + fragment.getPath() + ".fsh");
+        return Minecraft.getInstance().getResourceManager().getResource(source).map(resource -> {
+            try (var reader = resource.openAsReader()) {
+                return reader.lines().collect(Collectors.joining("\n"));
+            } catch (Exception e) {
+                return "";
+            }
+        }).orElse("");
     }
 
     /** 1.21 shader-JSON uniform type/count → the std140 block member type (the block skips
@@ -351,7 +376,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
     @Nullable
     private transient Map<String, Identifier> liveSamplers;
 
-    /** The material's OWN mutable sampler-binding map — {@code Sampler0} (the unused base, missing)
+    /** The material's OWN mutable sampler-binding map — {@code Sampler0} (see {@link #baseTexture()})
      *  plus every custom sampler → its bound texture (saved blob, else missing). Referenced live by
      *  {@link PhotonRenderTypes.PhotonDrawInfo}: swapping a texture
      *  mutates it in place, so no new RenderType/pipeline is created. Scene samplers are NOT here —
@@ -361,7 +386,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             liveSamplers = new ConcurrentHashMap<>();
         }
         var missing = MissingTextureAtlasSprite.getLocation();
-        liveSamplers.put("Sampler0", missing);
+        liveSamplers.put("Sampler0", baseTexture());
         var saved = pendingShaderData.getCompoundOrEmpty("samplers");
         for (var name : meta().samplerNames()) {
             var texture = missing;
@@ -376,6 +401,14 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         bindOwnSampler("SamplerCurve", curveTexture.textureId());
         bindOwnSampler("SamplerGradient", gradientTexture.textureId());
         return liveSamplers;
+    }
+
+    /**
+     * What {@code Sampler0} binds. A custom shader has no texture of its own there — 1.21 left whatever the last draw
+     * bound — so the missing texture shows when a shader reads it anyway.
+     */
+    protected Identifier baseTexture() {
+        return MissingTextureAtlasSprite.getLocation();
     }
 
     /** Override a JSON-declared sampler with one of this material's own live textures (curve/gradient
@@ -393,7 +426,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
             for (var element : json.getAsJsonArray("uniforms")) {
                 var uniform = element.getAsJsonObject();
                 var name = uniform.get("name").getAsString();
-                if (BUILTIN_UNIFORMS.contains(name) || name.startsWith("U_") || !uniform.has("values")) continue;
+                if (BUILTIN_UNIFORMS.contains(name) || name.startsWith("U_") || LitParticles.declares(name)
+                        || !uniform.has("values")) continue;
                 var values = uniform.getAsJsonArray("values");
                 var components = new float[values.size()];
                 for (int i = 0; i < components.length; i++) {
@@ -404,7 +438,7 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         });
         var uniforms = pendingShaderData.getCompoundOrEmpty("uniforms");
         for (var name : uniforms.keySet()) {
-            if (BUILTIN_UNIFORMS.contains(name) || name.startsWith("U_")) continue;
+            if (BUILTIN_UNIFORMS.contains(name) || name.startsWith("U_") || LitParticles.declares(name)) continue;
             switch (uniforms.get(name)) {
                 case ListTag list when !list.isEmpty() -> {
                     var components = new float[list.size()];
@@ -504,8 +538,9 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         var s = state();
         var m = meta();
         var key = new PhotonPipelines.CustomShaderKey(
-                m.vertex(), m.fragment(), Map.of(),
-                m.samplerNames(), m.sceneSamplers(), setting.pipelineKey(mode));
+                m.vertex(), m.fragment(), m.legacyDepth() ? Map.of(PhotonPipelines.LEGACY_DEPTH_DEFINE, 1f) : Map.of(),
+                m.samplerNames(), m.sceneSamplers(),
+                setting.pipelineKey(mode).withLitParticles(m.lit()).withSoftParticles(m.soft()));
         // this material OWNS its RenderTypes, one per draw variant (blend/mode/state); build + register
         // on first use of each variant, freed together when the material is released
         var renderType = s.renderTypes.get(key);

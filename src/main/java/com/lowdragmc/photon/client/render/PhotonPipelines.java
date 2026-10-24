@@ -5,6 +5,7 @@ import com.lowdragmc.kilagraph.rendertype.compiler.MaterialUniformLayout;
 import com.lowdragmc.kilagraph.rendertype.runtime.DynamicShaderSourceRegistry;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.LitParticles;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.PrimitiveTopology;
@@ -57,6 +58,10 @@ public final class PhotonPipelines {
      */
     public static final String SOFT_PARTICLE_DEFINE = "PHOTON_SOFT";
 
+    /** A custom shader given forward-Z scene depth: the fade flips its own fragment's to match. Mirrored in
+     *  {@code photon:soft_particle.glsl}. */
+    public static final String LEGACY_DEPTH_DEFINE = "PHOTON_LEGACY_DEPTH";
+
     /** Poses models from the baked pose table. Mirrored in {@code photon:particle.glsl}. */
     public static final String VAT_DEFINE = "PHOTON_VAT";
 
@@ -66,42 +71,83 @@ public final class PhotonPipelines {
     /** Declares {@code PhotonCustomData}; same contract as {@link #DATA_DEFINE}. */
     public static final String CUSTOM_DATA_DEFINE = "PHOTON_CUSTOM_DATA";
 
+    /**
+     * Compiles the dynamic lights into a fragment stage; {@code photon:lit_particle.glsl} declares nothing without
+     * it. A variant for the reason the fade is one: the light buffers must be bound at every draw that declares
+     * them. Mirrored in that file.
+     */
+    public static final String LIT_DEFINE = "PHOTON_LIT";
+
+    /**
+     * CPU geometry with per-particle records, read by {@code gl_VertexID} through the {@link #CPU_DATA_BLOCK}.
+     * Mirrored in {@code photon:particle.glsl}.
+     */
+    public static final String CPU_DATA_DEFINE = "PHOTON_CPU_DATA";
+    public static final String CPU_DATA_BLOCK = "PhotonCpuData";
+
+    /** What a lit pipeline declares ({@code photon:dynamic_light.glsl}); bound by {@code DynamicLightRenderer}. */
+    public static final String LIGHT_DATA = "PhotonLightData";
+    public static final String CLUSTER_GRID = "PhotonClusterGrid";
+    public static final String CLUSTER_INDICES = "PhotonClusterIndices";
+    public static final String VISIBILITY_ATLAS = "PhotonVisibilityAtlas";
+    public static final String LIGHTS_BLOCK = "PhotonLights";
+
     private static final String SCENE_COLOR = "SamplerSceneColor";
 
-    /** The wireframe overlay replaces the fragment stage, so it never fades. */
+    /** The wireframe overlay replaces the fragment stage, so it is neither faded nor lit. */
     private static boolean usesSoftParticles(ParticlePipelineKey key) {
         return key.softParticles() && !key.wireframe();
     }
 
+    private static boolean usesLitParticles(ParticlePipelineKey key) {
+        return key.litParticles() && !key.wireframe();
+    }
+
     /**
-     * Pipeline state of a draw: MaterialSetting blend/cull/depth, topology, wireframe overlay and soft-particle
-     * fade. {@code blend} null = no blending.
+     * Pipeline state of a draw: MaterialSetting blend/cull/depth, topology, wireframe overlay, and the material's
+     * soft-particle fade and dynamic lights. {@code blend} null = no blending.
      */
     public record ParticlePipelineKey(@Nullable BlendFunction blend,
                                       boolean cull, boolean depthTest, boolean depthMask,
-                                      PrimitiveTopology mode, boolean wireframe, boolean softParticles) {
+                                      PrimitiveTopology mode, boolean wireframe, boolean softParticles,
+                                      boolean litParticles) {
         public static final ParticlePipelineKey DEFAULT = new ParticlePipelineKey(
-                BlendFunction.TRANSLUCENT, true, true, false, PrimitiveTopology.QUADS, false, false);
+                BlendFunction.TRANSLUCENT, true, true, false, PrimitiveTopology.QUADS, false, false, false);
 
         public ParticlePipelineKey(@Nullable BlendFunction blend, boolean cull, boolean depthTest,
                                    boolean depthMask, PrimitiveTopology mode, boolean wireframe) {
-            this(blend, cull, depthTest, depthMask, mode, wireframe, false);
+            this(blend, cull, depthTest, depthMask, mode, wireframe, false, false);
         }
 
         /** The editor wireframe overlay: unculled, undepth-tested lines over the same geometry. */
         public static ParticlePipelineKey wireframe(PrimitiveTopology mode) {
-            return new ParticlePipelineKey(BlendFunction.TRANSLUCENT, false, false, false, mode, true, false);
+            return new ParticlePipelineKey(BlendFunction.TRANSLUCENT, false, false, false, mode, true, false, false);
         }
 
-        /** The fade is a material property, unlike the rest of the key. */
+        /** The fade and the lights are material properties, unlike the rest of the key. */
         public ParticlePipelineKey withSoftParticles(boolean soft) {
             return soft == softParticles ? this : new ParticlePipelineKey(
-                    blend, cull, depthTest, depthMask, mode, wireframe, soft);
+                    blend, cull, depthTest, depthMask, mode, wireframe, soft, litParticles);
+        }
+
+        public ParticlePipelineKey withLitParticles(boolean lit) {
+            return lit == litParticles ? this : new ParticlePipelineKey(
+                    blend, cull, depthTest, depthMask, mode, wireframe, softParticles, lit);
         }
 
         public ParticlePipelineKey withBlend(@Nullable BlendFunction blend) {
-            return new ParticlePipelineKey(blend, cull, depthTest, depthMask, mode, wireframe, softParticles);
+            return new ParticlePipelineKey(blend, cull, depthTest, depthMask, mode, wireframe, softParticles,
+                    litParticles);
         }
+
+        public ParticlePipelineKey withDepth(boolean depthTest, boolean depthMask) {
+            return new ParticlePipelineKey(blend, cull, depthTest, depthMask, mode, wireframe, softParticles,
+                    litParticles);
+        }
+    }
+
+    /** The records a CPU-geometry pipeline reads per particle ({@link #CPU_DATA_DEFINE}). */
+    public record CpuData(boolean data, boolean customData) {
     }
 
     /** {@code BLOCK} plus a Normal; must match KilaGraph's {@code VertexFormatPresets.BLOCK}. */
@@ -118,8 +164,55 @@ public final class PhotonPipelines {
     /** Wireframe pipelines sample the scene colour capture. */
     private static final Set<RenderPipeline> WIREFRAME_PIPELINES = ConcurrentHashMap.newKeySet();
 
+    /** Pipelines that read the dynamic lights; the drain binds them for exactly these. */
+    private static final Set<RenderPipeline> LIT_PIPELINES = ConcurrentHashMap.newKeySet();
+
     public static boolean isWireframe(RenderPipeline pipeline) {
         return WIREFRAME_PIPELINES.contains(pipeline);
+    }
+
+    public static boolean isLit(RenderPipeline pipeline) {
+        return LIT_PIPELINES.contains(pipeline);
+    }
+
+    public static RenderPipeline markLit(RenderPipeline pipeline) {
+        LIT_PIPELINES.add(pipeline);
+        return pipeline;
+    }
+
+    /**
+     * Forget a pipeline nothing draws again: its marks, and the program the device compiled for it, which the
+     * device otherwise keeps until the next resource reload. It must not be drawn afterwards. Render thread.
+     */
+    public static void release(RenderPipeline pipeline) {
+        LIT_PIPELINES.remove(pipeline);
+        WIREFRAME_PIPELINES.remove(pipeline);
+        StackedDistortion.unmark(pipeline);
+        PhotonPipelineReleases.release(pipeline);
+        var reversed = REVERSED_WINDING.remove(pipeline);
+        if (reversed != null && reversed != pipeline) PhotonPipelineReleases.release(reversed);
+    }
+
+    private static final Map<RenderPipeline, RenderPipeline> REVERSED_WINDING = new ConcurrentHashMap<>();
+
+    /**
+     * What the reversed-index back pass of a back-faces-first draw goes through: {@code pipeline} itself, unless its
+     * fragment shader reads {@code gl_FrontFacing}, which that pass sees inverted.
+     */
+    public static RenderPipeline reversedWinding(RenderPipeline pipeline) {
+        return REVERSED_WINDING.computeIfAbsent(pipeline, base -> {
+            var fragment = PhotonShaderSources.reversedWinding(base.getFragmentShader());
+            if (fragment == null) return base;
+            var builder = base.toBuilder()
+                    .withLocation(base.getLocation().withSuffix("/reversed_winding"))
+                    .withFragmentShader(fragment);
+            // toBuilder copies the colour targets but not how many are active, so build() would fall back to the default
+            var targets = base.getColorTargetStates();
+            for (int i = 0; i < targets.length; i++) {
+                if (targets[i] != null) builder.withColorTargetState(i, targets[i]);
+            }
+            return builder.build();
+        });
     }
 
     private PhotonPipelines() {
@@ -130,8 +223,11 @@ public final class PhotonPipelines {
     /** Names {@code MATRICES_FOG_SNIPPET} already declares. */
     private static final Set<String> SNIPPET_NAMES = Set.of("Globals", "DynamicTransforms", "Projection", "Fog");
 
-    /** One pipeline's own bind group, deduplicated by name (GL rejects a name declared twice). */
-    private static final class LayoutBuilder {
+    /**
+     * One pipeline's own bind group, deduplicated by name (GL rejects a name declared twice). Every Photon
+     * pipeline declares through one, so a texel buffer always carries {@link #TEXEL_FORMAT}.
+     */
+    public static final class LayoutBuilder {
         private enum Kind {UNIFORM, TEXEL, SAMPLER}
 
         private record Entry(Kind kind, @Nullable GpuFormat format) {
@@ -144,15 +240,25 @@ public final class PhotonPipelines {
             this.reserved = reserved;
         }
 
-        LayoutBuilder uniform(String name) {
+        /** For a pipeline without {@code MATRICES_FOG_SNIPPET}. */
+        public static LayoutBuilder standalone() {
+            return new LayoutBuilder(Set.of());
+        }
+
+        /** For a pipeline built on {@code MATRICES_FOG_SNIPPET}, whose blocks it already declares. */
+        public static LayoutBuilder overSnippet() {
+            return new LayoutBuilder(SNIPPET_NAMES);
+        }
+
+        public LayoutBuilder uniform(String name) {
             return add(name, new Entry(Kind.UNIFORM, null));
         }
 
-        LayoutBuilder texel(String name) {
+        public LayoutBuilder texel(String name) {
             return add(name, new Entry(Kind.TEXEL, TEXEL_FORMAT));
         }
 
-        LayoutBuilder sampler(String name) {
+        public LayoutBuilder sampler(String name) {
             return add(name, new Entry(Kind.SAMPLER, null));
         }
 
@@ -168,7 +274,7 @@ public final class PhotonPipelines {
             return this;
         }
 
-        void applyTo(RenderPipeline.Builder builder) {
+        public void applyTo(RenderPipeline.Builder builder) {
             if (entries.isEmpty()) {
                 return;
             }
@@ -186,6 +292,60 @@ public final class PhotonPipelines {
 
     private static ColorTargetState hdrTarget(@Nullable BlendFunction blend) {
         return new ColorTargetState(Optional.ofNullable(blend), HDR_FORMAT, ColorTargetState.WRITE_ALL);
+    }
+
+    /** What {@code photon:lit_particle.glsl} reads under {@link #LIT_DEFINE}. Register the result with
+     *  {@link #markLit}. */
+    public static void declareLights(RenderPipeline.Builder builder, LayoutBuilder layout) {
+        builder.withShaderDefine(LIT_DEFINE);
+        layout.texel(LIGHT_DATA).texel(CLUSTER_GRID).texel(CLUSTER_INDICES)
+                .sampler(VISIBILITY_ATLAS).uniform(LIGHTS_BLOCK);
+    }
+
+    private static void applyLitParticles(RenderPipeline.Builder builder, LayoutBuilder layout,
+                                          ParticlePipelineKey key) {
+        if (usesLitParticles(key)) {
+            declareLights(builder, layout);
+        }
+    }
+
+    /** What a {@link #CPU_DATA_DEFINE} vertex stage reads: the block, and the records the program uses. */
+    public static void declareCpuData(RenderPipeline.Builder builder, LayoutBuilder layout, CpuData cpu) {
+        builder.withShaderDefine(CPU_DATA_DEFINE);
+        layout.uniform(CPU_DATA_BLOCK);
+        if (cpu.data()) {
+            builder.withShaderDefine(DATA_DEFINE);
+            layout.texel("PhotonData");
+        }
+        if (cpu.customData()) {
+            builder.withShaderDefine(CUSTOM_DATA_DEFINE);
+            layout.texel("PhotonCustomData");
+        }
+    }
+
+    /** The emitter's half of a pipeline a material builds itself: {@code key}'s blend, depth and cull. */
+    public static RenderPipeline.Builder applyState(RenderPipeline.Builder builder, ParticlePipelineKey key) {
+        return builder.withColorTargetState(hdrTarget(key.blend()))
+                .withDepthStencilState(depthState(key))
+                .withCull(key.cull());
+    }
+
+    /**
+     * The geometry half: {@link #PARTICLE_FORMAT} in {@code cpuMode} when {@code geometry} is null (with the records
+     * when {@code cpu} is given), else the instanced stream and the side buffers its vertex stage reads.
+     */
+    public static void applyGeometry(RenderPipeline.Builder builder, LayoutBuilder layout,
+                                     @Nullable InstancedGeometryKey geometry, PrimitiveTopology cpuMode,
+                                     @Nullable CpuData cpu) {
+        if (geometry == null) {
+            builder.withVertexBinding(0, PARTICLE_FORMAT).withPrimitiveTopology(cpuMode);
+            if (cpu != null) {
+                declareCpuData(builder, layout, cpu);
+            }
+            return;
+        }
+        applyInstancedGeometry(builder, geometry.layout());
+        applyInstanced(builder, layout, geometry.variant(), geometry.data(), geometry.customData());
     }
 
     /** Reverse-Z: nearer is greater. */
@@ -213,9 +373,12 @@ public final class PhotonPipelines {
         }
     }
 
-    private static RenderPipeline track(RenderPipeline pipeline, boolean wireframe) {
-        if (wireframe) {
+    private static RenderPipeline track(RenderPipeline pipeline, ParticlePipelineKey key) {
+        if (key.wireframe()) {
             WIREFRAME_PIPELINES.add(pipeline);
+        }
+        if (usesLitParticles(key)) {
+            LIT_PIPELINES.add(pipeline);
         }
         return pipeline;
     }
@@ -284,9 +447,10 @@ public final class PhotonPipelines {
                     .withDepthStencilState(depthState(k))
                     .withCull(k.cull());
             applySoftParticles(builder, layout, k);
+            applyLitParticles(builder, layout, k);
             applyWireframe(builder, layout, k);
             layout.applyTo(builder);
-            return track(builder.build(), k.wireframe());
+            return track(builder.build(), k);
         });
     }
 
@@ -304,18 +468,18 @@ public final class PhotonPipelines {
                 PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstanceLayouts.MODEL),
         MODEL_VAT_TANGENT(List.of("PARTICLE_MODEL_INSTANCE", VAT_DEFINE, TANGENT_DEFINE), false, true, true,
                 PhotonGpuChannels.Kind.TILE_MODEL, PhotonInstanceLayouts.MODEL_TANGENT),
-        TRAIL(List.of("TRAIL_INSTANCE"), true, false, false,
+        TRAIL(List.of("TRAIL_INSTANCE"), true, true, false,
                 PhotonGpuChannels.Kind.TRAIL, PhotonInstanceLayouts.TRAIL),
-        ARA(List.of("ARA_TRAIL_INSTANCE"), true, false, false,
+        ARA(List.of("ARA_TRAIL_INSTANCE"), true, true, false,
                 PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstanceLayouts.ARA),
-        ARA_TUBE(List.of("ARA_TRAIL_TUBE_INSTANCE"), true, false, false,
+        ARA_TUBE(List.of("ARA_TRAIL_TUBE_INSTANCE"), true, true, false,
                 PhotonGpuChannels.Kind.ARA_TRAIL, PhotonInstanceLayouts.ARA_TUBE),
-        BEAM(List.of("BEAM_INSTANCE"), false, false, true,
+        BEAM(List.of("BEAM_INSTANCE"), false, true, true,
                 PhotonGpuChannels.Kind.BEAM, PhotonInstanceLayouts.BEAM);
 
         public final List<String> defines;
         public final boolean usesPoints;
-        /** Trail/ara/beam instances are not particles and carry no custom data. */
+        /** Every kind: a trail/ara/beam instance carries its owner's record (one per segment/beam). */
         public final boolean usesCustomData;
         /** Records start with the position, so distance sorting can permute whole records. */
         public final boolean positionAtRecordHead;
@@ -376,9 +540,10 @@ public final class PhotonPipelines {
             applyInstancedGeometry(builder, g.layout());
             applyInstanced(builder, layout, g.variant(), g.data(), g.customData());
             applySoftParticles(builder, layout, k);
+            applyLitParticles(builder, layout, k);
             applyWireframe(builder, layout, k);
             layout.applyTo(builder);
-            return track(builder.build(), k.wireframe());
+            return track(builder.build(), k);
         });
     }
 
@@ -421,7 +586,8 @@ public final class PhotonPipelines {
 
     // ---- KilaGraph shader graphs (KilaGraph generates the GLSL, Photon owns the pipeline) ----------
 
-    private record GraphKey(String contentHash, @Nullable InstancedGeometryKey geometry, ParticlePipelineKey key) {
+    private record GraphKey(String contentHash, @Nullable InstancedGeometryKey geometry, ParticlePipelineKey key,
+                            @Nullable CpuData cpu) {
     }
 
     private static final Map<GraphKey, RenderPipeline> GRAPH_VARIANTS = new ConcurrentHashMap<>();
@@ -446,7 +612,15 @@ public final class PhotonPipelines {
     public static RenderPipeline graphShader(CompiledShaderGraph compiled,
                                              @Nullable InstancedGeometryKey geometry,
                                              ParticlePipelineKey key) {
-        return GRAPH_VARIANTS.computeIfAbsent(new GraphKey(compiled.contentHash(), geometry, key), gk -> {
+        return graphShader(compiled, geometry, key, null);
+    }
+
+    /** {@code cpu}: CPU geometry with the per-particle records bound, so a graph reads particle data there too. */
+    public static RenderPipeline graphShader(CompiledShaderGraph compiled,
+                                             @Nullable InstancedGeometryKey geometry,
+                                             ParticlePipelineKey key, @Nullable CpuData cpu) {
+        var cpuData = geometry == null ? cpu : null;
+        return GRAPH_VARIANTS.computeIfAbsent(new GraphKey(compiled.contentHash(), geometry, key, cpuData), gk -> {
             var k = gk.key();
             var shaderId = DynamicShaderSourceRegistry.shaderId(compiled.contentHash());
             var builder = RenderPipeline.builder()
@@ -459,15 +633,15 @@ public final class PhotonPipelines {
             // no snippet: the generated source declares every block itself
             var layout = new LayoutBuilder(Set.of());
             applyGraphResources(layout, compiled);
-            if (gk.geometry() == null) {
-                builder.withVertexBinding(0, PARTICLE_FORMAT).withPrimitiveTopology(k.mode());
-            } else {
-                var g = gk.geometry();
-                applyInstancedGeometry(builder, g.layout());
-                applyInstanced(builder, layout, g.variant(), g.data(), g.customData());
+            // a Dynamic Light node pulled the lights in: a function of the source, so the content hash keys it
+            var lit = LitParticles.includedBy(compiled.fragmentSource());
+            if (lit) {
+                declareLights(builder, layout);
             }
+            applyGeometry(builder, layout, gk.geometry(), k.mode(), gk.cpu());
             layout.applyTo(builder);
-            return builder.build();
+            var pipeline = builder.build();
+            return lit ? markLit(pipeline) : pipeline;
         });
     }
 
@@ -523,12 +697,35 @@ public final class PhotonPipelines {
         return layout;
     }
 
+    /**
+     * A custom shader is lit when it imports {@code photon:lit_particle.glsl}, and fades when it imports
+     * {@code photon:soft_particle.glsl} and lists the scene depth (see {@code CustomShaderMaterial}); the sampler
+     * and the engine block are already in its layout, so the fade only adds its define.
+     */
+    private static void applyCustomVariants(RenderPipeline.Builder builder, LayoutBuilder layout,
+                                            CustomShaderKey key) {
+        var pk = key.pipelineKey();
+        if (usesSoftParticles(pk)) {
+            builder.withShaderDefine(SOFT_PARTICLE_DEFINE);
+        }
+        applyLitParticles(builder, layout, pk);
+    }
+
+    /** The defines {@link #applyCustomVariants} adds, which the adapter must evaluate as the compiler will. */
+    private static List<String> customVariantDefines(CustomShaderKey key) {
+        var defines = new ArrayList<String>(2);
+        if (usesSoftParticles(key.pipelineKey())) defines.add(SOFT_PARTICLE_DEFINE);
+        if (usesLitParticles(key.pipelineKey())) defines.add(LIT_DEFINE);
+        return defines;
+    }
+
     /** The user's stages adapted to this geometry, under the defines the pipeline carries. */
     private static PhotonShaderSources.Adapted adaptCustomSources(CustomShaderKey key, int providedLocations,
                                                                   Set<Integer> tailLocations,
                                                                   Collection<String> extraDefines) {
         var defines = new HashSet<>(key.defines().keySet());
         defines.addAll(extraDefines);
+        defines.addAll(customVariantDefines(key));
         return PhotonShaderSources.adapt(key.vertexShader(), key.fragmentShader(), providedLocations, tailLocations,
                 defines);
     }
@@ -557,8 +754,10 @@ public final class PhotonPipelines {
             // no attribute tail on CPU geometry: tail inputs read the GL default, as on 26.1
             applyCustomState(builder, k, adaptCustomSources(k, PARTICLE_FORMAT.getElements().size(), Set.of(),
                     List.of()));
-            customShaderLayout(k).applyTo(builder);
-            return builder.build();
+            var layout = customShaderLayout(k);
+            applyCustomVariants(builder, layout, k);
+            layout.applyTo(builder);
+            return track(builder.build(), k.pipelineKey());
         });
     }
 
@@ -569,8 +768,18 @@ public final class PhotonPipelines {
 
     /** Custom pipelines are built from adapted source text, so they must be rebuilt after a reload. */
     public static void onResourceReload() {
+        for (var pipeline : CUSTOM_SHADER_VARIANTS.values()) forget(pipeline);
+        for (var pipeline : INSTANCED_CUSTOM_VARIANTS.values()) forget(pipeline);
         CUSTOM_SHADER_VARIANTS.clear();
         INSTANCED_CUSTOM_VARIANTS.clear();
+        // sources may have changed; the device drops its compiled programs itself
+        REVERSED_WINDING.clear();
+    }
+
+    private static void forget(RenderPipeline pipeline) {
+        LIT_PIPELINES.remove(pipeline);
+        WIREFRAME_PIPELINES.remove(pipeline);
+        StackedDistortion.unmark(pipeline);
     }
 
     public static RenderPipeline instancedCustomShader(InstancedGeometryKey geometry, CustomShaderKey key) {
@@ -588,8 +797,9 @@ public final class PhotonPipelines {
             var layout = customShaderLayout(k);
             // custom shaders read the attribute tail, not the records
             applyInstanced(builder, layout, g.variant(), false, false);
+            applyCustomVariants(builder, layout, k);
             layout.applyTo(builder);
-            return builder.build();
+            return track(builder.build(), k.pipelineKey());
         });
     }
 }

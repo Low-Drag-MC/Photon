@@ -52,6 +52,12 @@ public final class PostFXPreview {
     /** The rendered preview, registered so the GUI can blit it by {@link Identifier}. */
     @Nullable
     private static Result result;
+    /** A result a size change replaced: released at the next {@link #processPending()}. 26.2 extracts the GUI before
+     *  {@code RenderFrameEvent.Pre}, so this frame's draw list still holds its view. Each result gets its own
+     *  {@link Identifier} for the same reason: re-registering one closes the texture it replaces on the spot. */
+    @Nullable
+    private static Result retired;
+    private static int resultSeq;
 
     private record Result(GpuTextureView view, Identifier id, int width, int height) {
         void close() {
@@ -118,6 +124,10 @@ public final class PostFXPreview {
 
     /** Run the requested effect over the capture. {@code RenderFrameEvent.Pre} only — no pass is open. */
     public static void processPending() {
+        if (retired != null) {
+            retired.close();
+            retired = null;
+        }
         var request = pending;
         pending = null;
         if (request == null || colorCapture == null) {
@@ -135,7 +145,7 @@ public final class PostFXPreview {
     /** Copy {@code view} into the GUI-visible preview texture, (re)allocating it on a size change. */
     private static void publish(GpuTextureView view, int width, int height) {
         if (result != null && (result.width() != width || result.height() != height)) {
-            result.close();
+            retired = result;
             result = null;
         }
         if (result == null) {
@@ -146,7 +156,7 @@ public final class PostFXPreview {
                     GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT,
                     GpuFormat.RGBA8_UNORM, width, height, 1, 1);
             var colorView = device.createTextureView(color);
-            var id = Photon.id("postfx_preview");
+            var id = Photon.id("postfx_preview/" + resultSeq++);
             Minecraft.getInstance().getTextureManager().register(id, new AbstractTexture() {{
                 this.texture = color;
                 this.textureView = colorView;
@@ -194,6 +204,10 @@ public final class PostFXPreview {
         if (result != null) {
             result.close();
             result = null;
+        }
+        if (retired != null) {
+            retired.close();
+            retired = null;
         }
     }
 

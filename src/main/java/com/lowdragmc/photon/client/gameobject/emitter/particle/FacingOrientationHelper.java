@@ -1,6 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
 import com.lowdragmc.photon.client.gameobject.particle.TileParticle;
+import com.lowdragmc.photon.client.render.PhotonCameraUtils;
 import net.minecraft.client.Camera;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -40,13 +41,13 @@ public final class FacingOrientationHelper {
 
     private static Quaternionf computeLookAtXYZ(TileParticle particle, Camera camera, float partialTick) {
         Vector3f particlePos = particle.getWorldPos(partialTick);
-        Vector3f cameraPos = camera.position().toVector3f();
+        Vector3f cameraPos = PhotonCameraUtils.facingEye(camera);
         return FacingOrientationMath.computeLookAtXYZ(particlePos, cameraPos);
     }
 
     private static Quaternionf computeLookAtY(TileParticle particle, Camera camera, float partialTick) {
         Vector3f particlePos = particle.getWorldPos(partialTick);
-        Vector3f cameraPos = camera.position().toVector3f();
+        Vector3f cameraPos = PhotonCameraUtils.facingEye(camera);
         return FacingOrientationMath.computeLookAtY(particlePos, cameraPos);
     }
 
@@ -57,7 +58,7 @@ public final class FacingOrientationHelper {
             float partialTick
     ) {
         Vector3f particlePos = particle.getWorldPos(partialTick);
-        Vector3f cameraPos = camera.position().toVector3f();
+        Vector3f cameraPos = PhotonCameraUtils.facingEye(camera);
         Vector3f toCamera = new Vector3f(cameraPos).sub(particlePos);
         if (toCamera.lengthSquared() < MIN_THRESHOLD) {
             return new Quaternionf();

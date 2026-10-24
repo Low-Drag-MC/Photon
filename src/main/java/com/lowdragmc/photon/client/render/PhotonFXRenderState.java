@@ -23,9 +23,9 @@ public final class PhotonFXRenderState implements ParticleGroupRenderState {
     @Override
     public void submit(SubmitNodeCollector collector, CameraRenderState camera) {
         var settings = PhotonViewSettings.current();
-        // still submit while the post-effect chain has work, even with no FX
+        // still submit while the post-effect chain has work, or a scene's lights do, even with no FX
         var stack = settings.effects() ? settings.postEffects() : null;
-        if (tasks.isEmpty() && (stack == null || !stack.wantsExecution())) {
+        if (tasks.isEmpty() && (stack == null || !stack.wantsExecution()) && settings.lights() == null) {
             return;
         }
         // vanilla clears this state after the dispatchers drained the storage

@@ -1,9 +1,15 @@
 package com.lowdragmc.photon.client.gameobject.emitter.aratrail;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
+import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigSelector;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.TransformRef;
+import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.RuntimeValue;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
+import com.lowdragmc.photon.client.gameobject.emitter.data.ValueSpace;
 import lombok.Getter;
 import lombok.Setter;
 import org.joml.Vector3f;
@@ -19,7 +25,12 @@ public class AraPhysicsSetting extends ToggleGroup {
     @Configurable(name = "AraTrails.warmup", tips = "AraTrails.warmup.tips")
     public float warmup = 0;               /**< simulation warmup seconds.*/
     @Configurable(name = "AraTrails.gravity", tips = "AraTrails.gravity.tips")
-    public Vector3f gravity = new Vector3f();  /**< gravity applied to the trail, in world space. */
+    public Vector3f gravity = new Vector3f();  /**< gravity applied to the trail, in {@link #gravitySpace} axes. */
+    @Configurable(name = "AraTrails.gravitySpace", tips = "AraTrails.gravitySpace.tips")
+    @ConfigSelector(subConfiguratorBuilder = "buildGravitySpaceConfigurator")
+    public ValueSpace gravitySpace = ValueSpace.World;
+    @Persisted
+    public final TransformRef gravityCustomSpace = new TransformRef();
     @Configurable(name = "AraTrails.inertia", tips = "AraTrails.inertia.tips")
     @ConfigNumber(range = {0, 1})
     public float inertia = 0;               /**< amount of GameObject velocity transferred to the trail.*/
@@ -29,9 +40,27 @@ public class AraPhysicsSetting extends ToggleGroup {
     @Configurable(name = "AraTrails.damping", tips = "AraTrails.damping.tips")
     @ConfigNumber(range = {0, 1})
     public float damping = 0.75f;               /**< velocity damping amount.*/
+    @Configurable(name = "AraTrails.collideWithBlocks", tips = "AraTrails.collideWithBlocks.tips")
+    public boolean collideWithBlocks = false;
+    @Configurable(name = "AraTrails.collisionRadius", tips = "AraTrails.collisionRadius.tips")
+    @ConfigNumber(range = {0, 4}, wheel = 0.01)
+    public float collisionRadius = 0.05f;
+    @Configurable(name = "AraTrails.collisionBounce", tips = "AraTrails.collisionBounce.tips")
+    @ConfigNumber(range = {0, 1})
+    public float collisionBounce = 0;
+    @Configurable(name = "AraTrails.collisionFriction", tips = "AraTrails.collisionFriction.tips")
+    @ConfigNumber(range = {0, 1})
+    public float collisionFriction = 0.5f;
 
     public Runtime createRuntime() {
         return new Runtime(this);
+    }
+
+    private void buildGravitySpaceConfigurator(ValueSpace space, ConfiguratorGroup group) {
+        if (space == ValueSpace.Custom) {
+            group.addConfigurator(CustomSpace.configurator("AraTrails.customSpace", gravityCustomSpace,
+                    "photon.emitter.config.valueCustomSpace.tips"));
+        }
     }
 
     /** Per-emitter runtime layer holding timeline-overridable slots over the immutable physics config. */
@@ -40,31 +69,45 @@ public class AraPhysicsSetting extends ToggleGroup {
         public final RuntimeValue<Boolean> enable;
         public final RuntimeValue<Float> warmup;
         public final RuntimeValue<Vector3f> gravity;   // slot only (Vector3f → no timeline binding)
+        public final RuntimeValue<ValueSpace> gravitySpace; // slot only (enum → no timeline binding)
         public final RuntimeValue<Float> inertia;
         public final RuntimeValue<Float> velocitySmoothing;
         public final RuntimeValue<Float> damping;
+        public final RuntimeValue<Boolean> collideWithBlocks;
 
         public Runtime(AraPhysicsSetting config) {
             this.config = config;
             this.enable = new RuntimeValue<>(config::isEnable);
             this.warmup = new RuntimeValue<>(() -> config.warmup);
             this.gravity = new RuntimeValue<>(() -> config.gravity);
+            this.gravitySpace = new RuntimeValue<>(() -> config.gravitySpace);
             this.inertia = new RuntimeValue<>(() -> config.inertia);
             this.velocitySmoothing = new RuntimeValue<>(() -> config.velocitySmoothing);
             this.damping = new RuntimeValue<>(() -> config.damping);
+            this.collideWithBlocks = new RuntimeValue<>(() -> config.collideWithBlocks);
         }
 
         public boolean isEnable() {
             return enable.get();
         }
 
+        public boolean collides() {
+            return enable.get() && collideWithBlocks.get();
+        }
+
+        public AraPhysicsSetting config() {
+            return config;
+        }
+
         public void clear() {
             enable.clear();
             warmup.clear();
             gravity.clear();
+            gravitySpace.clear();
             inertia.clear();
             velocitySmoothing.clear();
             damping.clear();
+            collideWithBlocks.clear();
         }
     }
 }

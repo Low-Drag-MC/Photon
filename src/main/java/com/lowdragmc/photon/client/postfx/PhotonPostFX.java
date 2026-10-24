@@ -13,6 +13,7 @@ import com.lowdragmc.photon.client.postfx.runtime.SceneBlit;
 import com.lowdragmc.photon.client.render.PhotonDeferredLayer;
 import com.lowdragmc.photon.client.render.PhotonMaskTarget;
 import com.lowdragmc.photon.client.render.PhotonRenderOutput;
+import com.lowdragmc.photon.client.render.StackedDistortion;
 import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.RenderGraphResource;
 import org.jetbrains.annotations.Nullable;
@@ -125,6 +126,8 @@ public final class PhotonPostFX {
         boolean shaderPack = IrisCompat.isUsingShaderPack();
         boolean hadPendingLayer = PhotonDeferredLayer.isPending();
         PhotonDeferredLayer.compositePending();
+        // after the merge, so the layer's stacked distortions bend it together with the frame — and before the chain
+        StackedDistortion.LAYER.bend(PhotonRenderOutput.color(), PhotonRenderOutput.depth(), null);
         if (shaderPack) {
             if (!PhotonConfig.INSTANCE.enableCustomEffectsWithShaderPack.get()) return;
         } else if (!hadPendingLayer) {

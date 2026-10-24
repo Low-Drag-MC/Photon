@@ -9,6 +9,9 @@ import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.state.level.ParticleGroupRenderState;
 import net.minecraft.world.phys.AABB;
 
+import java.util.Collection;
+import java.util.Collections;
+
 /**
  * The particle-engine host of every Photon FX object (registered for
  * {@link PhotonParticleRenderTypes#FX} via {@code RegisterParticleGroupsEvent}, which fires for
@@ -60,6 +63,11 @@ public final class PhotonParticleGroup extends ParticleGroup<FXObject> {
         EXTRACT_TIMES[extractIndex] = System.nanoTime() - startTime;
         extractIndex = (extractIndex + 1) % EXTRACT_TIMES.length;
         return renderState;
+    }
+
+    /** The FX objects this engine ticks, live. */
+    public Collection<FXObject> objects() {
+        return Collections.unmodifiableCollection(particles);
     }
 
     /** Average extract time in microseconds (the world-side frame-time stat). */

@@ -71,7 +71,9 @@ public abstract class FXEffectExecutor implements IFXEffectExecutor {
      * {@code BlockEffectExecutor.CACHE}): prunes executors whose runtime ended — finished naturally
      * OR silently discarded by the particle engine ({@code !isValid()}, e.g. after a level change) —
      * then reports whether an equivalent effect (same {@link FX} instance or same fx location) is
-     * still running, in which case this {@code start()} must be skipped.
+     * still running, in which case this {@code start()} must be skipped. An equivalent effect playing
+     * a load of the definition that has since been reloaded (a resource reload, a rewritten fx pack)
+     * is replaced instead, so the current definition is what plays.
      */
     protected boolean shouldSkipStart(List<? extends FXEffectExecutor> effects) {
         if (allowMulti) {
@@ -86,10 +88,23 @@ public abstract class FXEffectExecutor implements IFXEffectExecutor {
                 continue;
             }
             if (effect.fx.equals(fx) || Objects.equals(effect.fx.getFxLocation(), fx.getFxLocation())) {
-                return true;
+                if (!supersedes(effect.fx)) {
+                    return true;
+                }
+                if (effect.runtime != null) {
+                    effect.runtime.destroy(true);
+                }
+                effect.notifyFinished();
+                iter.remove();
             }
         }
         return false;
+    }
+
+    /** Whether this executor plays the cached definition of an fx that {@code running} is an older load of. */
+    private boolean supersedes(FX running) {
+        var location = fx.getFxLocation();
+        return running != fx && location != null && FXHelper.getCachedFX(location) == fx;
     }
 
     /**

@@ -1,11 +1,13 @@
 package com.lowdragmc.photon.client.gameobject.emitter.beam;
 
+import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialRequirements;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.fx.timeline.AnimatedPropertyType;
 import com.lowdragmc.photon.client.fx.timeline.property.ConfigValueType;
 import com.lowdragmc.photon.client.gameobject.FXObject;
@@ -156,10 +158,21 @@ public class BeamEmitter extends Emitter {
         return new BeamEmitter(config);
     }
 
+    /** The group {@link #bakeBatches} draws (see {@link Emitter#preloadGroup}), from the config's renderer. */
+    @Override
+    public void preload(PreloadContext context) {
+        var renderer = config.defaultRenderRuntime;
+        var instanced = renderer.isUseGPUInstance();
+        preloadGroup(context, renderer, config.additionalGPUDataSetting, geometryMode(), instanced ? PhotonPipelines.InstancedVariant.BEAM : null,
+                !instanced, false, renderer.isWriteCustomMask() || context.isAnimated(this, "renderer.writeCustomMask"));
+    }
+
     @Override
     public void buildConfigurator(ConfiguratorGroup father) {
         super.buildConfigurator(father);
         config.buildConfigurator(father);
+        MaterialRequirements.addRow(father, config.renderer::getMaterials, config.additionalGPUDataSetting, false,
+                config.renderer::isUseGPUInstance, config.renderer::setUseGPUInstance);
     }
 
     //////////////////////////////////////

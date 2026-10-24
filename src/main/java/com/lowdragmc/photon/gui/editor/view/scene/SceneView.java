@@ -20,6 +20,11 @@ import com.lowdragmc.photon.client.FXSceneOptions;
 import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.gameobject.FXObject;
+import com.lowdragmc.photon.client.gameobject.light.LightObject;
+import com.lowdragmc.photon.client.collision.CollisionDebug;
+import com.lowdragmc.photon.client.collision.CollisionWorld;
+import com.lowdragmc.photon.client.gameobject.collider.ColliderObject;
+import com.lowdragmc.photon.client.light.DynamicLightManager;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.FXProjectEffectExecutor;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -85,6 +90,8 @@ public class SceneView extends View implements FXSceneOptions {
     private boolean bloomEnabled = true;
     @Getter @Setter
     private boolean effectsEnabled = true;
+    @Getter @Setter
+    private boolean dynamicLightsEnabled = true;
     /** Debug view: replace the scene with the CustomMask contents (the builtin show_mask effect). */
     @Getter @Setter
     private boolean maskViewEnabled = false;
@@ -107,6 +114,7 @@ public class SceneView extends View implements FXSceneOptions {
         this.getLayout().heightPercent(100.0F);
         this.fxEditor = fxEditor;
         level.setParticleManager(particleManager);
+        particleManager.setLightLevel(level);
 
         sceneEditor = new ParticleSceneEditor();
         sceneEditor.layout(layout -> {
@@ -139,6 +147,7 @@ public class SceneView extends View implements FXSceneOptions {
 
     public void clearScene() {
         level.clear();
+        CollisionWorld.blocksReplaced(level);
         reset();
         fxObjectAnimationView.clear();
         fxObjectInfoView.clear();
@@ -255,6 +264,8 @@ public class SceneView extends View implements FXSceneOptions {
             }
         }
         sceneEditor.scene.setRenderedCore(level.getFilledBlocks().longStream().mapToObj(BlockPos::of).toList());
+        DynamicLightManager.blocksReplaced(level);
+        CollisionWorld.blocksReplaced(level);
         isSceneLoaded = true;
     }
 
@@ -378,6 +389,11 @@ public class SceneView extends View implements FXSceneOptions {
                             .icon(PhotonIcons.SHADER_GRAPH)
                             .tooltipKey("photon.is_effects_visible")
                             .build(),
+                    new SceneToggleBuilder(SceneView.this::isDynamicLightsEnabled,
+                            SceneView.this::setDynamicLightsEnabled)
+                            .icon(LightObject.ICON)
+                            .tooltipKey("photon.is_dynamic_lights_visible")
+                            .build(),
                     new SceneToggleBuilder(SceneView.this::isMaskViewEnabled,
                             SceneView.this::setMaskViewEnabled)
                             .icon(PhotonIcons.FULL_SCREEN_GRAPH)
@@ -392,6 +408,10 @@ public class SceneView extends View implements FXSceneOptions {
                             SceneView.this::setCullBoxVisible)
                             .icon(PhotonIcons.CULL_BOX)
                             .tooltipKey("photon.is_cull_visible")
+                            .build(),
+                    new SceneToggleBuilder(() -> CollisionDebug.enabled, on -> CollisionDebug.enabled = on)
+                            .icon(ColliderObject.ICON)
+                            .tooltipKey("photon.is_collision_visible")
                             .build(),
                     new SceneToggleBuilder(fxObjectAnimationView::isDisplayed,
                             fxObjectAnimationView::setDisplay)

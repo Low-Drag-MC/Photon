@@ -66,10 +66,17 @@ public final class PhotonFullscreenPass {
 
     public static void draw(String label, RenderPipeline pipeline, GpuTextureView target,
                             @Nullable ScissorState scissor, Consumer<RenderPass> bind) {
+        draw(label, pipeline, target, null, scissor, bind);
+    }
+
+    /** With a depth attachment, for a pipeline whose state tests or writes depth (Vulkan requires the pair). */
+    public static void draw(String label, RenderPipeline pipeline, GpuTextureView target,
+                            @Nullable GpuTextureView depth, @Nullable ScissorState scissor,
+                            Consumer<RenderPass> bind) {
         // allocated before the pass opens
         var geometry = triangle();
         try (var pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                () -> label, target, Optional.empty(), null, OptionalDouble.empty())) {
+                () -> label, target, Optional.empty(), depth, OptionalDouble.empty())) {
             pass.setPipeline(pipeline);
             if (scissor != null && scissor.enabled()) {
                 pass.enableScissor(scissor.x(), scissor.y(), scissor.width(), scissor.height());
@@ -107,6 +114,10 @@ public final class PhotonFullscreenPass {
                 .withBindGroupLayout(BindGroupLayout.builder().withSampler("InSampler").build())
                 .withColorTargetState(opaqueTarget(f))
                 .build());
+    }
+
+    public static void precompileCopy(GpuFormat format) {
+        RenderSystem.getDevice().precompilePipeline(copyPipeline(format));
     }
 
     /** A same-size copy across formats (e.g. RGBA8 ↔ RGBA16F), which {@code copyTextureToTexture} cannot do. */

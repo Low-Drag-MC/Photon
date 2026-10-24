@@ -56,7 +56,9 @@ public final class MaterialRenderTypes {
         // the fade is a property of the MATERIAL, but it compiles into the fragment stage, so it has to
         // reach the pipeline through the key — and it must agree with the uniforms, or the pipeline would
         // declare a sampler the drain was never asked to bind
-        var key0 = pipelineKey.withSoftParticles(uniforms.usesSoftParticles());
+        // (the lights likewise: a lit pipeline declares buffers the drain binds only for pipelines marked lit)
+        var key0 = pipelineKey.withSoftParticles(uniforms.usesSoftParticles())
+                .withLitParticles(uniforms.usesLitParticles());
         return CACHE.computeIfAbsent(new Key(texture, fragmentShader, key0, uniforms), key -> {
             var setup = RenderSetup.builder(PhotonPipelines.hdrParticle(key.fragmentShader(), key.pipelineKey()))
                     .withTexture("Sampler0", key.texture())

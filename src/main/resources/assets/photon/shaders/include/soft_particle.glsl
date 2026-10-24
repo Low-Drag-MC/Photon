@@ -28,7 +28,12 @@ vec4 photon_soft_particle(vec4 color, vec4 params) {
     // correct in the editor's PIP sub-viewport too.
     vec2 uv = gl_FragCoord.xy / vec2(textureSize(SamplerSceneDepth, 0));
     float sceneEye = photon_eye_depth(texture(SamplerSceneDepth, uv).r);
+#ifdef PHOTON_LEGACY_DEPTH
+    // the scene depth and inverse projection are forward-Z for a legacy shader; its own fragment's is not
+    float fragEye = photon_eye_depth(1.0 - gl_FragCoord.z);
+#else
     float fragEye = photon_eye_depth(gl_FragCoord.z);
+#endif
     float fade = clamp((sceneEye - fragEye) / max(params.x, 1e-5), 0.0, 1.0);
     fade = pow(fade, max(params.y, 1e-5));
     // Alpha-only suits SRC_ALPHA/ONE_MINUS_SRC_ALPHA; scaling the whole vec4 suits additive and the

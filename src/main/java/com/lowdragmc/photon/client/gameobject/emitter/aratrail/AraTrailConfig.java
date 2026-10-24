@@ -3,12 +3,13 @@ package com.lowdragmc.photon.client.gameobject.emitter.aratrail;
 import com.lowdragmc.lowdraglib2.configurator.IConfigurable;
 import com.lowdragmc.lowdraglib2.configurator.annotation.*;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
-import com.lowdragmc.lowdraglib2.configurator.ui.TransformRefConfigurator;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.TransformRef;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.photon.client.gameobject.emitter.data.CustomSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.InstancedRendererSetting;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
+import com.lowdragmc.photon.client.gameobject.emitter.data.ValueSpace;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.Constant;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunctionConfig;
@@ -19,10 +20,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.RandomGr
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.Curve;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.curve.CurveConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
-import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import lombok.Getter;
 import lombok.Setter;
-import org.jetbrains.annotations.NotNull;
 import org.joml.Vector3f;
 
 
@@ -178,6 +177,24 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
         renderer.getMaterials().add(new MaterialSetting());
     }
 
+    // Pre-gravitySpace files applied gravity in trail space: null it before the field pass, derive it after if the key
+    // was absent. Hooks, not a deserialize() override: PersistedParser.deserializeNBT (TrailsSetting) skips overrides.
+    @Override
+    public void beforeDeserialize() {
+        physicsSetting.gravitySpace = null;
+    }
+
+    @Override
+    public void afterDeserialize() {
+        if (physicsSetting.gravitySpace == null) {
+            physicsSetting.gravitySpace = space == TrailSpace.Local ? ValueSpace.Local
+                    : space == TrailSpace.Custom ? ValueSpace.Custom : ValueSpace.World;
+            if (space == TrailSpace.Custom) {
+                physicsSetting.gravityCustomSpace.setTransformId(customSpace.getTransformId());
+            }
+        }
+    }
+
     private class RenderPass extends PhotonFXRenderPass {
         // TODO(M1/M2): 1.21 body = CPU renderQueue + GPU-instanced draw with materials (pre/post,
         // begin/end, instancing backend). Rebuilt as Photon render-state batches per the plan.
@@ -187,24 +204,7 @@ public class AraTrailConfig implements IConfigurable, IPersistedSerializable {
 
     private void createSpaceConfigurator(TrailSpace space, ConfiguratorGroup group) {
         if (space == TrailSpace.Custom) {
-            group.addConfigurator(new TransformRefConfigurator("AraTrails.customSpace",
-                    () -> this.customSpace,
-                    transformRef -> this.customSpace.setTransformId(transformRef.getTransformId()),new TransformRef(), true ) {
-                @Override
-                protected boolean canDropObject(@NotNull Object object) {
-                    return object instanceof FXHierarchyView.DraggingNode || super.canDropObject(object);
-                }
-
-                @Override
-                protected void onDropObject(@NotNull Object object) {
-                    if (object instanceof FXHierarchyView.DraggingNode(var draggedNode)) {
-                        onValueUpdatePassively(new TransformRef(draggedNode.key.transform()));
-                        updateValue();
-                    } else {
-                        super.onDropObject(object);
-                    }
-                }
-            }.setTips("AraTrails.customSpace.tips"));
+            group.addConfigurator(CustomSpace.configurator("AraTrails.customSpace", customSpace, "AraTrails.customSpace.tips"));
         }
     }
 }

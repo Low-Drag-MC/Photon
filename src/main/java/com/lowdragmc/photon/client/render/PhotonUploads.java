@@ -2,6 +2,7 @@ package com.lowdragmc.photon.client.render;
 
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.buffers.Std140Builder;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.TransientMemory;
 import org.lwjgl.system.MemoryUtil;
@@ -10,10 +11,11 @@ import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
- * Per-frame vertex data in {@link TransientMemory}: every slice is fresh, so an emitter baked for two views in one
- * frame never overwrites data still to be read. Texel buffers go through {@link PhotonTexelPool}.
+ * Per-frame vertex data and uniform blocks in {@link TransientMemory}: every slice is fresh, so an emitter baked for
+ * two views in one frame never overwrites data still to be read. Texel buffers go through {@link PhotonTexelPool}.
  */
 public final class PhotonUploads {
 
@@ -24,6 +26,24 @@ public final class PhotonUploads {
 
     private static TransientMemory memory() {
         return RenderSystem.getDevice().createCommandEncoder().transientMemory();
+    }
+
+    /** A uniform block for this frame, aligned as a uniform binding requires. */
+    public static GpuBufferSlice block(ByteBuffer data) {
+        var alignment = RenderSystem.getDevice().getDeviceInfo().limits().minUniformOffsetAlignment();
+        return memory().uploadGpu(data, alignment, GpuBuffer.USAGE_UNIFORM);
+    }
+
+    /** A std140 block of {@code size} bytes filled by {@code fill}, for this frame. */
+    public static GpuBufferSlice block(int size, Consumer<Std140Builder> fill) {
+        var staging = MemoryUtil.memCalloc(size);
+        try {
+            fill.accept(Std140Builder.intoBuffer(staging));
+            staging.rewind();
+            return block(staging);
+        } finally {
+            MemoryUtil.memFree(staging);
+        }
     }
 
     public static GpuBufferSlice vertices(ByteBuffer data) {

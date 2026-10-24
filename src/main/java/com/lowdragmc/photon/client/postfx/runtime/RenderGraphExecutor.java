@@ -39,7 +39,8 @@ import java.util.Set;
  *
  * <p>Two pass flavors share the loop: a hand-written core shader ({@link CustomShaderPass}, values in a
  * {@code PhotonPass} std140 block) and a compiled fullscreen graph (KilaGraph's own material UBO +
- * samplers). Both draw the shared {@code [0,1]²} quad through {@link PhotonFullscreenPass}.</p>
+ * samplers). Both draw {@link PhotonFullscreenPass}'s triangle, whose POSITION is clip space — what a compiled
+ * graph takes it as.</p>
  *
  * <p>Caller contract: the returned target is pool-owned by the CALLER (release it or hand it on); null
  * means the chain must pass through unchanged. Render thread only, and every UBO upload / texture

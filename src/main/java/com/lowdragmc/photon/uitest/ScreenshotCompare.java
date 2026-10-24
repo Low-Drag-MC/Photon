@@ -2,6 +2,7 @@ package com.lowdragmc.photon.uitest;
 
 import com.lowdragmc.lowdraglib2.uitest.TestContext;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.gui.editor.FXEditor;
 import org.jetbrains.annotations.Nullable;
 
 import javax.imageio.ImageIO;
@@ -33,8 +34,7 @@ final class ScreenshotCompare {
 
     @Nullable
     static ScreenshotCompare load(TestContext ctx, String name) {
-        // ⚠️ ctx.outDir(), not a relative path: the client's working directory is runs/client, so
-        // "build/ldlib2-uitest" from here resolves under that and finds nothing
+        // ⚠️ ctx.outDir(), not a relative path: the client runs in its own game directory
         var root = ctx.outDir().resolve("screenshots").toFile();
         var file = find(root, name);
         if (file == null) {
@@ -74,9 +74,9 @@ final class ScreenshotCompare {
         return height;
     }
 
-    /** Packed RGB of one pixel (no alpha). */
+    /** Packed RGB (no alpha) at a window pixel, clamped to the frame. */
     int rgb(int x, int y) {
-        return pixels[y * width + x] & 0xFFFFFF;
+        return pixels[Math.clamp(y, 0, height - 1) * width + Math.clamp(x, 0, width - 1)] & 0xFFFFFF;
     }
 
     boolean sameSizeAs(ScreenshotCompare other) {
@@ -85,6 +85,26 @@ final class ScreenshotCompare {
 
     String describe() {
         return width + "x" + height;
+    }
+
+    /**
+     * The open FX editor's scene viewport in window pixels, clear of its gizmo toolbar (top left), animation tab
+     * (bottom left) and stats box (bottom right), at whatever size the window and the layout came out.
+     */
+    static Region sceneViewport(TestContext ctx) {
+        var scene = ctx.query().type(FXEditor.class).one().as(FXEditor.class).sceneView.sceneEditor;
+        double scale = ctx.mc().getWindow().getGuiScale();
+        double x = scene.getPositionX() * scale, y = scene.getPositionY() * scale;
+        double w = scene.getSizeWidth() * scale, h = scene.getSizeHeight() * scale;
+        ctx.require("the scene view is laid out", w > 64 && h > 64);
+        return new Region((int) (x + w * 0.04), (int) (y + h * 0.08), (int) (x + w * 0.70), (int) (y + h * 0.85));
+    }
+
+    /** The central {@code fraction} of the frame. */
+    Region middle(double fraction) {
+        int marginX = (int) (width * (1 - fraction) / 2);
+        int marginY = (int) (height * (1 - fraction) / 2);
+        return new Region(marginX, marginY, width - marginX, height - marginY);
     }
 
     /**
@@ -119,13 +139,85 @@ final class ScreenshotCompare {
         var box = maxX < 0 ? "none"
                 : "x[%d..%d] y[%d..%d] %dx%d".formatted(minX, maxX, minY, maxY, boxWidth, boxHeight);
         long area = Math.max(1L, (long) (x1 - x0) * (y1 - y0));
-        return new Diff(count, (double) count / area, box, boxWidth, boxHeight);
+        var changed = maxX < 0 ? null : new Region(minX, minY, maxX + 1, maxY + 1);
+        return new Diff(count, (double) count / area, box, boxWidth, boxHeight, changed);
     }
 
-    record Diff(int count, double fraction, String box, int width, int height) {
+    /** Pixels where some channel is more than {@code threshold} darker here than in {@code baseline}. */
+    int darkerThan(ScreenshotCompare baseline, int threshold, Region region) {
+        int count = 0;
+        int x0 = Math.max(0, region.left()), x1 = Math.min(width, region.right());
+        int y0 = Math.max(0, region.top()), y1 = Math.min(height, region.bottom());
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                int a = pixels[y * width + x];
+                int b = baseline.pixels[y * width + x];
+                for (int shift = 0; shift <= 16; shift += 8) {
+                    if (((b >> shift) & 0xFF) - ((a >> shift) & 0xFF) > threshold) {
+                        count++;
+                        break;
+                    }
+                }
+            }
+        }
+        return count;
+    }
+
+    /** The share of pixels more than {@code threshold} away, in some channel, from the one below them: stripes. */
+    double rowChanges(int threshold, Region region) {
+        return rowChanges(threshold, 1, region);
+    }
+
+    /** {@link #rowChanges(int, Region)} against the pixel {@code step} rows below: soft stripes too. */
+    double rowChanges(int threshold, int step, Region region) {
+        int x0 = Math.max(0, region.left()), x1 = Math.min(width, region.right());
+        int y0 = Math.max(0, region.top()), y1 = Math.min(height - step, region.bottom());
+        long count = 0;
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                int a = pixels[y * width + x];
+                int b = pixels[(y + step) * width + x];
+                for (int shift = 0; shift <= 16; shift += 8) {
+                    if (Math.abs(((a >> shift) & 0xFF) - ((b >> shift) & 0xFF)) > threshold) {
+                        count++;
+                        break;
+                    }
+                }
+            }
+        }
+        return (double) count / Math.max(1L, (long) (x1 - x0) * (y1 - y0));
+    }
+
+    /** The mean red, green and blue over {@code region}, 0..255. */
+    double[] mean(Region region) {
+        var sum = new double[3];
+        int x0 = Math.max(0, region.left()), x1 = Math.min(width, region.right());
+        int y0 = Math.max(0, region.top()), y1 = Math.min(height, region.bottom());
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                int a = pixels[y * width + x];
+                sum[0] += (a >> 16) & 0xFF;
+                sum[1] += (a >> 8) & 0xFF;
+                sum[2] += a & 0xFF;
+            }
+        }
+        long area = Math.max(1L, (long) (x1 - x0) * (y1 - y0));
+        for (int i = 0; i < 3; i++) sum[i] /= area;
+        return sum;
+    }
+
+    Region whole() {
+        return new Region(0, 0, width, height);
+    }
+
+    /** {@code changed} is the bounding rectangle of the differing pixels, null when there are none. */
+    record Diff(int count, double fraction, String box, int width, int height, @Nullable Region changed) {
     }
 
     /** A window rectangle, in pixels. */
     record Region(int left, int top, int right, int bottom) {
+        long area() {
+            return (long) Math.max(0, right - left) * Math.max(0, bottom - top);
+        }
     }
 }

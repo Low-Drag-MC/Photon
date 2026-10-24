@@ -13,6 +13,7 @@ import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.PhotonRegistries;
+import com.lowdragmc.photon.client.fx.PreloadContext;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
@@ -88,6 +89,24 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
         return null;
     }
 
+    /**
+     * What a material thumbnail draws with ({@code MaterialPreviewRenderer}). The same as {@link #getRenderType}; a
+     * material that looks different in a preview overrides this.
+     */
+    @Nullable
+    default RenderType getPreviewRenderType(MaterialSetting setting, PrimitiveTopology mode) {
+        return getRenderType(setting, mode);
+    }
+
+    /**
+     * Report what this material loads on its first draw that its render type does not name ({@code FXHelper.preload}):
+     * textures it binds itself, such as a shader graph's sampler defaults. The pipelines and the textures of the
+     * render type's bindings are warmed from {@link #getRenderType} by the emitter. Render thread, outside any draw.
+     * Nothing by default.
+     */
+    default void preload(PreloadContext context) {
+    }
+
     /** Small, cached preview: resource-panel tiles and inline material slots (many on screen at once). */
     IGuiTexture preview();
 
@@ -97,6 +116,27 @@ public interface IMaterial extends IConfigurable, IPersistedSerializable, ILDLRe
      */
     default IGuiTexture previewLive() {
         return preview();
+    }
+
+    /** {@code PhotonGpuChannels} bits of the additional-data channels this material reads; passes upload them. */
+    default long getUsedChannelMask() {
+        return 0L;
+    }
+
+    /** Whether this material reads user custom data; passes then upload the {@code PhotonCustomData} buffer. */
+    default boolean usesCustomData() {
+        return false;
+    }
+
+    /** Channels this material reads from each custom-data stream (index = stream, 0 = none), when it knows. */
+    default int[] requiredCustomChannels() {
+        return new int[0];
+    }
+
+    /** The render state this material asks for, or null to leave it to the {@code MaterialSetting}. */
+    @Nullable
+    default MaterialRenderState getPreferredRenderState() {
+        return null;
     }
 
     default IMaterial copy() {

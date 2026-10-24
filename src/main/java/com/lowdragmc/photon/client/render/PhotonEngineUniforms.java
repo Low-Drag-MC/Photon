@@ -35,6 +35,7 @@ public final class PhotonEngineUniforms {
 
     private static final Matrix4f INVERSE_PROJECTION = new Matrix4f();
     private static final Matrix4f INVERSE_VIEW = new Matrix4f();
+    private static final Vector3f CAMERA_POSITION = new Vector3f();
     private static final Vector4f SCRATCH = new Vector4f();
 
     private static float zNear = 0.05f;
@@ -95,6 +96,11 @@ public final class PhotonEngineUniforms {
         return buffer.slice();
     }
 
+    /** The {@code U_CameraPosition} last uploaded. */
+    public static Vector3fc cameraPosition() {
+        return CAMERA_POSITION;
+    }
+
     /**
      * The block for legacy (forward-Z) custom shaders: {@code U_InverseProjectionMatrix} inverts the forward GL
      * projection, matching the {@code 1 - depth} of {@code PhotonSceneCapture.legacyDepth}.
@@ -144,15 +150,17 @@ public final class PhotonEngineUniforms {
         }
         projection.invert(INVERSE_PROJECTION);
         viewRotation.invert(INVERSE_VIEW);
+        CAMERA_POSITION.set(cameraPos);
         captureDepthRange(INVERSE_PROJECTION);
         DepthConventions.forwardProjection(projection, RenderSystem.getDevice().getDeviceInfo().isZZeroToOne(),
                 FORWARD_PROJECTION).invert(INVERSE_FORWARD_PROJECTION);
-        write(buffer, INVERSE_PROJECTION, cameraPos, viewportWidth, viewportHeight);
-        write(legacyBuffer, INVERSE_FORWARD_PROJECTION, cameraPos, viewportWidth, viewportHeight);
+        write(buffer, INVERSE_PROJECTION, depthZScale(), depthZBias(), cameraPos, viewportWidth, viewportHeight);
+        // the legacy convention is GL's whatever the device's clip range: NDC z = depth * 2 - 1
+        write(legacyBuffer, INVERSE_FORWARD_PROJECTION, 2f, -1f, cameraPos, viewportWidth, viewportHeight);
     }
 
-    private static void write(GpuBuffer target, Matrix4fc inverseProjection, Vector3fc cameraPos,
-                              float viewportWidth, float viewportHeight) {
+    private static void write(GpuBuffer target, Matrix4fc inverseProjection, float zScale, float zBias,
+                              Vector3fc cameraPos, float viewportWidth, float viewportHeight) {
         var bytes = MemoryUtil.memAlloc(STD140_SIZE);
         try {
             Std140Builder.intoBuffer(bytes)
@@ -160,7 +168,7 @@ public final class PhotonEngineUniforms {
                     .putMat4f(INVERSE_VIEW)
                     .putVec4(cameraPos.x(), cameraPos.y(), cameraPos.z(), 1)
                     .putVec4(0, 0, viewportWidth, viewportHeight)
-                    .putVec4(depthZScale(), depthZBias(), zNear, zFar);
+                    .putVec4(zScale, zBias, zNear, zFar);
             bytes.rewind();
             RenderSystem.getDevice().createCommandEncoder().writeToBuffer(target.slice(), bytes);
         } finally {

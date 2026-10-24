@@ -20,6 +20,7 @@ import org.lwjgl.system.MemoryUtil;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -91,6 +92,8 @@ public final class PhotonBloom implements AutoCloseable {
     private static final Map<Float, RenderPipeline> BRIGHT_VARIANTS = new HashMap<>();
     private static final Map<Float, RenderPipeline> BLIT_VARIANTS = new HashMap<>();
     @Nullable
+    private static RenderPipeline brightStartPipeline;
+    @Nullable
     private static RenderPipeline downPipeline;
     @Nullable
     private static RenderPipeline upPipeline;
@@ -105,16 +108,41 @@ public final class PhotonBloom implements AutoCloseable {
         return PhotonFullscreenPass.builder(Photon.id("core/" + fragment)).withBindGroupLayout(layout);
     }
 
-    /** {@code outputScale} 1 writes mip 0; otherwise the intensity-scaled sharp-highlight subtract. */
+    /** The bright pass starting the chain: a plain overwrite into mip 0. */
+    private static RenderPipeline brightStartPipeline() {
+        if (brightStartPipeline == null) {
+            brightStartPipeline = fullscreenBuilder("bright_pass", INPUT_AND_PARAMS)
+                    .withLocation(Photon.id("pipeline/bloom_bright_start"))
+                    .withShaderDefine("OUTPUT_SCALE", 1f)
+                    .withColorTargetState(PhotonFullscreenPass.opaqueTarget(PhotonPipelines.HDR_FORMAT))
+                    .build();
+        }
+        return brightStartPipeline;
+    }
+
+    /**
+     * The same pass at {@code outputScale} = intensity, the sharp-highlight subtract onto the target — at full
+     * intensity too, so it is never the chain start's overwrite.
+     */
     private static RenderPipeline brightPipeline(float outputScale) {
         return BRIGHT_VARIANTS.computeIfAbsent(outputScale, scale ->
                 fullscreenBuilder("bright_pass", INPUT_AND_PARAMS)
                         .withLocation(Photon.id("pipeline/bloom_bright_" + BRIGHT_VARIANTS.size()))
                         .withShaderDefine("OUTPUT_SCALE", scale)
-                        .withColorTargetState(scale == 1f
-                                ? PhotonFullscreenPass.opaqueTarget(PhotonPipelines.HDR_FORMAT)
-                                : rgbOnly(REVERSE_SUBTRACT))
+                        .withColorTargetState(rgbOnly(REVERSE_SUBTRACT))
                         .build());
+    }
+
+    /** Compile the chain for the current settings ahead of its first run ({@code PhotonFramePasses}). */
+    static void preload() {
+        if (!PhotonConfig.INSTANCE.enableBloom.get()) return;
+        var intensity = PhotonConfig.INSTANCE.bloomIntensity.get().floatValue();
+        var device = RenderSystem.getDevice();
+        PhotonFullscreenPass.precompileCopy(PhotonPipelines.HDR_FORMAT);
+        for (var pipeline : List.of(brightStartPipeline(), downPipeline(), upPipeline(),
+                brightPipeline(intensity), blitPipeline(intensity))) {
+            device.precompilePipeline(pipeline);
+        }
     }
 
     private static RenderPipeline blitPipeline(float outputScale) {
@@ -234,7 +262,7 @@ public final class PhotonBloom implements AutoCloseable {
         // full-screen copy buys that separation; it replaces re-drawing every emitter a second time.
         PhotonFullscreenPass.copy("Photon bloom source", targetColor, sourceView, null);
 
-        fullscreenPass(brightPipeline(1f), mipViews[0], sourceView, brightParams(threshold));
+        fullscreenPass(brightStartPipeline(), mipViews[0], sourceView, brightParams(threshold));
         for (int i = 1; i < mips.length; i++) {
             fullscreenPass(downPipeline(), mipViews[i], mipViews[i - 1],
                     resolutionParams(mips[i - 1].getWidth(0), mips[i - 1].getHeight(0)));

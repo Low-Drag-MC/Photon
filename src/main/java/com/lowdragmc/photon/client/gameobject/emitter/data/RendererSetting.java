@@ -278,7 +278,7 @@ public class RendererSetting {
             }
             for (var material : getMaterials()) {
                 if (!PremultipliedBlendPlan
-                        .isLayerSafe(material.pipelineKey(PrimitiveTopology.QUADS))) {
+                        .isLayerSafe(material.authoredPipelineKey(PrimitiveTopology.QUADS))) {
                     return layer.stage;
                 }
             }

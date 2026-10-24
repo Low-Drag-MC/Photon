@@ -2,15 +2,18 @@ package com.lowdragmc.photon.client.fx.compat;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.lowdragmc.photon.client.gameobject.emitter.data.material.LitParticles;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,16 +31,19 @@ import java.util.stream.Stream;
  *       removed — std140 blocks provide them, and leaving a loose declaration is a LINK error.</li>
  *   <li>Custom value uniforms move into the fixed {@code PhotonCustomMaterial} std140 block. Its members
  *       come from the sibling JSON, which is what the runtime packs from, so both stages emit the same
- *       set and every usage site still reads them by name.</li>
+ *       set and every usage site still reads them by name; one the JSON does not list is frozen at 0.</li>
  *   <li>Fog: {@code linear_fog(...)} → {@code apply_fog(...)}, and in the vertex stage the single
  *       {@code vertexDistance}/{@code fog_distance} becomes the spherical/cylindrical pair.</li>
  *   <li>{@code ScreenSize} → {@code U_ViewPort.zw}: 26.1 renders the editor scene into its own
  *       widget-sized texture, so the window size is the wrong divisor for a scene-capture UV.</li>
  *   <li>Sampler declarations are kept (still plain uniforms in 26.1); {@code SamplerScene*} get the
  *       live capture bound at draw. An unknown {@code U_*} is frozen at 0 with a warning.</li>
+ *   <li>The includes a 1.21 shader may import keep working: {@code photon:lit_particle.glsl}'s own json entries
+ *       stay out of the block (26.1 declares the lights on the pipeline, see {@link LitParticles}), and
+ *       {@code photon:soft_particle.glsl}'s fade takes its parameters as an argument now — the 1.21 one-argument
+ *       call is given the {@code SoftParticleParams} the shader listed.</li>
  * </ul>
- * Pure text transform — no Minecraft classes, unit-testable, also runnable standalone via
- * {@link #main} on an assets directory.
+ * Pure text transform — unit-testable, also runnable standalone via {@link #main} on an assets directory.
  */
 public final class ShaderFormatConverter {
 
@@ -58,9 +64,13 @@ public final class ShaderFormatConverter {
     /** Whole-word {@code ScreenSize} reads (the declaration is already stripped as an engine uniform). */
     private static final Pattern SCREEN_SIZE_REF = Pattern.compile("\\bScreenSize\\b");
     private static final Pattern PHOTON_INCLUDE = Pattern.compile("<photon:([\\w./]+)>");
-    /** Includes Photon actually ships (assets/photon/shaders/include) — importing anything else is fatal. */
-    private static final List<String> SHIPPED_PHOTON_INCLUDES = List.of(
-            "particle.glsl", "particle_utils.glsl", "engine.glsl");
+    /** The includes a custom shader may import (assets/photon/shaders/include); the rest are Photon's own passes'. */
+    static final List<String> SHIPPED_PHOTON_INCLUDES = List.of("particle.glsl", "particle_utils.glsl", "engine.glsl",
+            "lit_particle.glsl", "dynamic_light.glsl", "soft_particle.glsl");
+    /** 1.21: {@code photon_soft_particle(color)}, reading the {@code SoftParticleParams} uniform the include declared. */
+    private static final Pattern SOFT_PARTICLE_CALL = Pattern.compile("\\bphoton_soft_particle\\s*\\(");
+    private static final String SOFT_PARTICLE_PARAMS = "SoftParticleParams";
+    private static final String SOFT_PARTICLE_INCLUDE = "soft_particle.glsl";
     /** 1.21 vertex stage: {@code vertexDistance = fog_distance(<pos>, FogShape);} — 26.1 split the single
      *  distance into a spherical and a cylindrical one and dropped the FogShape uniform. */
     private static final Pattern FOG_DISTANCE_ASSIGN = Pattern.compile(
@@ -99,7 +109,12 @@ public final class ShaderFormatConverter {
      * the sibling shader JSON (may be empty).
      */
     public static Conversion convertFragment(String source, Map<String, float[]> jsonDefaults) {
-        return convert(source, jsonDefaults, false);
+        return convert(source, jsonDefaults, Set.of(), false);
+    }
+
+    /** {@link #convertFragment(String, Map)}, knowing which json uniforms are {@code int}s ({@link #parseJsonInts}). */
+    public static Conversion convertFragment(String source, Map<String, float[]> jsonDefaults, Set<String> jsonInts) {
+        return convert(source, jsonDefaults, jsonInts, false);
     }
 
     /**
@@ -116,10 +131,16 @@ public final class ShaderFormatConverter {
      * </ul>
      */
     public static Conversion convertVertex(String source, Map<String, float[]> jsonDefaults) {
-        return convert(source, jsonDefaults, true);
+        return convert(source, jsonDefaults, Set.of(), true);
     }
 
-    private static Conversion convert(String source, Map<String, float[]> jsonDefaults, boolean vertexStage) {
+    /** {@link #convertVertex(String, Map)}, knowing which json uniforms are {@code int}s ({@link #parseJsonInts}). */
+    public static Conversion convertVertex(String source, Map<String, float[]> jsonDefaults, Set<String> jsonInts) {
+        return convert(source, jsonDefaults, jsonInts, true);
+    }
+
+    private static Conversion convert(String source, Map<String, float[]> jsonDefaults, Set<String> jsonInts,
+                                      boolean vertexStage) {
         if (!isLegacyFragment(source)) {
             return new Conversion(source, List.of(), false);
         }
@@ -150,7 +171,7 @@ public final class ShaderFormatConverter {
                 var photonInclude = PHOTON_INCLUDE.matcher(rewritten);
                 if (photonInclude.find() && !SHIPPED_PHOTON_INCLUDES.contains(photonInclude.group(1))) {
                     warnings.add("imports " + trimmed.replace("#moj_import", "").trim()
-                            + " — no such photon include ships in 26.1; the shader will not compile");
+                            + " — not an include a 26.1 custom shader can use; the shader will not compile");
                 }
                 imports.add(rewritten.trim());
                 continue;
@@ -209,57 +230,56 @@ public final class ShaderFormatConverter {
             joined = lightmap.reset().replaceAll(match ->
                     "sample_lightmap(Sampler2, " + Matcher.quoteReplacement(match.group(1)) + ")");
         }
+        if (imports.stream().anyMatch(line -> line.contains("<photon:" + SOFT_PARTICLE_INCLUDE + ">"))) {
+            joined = softParticleParams(joined, jsonDefaults.containsKey(SOFT_PARTICLE_PARAMS), warnings);
+        }
         if (joined.contains("vertexDistance") && !joined.contains("sphericalVertexDistance")) {
             warnings.add("vertexDistance is still referenced — replace with sphericalVertexDistance manually");
         }
-        // ScreenSize -> U_ViewPort.zw. 1.21 always rendered fx into a window-sized target (the editor scene
-        // was a sub-viewport of one), so `gl_FragCoord.xy / ScreenSize` indexed the scene capture correctly.
-        // 26.1's PIP gives the editor scene its OWN texture sized to the widget, and Photon sizes the capture
-        // after the target — so the window size is the wrong divisor there (a stretched corner of the capture,
-        // changing with the panel size). U_ViewPort.zw is the target Photon is actually drawing into.
+        // PIP draws the editor scene into a widget-sized texture: U_ViewPort.zw is that target's size, ScreenSize was
+        // the window's
         joined = SCREEN_SIZE_REF.matcher(joined).replaceAll("U_ViewPort.zw");
 
         var out = new StringBuilder("#version 330\n\n");
         out.append("// converted to the Photon 26.1 custom-shader contract: the 1.21 plain uniforms live in\n");
         out.append("// the fixed PhotonCustomMaterial std140 block (dynamic values, no recompiles); the shader\n");
         out.append("// JSON stays as the material configurator's uniform metadata\n\n");
-        if (!imports.contains("#moj_import <minecraft:fog.glsl>") && joined.contains("apply_fog")) {
-            imports.add("#moj_import <minecraft:fog.glsl>");
-        }
-        // ModelViewMat/ColorModulator live in DynamicTransforms, ProjMat in Projection — declaring either as
-        // a loose uniform is a link error in 26.1, so the declarations were dropped above and the blocks
-        // must be imported instead.
-        if (usesColorModulator || source.contains("ModelViewMat")) {
-            imports.add("#moj_import <minecraft:dynamictransforms.glsl>");
-        }
-        if (source.contains("ProjMat")) {
-            imports.add("#moj_import <minecraft:projection.glsl>");
-        }
-        if (usesLightmapFetch) {
-            imports.add("#moj_import <minecraft:sample_lightmap.glsl>");
-        }
-        if (usesGlobals) {
-            imports.add("#moj_import <minecraft:globals.glsl>");
-        }
-        if (usesEngineBlock) {
-            imports.add("#moj_import <photon:engine.glsl>");
-        }
-        imports.stream().distinct().forEach(imp -> out.append(imp).append('\n'));
+        // ModelViewMat/ColorModulator live in DynamicTransforms, ProjMat in Projection: their loose declarations were
+        // dropped above, so the blocks are imported instead
+        var added = new ArrayList<String>();
+        if (joined.contains("apply_fog")) added.add("#moj_import <minecraft:fog.glsl>");
+        if (usesColorModulator || source.contains("ModelViewMat")) added.add("#moj_import <minecraft:dynamictransforms.glsl>");
+        if (source.contains("ProjMat")) added.add("#moj_import <minecraft:projection.glsl>");
+        if (usesLightmapFetch) added.add("#moj_import <minecraft:sample_lightmap.glsl>");
+        if (usesGlobals) added.add("#moj_import <minecraft:globals.glsl>");
+        if (usesEngineBlock) added.add("#moj_import <photon:engine.glsl>");
+        // ahead of the shader's own: a file is pasted where it is first imported, and an include may import one of
+        // these under its #ifdef (soft_particle.glsl's engine.glsl), where a define left out would lose it
+        Stream.concat(added.stream(), imports.stream()).distinct().forEach(imp -> out.append(imp).append('\n'));
         out.append('\n');
 
-        // The block's members come from the JSON when it has any, NOT from what this stage declared.
-        // CustomShaderMaterial builds the runtime PhotonCustomUniforms layout from the JSON's uniforms
-        // array, so that is the authoritative member set: a stage declaring a subset would compute
-        // different std140 offsets and read every value from the wrong place — and the two stages would
-        // disagree, which GLSL rejects outright ("members of uniform block are not the same between
-        // shader stages"). A vertex stage that uses one uniform still declares the whole set.
-        var blockMembers = new TreeMap<>(customValues);
+        // The members come from the JSON, which is what CustomShaderMaterial packs: a stage declaring a subset, or
+        // one more, would read from the wrong offsets, and the two stages' blocks must be identical.
+        var blockMembers = new TreeMap<String, String>();
+        if (jsonDefaults.isEmpty()) blockMembers.putAll(customValues);
         jsonDefaults.forEach((name, values) -> {
+            // the lights' own entries are the pipeline's in 26.1 — CustomShaderMaterial leaves them out of the block too
             if (ENGINE_UNIFORMS.contains(name) || PHOTON_ENGINE_UNIFORMS.contains(name)
-                    || name.startsWith("U_")) {
+                    || name.startsWith("U_") || LitParticles.declares(name)) {
                 return;
             }
-            blockMembers.putIfAbsent(name, glslTypeFor(values.length));
+            // json ints are ints in both stages: CustomShaderMaterial packs a json "int" as one
+            boolean isInt = jsonInts.contains(name);
+            if (isInt && values.length > 1) {
+                warnings.add("json int " + name + " has " + values.length + " values — 26.1 packs only the first");
+            }
+            blockMembers.put(name, isInt ? "int" : glslTypeFor(values.length));
+        });
+        var unlisted = new LinkedHashMap<String, String>();
+        customValues.forEach((name, type) -> {
+            if (blockMembers.containsKey(name)) return;
+            unlisted.put(name, type);
+            warnings.add("uniform " + name + " is not in the shader json, which is what 26.1 fills — frozen at 0");
         });
         // A stage that reads none of them declares no block at all (GLSL only requires the declarations to
         // AGREE where both stages have one) — that keeps a vertex stage which merely transforms positions
@@ -278,19 +298,66 @@ public final class ShaderFormatConverter {
         for (var entry : frozenDynamics.entrySet()) {
             var type = entry.getValue();
             if (type.equals("mat4")) {
-                out.append("const mat4 ").append(entry.getKey()).append(" = mat4(1.0); // frozen until M3\n");
+                out.append("const mat4 ").append(entry.getKey()).append(" = mat4(1.0); // no 26.1 source\n");
             } else if (type.equals("float") || type.equals("int")) {
                 appendGuardedDefine(out, entry.getKey());
             } else {
                 out.append("const ").append(type).append(' ').append(entry.getKey())
-                        .append(" = ").append(type).append("(0.0); // frozen until M3\n");
+                        .append(" = ").append(type).append("(0.0); // no 26.1 source\n");
             }
         }
+        unlisted.forEach((name, type) -> out.append("const ").append(type).append(' ').append(name).append(" = ")
+                .append(type).append("(0); // not in the shader json\n"));
         if (!customValues.isEmpty() || !frozenDynamics.isEmpty()) {
             out.append('\n');
         }
         out.append(joined.strip()).append('\n');
         return new Conversion(out.toString(), warnings, true);
+    }
+
+    /**
+     * 1.21's one-argument {@code photon_soft_particle} call gets the listed {@code SoftParticleParams}, else
+     * {@code vec4(0.0)} (fade off, as 1.21 read it).
+     */
+    private static String softParticleParams(String body, boolean listed, List<String> warnings) {
+        var matcher = SOFT_PARTICLE_CALL.matcher(body);
+        var out = new StringBuilder();
+        int copied = 0;
+        while (matcher.find()) {
+            int open = matcher.end() - 1;
+            int close = closingParen(body, open);
+            if (close < 0) {
+                warnings.add("a photon_soft_particle call has unbalanced parentheses — port it by hand");
+                break;
+            }
+            out.append(body, copied, close);
+            if (!hasTopLevelComma(body, open + 1, close)) {
+                out.append(", ").append(listed ? SOFT_PARTICLE_PARAMS : "vec4(0.0)");
+            }
+            copied = close;
+        }
+        return out.append(body, copied, body.length()).toString();
+    }
+
+    private static int closingParen(String text, int open) {
+        int depth = 0;
+        for (int i = open; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')' && --depth == 0) return i;
+        }
+        return -1;
+    }
+
+    private static boolean hasTopLevelComma(String text, int from, int to) {
+        int depth = 0;
+        for (int i = from; i < to; i++) {
+            char c = text.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')') depth--;
+            else if (c == ',' && depth == 0) return true;
+        }
+        return false;
     }
 
     /** An unknown {@code U_*} dynamic uniform, frozen at 0 so the shader still compiles. */
@@ -309,6 +376,25 @@ public final class ShaderFormatConverter {
             case 16 -> "mat4";
             default -> "float";
         };
+    }
+
+    /** The names of a 1.21 shader JSON's {@code "type": "int"} uniforms. */
+    public static Set<String> parseJsonInts(String json) {
+        var ints = new HashSet<String>();
+        try {
+            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+            if (root.has("uniforms")) {
+                for (var element : root.getAsJsonArray("uniforms")) {
+                    var uniform = element.getAsJsonObject();
+                    if (uniform.has("type") && "int".equals(uniform.get("type").getAsString())) {
+                        ints.add(uniform.get("name").getAsString());
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // tolerated, as the defaults are
+        }
+        return ints;
     }
 
     /** Parse a 1.21 shader JSON's {@code uniforms} array into name → default values. */
@@ -352,11 +438,11 @@ public final class ShaderFormatConverter {
                 }
                 var source = Files.readString(file, StandardCharsets.UTF_8);
                 var jsonPath = file.resolveSibling(name.substring(0, name.length() - 4) + ".json");
-                var defaults = Files.isRegularFile(jsonPath)
-                        ? parseJsonDefaults(Files.readString(jsonPath, StandardCharsets.UTF_8))
-                        : Map.<String, float[]>of();
+                var json = Files.isRegularFile(jsonPath) ? Files.readString(jsonPath, StandardCharsets.UTF_8) : null;
+                var defaults = json == null ? Map.<String, float[]>of() : parseJsonDefaults(json);
+                var ints = json == null ? Set.<String>of() : parseJsonInts(json);
                 var conversion = vertexStage
-                        ? convertVertex(source, defaults) : convertFragment(source, defaults);
+                        ? convertVertex(source, defaults, ints) : convertFragment(source, defaults, ints);
                 if (!conversion.changed()) {
                     reports.add(new Report(file, false, List.of("already 26.1 format")));
                     continue;
