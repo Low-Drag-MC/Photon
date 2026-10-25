@@ -5,6 +5,7 @@ import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorSelectorConfigurator;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib2.utils.PersistedParser;
@@ -55,7 +56,7 @@ public final class FXInstanceInspector {
                     rows.paths.forEach((row, path) -> row.setOverridden(instances.isOverridden(object, path)));
                 });
                 root.addMenuContributor((clicked, menu) -> {
-                    var path = rows.paths == null ? null : rows.paths.get(clicked);
+                    var path = rows.paths == null ? null : rowPath(rows.paths, clicked);
                     if (path == null || !instances.isOverridden(object, path)) return;
                     menu.crossLine();
                     menu.leaf(Icons.REPLAY, Component.translatable("photon.fx_instance.revert"),
@@ -65,6 +66,14 @@ public final class FXInstanceInspector {
             default -> {
             }
         }
+    }
+
+    @Nullable
+    private static List<String> rowPath(Map<Configurator, List<String>> paths, Configurator clicked) {
+        for (UIElement element = clicked; element != null; element = element.getParent()) {
+            if (element instanceof Configurator row && paths.get(row) instanceof List<String> path) return path;
+        }
+        return null;
     }
 
     private static final class Rows {
