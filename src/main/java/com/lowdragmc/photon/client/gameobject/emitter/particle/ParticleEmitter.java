@@ -335,7 +335,7 @@ public class ParticleEmitter extends Emitter {
         this(new ParticleConfig());
     }
 
-    protected ParticleEmitter(ParticleConfig config) {
+    public ParticleEmitter(ParticleConfig config) {
         this.config = config;
     }
 
@@ -874,7 +874,7 @@ public class ParticleEmitter extends Emitter {
             int prewarm = runtime().prewarm.get();
             if (!isLooping()) {
                 // prewarm >= duration would age a non-looping emitter to death before its first visible frame
-                prewarm = Math.min(prewarm, Math.max(getLifetime() - 1, 0));
+                prewarm = Math.clamp(getLifetime() - 1, 0, prewarm);
             }
             if (prewarm > 0) {
                 for (int i = 0; i < prewarm; i++) {
