@@ -1,9 +1,10 @@
 # Changelog
-## v2.2.9
-* Added FX instances (like Unity prefabs): place an .fx inside another effect, at any depth, and override, disable or delete what it places; only the overrides are saved, so it keeps following its source
-* Added a new particle collision system with colliders, triggers, entities and fluids; collision is swept, so fast particles no longer pass through walls
-* Added preloading effects ahead of their first play (FXHelper.preload), warming their shaders, textures and sub-emitter effects in the background
-* Added converting an .fx into an editable project, from the File menu or the FXPack manager, and removing effects from an FXPack
-* Fixed FXPack updates not taking effect until a resource reload
-* Fixed stacked screen distortion falling back under after-pack shader packs
-* Bump up ldlib2 to 2.2.43
+## v2.2.10
+* Allowed creating a ParticleEmitter directly from a ParticleConfig
+* Fixed scene color and depth sampling in an editor popped out into its own window
+* Fixed glTF models not reloading after their file is edited in the assets folder
+* Fixed billboards not spinning when Rotation over Lifetime uses world or custom space
+* Fixed the FXPack manager overflowing with many effects; it is now a resizable, scrollable window
+* Fixed pasting onto a curve field reverting
+* Fixed the FX instance Revert option missing when right-clicking inside an override row
+* Fixed missing translations and some editor labels
