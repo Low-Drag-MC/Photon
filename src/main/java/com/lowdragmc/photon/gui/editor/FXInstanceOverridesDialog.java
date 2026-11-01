@@ -1,5 +1,6 @@
 package com.lowdragmc.photon.gui.editor;
 
+import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
 import com.lowdragmc.lowdraglib2.gui.texture.Icons;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.TextWrap;
@@ -10,11 +11,20 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.ScrollerView;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.TextElement;
 import com.lowdragmc.photon.client.fx.instance.InstanceIds;
 import com.lowdragmc.photon.client.fx.instance.InstanceTags;
+import com.lowdragmc.lowdraglib2.utils.PersistedParser;
 import com.lowdragmc.photon.client.gameobject.FXInstanceObject;
+import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.gui.editor.resource.ResourceDialogs;
 import dev.vfyjxf.taffy.style.AlignItems;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 
 /** Everything an instance overrides, each with a way back (Unity's Overrides list), plus the overrides that found nothing. */
 public final class FXInstanceOverridesDialog {
@@ -53,14 +63,20 @@ public final class FXInstanceOverridesDialog {
                             instances.revertObject(live);
                             reopen(editor, dialog, instance);
                         })));
+                // one line per row the inspector shows: a colour's channels or a curve's keys are one change to read
+                var rows = new LinkedHashMap<String, List<List<String>>>();
                 for (var change : changes) {
-                    var path = change.change().path();
-                    list.addChild(row(new Label().setText(Component.literal("    " + change.change().describePath())),
-                            ResourceDialogs.iconButton(Icons.REPLAY, "photon.fx_instance.revert", e -> {
-                                instances.revert(live, path);
-                                reopen(editor, dialog, instance);
-                            })));
+                    rows.computeIfAbsent(describe(live, change.change().path()), name -> new ArrayList<>()).add(change.change().path());
                 }
+                rows.forEach((name, paths) -> {
+                    var label = new Label().setText(Component.literal("    " + name));
+                    label.style(style -> style.tooltips(paths.stream().map(path -> Component.literal(String.join("/", path)))
+                            .toArray(Component[]::new)));
+                    list.addChild(row(label, ResourceDialogs.iconButton(Icons.REPLAY, "photon.fx_instance.revert", e -> {
+                        instances.revert(live, paths);
+                        reopen(editor, dialog, instance);
+                    })));
+                });
             }
             for (var removed : record.removed()) {
                 var source = placement.template().object(removed);
@@ -124,6 +140,50 @@ public final class FXInstanceOverridesDialog {
         label.layout(layout -> layout.flex(1));
         if (label instanceof TextElement text) text.textStyle(style -> style.textWrap(TextWrap.HOVER_ROLL));
         return row.addChildren(label, button);
+    }
+
+    /** The rows {@code path} runs through, named as the inspector names them; the raw path when none resolves. */
+    public static String describe(IFXObject object, List<String> path) {
+        if (path.equals(FXInstanceInspector.ENABLED_PATH)) return Component.translatable("photon.fx_object.enabled").getString();
+        var names = new ArrayList<String>();
+        Object at = object;
+        for (var segment : path) {
+            if (at instanceof List<?> list) {
+                int index;
+                try {
+                    index = Integer.parseInt(segment);
+                } catch (NumberFormatException e) {
+                    continue; // the list's own wrapper key
+                }
+                if (index < 0 || index >= list.size()) break;
+                names.add("#" + (index + 1));
+                at = list.get(index);
+                continue;
+            }
+            var field = at == null ? null : persistedField(at.getClass(), segment);
+            if (field == null) break;
+            var configurable = field.getAnnotation(Configurable.class);
+            if (configurable != null && configurable.showName() && !configurable.name().isEmpty()) {
+                names.add(Component.translatable(configurable.name()).getString());
+            }
+            try {
+                field.setAccessible(true);
+                at = field.get(at);
+            } catch (IllegalAccessException e) {
+                break;
+            }
+        }
+        return names.isEmpty() ? String.join("/", path) : String.join(" › ", names);
+    }
+
+    @Nullable
+    private static Field persistedField(Class<?> type, String key) {
+        for (var c = type; c != null && c != Object.class; c = c.getSuperclass()) {
+            for (var field : c.getDeclaredFields()) {
+                if (!Modifier.isStatic(field.getModifiers()) && key.equals(PersistedParser.persistedKey(field))) return field;
+            }
+        }
+        return null;
     }
 
     private static void reopen(FXEditor editor, Dialog dialog, FXInstanceObject instance) {

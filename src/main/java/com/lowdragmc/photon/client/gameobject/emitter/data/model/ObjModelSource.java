@@ -16,7 +16,6 @@ import net.minecraft.client.gui.screens.LoadingOverlay;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
 import java.util.Objects;
 
 /**
@@ -85,14 +84,9 @@ public class ObjModelSource implements IModelSource {
         if (Minecraft.getInstance().gui.overlay() instanceof LoadingOverlay) {
             return null;
         }
+        PhotonMeshCache.INSTANCE.trackAssetFile(key(), modelLocation);
         try (var in = Minecraft.getInstance().getResourceManager().open(modelLocation)) {
-            var mesh = ObjMeshParser.parse(in, flipV);
-            // track the editable disk copy (if any) so pollFileChanges can hot-reload it
-            var file = new File(LDLib2.getAssetsDir(), modelLocation.getNamespace() + "/" + modelLocation.getPath());
-            if (file.isFile()) {
-                PhotonMeshCache.INSTANCE.trackFile(key(), file);
-            }
-            return mesh;
+            return ObjMeshParser.parse(in, flipV);
         } catch (Exception e) {
             Photon.LOGGER.warn("Failed to load OBJ model {}", modelLocation, e);
             return PhotonMesh.EMPTY;

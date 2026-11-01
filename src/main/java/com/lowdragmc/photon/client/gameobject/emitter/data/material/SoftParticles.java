@@ -2,7 +2,11 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.ConfigNumber;
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
 import com.lowdragmc.photon.client.gameobject.emitter.data.ToggleGroup;
+
+import java.util.List;
 
 /**
  * Fades a fragment out as it approaches the opaque surface behind it, removing the hard line a quad shows
@@ -27,8 +31,15 @@ public class SoftParticles extends ToggleGroup {
         /** Scale the whole result — right for additive, and for the premultiplied late-composite layer. */
         BOTH,
         /** Scale alpha only — right for classic {@code SRC_ALPHA / ONE_MINUS_SRC_ALPHA}. */
-        ALPHA_ONLY
+        ALPHA_ONLY;
+
+        /** The language key of this entry: LDLib2's {@code <enum class>.<CONSTANT>}, so the lang files match 26.1/1.21. */
+        public String displayKey() {
+            return Fade.class.getName() + "." + name();
+        }
     }
+
+    private static final String FADE_FIELD = "fade";
 
     @Configurable(name = "TextureMaterial.softParticles.distance")
     @ConfigNumber(range = {0.001, 64})
@@ -38,6 +49,31 @@ public class SoftParticles extends ToggleGroup {
     public float power = 1f;
     @Configurable(name = "TextureMaterial.softParticles.fade")
     public Fade fade = Fade.BOTH;
+
+    /**
+     * The fade row names its entries by {@link Fade#displayKey()} itself. LDLib2 only uses that key when
+     * {@code LocalizationUtils.exist} finds it, and on 26.2 that answered false for every key (it called the removed
+     * {@code I18n.exists}), so the entries read BOTH / ALPHA_ONLY. The row keeps its source field: FX instance
+     * overrides find a row's data by it.
+     */
+    @Override
+    public void buildConfigurator(ConfiguratorGroup father) {
+        super.buildConfigurator(father);
+        var rows = father.getConfigurators();
+        for (int i = 0; i < rows.size(); i++) {
+            var row = rows.get(i);
+            var field = row.getSourceField();
+            if (field == null || !field.getName().equals(FADE_FIELD) || field.getDeclaringClass() != SoftParticles.class) {
+                continue;
+            }
+            var selector = new SelectorConfigurator<>("TextureMaterial.softParticles.fade", () -> fade, value -> fade = value,
+                    Fade.BOTH, true, List.of(Fade.values()), Fade::displayKey);
+            selector.setCopiable(value -> value);
+            father.removeConfigurator(row);
+            father.addConfiguratorAt(selector.setSourceField(field), i);
+            return;
+        }
+    }
 
     public void copyFrom(SoftParticles other) {
         setEnable(other.isEnable());

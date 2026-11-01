@@ -1,5 +1,12 @@
 package com.lowdragmc.photon.uitest;
 
+import com.lowdragmc.lowdraglib2.Platform;
+import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
+import com.lowdragmc.lowdraglib2.configurator.ui.SelectorConfigurator;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.TextElement;
+import net.minecraft.client.resources.language.I18n;
+import net.minecraft.locale.Language;
 import com.lowdragmc.lowdraglib2.registry.RegistrationEnvironment;
 import com.lowdragmc.lowdraglib2.registry.annotation.LDLRegisterClient;
 import com.lowdragmc.lowdraglib2.uitest.ScenarioBuilder;
@@ -20,8 +27,14 @@ import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonSceneCapture;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -66,8 +79,83 @@ public class SoftParticleScenario implements UIScenario {
             Photon.id("core/pixel_hdr_particle"),
             Photon.id("core/sprite_hdr_particle"));
 
+    private static void collectTexts(UIElement element, List<String> out) {
+        if (element instanceof TextElement text) out.add(text.getText().getString());
+        for (var child : element.getChildren()) collectTexts(child, out);
+    }
+
+    /** The fade row of {@code soft}'s inspector, built off-screen as the editor builds it. */
+    @SuppressWarnings("unchecked")
+    @Nullable
+    private static SelectorConfigurator<SoftParticles.Fade> fadeRow(SoftParticles soft) {
+        var group = new ConfiguratorGroup("", false);
+        soft.buildConfigurator(group);
+        return group.getConfigurators().stream()
+                .filter(c -> c.getSourceField() != null && c.getSourceField().getName().equals("fade"))
+                .filter(c -> c instanceof SelectorConfigurator<?>)
+                .map(c -> (SelectorConfigurator<SoftParticles.Fade>) c)
+                .findFirst().orElse(null);
+    }
+
+    private static CompoundTag save(SoftParticles soft) {
+        try (var reporter = new ProblemReporter.ScopedCollector(Photon.LOGGER)) {
+            var output = TagValueOutput.createWithContext(reporter, Platform.getFrozenRegistry());
+            soft.serialize(output);
+            return output.buildResult();
+        }
+    }
+
+    private static SoftParticles load(CompoundTag tag) {
+        var soft = new SoftParticles();
+        try (var reporter = new ProblemReporter.ScopedCollector(Photon.LOGGER)) {
+            soft.deserialize(TagValueInput.create(reporter, Platform.getFrozenRegistry(), tag));
+        }
+        return soft;
+    }
+
     @Override
     public void define(ScenarioBuilder s) {
+        s.step("the fade targets show names", ctx -> {
+            for (var fade : SoftParticles.Fade.values()) {
+                var key = fade.displayKey();
+                ctx.check(fade + " has a translated name", Language.getInstance().has(key), "a translation", key);
+                // what the inspector's fade selector shows with this target picked
+                var soft = new SoftParticles();
+                soft.fade = fade;
+                var row = fadeRow(soft);
+                ctx.require("the fade row exists", row != null);
+                var shown = new ArrayList<String>();
+                collectTexts(row.selector, shown);
+                ctx.check(fade + " is shown by its name", shown.contains(I18n.get(key)) && !shown.contains(fade.name()),
+                        I18n.get(key), shown);
+            }
+        });
+        s.step("the fade row saves and loads as before", ctx -> {
+            // picked through the row, as in the editor
+            var soft = new SoftParticles();
+            soft.setEnable(true);
+            var row = fadeRow(soft);
+            ctx.require("the fade row exists", row != null);
+            row.selector.setValue(SoftParticles.Fade.ALPHA_ONLY, true);
+            ctx.check("picking in the row sets the fade", soft.fade == SoftParticles.Fade.ALPHA_ONLY,
+                    SoftParticles.Fade.ALPHA_ONLY, soft.fade);
+            var saved = save(soft);
+            ctx.check("it is saved by the constant's name", "ALPHA_ONLY".equals(saved.getStringOr("fade", "")),
+                    "fade:\"ALPHA_ONLY\"", saved);
+            ctx.check("and loads back", load(saved).fade == SoftParticles.Fade.ALPHA_ONLY,
+                    SoftParticles.Fade.ALPHA_ONLY, load(saved).fade);
+            // the soft particles of an .fx saved before the row was replaced
+            var old = new CompoundTag();
+            old.putBoolean("_enable", true);
+            old.putFloat("distance", 2.5f);
+            old.putFloat("power", 3f);
+            old.putString("fade", "ALPHA_ONLY");
+            var loaded = load(old);
+            ctx.check("an existing save loads its fade", loaded.fade == SoftParticles.Fade.ALPHA_ONLY,
+                    SoftParticles.Fade.ALPHA_ONLY, loaded.fade);
+            ctx.check("and the rest of it", loaded.isEnable() && loaded.distance == 2.5f && loaded.power == 3f,
+                    "on, 2.5, 3", loaded.isEnable() + ", " + loaded.distance + ", " + loaded.power);
+        });
         s.step("every particle pipeline compiles with the fade compiled in", ctx -> {
             // the soft key, on the CPU vertex layout and on every instanced one. Unlike 1.21 this also
             // covers the geometry families a soft material can legitimately be put on but rarely is.
