@@ -1,4 +1,21 @@
 # Changelog
+## v26.3.2.10
+* hello 26.3!
+* Photon's FX now draw at two points Photon makes free of a render pass, around the level's passes and an editor scene's: after the opaque draws and after every translucent one, with both classic and improved (order-independent) transparency — 26.3 draws the level inside vanilla's own passes, where Photon's stages (HDR target, bloom, distortion, post effects) cannot run
+* Translucent FX now join Minecraft's Improved Transparency (order-independent transparency): with it on, effects blend with water, glass, clouds, vanilla particles and each other per pixel whatever order they are drawn in, so an effect behind stained glass is tinted by it instead of being hidden or drawn over it. Works with both composite modes and with texture, sprite, Kila, shader graph and custom shader materials (old shader graphs and custom shaders need no changes), and bloom is kept. Effects that multiply or subtract, that distort the scene, or that run under a shader pack keep the previous behaviour. Config: order_independent_transparency; per emitter: the renderer's Order-Independent Transparency (AUTO / OFF)
+* Translucent FX are drawn after the clouds and the weather, so a cloud behind an effect no longer paints over it; water and glass in front of an effect still hide it unless it is composited late
+* Fixed opaque FX disappearing under a shader pack: they now go into the FX layer the pack's translucent FX are merged with
+* Custom shaders written for 26.1/26.2 keep working: they are adapted to 26.3's GLSL rules when their pipeline is built (#include, explicit interface locations, gl_VertexIndex/gl_InstanceIndex)
+* A pipeline that fails to compile now skips its draw instead of failing the frame
+* Shader graph materials no longer compile KilaGraph's order-independent transparency pipelines, which Photon never draws with
+* The FX editor's scene uses Improved Transparency too when it is on: an effect behind glass shows through it, tinted, with its bloom (LDLib2 scenes now draw with order-independent transparency)
+* Shader graph materials with a premultiplied blend now join Improved Transparency, and faint or zero-alpha additive and premultiplied graph surfaces no longer write the far plane into the depth
+* Faster rendering: an emitter with several materials builds its geometry once; draws that Improved Transparency makes order-independent are grouped by material and merged; GPU-instanced emitters that draw alike are merged into one draw; runtime values are resolved once per tick and frame rather than per particle
+* New emitters draw with GPU instancing by default (about 1.5x faster on OpenGL and 2x on Vulkan for billboards); effects saved before keep their setting
+* Particle geometry and instance data are generated on worker threads when a frame has many particles (config: parallel_bake), up to about 1.8x the frame rate with many emitters
+* Iris 1.11.7 support on NeoForge 26.3
+* Bump up ldlib2 and kilagraph
+
 ## v26.2.2.10
 * Allowed creating a ParticleEmitter directly from a ParticleConfig
 * Fixed glTF models not reloading after their file is edited in the assets folder
