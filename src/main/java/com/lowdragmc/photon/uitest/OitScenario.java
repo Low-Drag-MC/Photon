@@ -64,28 +64,37 @@ public class OitScenario implements UIScenario {
     private static final File GRAPH = new File(LDLib2.getAssetsDir(),
             "ldlib2/resources/global/uitest_photon_oit" + ShaderGraphResource.INSTANCE.getFileExtension());
 
+    private enum Blend {
+        DEFAULT,
+        /** (SRC_ALPHA, ONE). */
+        ADDITIVE,
+        /** (ONE, ONE_MINUS_SRC_ALPHA). */
+        PREMULTIPLIED
+    }
+
     /** {@code joins}: drawn in the OIT passes; {@code tinted}: alpha-blended, so the glass's tint is checked. */
-    private record Round(String tag, Supplier<IMaterial> material, boolean instanced, boolean additive,
+    private record Round(String tag, Supplier<IMaterial> material, boolean instanced, Blend blend,
                          boolean optOut, boolean joins, boolean tinted, boolean bloom) {
         static Round of(String tag, Supplier<IMaterial> material, boolean joins, boolean tinted, boolean bloom) {
-            return new Round(tag, material, false, false, false, joins, tinted, bloom);
+            return new Round(tag, material, false, Blend.DEFAULT, false, joins, tinted, bloom);
         }
     }
 
     private static final List<Round> ROUNDS = List.of(
             Round.of("texture", OitScenario::texture, true, true, true),
             Round.of("texture_no_bloom", OitScenario::texture, true, true, false),
-            new Round("additive", OitScenario::texture, false, true, false, true, false, true),
+            new Round("additive", OitScenario::texture, false, Blend.ADDITIVE, false, true, false, true),
             Round.of("hdr", OitScenario::hdr, true, false, true),
             Round.of("hdr_no_bloom", OitScenario::hdr, true, false, false),
             Round.of("soft", OitScenario::soft, true, true, true),
             Round.of("lit", OitScenario::lit, true, true, true),
-            new Round("instanced", OitScenario::texture, true, false, false, true, true, true),
+            new Round("instanced", OitScenario::texture, true, Blend.DEFAULT, false, true, true, true),
             Round.of("kila", OitScenario::kilaGreen, true, true, true),
             Round.of("graph", OitScenario::graph, true, true, true),
+            new Round("graph_premultiplied", OitScenario::graph, false, Blend.PREMULTIPLIED, false, true, true, true),
             Round.of("custom_shader", () -> new CustomShaderMaterial(Photon.id("circle")), true, false, true),
             Round.of("screen_distortion", OitScenario::distortion, false, false, true),
-            new Round("renderer_oit_off", OitScenario::texture, false, false, true, false, false, true));
+            new Round("renderer_oit_off", OitScenario::texture, false, Blend.DEFAULT, true, false, false, true));
 
     @Override
     public void configure(ScenarioOptions options) {
@@ -229,9 +238,17 @@ public class OitScenario implements UIScenario {
         burst.cycles = 1;
         config.emission.getBursts().add(burst);
         var setting = new MaterialSetting(round.material().get());
-        if (round.additive()) {
-            setting.getBlendMode().setSrcColorFactor(BlendFactor.SRC_ALPHA);
-            setting.getBlendMode().setDstColorFactor(BlendFactor.ONE);
+        switch (round.blend()) {
+            case ADDITIVE -> {
+                setting.getBlendMode().setSrcColorFactor(BlendFactor.SRC_ALPHA);
+                setting.getBlendMode().setDstColorFactor(BlendFactor.ONE);
+            }
+            case PREMULTIPLIED -> {
+                setting.getBlendMode().setSrcColorFactor(BlendFactor.ONE);
+                setting.getBlendMode().setDstColorFactor(BlendFactor.ONE_MINUS_SRC_ALPHA);
+            }
+            case DEFAULT -> {
+            }
         }
         config.renderer.getMaterials().clear();
         config.renderer.getMaterials().add(setting);

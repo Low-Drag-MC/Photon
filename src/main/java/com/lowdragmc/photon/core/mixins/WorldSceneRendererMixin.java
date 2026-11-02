@@ -5,9 +5,12 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;
+import com.lowdragmc.lowdraglib2.client.scene.SceneOitTargets;
 import com.lowdragmc.lowdraglib2.client.scene.SceneRenderContext;
 import com.lowdragmc.lowdraglib2.client.scene.WorldSceneRenderer;
 import com.lowdragmc.photon.client.render.PhotonFrameSeams;
+import com.lowdragmc.photon.client.render.PhotonOit;
+import com.lowdragmc.photon.client.render.PhotonOitComposite;
 import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.renderer.RenderBuffers;
@@ -22,7 +25,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * The frame seams of an LDLib2 scene ({@link PhotonFrameSeams}): its one pass is split before the translucent features
  * and before the see-through ones, so the editor's gizmos and overlays still draw over the FX. The rest of
- * {@code drawWorld} continues in the replacement pass ({@code pass}, {@code dispatchCtx}).
+ * {@code drawWorld} continues in the replacement pass ({@code pass}, {@code dispatchCtx}). A scene drawn with improved
+ * transparency has no pass open before its OIT phases, and its composite is Photon's when Photon's draws bloom.
  */
 @Mixin(WorldSceneRenderer.class)
 public abstract class WorldSceneRendererMixin {
@@ -40,7 +44,25 @@ public abstract class WorldSceneRendererMixin {
     private void photon$beginScenePrepare(RenderBuffers buffers, GpuTextureView color, @Nullable GpuTextureView depth,
                                           CallbackInfo ci) {
         var scene = PhotonFrameSeams.currentScene();
-        if (scene != null) PhotonFrameSeams.beginPrepare(scene);
+        if (scene != null) PhotonFrameSeams.beginPrepare(scene, ((WorldSceneRenderer) (Object) this).isDrawingWithOit());
+    }
+
+    @Inject(method = "drawTranslucentOit", at = @At("HEAD"))
+    private void photon$beforeOit(CallbackInfo ci) {
+        var scene = PhotonFrameSeams.currentScene();
+        if (scene != null) {
+            PhotonOit.beginLevel();
+            PhotonFrameSeams.afterOpaque(scene);
+        }
+    }
+
+    @WrapMethod(method = "compositeOit")
+    private void photon$compositeOit(SceneOitTargets targets, GpuTextureView color, GpuTextureView depth,
+                                     Operation<Void> original) {
+        if (PhotonFrameSeams.currentScene() == null || !PhotonOitComposite.composite(targets.accumulate(),
+                targets.transmittance(), targets.depthBounds(), color, depth)) {
+            original.call(targets, color, depth);
+        }
     }
 
     @Inject(method = "drawWorld", at = @At(value = "INVOKE",

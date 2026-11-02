@@ -7,6 +7,7 @@ import com.mojang.renderpearl.api.pipeline.BlendFunction;
 import com.mojang.renderpearl.api.pipeline.ColorTargetState;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LevelTargetBundle;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -47,11 +48,30 @@ public final class PhotonOitComposite {
      * composite should run instead.
      */
     public static boolean composite(LevelTargetBundle targets, RenderTarget main) {
+        var color = main.getColorTextureView();
+        var depth = main.getDepthTextureView();
+        if (!PhotonOit.drew() || !PhotonOit.blooms() || color == null || depth == null) {
+            return false;
+        }
+        var transmittance = new GpuTextureView[LevelRenderer.OIT_TRANSMITTANCE_TARGET_COUNT];
+        for (int i = 0; i < transmittance.length; i++) {
+            transmittance[i] = targets.transmittance.get(i).get().getColorTextureView();
+        }
+        return composite(targets.accumulate.get().getColorTextureView(), transmittance,
+                targets.depthBounds.get().getColorTextureView(), color, depth);
+    }
+
+    /**
+     * {@link #composite(LevelTargetBundle, RenderTarget)} for an LDLib2 scene's OIT targets: {@code depthBounds} before
+     * the cull, as vanilla's composite reads them.
+     */
+    public static boolean composite(GpuTextureView accumulate, GpuTextureView[] transmittance,
+                                    GpuTextureView depthBounds, GpuTextureView color, GpuTextureView depth) {
         if (!PhotonOit.drew() || !PhotonOit.blooms()) {
             return false;
         }
         try {
-            return resolve(targets, main);
+            return resolve(accumulate, transmittance, depthBounds, color, depth);
         } catch (RuntimeException e) {
             // the main target is only written last: vanilla's composite takes over
             if (!reported) {
@@ -62,11 +82,10 @@ public final class PhotonOitComposite {
         }
     }
 
-    private static boolean resolve(LevelTargetBundle targets, RenderTarget main) {
-        var color = main.getColorTextureView();
-        var depth = main.getDepthTextureView();
+    private static boolean resolve(GpuTextureView accumulate, GpuTextureView[] transmittance, GpuTextureView depthBounds,
+                                   GpuTextureView color, GpuTextureView depth) {
         var pipeline = PhotonPipelines.compiled(hdrComposite());
-        if (color == null || depth == null || pipeline == null) {
+        if (pipeline == null) {
             return false;
         }
         var width = color.getWidth(0);
@@ -77,12 +96,12 @@ public final class PhotonOitComposite {
         try (var pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> "Photon OIT composite (HDR)", target.view(), Optional.empty(), depth, OptionalDouble.empty())) {
             RenderSystem.bindDefaultUniforms(pass);
-            pass.setUniform("Sampler0", targets.accumulate.get().getColorTextureView(), nearest);
-            for (int i = 0; i < LevelRenderer.OIT_TRANSMITTANCE_TARGET_COUNT; i++) {
-                pass.setUniform("Coeff" + i, targets.transmittance.get(i).get().getColorTextureView(), nearest);
+            pass.setUniform("Sampler0", accumulate, nearest);
+            for (int i = 0; i < transmittance.length; i++) {
+                pass.setUniform("Coeff" + i, transmittance[i], nearest);
             }
             // the bounds before the cull, as vanilla's composite reads them: their nearest depth is what it writes
-            pass.setUniform("DepthBoundsSampler", targets.depthBounds.get().getColorTextureView(), nearest);
+            pass.setUniform("DepthBoundsSampler", depthBounds, nearest);
             pass.setPipeline(pipeline);
             pass.draw(3, 1, 0, 0);
         }

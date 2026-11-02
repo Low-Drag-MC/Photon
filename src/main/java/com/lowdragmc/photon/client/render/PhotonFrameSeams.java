@@ -41,6 +41,8 @@ public final class PhotonFrameSeams {
         @Nullable
         private final GpuTextureView depth;
         private boolean preparing;
+        /** A scene drawn through the OIT phases (LDLib2's {@code WorldSceneRenderer#isDrawingWithOit}). */
+        private boolean oit;
 
         private View(boolean world, @Nullable GpuTextureView color, @Nullable GpuTextureView depth) {
             this.world = world;
@@ -64,9 +66,13 @@ public final class PhotonFrameSeams {
         return WORLD;
     }
 
-    /** Whether the frames being prepared now are the world's (an editor scene's never join the OIT passes). */
-    public static boolean isPreparingWorld() {
-        return WORLD.preparing;
+    /** Whether the frames being prepared now join the OIT passes: the world's under improved transparency, a scene's drawn with it. */
+    public static boolean isPreparingOit() {
+        if (WORLD.preparing) {
+            return PhotonOit.active();
+        }
+        var scene = SCENES.peek();
+        return scene != null && scene.preparing && scene.oit && PhotonOit.enabled();
     }
 
     /** An LDLib2 scene renders into {@code color}/{@code depth} until the scope closes. Nests. */
@@ -88,8 +94,13 @@ public final class PhotonFrameSeams {
     }
 
     public static void beginPrepare(View view) {
+        beginPrepare(view, false);
+    }
+
+    public static void beginPrepare(View view, boolean oit) {
         view.frames.clear();
         view.preparing = true;
+        view.oit = oit;
     }
 
     public static void endPrepare(View view) {

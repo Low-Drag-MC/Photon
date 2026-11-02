@@ -28,8 +28,9 @@ import java.util.regex.Pattern;
  * Photon's translucent draws in 26.3's improved (order-independent) transparency. A draw joins vanilla's three OIT
  * passes ({@link PhotonFeatureRenderer#executeGroup}) through variants of its own pipeline, built here, when its blend is
  * one OIT can express and its fragment shader writes through an OIT tail ({@code photon:oit.glsl}, a custom shader's
- * twin from {@link CustomShaderAdapter}, a KilaGraph graph's own). Destination-reading blends, depth-test-off and
- * scene-colour materials, editor scenes and shader packs stay on the classic path. Render thread only.
+ * twin from {@link CustomShaderAdapter}, a KilaGraph graph's own); an LDLib2 scene drawn with improved transparency
+ * runs the same passes. Destination-reading blends, depth-test-off and scene-colour materials and shader packs stay on
+ * the classic path. Render thread only.
  */
 public final class PhotonOit {
 
@@ -70,9 +71,13 @@ public final class PhotonOit {
 
     /** Whether the world's translucent FX join the OIT passes this frame. */
     public static boolean active() {
-        return PhotonConfig.INSTANCE.orderIndependentTransparency.get()
-                && Minecraft.getInstance().gameRenderer.useImprovedTransparency()
+        return enabled() && Minecraft.getInstance().gameRenderer.useImprovedTransparency()
                 && !IrisCompat.isUsingShaderPack();
+    }
+
+    /** Whether Photon's config lets FX join improved transparency at all. */
+    public static boolean enabled() {
+        return PhotonConfig.INSTANCE.orderIndependentTransparency.get();
     }
 
     /** {@code pipeline}'s blend as the accumulation reads it, or null when OIT cannot express it. */
@@ -140,10 +145,6 @@ public final class PhotonOit {
         var twin = PhotonShaderSources.oitTwin(fragment);
         var code = code(twin != null ? twin : fragment);
         if (code == null || !code.contains("photon:oit.glsl") && !code.contains("executeAlphaOnlyPhase")) {
-            return null;
-        }
-        // KilaGraph's premultiplied tail divides the alpha back out, losing light carried at zero coverage
-        if (blend == Blend.PREMULTIPLIED && code.contains(KG_PREMULTIPLIED_DEFINE)) {
             return null;
         }
         var built = new OitPipelineSet(

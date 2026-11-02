@@ -414,7 +414,7 @@ public final class PhotonWorldRenderState {
             layer.needsSceneColor = resolvedLayer.needsSceneColor;
             layer.needsSceneDepth = resolvedLayer.needsSceneDepth;
             layer.needsLegacyDepth = resolvedLayer.needsLegacyDepth;
-            if (!packLayer && PhotonFrameSeams.isPreparingWorld() && PhotonOit.active()) {
+            if (!packLayer && PhotonFrameSeams.isPreparingOit()) {
                 // both modes: what LATE holds its layer back for (water slicing an effect, clouds over it) is what
                 // the OIT resolve gets right; the variant replaces the layer's premultiplied blend
                 claimOit(translucentStage);
