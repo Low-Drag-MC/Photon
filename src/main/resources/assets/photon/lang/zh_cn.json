@@ -13,6 +13,8 @@
   "photon.configuration.fx_composite_mode": "特效合成模式",
   "photon.configuration.order_independent_transparency": "顺序无关透明（OIT）",
   "photon.configuration.order_independent_transparency.tooltip": "当原版的「改进的透明度」开启时，半透明特效与水、玻璃、云以及彼此之间按像素混合，与绘制顺序无关——位于染色玻璃后面的特效会被它染色，而不是被挡住或画在它前面。对两种合成模式都生效。混合方式无法这样表达的特效（正片叠底、相减）、读取场景颜色的特效（扭曲）以及光影包下的特效，仍按合成模式的原有方式绘制。",
+  "photon.configuration.parallel_bake": "并行生成粒子几何",
+  "photon.configuration.parallel_bake.tooltip": "一帧中粒子较多时，在工作线程上并行生成粒子的几何与实例数据。关闭后全部在渲染线程上生成。",
   "photon.configuration.fx_composite_mode.tooltip": "半透明特效何时合入画面。「原版」在半透明世界（水、玻璃、云和天气）之后绘制，以最近的半透明表面做深度测试，所以前方的水或玻璃会挡住特效。「延迟」把特效画成独立图层，只用不透明物体的深度做测试，最后再混合进去：半透明表面不会挡住或切断特效，但即使特效在它们后面，也会画在它们之上。开启「改进的透明度」和顺序无关透明时，能参与的特效改为按像素混合，此设置不再起作用。单个发射器可以覆盖此设置。",
   "photon.configuration.iris_composite_mode": "光影合成模式",
   "photon.configuration.iris_composite_mode.tooltip": "Photon 把完成的特效图像交还给光影包的方式。「自动」会识别当前光影包，绝大多数情况都正确；其余选项是识别错误时的应急开关。",

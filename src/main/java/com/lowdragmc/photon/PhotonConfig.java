@@ -44,6 +44,8 @@ public class PhotonConfig {
     public final ModConfigSpec.ConfigValue<FXCompositeMode> fxCompositeMode;
     /** Translucent FX join Minecraft's improved (order-independent) transparency while it is on (PhotonOit). */
     public final ModConfigSpec.ConfigValue<Boolean> orderIndependentTransparency;
+    /** Particle geometry is generated on worker threads when a frame has enough of it (PhotonBakeWork). */
+    public final ModConfigSpec.ConfigValue<Boolean> parallelBake;
     /** Master switch for the custom post-processing chain (requests are dropped when off). */
     public final ModConfigSpec.ConfigValue<Boolean> enableCustomEffects;
     /** The custom effect chain under a shader pack. Deliberately a NEW key rather than a new default
@@ -97,6 +99,7 @@ public class PhotonConfig {
         fxCompositeMode = builder.defineEnum("fx_composite_mode", FXCompositeMode.LATE,
                 FXCompositeMode.VANILLA, FXCompositeMode.LATE);
         orderIndependentTransparency = builder.define("order_independent_transparency", true);
+        parallelBake = builder.define("parallel_bake", true);
 
         enableCustomEffects = builder.define("enable_custom_effects", true);
         enableCustomEffectsWithShaderPack = builder.define("enable_custom_effects_with_shader_pack", true);

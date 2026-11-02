@@ -406,14 +406,20 @@ public final class PhotonWorldRenderState {
             PhotonEngineUniforms.ensure(output == null ? 1 : output.getWidth(0),
                     output == null ? 1 : output.getHeight(0));
             var baked = new ArrayList<DrawJob>();
+            // the per-particle part may be left to workers, the jobs keep the order of this loop
+            var sink = new PhotonBakeWork.Sink();
             try {
                 for (var task : tasks) {
-                    task.bake(settings, baked);
+                    task.bake(settings, sink);
                 }
+            } catch (RuntimeException | Error e) {
+                sink.discard();
+                throw e;
             } finally {
                 // a bake that threw must not leave every later pipeline premultiplied
                 PremultipliedBlendPlan.setAccumulating(false);
             }
+            sink.drainInto(baked);
 
             var opaque = new ArrayList<DrawJob>();
             var translucent = new ArrayList<DrawJob>();

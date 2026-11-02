@@ -21,6 +21,7 @@ import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.RuntimeBinding;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.aratrail.AraTrailConfig;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomDataBindings;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CollisionSetting;
@@ -1112,9 +1113,11 @@ public class ParticleEmitter extends Emitter {
                                Camera camera, float partialTicks) {
         // GPU-instanced tile quads when the config qualifies; CPU baking otherwise
         if (!(canInstanceTiles() && extractInstancedTiles(settings, out, camera, partialTicks))) {
-            // the tile quads (CPU), carrying per-particle records for any material that reads particle data
+            // the tile quads (CPU), carrying per-particle records for any material that reads particle data;
+            // billboards may be baked on a worker, a model reads mesh caches built on first use
             bakeGroup(settings, out, camera, partialTicks, rendererRuntime(), geometryMode(), this::bakeGeometry,
-                    new CpuRecordSource(config.additionalGPUDataSetting, records -> tileRenderer().setCpuRecords(records)));
+                    new CpuRecordSource(config.additionalGPUDataSetting, records -> tileRenderer().setCpuRecords(records)),
+                    runtime().renderer.getRenderMode() != ParticleRendererSetting.Mode.Model);
         }
         // The embedded per-particle trails (TrailsSetting) are separate geometry groups: their own
         // sub-config renderer/materials and primitive mode, mirroring TrailEmitter/AraTrailEmitter.
@@ -1299,7 +1302,26 @@ public class ParticleEmitter extends Emitter {
                         }
                     }
                     return count;
-                });
+                }, !model);
+    }
+
+    /** Also the renderer the tiles bake through, and the space of every emitter their particles come from. */
+    @Override
+    protected void prepareParallelBake() {
+        super.prepareParallelBake();
+        tileRenderer();
+        IParticleEmitter last = this;
+        for (var queue : particles.values()) {
+            for (var particle : queue) {
+                if (particle instanceof TileParticle tile && tile.getEmitter() != last) {
+                    last = tile.getEmitter();
+                    last.getSimToWorld();
+                    last.getWorldToSim();
+                    last.getSimSpaceScale();
+                    last.getSimSpaceRotation();
+                }
+            }
+        }
     }
 
     private boolean hasParticlesOf(Class<?> type) {

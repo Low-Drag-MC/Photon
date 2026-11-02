@@ -22,15 +22,18 @@ import java.util.Arrays;
  * signed int only for non-negative values; {@code -0.0f} and the infinities/NaN still order the same
  * way {@code Float.compare} does, but a strictly negative key would sort backwards.
  * <p>
- * <b>Render thread only.</b> The scratch arrays are shared, like {@code Emitter}'s instance staging
- * buffers next door — a future parallel bake has to make this set per-worker along with those.
- * A returned order array is valid until the next {@link #farToNear} call.
+ * The scratch arrays are the calling thread's own (the bake runs on workers too, {@code PhotonBakeWork}). A returned
+ * order array is valid until the thread's next {@link #farToNear} call.
  */
 public final class PhotonDistanceSort {
 
-    private static float[] keys = new float[0];
-    private static long[] packed = new long[0];
-    private static int[] order = new int[0];
+    private static final class Scratch {
+        float[] keys = new float[0];
+        long[] packed = new long[0];
+        int[] order = new int[0];
+    }
+
+    private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
 
     private PhotonDistanceSort() {
     }
@@ -40,10 +43,11 @@ public final class PhotonDistanceSort {
      * call with exactly one {@link #farToNear} before asking for keys again.
      */
     public static float[] keys(int count) {
-        if (keys.length < count) {
-            keys = new float[Math.max(count, keys.length * 2)];
+        var scratch = SCRATCH.get();
+        if (scratch.keys.length < count) {
+            scratch.keys = new float[Math.max(count, scratch.keys.length * 2)];
         }
-        return keys;
+        return scratch.keys;
     }
 
     /**
@@ -52,19 +56,20 @@ public final class PhotonDistanceSort {
      * read only {@code [0, count)}.
      */
     public static int[] farToNear(int count) {
-        if (packed.length < count) {
-            packed = new long[Math.max(count, packed.length * 2)];
+        var scratch = SCRATCH.get();
+        if (scratch.packed.length < count) {
+            scratch.packed = new long[Math.max(count, scratch.packed.length * 2)];
         }
-        var distances = keys;
-        var sortable = packed;
+        var distances = scratch.keys;
+        var sortable = scratch.packed;
         for (int i = 0; i < count; i++) {
             sortable[i] = ((long) Float.floatToRawIntBits(distances[i]) << 32) | (0xFFFFFFFFL - i);
         }
         Arrays.sort(sortable, 0, count);
-        if (order.length < count) {
-            order = new int[Math.max(count, order.length * 2)];
+        if (scratch.order.length < count) {
+            scratch.order = new int[Math.max(count, scratch.order.length * 2)];
         }
-        var result = order;
+        var result = scratch.order;
         for (int i = 0; i < count; i++) {
             result[i] = (int) (0xFFFFFFFFL - (sortable[count - 1 - i] & 0xFFFFFFFFL));
         }
