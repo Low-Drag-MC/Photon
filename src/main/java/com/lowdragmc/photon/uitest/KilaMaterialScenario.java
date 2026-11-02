@@ -636,6 +636,8 @@ public class KilaMaterialScenario implements UIScenario {
         particle.trails.buildConfigurator(group);
         group.screenTick();
         ctx.check("the trails module shows what its material needs", requirementsRowShown(group), "shown", "none shown");
+        // drawn on the CPU, as trails saved before instancing became the default are
+        trails.renderer.setUseGPUInstance(false);
         var needs = MaterialRequirements.describe(trails.renderer.getMaterials(), trails.additionalGPUDataSetting, false,
                 trails.renderer::isUseGPUInstance);
         ctx.check("the energy trail on particle trails asks for instancing", needs != null, "a message", "nothing");

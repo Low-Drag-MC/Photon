@@ -107,7 +107,7 @@ public class ParticleRendererSetting extends RendererSetting implements IConfigu
     protected float lengthScale = 2.0f;
     @Configurable(name = "ParticleRendererSetting.useGPUInstance")
     @EqualsAndHashCode.Include
-    private boolean useGPUInstance = false;
+    private boolean useGPUInstance = true;
     @Persisted
     @EqualsAndHashCode.Include
     private FacingMode facingMode = FacingMode.DEFAULT;

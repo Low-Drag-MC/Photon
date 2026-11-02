@@ -344,7 +344,7 @@ public class MapperUtils {
         newRendererTag.put("materials",  materialsTag);
 
         newRendererTag.putInt("orderInLayer", 0);
-        newRendererTag.putByte("useGPUInstance", (byte)0);
+        newRendererTag.putByte("useGPUInstance", (byte) 1);
         ListTag pivot = new ListTag();
         pivot.add(FloatTag.ZERO);
         pivot.add(FloatTag.ZERO);

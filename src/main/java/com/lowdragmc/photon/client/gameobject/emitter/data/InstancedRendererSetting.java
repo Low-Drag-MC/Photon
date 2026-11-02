@@ -19,7 +19,7 @@ public class InstancedRendererSetting extends RendererSetting {
 
     @Configurable(name = "ParticleRendererSetting.useGPUInstance")
     @EqualsAndHashCode.Include
-    private boolean useGPUInstance = false;
+    private boolean useGPUInstance = true;
 
     /** Slot-based per-emitter render override (see {@link RendererSetting.Runtime}) + the {@code useGPUInstance} slot. */
     public static class Runtime extends RendererSetting.Runtime {
