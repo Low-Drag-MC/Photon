@@ -29,6 +29,8 @@ import net.minecraft.world.entity.Relative;
 import org.joml.Vector3f;
 
 import java.io.IOException;
+import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -46,7 +48,9 @@ import java.util.concurrent.atomic.AtomicReference;
         environment = RegistrationEnvironment.DEV_ONLY)
 public class RenderBenchScenario implements UIScenario {
     private static final int WARMUP_FRAMES = 60;
-    private static final int MEASURED_FRAMES = 240;
+    private static final int MEASURED_FRAMES = 480;
+    /** Frames of the first two cases before anything is measured: the JIT compiles the bake meanwhile. */
+    private static final int JIT_WARMUP_FRAMES = 400;
     private static final List<Identifier> TEXTURES = List.of("white", "circle", "ring", "smoke", "laser", "kila_tail")
             .stream().map(name -> Photon.id("textures/particle/" + name + ".png")).toList();
     private static final AtomicReference<BlockPos> ORIGIN = new AtomicReference<>();
@@ -104,6 +108,11 @@ public class RenderBenchScenario implements UIScenario {
                 .serverTicks(20)
                 .waitUntil("sections compiled", ctx -> ctx.mc().levelRenderer.hasRenderedAllSections())
                 .frames(30);
+        for (var warmup : List.of(CASES.get(0), CASES.get(4))) {
+            s.step("warm up with " + warmup.tag(), ctx -> start(ctx, warmup))
+                    .frames(JIT_WARMUP_FRAMES)
+                    .step("stop warming up with " + warmup.tag(), RenderBenchScenario::stop);
+        }
         Boolean[] improved = {null};
         for (var benchCase : selected()) {
             if (!Boolean.valueOf(benchCase.oit()).equals(improved[0])) {
@@ -146,6 +155,7 @@ public class RenderBenchScenario implements UIScenario {
         var frameMs = new DoubleArrayList();
         long[] last = {0};
         int[] frame = {0};
+        long[] gc = {0, 0};
         s.step("start " + benchCase.tag(), ctx -> start(ctx, benchCase))
                 .frames(WARMUP_FRAMES)
                 .step("measure " + benchCase.tag(), ctx -> {
@@ -154,6 +164,8 @@ public class RenderBenchScenario implements UIScenario {
                         PhotonRenderStats.clear();
                         PhotonRenderStats.recording = true;
                         frameMs.clear();
+                        gc[0] = gcCount();
+                        gc[1] = gcMillis();
                     } else {
                         frameMs.add((now - last[0]) / 1e6);
                     }
@@ -164,19 +176,30 @@ public class RenderBenchScenario implements UIScenario {
                     }
                     frame[0] = 0;
                     PhotonRenderStats.recording = false;
-                    var row = "| %s | %d | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %.0f |".formatted(
+                    var row = "| %s | %d | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %.0f | %d / %d |".formatted(
                             benchCase.tag(), benchCase.total(),
                             median(PhotonRenderStats.DRAWS), median(PhotonRenderStats.BINDS),
                             median(PhotonRenderStats.PASSES), median(PhotonRenderStats.UPLOAD_KB),
                             stat(cpu(PhotonRenderStats.Cpu.TICK)), stat(cpu(PhotonRenderStats.Cpu.EXTRACT)),
                             stat(cpu(PhotonRenderStats.Cpu.PREPARE)), stat(cpu(PhotonRenderStats.Cpu.RECORD)),
-                            stat(PhotonRenderStats.GPU_MS), stat(frameMs), 1000.0 / percentile(frameMs, 0.5));
+                            stat(PhotonRenderStats.GPU_MS), stat(frameMs), 1000.0 / percentile(frameMs, 0.5),
+                            gcCount() - gc[0], gcMillis() - gc[1]);
                     ROWS.add(row);
                     ctx.log(row);
                     ctx.check(benchCase.tag() + ": Photon drew", percentile(PhotonRenderStats.DRAWS, 0.5) > 0);
                 })
                 .step("stop " + benchCase.tag(), RenderBenchScenario::stop)
                 .frames(10);
+    }
+
+    private static long gcCount() {
+        return ManagementFactory.getGarbageCollectorMXBeans().stream()
+                .mapToLong(GarbageCollectorMXBean::getCollectionCount).sum();
+    }
+
+    private static long gcMillis() {
+        return ManagementFactory.getGarbageCollectorMXBeans().stream()
+                .mapToLong(GarbageCollectorMXBean::getCollectionTime).sum();
     }
 
     private static DoubleArrayList cpu(PhotonRenderStats.Cpu cpu) {
@@ -260,10 +283,10 @@ public class RenderBenchScenario implements UIScenario {
                 .append("Times are milliseconds, median / p95; draws, binds, passes and uploads are per frame. ")
                 .append("Tick = one client tick of Photon's objects; extract = culling and the bake list; ")
                 .append("bake = geometry and its upload; record = passes and draws, bloom and composites included; ")
-                .append("GPU = Photon's work between its timestamps.\n\n")
+                .append("GPU = Photon's work between its timestamps; GC = collections / their milliseconds over the row.\n\n")
                 .append("| case | particles | draws | pipeline binds | passes | upload KB | tick | extract | bake ")
-                .append("| record | GPU | frame | FPS |\n")
-                .append("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+                .append("| record | GPU | frame | FPS | GC |\n")
+                .append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
         ROWS.forEach(row -> text.append(row).append('\n'));
         var root = ctx.mc().gameDirectory.toPath().toAbsolutePath().normalize().getParent().getParent();
         var stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
