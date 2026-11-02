@@ -147,6 +147,7 @@ public final class PhotonFrameSeams {
 
     /** No pass is open. */
     public static void afterOpaque(View view) {
+        PhotonRenderStats.gpuBegin(null);
         guarded(() -> {
             try (var ignored = view.output()) {
                 IrisCompat.runWithoutPackPrograms(() -> {
@@ -165,10 +166,12 @@ public final class PhotonFrameSeams {
                 });
             }
         });
+        PhotonRenderStats.gpuEnd(null);
     }
 
     /** No pass is open. */
     public static void afterTranslucent(View view) {
+        PhotonRenderStats.gpuBegin(null);
         guarded(() -> {
             try (var ignored = view.output()) {
                 IrisCompat.runWithoutPackPrograms(() -> {
@@ -183,6 +186,7 @@ public final class PhotonFrameSeams {
                 });
             }
         });
+        PhotonRenderStats.gpuEnd(null);
     }
 
     /** Logs a failure of Photon's own work once and lets the owner's frame go on. */

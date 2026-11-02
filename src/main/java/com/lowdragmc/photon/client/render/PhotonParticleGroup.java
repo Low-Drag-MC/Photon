@@ -42,6 +42,13 @@ public final class PhotonParticleGroup extends ParticleGroup<FXObject> {
     }
 
     @Override
+    public void tickParticles() {
+        var began = PhotonRenderStats.begin();
+        super.tickParticles();
+        PhotonRenderStats.endTick(began);
+    }
+
+    @Override
     public ParticleGroupRenderState extractRenderState(Frustum frustum, Camera camera, float partialTick) {
         var startTime = System.nanoTime();
         renderState.clear(); // reused across frames; vanilla's reset() may not have run for this view
@@ -61,6 +68,7 @@ public final class PhotonParticleGroup extends ParticleGroup<FXObject> {
             emitter.extractBatches(renderState, camera, partialTick);
         }
         EXTRACT_TIMES[extractIndex] = System.nanoTime() - startTime;
+        if (PhotonRenderStats.recording) PhotonRenderStats.end(PhotonRenderStats.Cpu.EXTRACT, startTime);
         extractIndex = (extractIndex + 1) % EXTRACT_TIMES.length;
         return renderState;
     }

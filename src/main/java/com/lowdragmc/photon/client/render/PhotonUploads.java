@@ -47,33 +47,55 @@ public final class PhotonUploads {
     }
 
     public static GpuBufferSlice vertices(ByteBuffer data) {
+        PhotonRenderStats.uploaded(data.remaining());
         return memory().uploadGpu(data, ALIGNMENT, GpuBuffer.USAGE_VERTEX);
     }
 
     /** The blocks back to back in one slice. */
     public static GpuBufferSlice vertices(List<ByteBuffer> blocks) {
+        if (PhotonRenderStats.recording) {
+            for (var block : blocks) PhotonRenderStats.uploaded(block.remaining());
+        }
         return memory().uploadGpu(blocks, ALIGNMENT, GpuBuffer.USAGE_VERTEX);
     }
 
-    public static GpuBufferSlice records(FloatBuffer staging) {
-        return vertices(MemoryUtil.memByteBuffer(staging));
+    /**
+     * This frame's copy of the {@code count} instance records of {@code staging}, record {@code order[i]} as record
+     * {@code i} (for distance sorting; {@code order} may be longer than {@code count}), uploaded later with the
+     * instances drawn alike ({@link #records(List)}).
+     */
+    public static ByteBuffer stageRecords(FloatBuffer staging, @Nullable int[] order, int count, int recordFloats) {
+        var recordBytes = recordFloats * Float.BYTES;
+        var copy = PhotonRecordArena.allocate(count * recordBytes);
+        var source = MemoryUtil.memAddress0(staging);
+        var destination = MemoryUtil.memAddress(copy);
+        if (order == null) {
+            MemoryUtil.memCopy(source, destination, (long) count * recordBytes);
+        } else {
+            for (int i = 0; i < count; i++) {
+                MemoryUtil.memCopy(source + (long) order[i] * recordBytes, destination + (long) i * recordBytes,
+                        recordBytes);
+            }
+        }
+        return copy;
     }
 
     /**
-     * Uploads record {@code order[i]} of {@code staging} as record {@code i}, for distance sorting. {@code order}
-     * may be longer than {@code count}.
+     * Staged records ({@link #stageRecords}) back to back in one slice, packed: an instance's index runs on across the
+     * blocks, where {@link #vertices(List)} would pad each to the alignment.
      */
-    public static GpuBufferSlice records(FloatBuffer staging, @Nullable int[] order, int count, int recordFloats) {
-        if (order == null || recordFloats <= 0) {
-            return records(staging);
+    public static GpuBufferSlice records(List<ByteBuffer> blocks) {
+        long total = 0;
+        for (var block : blocks) {
+            total += block.remaining();
         }
-        var recordBytes = (long) recordFloats * Float.BYTES;
-        var bytes = count * recordBytes;
-        try (var view = memory().allocateGpuMapped(bytes, ALIGNMENT, GpuBuffer.USAGE_VERTEX)) {
-            var source = MemoryUtil.memAddress0(staging);
+        PhotonRenderStats.uploaded(total);
+        try (var view = memory().allocateGpuMapped(total, ALIGNMENT, GpuBuffer.USAGE_VERTEX)) {
             var destination = MemoryUtil.memAddress(view.data());
-            for (int i = 0; i < count; i++) {
-                MemoryUtil.memCopy(source + order[i] * recordBytes, destination + i * recordBytes, recordBytes);
+            long offset = 0;
+            for (var block : blocks) {
+                MemoryUtil.memCopy(MemoryUtil.memAddress(block), destination + offset, block.remaining());
+                offset += block.remaining();
             }
             return view.slice();
         }

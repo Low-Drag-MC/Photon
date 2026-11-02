@@ -275,6 +275,7 @@ public abstract class FXObject extends Particle implements IFXObject {
 
     @Override
     public final void tick() {
+        RuntimeValue.advance();
         // heartbeat first — it must beat during the start delay too
         if (tickHost != null) {
             lastHostTick = tickHost.tickCount();

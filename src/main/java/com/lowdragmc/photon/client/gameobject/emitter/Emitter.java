@@ -387,6 +387,8 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
             // group drawn in place in the same bake is unaffected.
             PremultipliedBlendPlan.setAccumulating(
                     PremultipliedBlendPlan.isLayerStage(stage));
+            // every material draws the same geometry: baked and uploaded once
+            PhotonWorldRenderState.Job geometry = null;
             for (var materialSetting : renderer.getMaterials()) {
                 var renderType = materialSetting.getRenderType(mode);
                 if (renderType == null) {
@@ -404,17 +406,20 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                     records = bakeRecords(recordSource, renderer.getMaterials(), mode, camera, partialTicks,
                             sortOrigin, baker);
                 }
-                bakeJob(out, renderType, mode, camera, partialTicks, stage,
+                var job = bakeJob(out, renderType, mode, camera, partialTicks, stage,
                         renderer.getOrderInLayer(), sortOrigin, baker, mask, materialSetting.isBackFacesFirst(),
                         recordPipeline == null || records == null ? null : records.with(recordPipeline),
-                        renderer.mayJoinOit());
+                        renderer.mayJoinOit(), geometry);
+                if (geometry == null) {
+                    geometry = job;
+                }
             }
         }
         if (settings.wireframe()) {
             // overlay always on top of everything, whatever layer the emitter itself draws in
             bakeJob(out, MaterialRenderTypes.wireframe(mode), mode, camera, partialTicks,
                     PhotonStage.AFTER_TRANSLUCENT_PARTICLES, Integer.MAX_VALUE, null, baker,
-                    null, false, null, false); // an editor overlay is not content — it never writes the mask
+                    null, false, null, false, null); // an editor overlay is not content — it never writes the mask
         }
     }
 
@@ -651,7 +656,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         }
         instanceStaging.flip();
         var order = instanceDrawOrder(variant, layout, camera, renderer, positionOffset, count);
-        var instances = PhotonUploads.records(instanceStaging, order, count, layout.strideFloats());
+        var instances = PhotonUploads.stageRecords(instanceStaging, order, count, layout.strideFloats());
         GpuBuffer pointBuffer = null;
         if (points != null) {
             // never permuted: instances of a point-using variant index into this shared block
@@ -878,31 +883,43 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         }
     }
 
-    private void bakeJob(List<PhotonWorldRenderState.DrawJob> out,
-                         RenderType renderType,
-                         PrimitiveTopology mode,
-                         Camera camera, float partialTicks,
-                         PhotonStage stage, int orderInLayer,
-                         @Nullable Vector3fc sortOrigin,
-                         GeometryBaker baker,
-                         @Nullable PhotonWorldRenderState.MaskWrite mask, boolean backFacesFirst,
-                         @Nullable PhotonWorldRenderState.CpuRecords records, boolean oit) {
-        var buffer = new ByteBufferBuilder(64 * 1024);
-        var builder = new BufferBuilder(buffer, mode, PhotonPipelines.PARTICLE_FORMAT);
-        baker.bake(builder, camera, partialTicks);
-        var mesh = builder.build();
-        if (mesh == null) {
-            buffer.close();
-            return;
-        }
-        if (sortOrigin != null) {
-            // with records, whole particles move: the records were permuted in the same order (bakeRecords)
-            sortQuads(mesh, sortOrigin, records == null ? 1 : records.vertsPerParticle() / 4);
+    /** {@code geometry}: a job of the same group whose mesh this one draws too, instead of baking its own. */
+    @Nullable
+    private PhotonWorldRenderState.Job bakeJob(List<PhotonWorldRenderState.DrawJob> out,
+                                               RenderType renderType,
+                                               PrimitiveTopology mode,
+                                               Camera camera, float partialTicks,
+                                               PhotonStage stage, int orderInLayer,
+                                               @Nullable Vector3fc sortOrigin,
+                                               GeometryBaker baker,
+                                               @Nullable PhotonWorldRenderState.MaskWrite mask, boolean backFacesFirst,
+                                               @Nullable PhotonWorldRenderState.CpuRecords records, boolean oit,
+                                               @Nullable PhotonWorldRenderState.Job geometry) {
+        MeshData mesh;
+        ByteBufferBuilder buffer;
+        if (geometry != null) {
+            mesh = geometry.mesh();
+            buffer = geometry.buffer();
+        } else {
+            buffer = new ByteBufferBuilder(64 * 1024);
+            var builder = new BufferBuilder(buffer, mode, PhotonPipelines.PARTICLE_FORMAT);
+            baker.bake(builder, camera, partialTicks);
+            mesh = builder.build();
+            if (mesh == null) {
+                buffer.close();
+                return null;
+            }
+            if (sortOrigin != null) {
+                // with records, whole particles move: the records were permuted in the same order (bakeRecords)
+                sortQuads(mesh, sortOrigin, records == null ? 1 : records.vertsPerParticle() / 4);
+            }
         }
         var eye = PhotonCameraUtils.facingEye(camera);
         var distanceSq = transform.position().distanceSquared(eye);
-        out.add(new PhotonWorldRenderState.Job(renderType, mesh, buffer, stage, orderInLayer,
-                distanceSq, mask, backFacesFirst, records, oit));
+        var job = new PhotonWorldRenderState.Job(renderType, mesh, buffer, stage, orderInLayer,
+                distanceSq, mask, backFacesFirst, records, oit);
+        out.add(job);
+        return job;
     }
 
     /** Whether a material reads per-particle data, which the CPU path otherwise feeds it as zeros. */

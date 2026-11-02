@@ -70,6 +70,7 @@ public final class PhotonOitComposite {
         if (!PhotonOit.drew() || !PhotonOit.blooms()) {
             return false;
         }
+        PhotonRenderStats.gpuBegin(null);
         try {
             return resolve(accumulate, transmittance, depthBounds, color, depth);
         } catch (RuntimeException e) {
@@ -79,6 +80,8 @@ public final class PhotonOitComposite {
                 Photon.LOGGER.error("Photon's OIT composite failed; vanilla's resolves the frame", e);
             }
             return false;
+        } finally {
+            PhotonRenderStats.gpuEnd(null);
         }
     }
 
