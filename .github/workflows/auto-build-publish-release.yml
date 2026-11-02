@@ -230,17 +230,17 @@ jobs:
             build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
             build/libs/*-@(sources).jar
 
-          name: Photon2-26.2-${{ needs.validate.outputs.version }}-neoforge
-          version: mc26.2-${{ needs.validate.outputs.version }}-neoforge
+          name: Photon2-26.3-${{ needs.validate.outputs.version }}-neoforge
+          version: mc26.3-${{ needs.validate.outputs.version }}-neoforge
           version-type: ${{ inputs.versionType }}
           changelog-file: CHANGELOG.*
 
           loaders: |
             neoforge
-          # A curated compatibility claim, not a derivable fact — minecraft_version_range is [26.2, 26.2].
+          # A curated compatibility claim, not a derivable fact — minecraft_version_range is [26.3, 26.3].
           # Keep in step with LDLib2/KilaGraph, which list the same.
           game-versions: |
-            26.2
+            26.3
           game-version-filter: none
           java: |
             ${{ env.JAVA_VERSION }}
@@ -295,8 +295,8 @@ jobs:
             build/libs/!(*-@(dev|sources|javadoc|dev-shadow)).jar
             build/libs/*-@(sources).jar
 
-          name: Photon2-26.2-${{ needs.validate.outputs.version }}-neoforge
-          version: mc26.2-${{ needs.validate.outputs.version }}-neoforge
+          name: Photon2-26.3-${{ needs.validate.outputs.version }}-neoforge
+          version: mc26.3-${{ needs.validate.outputs.version }}-neoforge
           version-type: ${{ inputs.versionType }}
           changelog-file: CHANGELOG.*
 
@@ -304,7 +304,7 @@ jobs:
             neoforge
           # Same curated claim as the CurseForge job above — keep the two in step.
           game-versions: |
-            26.2
+            26.3
           game-version-filter: none
           java: |
             ${{ env.JAVA_VERSION }}
