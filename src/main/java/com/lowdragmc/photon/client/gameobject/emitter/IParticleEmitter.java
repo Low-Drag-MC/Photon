@@ -91,6 +91,11 @@ public interface IParticleEmitter extends IFXObject, IConfigurable {
 
     Vector4f getRGBAColor();
 
+    /** {@link #getRGBAColor()} into {@code dest}. */
+    default Vector4f getRGBAColor(Vector4f dest) {
+        return dest.set(getRGBAColor());
+    }
+
     float getT();
 
     float getT(float partialTicks);

@@ -33,6 +33,9 @@ import java.io.File;
 @Setter
 @Getter
 public class TextureMaterial extends ShaderInstanceMaterial {
+    private static final Identifier FRAGMENT = Photon.id("core/hdr_particle");
+    private static final Identifier PIXEL_FRAGMENT = Photon.id("core/pixel_hdr_particle");
+
     public enum HDRMode {
         ADDITIVE(0),
         MULTIPLICATIVE(1);
@@ -93,7 +96,7 @@ public class TextureMaterial extends ShaderInstanceMaterial {
             MaterialSetting setting,
             PrimitiveTopology mode) {
         // 1.21 selected the pixel program only when pixel-art was on; the plain program has no Bits use
-        var fragment = pixelArt.isEnable() ? Photon.id("core/pixel_hdr_particle") : Photon.id("core/hdr_particle");
+        var fragment = pixelArt.isEnable() ? PIXEL_FRAGMENT : FRAGMENT;
         return MaterialRenderTypes.hdrParticle(texture, fragment,
                 setting.pipelineKey(mode),
                 PhotonMaterialUniforms.Values.of(

@@ -287,16 +287,21 @@ public class TileParticle implements IParticle {
     }
 
     public Vector3f getRealRotation(float partialTicks) {
-        var rotation = new Vector3f(
-                Mth.lerp(partialTicks, rotationXo, rotationX),
+        return getRealRotation(partialTicks, new Vector3f());
+    }
+
+    public Vector3f getRealRotation(float partialTicks, Vector3f dest) {
+        return dest.set(Mth.lerp(partialTicks, rotationXo, rotationX),
                 Mth.lerp(partialTicks, rotationYo, rotationY),
                 Mth.lerp(partialTicks, rotationZo, rotationZ));
-        return rotation;
     }
 
     public Vector3f getRealSize(float partialTicks) {
-        return new Vector3f(
-                Mth.lerp(partialTicks, sizeXo, sizeX),
+        return getRealSize(partialTicks, new Vector3f());
+    }
+
+    public Vector3f getRealSize(float partialTicks, Vector3f dest) {
+        return dest.set(Mth.lerp(partialTicks, sizeXo, sizeX),
                 Mth.lerp(partialTicks, sizeYo, sizeY),
                 Mth.lerp(partialTicks, sizeZo, sizeZ));
     }
@@ -348,7 +353,11 @@ public class TileParticle implements IParticle {
     }
 
     public Vector3f getSimPos(float partialTicks) {
-        var pos = getSimPosWithoutNoise(partialTicks);
+        return getSimPos(partialTicks, new Vector3f());
+    }
+
+    public Vector3f getSimPos(float partialTicks, Vector3f dest) {
+        var pos = getSimPosWithoutNoise(partialTicks, dest);
 
         if (runtime.noise.isEnable()) {
             pos.add(runtime.noise.getPosition(this, partialTicks));
@@ -362,10 +371,14 @@ public class TileParticle implements IParticle {
     }
 
     public Vector3f getSimPosWithoutNoise(float partialTicks) {
+        return getSimPosWithoutNoise(partialTicks, new Vector3f());
+    }
+
+    public Vector3f getSimPosWithoutNoise(float partialTicks, Vector3f dest) {
         if (isRemoved) {
-            return new Vector3f(localX, localY, localZ);
+            return dest.set(localX, localY, localZ);
         }
-        return new Vector3f(Mth.lerp(partialTicks, this.localXo, this.localX),
+        return dest.set(Mth.lerp(partialTicks, this.localXo, this.localX),
                 Mth.lerp(partialTicks, this.localYo, this.localY),
                 Mth.lerp(partialTicks, this.localZo, this.localZ));
     }
@@ -419,19 +432,27 @@ public class TileParticle implements IParticle {
     }
 
     public Vector4f getRealColor(float partialTicks) {
-        var emitterColor = emitter.getRGBAColor();
+        return getRealColor(partialTicks, new Vector4f());
+    }
+
+    public Vector4f getRealColor(float partialTicks, Vector4f dest) {
         var a = Mth.lerp(partialTicks, this.ao, this.a);
         var r = Mth.lerp(partialTicks, this.ro, this.r);
         var g = Mth.lerp(partialTicks, this.go, this.g);
         var b = Mth.lerp(partialTicks, this.bo, this.b);
-        return emitterColor.mul(r, g, b, a);
+        return emitter.getRGBAColor(dest).mul(r, g, b, a);
     }
 
     public Vector4f getRealUVs(float partialTicks) {
+        return getRealUVs(partialTicks, new Vector4f());
+    }
+
+    /** The UV animation's own vector when it runs, else {@code dest} set to the whole texture. */
+    public Vector4f getRealUVs(float partialTicks, Vector4f dest) {
         if (runtime.uvAnimation.isEnable()) {
             return runtime.uvAnimation.getUVs(this, partialTicks);
         } else {
-            return new Vector4f(0, 0, 1, 1);
+            return dest.set(0, 0, 1, 1);
         }
     }
 

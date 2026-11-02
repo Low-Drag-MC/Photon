@@ -7,6 +7,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.AdditionalGPUDataSett
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.VertexAnimation;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.skin.VertexAnimationBake;
+import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.FacingMode;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.FacingOrientationHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
@@ -69,6 +70,7 @@ public class TileParticleRenderer {
         if (records != null) {
             records.setVertsPerParticle(model == null ? 4 : 4 * primitiveCount(model.mesh()));
         }
+        spaceScaleOf = null;
         for (var particle : particles) {
             if (particle instanceof TileParticle tileParticle && tileParticle.getDelay() <= 0) {
                 renderParticle(buffer, tileParticle, camera, partialTicks, model);
@@ -122,12 +124,12 @@ public class TileParticleRenderer {
                                 float partialTicks, @Nullable ModelPass model) {
         var vec3 = camera.position();
 
-        var localPos = particle.getSimPos(partialTicks).mulPosition(particle.getSpaceTransform());
+        var localPos = particle.getSimPos(partialTicks, particlePos).mulPosition(particle.getSpaceTransform());
         var x = (float) (localPos.x - vec3.x);
         var y = (float) (localPos.y - vec3.y);
         var z = (float) (localPos.z - vec3.z);
 
-        var color = particle.getRealColor(partialTicks);
+        var color = particle.getRealColor(partialTicks, particleColor);
         var r = color.x();
         var g = color.y();
         var b = color.z();
@@ -135,23 +137,23 @@ public class TileParticleRenderer {
 
         var light = particle.getRealLight(partialTicks);
 
-        var rotation = particle.getRealRotation(partialTicks);
+        var rotation = particle.getRealRotation(partialTicks, particleRotation);
         var renderMode = renderer.getRenderMode();
 
-        var size = particle.getRealSize(partialTicks);
+        var size = particle.getRealSize(partialTicks, particleSize);
 
         if (model != null) { // non-null exactly in Model mode; see renderQueue
             // mesh positions are already in centered model space (PhotonMesh convention)
-            var transform = new Matrix4f().translate(x, y, z)
+            var transform = modelTransform.identity().translate(x, y, z)
                     .rotate(computeModelQuaternion(particle, rotation, camera, partialTicks))
-                    .scale(size.mul(particle.getSpaceScale()));
+                    .scale(size.mul(spaceScale(particle)));
             var mesh = model.mesh();
             // ⚠️ A baked pose table is not only the instanced path's business: GPU instancing is off by
             // default, and without this a per-particle-phase model drew its rest pose and never moved.
             int poseBase = poseBaseFor(model.animation(), particle, partialTicks);
             var table = poseBase < 0 ? null : model.table();
             // the normal matrix depends on the particle, not the face — it used to be rebuilt per quad
-            var normalMat = transform.normal(new Matrix3f());
+            var normalMat = transform.normal(modelNormal);
             var indices = mesh.indices();
             int triangle = 0;
             while (triangle < mesh.triangleCount()) {
@@ -179,7 +181,7 @@ public class TileParticleRenderer {
             float finalSizeX = size.x;
             float finalSizeY = size.y;
             float finalSizeZ = size.z;
-            var spaceScale = particle.getSpaceScale();
+            var spaceScale = spaceScale(particle);
 
             if (renderMode == ParticleRendererSetting.Mode.StretchedBillboard) {
                 var frame = computeStretchedFrame(particle, localPos, vec3.x, vec3.y, vec3.z, size, spaceScale);
@@ -192,13 +194,12 @@ public class TileParticleRenderer {
                 quaternion = computeBillboardQuaternion(particle, renderMode, camera, partialTicks, rotation);
             }
 
-            var rawVertexes = new Vector3f[]{
-                    new Vector3f(1.0F, -1.0F, 0.0F),
-                    new Vector3f(1.0F, 1.0F, 0.0F),
-                    new Vector3f(-1.0F, 1.0F, 0.0F),
-                    new Vector3f(-1.0F, -1.0F, 0.0F),
-            };
-            var normal = new Vector3f(0, 0, 1);
+            var rawVertexes = corners;
+            rawVertexes[0].set(1.0F, -1.0F, 0.0F);
+            rawVertexes[1].set(1.0F, 1.0F, 0.0F);
+            rawVertexes[2].set(-1.0F, 1.0F, 0.0F);
+            rawVertexes[3].set(-1.0F, -1.0F, 0.0F);
+            var normal = cornerNormal.set(0, 0, 1);
 
             for (var i = 0; i < 4; ++i) {
                 var vertex = rawVertexes[i];
@@ -210,7 +211,7 @@ public class TileParticleRenderer {
 
             normal = quaternion.transform(normal);
 
-            var uvs = particle.getRealUVs(partialTicks);
+            var uvs = particle.getRealUVs(partialTicks, particleUvs);
             var u0 = uvs.x();
             var v0 = uvs.y();
             var u1 = uvs.z();
@@ -226,6 +227,31 @@ public class TileParticleRenderer {
     /** Scratch; render-thread only, and a large mesh would otherwise allocate two per corner. */
     private final Vector4f meshPos = new Vector4f();
     private final Vector3f meshNormal = new Vector3f();
+    /** Per-particle scratch of both paths, read before the next particle. */
+    private final Vector3f particlePos = new Vector3f();
+    private final Vector3f particleSize = new Vector3f();
+    private final Vector3f particleRotation = new Vector3f();
+    private final Vector4f particleColor = new Vector4f();
+    private final Vector4f particleUvs = new Vector4f();
+    private final Quaternionf billboard = new Quaternionf();
+    private final Quaternionf roll = new Quaternionf();
+    private final Vector3f[] corners = {new Vector3f(), new Vector3f(), new Vector3f(), new Vector3f()};
+    private final Vector3f cornerNormal = new Vector3f();
+    private final Matrix4f modelTransform = new Matrix4f();
+    private final Matrix3f modelNormal = new Matrix3f();
+    /** The simulation space's scale, read once per emitter in a pass: its transform hands out a copy each time. */
+    private final Vector3f spaceScaleCache = new Vector3f();
+    @Nullable
+    private IParticleEmitter spaceScaleOf;
+
+    private Vector3f spaceScale(TileParticle particle) {
+        var emitter = particle.getEmitter();
+        if (emitter != spaceScaleOf) {
+            spaceScaleOf = emitter;
+            spaceScaleCache.set(particle.getSpaceScale());
+        }
+        return spaceScaleCache;
+    }
     /** Scratch for the per-instance model pivot; see {@link #uploadInstances}. */
     private final Vector3f instancePivot = new Vector3f();
     /** The second half of {@link #poseBaseFor}'s answer, read by the {@link #putMeshVertex} calls that
@@ -324,14 +350,15 @@ public class TileParticleRenderer {
         var count = 0;
         var vec3 = camera.position();
         notifyDynamicMesh(); // this frame's draw read from the provider — its cue to keep the allocation
+        spaceScaleOf = null;
         for (var p : particles) {
             if (!(p instanceof TileParticle particle) || particle.getDelay() > 0) continue;
             count++;
-            var localPos = particle.getSimPos(partialTicks).mulPosition(particle.getSpaceTransform());
-            var color = particle.getRealColor(partialTicks);
-            var rotation = particle.getRealRotation(partialTicks);
-            var size = particle.getRealSize(partialTicks);
-            var scale = particle.getSpaceScale();
+            var localPos = particle.getSimPos(partialTicks, particlePos).mulPosition(particle.getSpaceTransform());
+            var color = particle.getRealColor(partialTicks, particleColor);
+            var rotation = particle.getRealRotation(partialTicks, particleRotation);
+            var size = particle.getRealSize(partialTicks, particleSize);
+            var scale = spaceScale(particle);
             var light = particle.getRealLight(partialTicks);
             var quaternion = computeModelQuaternion(particle, rotation, camera, partialTicks);
             float scaleX = scale.x * size.x, scaleY = scale.y * size.y, scaleZ = scale.z * size.z;
@@ -566,20 +593,21 @@ public class TileParticleRenderer {
         }
         var count = 0;
         var vec3 = camera.position();
+        spaceScaleOf = null;
         for (var p : particles) {
             if (!(p instanceof TileParticle particle) || particle.getDelay() > 0) continue;
             count++;
-            var localPos = particle.getSimPos(partialTicks).mulPosition(particle.getSpaceTransform());
+            var localPos = particle.getSimPos(partialTicks, particlePos).mulPosition(particle.getSpaceTransform());
             var x = (float) (localPos.x - vec3.x);
             var y = (float) (localPos.y - vec3.y);
             var z = (float) (localPos.z - vec3.z);
 
-            var color = particle.getRealColor(partialTicks);
-            var rotation = particle.getRealRotation(partialTicks);
-            var size = particle.getRealSize(partialTicks);
-            var scale = particle.getSpaceScale();
+            var color = particle.getRealColor(partialTicks, particleColor);
+            var rotation = particle.getRealRotation(partialTicks, particleRotation);
+            var size = particle.getRealSize(partialTicks, particleSize);
+            var scale = spaceScale(particle);
             var light = particle.getRealLight(partialTicks);
-            var uvs = particle.getRealUVs(partialTicks);
+            var uvs = particle.getRealUVs(partialTicks, particleUvs);
 
             Quaternionf quaternion;
             float finalSizeX = size.x;
@@ -679,11 +707,18 @@ public class TileParticleRenderer {
                 right.x * offsetAmount, right.y * offsetAmount, right.z * offsetAmount);
     }
 
-    private static Quaternionf computeBillboardQuaternion(TileParticle particle, ParticleRendererSetting.Mode renderMode,
-                                                          Camera camera, float partialTicks, Vector3f rotation) {
-        var quaternion = renderMode.quaternion.apply(particle, camera, partialTicks);
+    private Quaternionf computeBillboardQuaternion(TileParticle particle, ParticleRendererSetting.Mode renderMode,
+                                                   Camera camera, float partialTicks, Vector3f rotation) {
+        Quaternionf quaternion;
+        if (renderMode == ParticleRendererSetting.Mode.Billboard
+                && particle.getRuntime().renderer.getFacingMode() == FacingMode.DEFAULT) {
+            // what the mode computes for the default facing, without a dispatch and a boxed float per particle
+            quaternion = camera.rotation();
+        } else {
+            quaternion = renderMode.quaternion.apply(particle, camera, partialTicks);
+        }
         if (!Vector3fHelper.isZero(rotation)) {
-            quaternion = new Quaternionf(quaternion).mul(eulerRotation(rotation));
+            quaternion = billboard.set(quaternion).mul(eulerRotation(roll.identity(), rotation));
         }
         if (renderMode == ParticleRendererSetting.Mode.Horizontal || renderMode == ParticleRendererSetting.Mode.Vertical
                 || renderMode == ParticleRendererSetting.Mode.None) {
@@ -716,7 +751,11 @@ public class TileParticleRenderer {
      * spinning a flat mesh in its own plane.</p>
      */
     public static Quaternionf eulerRotation(Vector3f rotation) {
-        return new Quaternionf().rotateY(rotation.y).rotateX(rotation.x).rotateZ(rotation.z);
+        return eulerRotation(new Quaternionf(), rotation);
+    }
+
+    private static Quaternionf eulerRotation(Quaternionf dest, Vector3f rotation) {
+        return dest.rotateY(rotation.y).rotateX(rotation.x).rotateZ(rotation.z);
     }
 
     /**
