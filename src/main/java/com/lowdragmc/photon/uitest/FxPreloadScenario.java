@@ -36,15 +36,14 @@ import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleRendererSetting;
 import com.lowdragmc.photon.client.shadergraph.runtime.ShaderGraphRuntime;
 import com.lowdragmc.photon.client.render.PhotonParticleGroup;
-import com.lowdragmc.photon.core.mixins.accessor.DeviceCachesAccessor;
-import com.lowdragmc.photon.core.mixins.accessor.GpuDeviceAccessor;
+import com.lowdragmc.photon.core.mixins.accessor.PipelineCacheAccessor;
+import com.lowdragmc.photon.core.mixins.accessor.RenderSystemAccessor;
 import com.lowdragmc.photon.core.mixins.accessor.ParticleEngineAccessor;
 import com.lowdragmc.photon.core.mixins.accessor.TextureManagerAccessor;
 import com.lowdragmc.photon.gui.editor.FXProject;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
@@ -351,11 +350,12 @@ public class FxPreloadScenario implements UIScenario {
         return ((TextureManagerAccessor) ctx.mc().getTextureManager()).photon$byPath();
     }
 
-    /** The Photon pipelines the device has compiled. */
+    /** The Photon pipelines the current pipeline cache has compiled. */
     private static Set<RenderPipeline> compiledPipelines() {
-        var device = (DeviceCachesAccessor) ((GpuDeviceAccessor) RenderSystem.getDevice()).photon$backend();
+        var cache = RenderSystemAccessor.photon$currentPipelineCache();
         var compiled = new HashSet<RenderPipeline>();
-        for (var pipeline : device.photon$pipelineCache().keySet()) {
+        if (cache == null) return compiled;
+        for (var pipeline : ((PipelineCacheAccessor) cache).photon$cache().keySet()) {
             if (Photon.MOD_ID.equals(pipeline.getLocation().getNamespace())) compiled.add(pipeline);
         }
         return compiled;

@@ -1,5 +1,7 @@
 package com.lowdragmc.photon.client.render;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -11,33 +13,62 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Adapts legacy custom shaders to 26.2's Vulkan rules, where inputs and varyings are matched by name and numbered
- * by counting matches:
+ * Adapts custom shaders written for earlier versions to 26.3's rules. 26.3 compiles both stages with shaderc to SPIR-V,
+ * with no automatic location mapping, on OpenGL and Vulkan alike: every vertex input, varying and fragment output needs
+ * an explicit {@code layout(location = N)}, the stages are paired by location (not by name), and includes are
+ * {@code #include} rather than {@code #moj_import}. The adapter:
  * <ul>
- *   <li>explicit-location vertex inputs are fed by name; unprovided ones become GL's default {@code (0, 0, 0, 1)}</li>
- *   <li>fragment inputs no vertex output writes become zero constants</li>
- *   <li>vertex outputs the fragment skipped are declared in it</li>
- *   <li>{@code \} line continuations (GLSL 4.20+) are joined</li>
+ *   <li>turns {@code #moj_import} into {@code #include}, and raises {@code #version} to 330 with
+ *       {@code GL_ARB_separate_shader_objects}, which locations on varyings need there;</li>
+ *   <li>numbers the vertex inputs: they are paired with the vertex format by name, so any distinct locations do,
+ *       after the ones {@code photon:particle.glsl} takes when the stage includes it. An input with an explicit
+ *       location the pipeline does not provide becomes GL's default {@code (0, 0, 0, 1)}; one on a provided tail
+ *       location is fed by name ({@link Result#tailInputs});</li>
+ *   <li>numbers the vertex outputs in declaration order and gives each fragment input the location of the output of
+ *       its name; a fragment input no vertex output writes becomes a zero constant;</li>
+ *   <li>numbers the fragment outputs;</li>
+ *   <li>joins {@code \} line continuations (GLSL 4.20+);</li>
+ *   <li>writes the fragment stage's twin for order-independent transparency ({@link Result#oitFragment}).</li>
  * </ul>
- * Only global-scope declarations in active preprocessor branches are touched.
+ * Only global-scope declarations in active preprocessor branches are touched; declarations inside an include are the
+ * include's to number.
  */
 public final class CustomShaderAdapter {
+
+    /** The input locations {@code photon:particle.glsl} takes at most (its {@code PHOTON_INPUT_LOCATIONS}). */
+    public static final int PARTICLE_INPUT_LOCATIONS = 9;
 
     private CustomShaderAdapter() {
     }
 
     /** @param tailInputs tail location → the vertex input name reading it */
+    /** {@code oitFragment}: the fragment stage for order-independent transparency, null when it can't have one. */
     public record Result(String vertex, String fragment, Map<Integer, String> tailInputs, boolean changed,
-                         List<String> notes) {
+                         List<String> notes, @Nullable String oitFragment) {
     }
 
     private record Declaration(int line, String qualifiers, String storage, String type, String name, String array,
                                int location) {
+        String declare(int location) {
+            return "layout(location = " + location + ") " + qualifiers + storage + " " + type + " " + name + array
+                    + ";";
+        }
     }
 
     private static final Pattern DECLARATION = Pattern.compile(
             "^\\s*(?:layout\\s*\\(([^)]*)\\)\\s*)?((?:(?:flat|smooth|noperspective|centroid)\\s+)*)(in|out)\\s+(\\w+)\\s+(\\w+)\\s*(\\[[^\\]]*\\])?\\s*;\\s*$");
     private static final Pattern LOCATION = Pattern.compile("location\\s*=\\s*(\\d+)");
+    private static final Pattern MOJ_IMPORT = Pattern.compile("^(\\s*)#moj_import(\\s*[<\"])");
+    private static final Pattern VERSION = Pattern.compile("^\\s*#version\\s+(\\d+)(\\s+\\w+)?\\s*$");
+    private static final Pattern PARTICLE_INCLUDE = Pattern.compile("^\\s*#include\\s*<photon:particle\\.glsl>");
+    private static final Pattern GL_VERTEX_ID = Pattern.compile("\\bgl_VertexID\\b");
+    private static final Pattern GL_INSTANCE_ID = Pattern.compile("\\bgl_InstanceID\\b");
+    private static final Pattern ARRAY_SIZE = Pattern.compile("\\[\\s*(\\d+)\\s*\\]");
+    private static final String SEPARATE_SHADER_OBJECTS = "#extension GL_ARB_separate_shader_objects : require";
+    /** Photon's fragment tail for order-independent transparency ({@code PhotonOit}). */
+    static final String OIT_INCLUDE_PATH = "photon:oit.glsl";
+    private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*(?:void)?\\s*\\)");
+    private static final Pattern FRAG_DEPTH = Pattern.compile("\\bgl_FragDepth\\b");
 
     /**
      * @param providedLocations vertex elements before the attribute tail
@@ -45,59 +76,63 @@ public final class CustomShaderAdapter {
      */
     public static Result adapt(String vertexSource, String fragmentSource, int providedLocations,
                                Set<Integer> tailLocations, Set<String> defines) {
+        return adapt(vertexSource, fragmentSource, providedLocations, tailLocations, defines, true);
+    }
+
+    /** {@code oit}: also build the fragment stage's order-independent twin ({@link Result#oitFragment}). */
+    public static Result adapt(String vertexSource, String fragmentSource, int providedLocations,
+                               Set<Integer> tailLocations, Set<String> defines, boolean oit) {
         var notes = new ArrayList<String>();
         var vertexLines = lines(joinContinuations(vertexSource, "vertex", notes));
         var fragmentLines = lines(joinContinuations(fragmentSource, "fragment", notes));
+        header(vertexLines, "vertex", notes);
+        header(fragmentLines, "fragment", notes);
 
-        // ---- vertex inputs
+        // ---- vertex inputs: paired with the vertex format by name, so any distinct locations do
         var tailInputs = new LinkedHashMap<Integer, String>();
-        var vertexDeclarations = declarations(vertexLines, defines);
+        var nextInput = includesParticle(vertexLines) ? PARTICLE_INPUT_LOCATIONS : 0;
         var vertexOutputs = new ArrayList<Declaration>();
-        for (var declaration : vertexDeclarations) {
+        for (var declaration : declarations(vertexLines, defines)) {
             if (declaration.storage().equals("out")) {
                 vertexOutputs.add(declaration);
                 continue;
             }
-            if (declaration.location() < 0) {
-                continue;
-            }
             var location = declaration.location();
-            if (location < providedLocations) {
-                vertexLines.set(declaration.line(), "in " + declaration.type() + " " + declaration.name()
-                        + declaration.array() + ";");
-                notes.add("vertex input " + declaration.name() + ": location qualifier dropped (fed by name)");
-            } else if (tailLocations.contains(location)) {
-                vertexLines.set(declaration.line(), "in " + declaration.type() + " " + declaration.name()
-                        + declaration.array() + ";");
-                tailInputs.put(location, declaration.name());
-                notes.add("vertex input " + declaration.name() + ": reads attribute tail location " + location);
-            } else {
+            if (location >= providedLocations && !tailLocations.contains(location)) {
                 var constant = attributeDefault(declaration.type());
-                if (constant == null || !declaration.array().isEmpty()) {
+                if (constant != null && declaration.array().isEmpty()) {
+                    vertexLines.set(declaration.line(),
+                            declaration.type() + " " + declaration.name() + " = " + constant + ";");
+                    notes.add("vertex input " + declaration.name() + " (location " + location
+                            + ") is not provided here: constant " + constant);
                     continue;
                 }
-                vertexLines.set(declaration.line(), declaration.type() + " " + declaration.name() + " = " + constant + ";");
-                notes.add("vertex input " + declaration.name() + " (location " + location
-                        + ") is not provided here: constant " + constant);
             }
+            if (location >= providedLocations) {
+                tailInputs.put(location, declaration.name());
+                notes.add("vertex input " + declaration.name() + ": reads attribute tail location " + location);
+            }
+            nextInput = renumber(vertexLines, declaration, nextInput, "vertex input", notes);
         }
 
-        // ---- fragment inputs against the vertex outputs
-        var outputsByName = new LinkedHashMap<String, Declaration>();
+        // ---- vertex outputs in declaration order, the fragment inputs at the location of the output of their name
+        var outputsByName = new LinkedHashMap<String, Integer>();
+        var nextVarying = 0;
         for (var output : vertexOutputs) {
-            outputsByName.put(output.name(), output);
+            outputsByName.put(output.name(), nextVarying);
+            nextVarying = renumber(vertexLines, output, nextVarying, "vertex output", notes);
         }
-        var fragmentInputs = new HashSet<String>();
+        var nextOutput = 0;
+        var fragmentOutputs = new ArrayList<Declaration>();
         for (var declaration : declarations(fragmentLines, defines)) {
-            if (!declaration.storage().equals("in")) {
+            if (declaration.storage().equals("out")) {
+                fragmentOutputs.add(declaration);
+                nextOutput = renumber(fragmentLines, declaration, nextOutput, "fragment output", notes);
                 continue;
             }
-            if (outputsByName.containsKey(declaration.name())) {
-                fragmentInputs.add(declaration.name());
-                if (declaration.location() >= 0) {
-                    fragmentLines.set(declaration.line(), declaration.qualifiers() + "in " + declaration.type() + " "
-                            + declaration.name() + declaration.array() + ";");
-                }
+            var location = outputsByName.get(declaration.name());
+            if (location != null) {
+                renumber(fragmentLines, declaration, location, "fragment input", notes);
                 continue;
             }
             var zero = zero(declaration.type());
@@ -107,20 +142,166 @@ public final class CustomShaderAdapter {
             fragmentLines.set(declaration.line(), declaration.type() + " " + declaration.name() + " = " + zero + ";");
             notes.add("fragment input " + declaration.name() + " is written by no vertex output: constant " + zero);
         }
-        var missing = new ArrayList<String>();
-        for (var output : vertexOutputs) {
-            if (!fragmentInputs.contains(output.name())) {
-                missing.add(output.qualifiers() + "in " + output.type() + " " + output.name() + output.array() + ";");
-                notes.add("fragment stage declares vertex output " + output.name() + " it did not read");
-            }
-        }
-        if (!missing.isEmpty()) {
-            fragmentLines.addAll(insertionPoint(fragmentLines), missing);
-        }
+        var oitFragment = oit ? wrapForOit(fragmentLines, fragmentOutputs) : null;
 
         var vertex = String.join("\n", vertexLines);
         var fragment = String.join("\n", fragmentLines);
-        return new Result(vertex, fragment, Map.copyOf(tailInputs), !notes.isEmpty(), List.copyOf(notes));
+        return new Result(vertex, fragment, Map.copyOf(tailInputs), !notes.isEmpty(), List.copyOf(notes), oitFragment);
+    }
+
+    /**
+     * The fragment stage written through Photon's OIT tail ({@code photon:oit.glsl}): its one {@code vec4} output a
+     * plain variable, {@code main} renamed, and a new {@code main} handing the variable to {@code photon_write}. Null
+     * for anything else (several outputs, a depth write, a shader that handles OIT itself); a twin that doesn't compile
+     * only keeps its material out of the OIT passes.
+     */
+    @Nullable
+    private static String wrapForOit(List<String> source, List<Declaration> outputs) {
+        if (outputs.size() != 1) {
+            return null;
+        }
+        var output = outputs.getFirst();
+        if (!output.type().equals("vec4") || !output.array().isEmpty()) {
+            return null;
+        }
+        var code = stripComments(source);
+        var text = String.join("\n", code);
+        if (text.contains("executeAlphaOnlyPhase") || text.contains(OIT_INCLUDE_PATH) || text.contains("photon_write")
+                || FRAG_DEPTH.matcher(text).find()) {
+            return null;
+        }
+        var mainLine = -1;
+        for (int i = 0; i < code.size(); i++) {
+            if (MAIN.matcher(code.get(i)).find()) {
+                if (mainLine >= 0) {
+                    return null; // a prototype as well as the definition
+                }
+                mainLine = i;
+            }
+        }
+        if (mainLine < 0) {
+            return null;
+        }
+        var lines = new ArrayList<>(source);
+        // renamed: vanilla's depth-bounds phase declares an output called fragColor of its own
+        var variable = "photon_custom_" + output.name();
+        var uses = Pattern.compile("\\b" + Pattern.quote(output.name()) + "\\b");
+        lines.set(mainLine, MAIN.matcher(code.get(mainLine)).replaceFirst("void photon_custom_main()"));
+        lines.set(output.line(), "vec4 " + variable + ";");
+        for (int i = 0; i < lines.size(); i++) {
+            lines.set(i, uses.matcher(lines.get(i)).replaceAll(Matcher.quoteReplacement(variable)));
+        }
+        lines.add(headerEnd(lines, code), "#include <" + OIT_INCLUDE_PATH + ">");
+        lines.add("");
+        lines.add("void main() {");
+        lines.add("    photon_custom_main();");
+        lines.add("    photon_write(" + variable + ");");
+        lines.add("}");
+        return String.join("\n", lines);
+    }
+
+    /** The line after {@code #version} and the {@code #extension}s that follow it. */
+    private static int headerEnd(List<String> lines, List<String> code) {
+        for (int i = 0; i < lines.size(); i++) {
+            if (!VERSION.matcher(lines.get(i)).matches()) {
+                continue;
+            }
+            var end = i + 1;
+            for (int j = i + 1; j < code.size(); j++) {
+                var line = code.get(j).trim();
+                if (line.startsWith("#extension")) {
+                    end = j + 1;
+                } else if (!line.isEmpty()) {
+                    break;
+                }
+            }
+            return end;
+        }
+        return 0;
+    }
+
+    /** Give {@code declaration} {@code location} unless it has it already; returns the location after it. */
+    private static int renumber(List<String> lines, Declaration declaration, int location, String what,
+                                List<String> notes) {
+        if (declaration.location() != location) {
+            lines.set(declaration.line(), declaration.declare(location));
+            notes.add(what + " " + declaration.name() + ": location " + location);
+        }
+        return location + locations(declaration.type(), declaration.array());
+    }
+
+    /** Interface locations a declaration takes: a matrix one per column, an array one per element. */
+    static int locations(String type, String array) {
+        var columns = switch (type) {
+            case "mat2", "dmat2" -> 2;
+            case "mat3", "dmat3" -> 3;
+            case "mat4", "dmat4" -> 4;
+            default -> 1;
+        };
+        if (array.isEmpty()) {
+            return columns;
+        }
+        var m = ARRAY_SIZE.matcher(array);
+        return m.find() ? columns * Integer.parseInt(m.group(1)) : columns;
+    }
+
+    /** {@code #moj_import} → {@code #include}; {@code #version} to at least 330, with separate shader objects. */
+    private static void header(List<String> lines, String stage, List<String> notes) {
+        var imports = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            var m = MOJ_IMPORT.matcher(lines.get(i));
+            if (m.find()) {
+                lines.set(i, m.replaceFirst("$1#include$2"));
+                imports++;
+            }
+        }
+        if (imports > 0) {
+            notes.add(stage + " stage: #moj_import became #include");
+        }
+        // every stage compiles as Vulkan GLSL, which names these gl_VertexIndex/gl_InstanceIndex; Photon's draws start
+        // at instance 0, so the instance one means the same, and both count the base vertex alike
+        var builtins = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            var line = lines.get(i);
+            var replaced = GL_VERTEX_ID.matcher(line).replaceAll("gl_VertexIndex");
+            replaced = GL_INSTANCE_ID.matcher(replaced).replaceAll("gl_InstanceIndex");
+            if (!replaced.equals(line)) {
+                lines.set(i, replaced);
+                builtins++;
+            }
+        }
+        if (builtins > 0) {
+            notes.add(stage + " stage: gl_VertexID/gl_InstanceID became gl_VertexIndex/gl_InstanceIndex");
+        }
+        var hasExtension = lines.stream().anyMatch(line -> line.contains("GL_ARB_separate_shader_objects"));
+        for (int i = 0; i < lines.size(); i++) {
+            var m = VERSION.matcher(lines.get(i));
+            if (!m.matches()) {
+                continue;
+            }
+            if (Integer.parseInt(m.group(1)) < 330) {
+                lines.set(i, "#version 330");
+                notes.add(stage + " stage: #version " + m.group(1) + " raised to 330");
+            }
+            if (!hasExtension) {
+                lines.add(i + 1, SEPARATE_SHADER_OBJECTS);
+                notes.add(stage + " stage: requires GL_ARB_separate_shader_objects");
+            }
+            return;
+        }
+    }
+
+    /**
+     * Whether the stage includes {@code photon:particle.glsl}, whose inputs take the first locations. Counted wherever
+     * the include sits: reserving its locations when a branch leaves it out costs nothing.
+     */
+    private static boolean includesParticle(List<String> lines) {
+        for (var line : stripComments(lines)) {
+            if (PARTICLE_INCLUDE.matcher(line).find()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ---- sources ---------------------------------------------------------------------------------------------
@@ -136,22 +317,6 @@ public final class CustomShaderAdapter {
 
     private static List<String> lines(String source) {
         return new ArrayList<>(List.of(source.split("\n", -1)));
-    }
-
-    /** After the {@code #version} line and any {@code #extension} lines right behind it. */
-    private static int insertionPoint(List<String> lines) {
-        var index = 0;
-        for (int i = 0; i < lines.size(); i++) {
-            var trimmed = lines.get(i).trim();
-            if (trimmed.startsWith("#version")) {
-                index = i + 1;
-                while (index < lines.size() && lines.get(index).trim().startsWith("#extension")) {
-                    index++;
-                }
-                return index;
-            }
-        }
-        return index;
     }
 
     // ---- declarations ------------------------------------------------------------------------------------------

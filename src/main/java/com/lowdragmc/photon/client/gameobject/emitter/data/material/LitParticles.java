@@ -41,8 +41,8 @@ public class LitParticles extends ToggleGroup {
         return JSON_SAMPLERS.contains(name) || JSON_UNIFORMS.contains(name);
     }
 
-    /** Whether generated or hand-written GLSL pulls the lights in. */
+    /** Whether generated or hand-written GLSL pulls the lights in ({@code #moj_import}: a shader written before 26.3). */
     public static boolean includedBy(String glsl) {
-        return glsl.contains("#moj_import <" + INCLUDE + ">");
+        return glsl.contains("#include <" + INCLUDE + ">") || glsl.contains("#moj_import <" + INCLUDE + ">");
     }
 }

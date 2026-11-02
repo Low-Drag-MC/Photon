@@ -27,13 +27,16 @@ public class PostFxFullscreenScenario implements UIScenario {
 
     @Override
     public void define(ScenarioBuilder s) {
-        // nothing may move between the shots, and the GUI is not post-processed
+        // nothing may move between the shots - sections rebuilt by an earlier scenario fade in for 0.75 s - and
+        // the GUI is not post-processed
         s.server("no animals", sc -> NoMobs.claim(sc.player()))
                 .step("a still frame", ctx -> {
                     LightTestConfig.set(ctx.mc().options.cloudStatus(), CloudStatus.OFF);
                     LightTestConfig.set(ctx.mc().options.bobView(), false);
+                    LightTestConfig.set(ctx.mc().options.chunkSectionFadeInTime(), 0.0);
                     HiddenGui.hide(ctx.mc());
                 })
+                .waitUntil("sections compiled", ctx -> ctx.mc().levelRenderer.hasRenderedAllSections())
                 .frames(20)
                 .screenshot("plain")
                 .step("invert", ctx -> PhotonPostFX.setTestEffect(PhotonPostFX.parsePath("invert"), 1f))

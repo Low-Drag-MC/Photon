@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.particle;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialRequirements;
 import com.google.common.collect.Queues;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
@@ -59,8 +59,8 @@ import com.lowdragmc.photon.client.light.DynamicLightManager;
 import com.lowdragmc.photon.client.light.LightProvider;
 import com.lowdragmc.photon.client.light.LightSink;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.PoseStack;
 import lombok.Getter;

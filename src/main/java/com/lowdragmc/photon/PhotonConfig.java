@@ -42,6 +42,8 @@ public class PhotonConfig {
      *  clouds from painting over FX and water from slicing them; {@code VANILLA} is the pre-2.2.2
      *  behaviour, kept as an escape hatch. Individual emitters may override it. */
     public final ModConfigSpec.ConfigValue<FXCompositeMode> fxCompositeMode;
+    /** Translucent FX join Minecraft's improved (order-independent) transparency while it is on (PhotonOit). */
+    public final ModConfigSpec.ConfigValue<Boolean> orderIndependentTransparency;
     /** Master switch for the custom post-processing chain (requests are dropped when off). */
     public final ModConfigSpec.ConfigValue<Boolean> enableCustomEffects;
     /** The custom effect chain under a shader pack. Deliberately a NEW key rather than a new default
@@ -94,6 +96,7 @@ public class PhotonConfig {
         // INHERIT is deliberately not an acceptable value here: it only means something per emitter.
         fxCompositeMode = builder.defineEnum("fx_composite_mode", FXCompositeMode.LATE,
                 FXCompositeMode.VANILLA, FXCompositeMode.LATE);
+        orderIndependentTransparency = builder.define("order_independent_transparency", true);
 
         enableCustomEffects = builder.define("enable_custom_effects", true);
         enableCustomEffectsWithShaderPack = builder.define("enable_custom_effects_with_shader_pack", true);

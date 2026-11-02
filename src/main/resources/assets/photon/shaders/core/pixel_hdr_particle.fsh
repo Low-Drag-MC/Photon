@@ -1,9 +1,10 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <fog.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
-#moj_import <photon:soft_particle.glsl>
-#moj_import <photon:lit_particle.glsl>
+#include <fog.glsl>
+#include <minecraft:dynamictransforms.glsl>
+#include <photon:soft_particle.glsl>
+#include <photon:lit_particle.glsl>
 
 uniform sampler2D Sampler0;
 
@@ -17,14 +18,14 @@ layout(std140) uniform PhotonMaterial {
     vec4 SoftParticleParams; // distance, power, alphaOnly, enabled
 };
 
-in float sphericalVertexDistance;
-in float cylindricalVertexDistance;
-in vec2 texCoord0;
-in vec4 vertexColor;
-in vec3 photonViewPos;
-in vec3 photonBaseColor;
+layout(location = 0) in float sphericalVertexDistance;
+layout(location = 1) in float cylindricalVertexDistance;
+layout(location = 2) in vec2 texCoord0;
+layout(location = 3) in vec4 vertexColor;
+layout(location = 4) in vec3 photonViewPos;
+layout(location = 5) in vec3 photonBaseColor;
 
-out vec4 fragColor;
+#include <photon:oit.glsl>
 
 void main() {
     float bits = max(Bits, 1.0);
@@ -34,11 +35,14 @@ void main() {
     if (color.a < DiscardThreshold) {
         discard;
     }
+#ifndef OIT_ALPHA_ONLY
+    // colour only: the alpha-only OIT phases skip the lights' cluster walk
     color.rgb += texel.rgb * photonBaseColor * ColorModulator.rgb * (LitIntensity * photon_particle_light(photonViewPos));
+#endif
     if (HDRMode == 0) {
         color.rgb += HDR.rgb;
     } else {
         color.rgb *= HDR.rgb;
     }
-    fragColor = photon_soft_particle(apply_fog(color, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, FogColor), SoftParticleParams);
+    photon_write(photon_soft_particle(apply_fog(color, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, FogColor), SoftParticleParams));
 }

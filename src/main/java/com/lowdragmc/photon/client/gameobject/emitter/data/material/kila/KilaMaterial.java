@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material.kila;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.lowdraglib2.configurator.ui.Configurator;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
@@ -30,9 +30,9 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.material.TextureMater
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonRenderTypes;
 import com.lowdragmc.photon.client.render.StackedDistortion;
-import com.mojang.blaze3d.systems.RenderPass;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import dev.vfyjxf.taffy.style.AlignItems;
 import dev.vfyjxf.taffy.style.TaffyPosition;
 import net.minecraft.client.Minecraft;
@@ -482,7 +482,7 @@ public class KilaMaterial extends ShaderInstanceMaterial {
             var slice = values.slice();
             if (slice != null) pass.setUniform(KilaBlock.NAME, slice);
             for (int i = 0; i < views.length; i++) {
-                if (views[i] != null) pass.bindTexture(layout.textures.get(i).name(), views[i], samplers[i]);
+                if (views[i] != null) pass.setUniform(layout.textures.get(i).name(), views[i], samplers[i]);
             }
         }
     }

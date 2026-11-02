@@ -10,20 +10,21 @@ import com.lowdragmc.photon.client.postfx.runtime.MaskGroups;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
 import com.lowdragmc.photon.client.postfx.runtime.RenderGraphExecutor;
 import com.lowdragmc.photon.client.postfx.runtime.SceneBlit;
-import com.mojang.blaze3d.IndexType;
-import com.mojang.blaze3d.PrimitiveTopology;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.pipeline.IndexType;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.ScissorState;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.oit.OitStage;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureManager;
@@ -37,8 +38,10 @@ import org.lwjgl.system.MemoryUtil;
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -46,6 +49,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * The draw engine behind {@link PhotonFeatureRenderer}. {@link Frame#prepare()} bakes, sorts, uploads and resolves
@@ -90,12 +94,13 @@ public final class PhotonWorldRenderState {
      * A CPU-baked mesh, consumed by {@link Frame#prepare()}. {@code backFacesFirst}: draw the back faces, then the
      * front ones, so a closed transparent mesh sorts itself ({@code MaterialSetting.isBackFacesFirst}); such a job
      * never merges into a shared run, where overlapping shells would interleave. {@code records}: the per-particle
-     * records it reads, which also keep it out of a run.
+     * records it reads, which also keep it out of a run. {@code oit}: its emitter lets it join the OIT passes
+     * ({@code RendererSetting.orderIndependentTransparency}).
      */
     public record Job(RenderType renderType, MeshData mesh, ByteBufferBuilder buffer,
                       PhotonStage stage, int orderInLayer, float distanceSq,
                       @Nullable MaskWrite mask, boolean backFacesFirst,
-                      @Nullable CpuRecords records) implements DrawJob {
+                      @Nullable CpuRecords records, boolean oit) implements DrawJob {
     }
 
     /**
@@ -115,7 +120,7 @@ public final class PhotonWorldRenderState {
                                Vector3f positionOffset,
                                PhotonStage stage, int orderInLayer, float distanceSq,
                                PhotonPipelines.InstancedGeometryKey geometryKey,
-                               @Nullable MaskWrite mask, boolean backFacesFirst) implements DrawJob {
+                               @Nullable MaskWrite mask, boolean backFacesFirst, boolean oit) implements DrawJob {
     }
 
     /**
@@ -251,11 +256,12 @@ public final class PhotonWorldRenderState {
         CLOSE_AT_FRAME_END.clear();
         StackedDistortion.endFrame();
         PhotonVatUniforms.endFrame();
-        PhotonPipelineReleases.endFrame();
         DynamicLightRenderer.endFrame();
         PhotonTexelPool.endFrame();
         PhotonBloom.endFrame();
         PhotonFXLayer.endFrame();
+        PhotonOit.endFrame();
+        OpaqueDepthCapture.endFrame();
         // a frame that never reached AfterLevel must not composite its layer twice
         PhotonDeferredLayer.discardPending();
         PhotonDrawTarget.endFrame();
@@ -270,7 +276,7 @@ public final class PhotonWorldRenderState {
     /**
      * A fully resolved draw call. {@code instances} null = CPU geometry on binding 0 alone. {@code backFacesFirst}
      * draws twice, through {@code reversedIndices} (or the reversed sequential indices) first. {@code cpuData}: the
-     * records block of a CPU-records draw.
+     * records block of a CPU-records draw. {@code oit}: its emitter lets it join the OIT passes.
      */
     private record Draw(RenderPipeline pipeline, GpuBufferSlice transforms,
                         @Nullable GpuBufferSlice material, @Nullable GpuBufferSlice custom,
@@ -283,7 +289,7 @@ public final class PhotonWorldRenderState {
                         @Nullable GpuBufferSlice cpuData,
                         @Nullable GpuBuffer indices, IndexType indexType, PrimitiveTopology sequentialTopology,
                         int indexCount, int instanceCount, int baseVertex,
-                        boolean backFacesFirst, @Nullable GpuBuffer reversedIndices) {
+                        boolean backFacesFirst, @Nullable GpuBuffer reversedIndices, boolean oit) {
 
         int vertexBindings() {
             return instances == null ? 1 : 2;
@@ -335,8 +341,21 @@ public final class PhotonWorldRenderState {
         private boolean prepared;
         private final EnumMap<PhotonStage, Stage> inline = new EnumMap<>(PhotonStage.class);
         private final Stage layer = new Stage();
-        /** Under a shader pack every translucent draw goes into the layer. */
+        /** Under a shader pack every draw goes into the layer. */
         private boolean packLayer;
+        /** A stage before the last drew into the layer (under a shader pack). */
+        private boolean drewIntoLayer;
+        /** Under improved transparency: the translucent draws that join the OIT passes ({@link PhotonOit}). */
+        private final Stage oit = new Stage();
+        /** What the OIT draws bind, made before the OIT passes open ({@link #prepareOit}). */
+        @Nullable
+        private Indices oitIndices;
+        @Nullable
+        private GpuTextureView oitSceneDepth;
+        @Nullable
+        private GpuTextureView oitLegacyDepth;
+        /** The accumulation drew them this frame; if it never did, the last stage draws them the classic way. */
+        private boolean oitDrawn;
 
         Frame(List<PhotonBakeTask> tasks, PhotonViewSettings settings) {
             this.tasks = tasks;
@@ -384,12 +403,9 @@ public final class PhotonWorldRenderState {
                 deferred.addAll(translucent);
                 translucent.clear();
             }
-            // LATE tests against the opaque depth snapshot, taken later this frame; a pack uses the live depth
-            if (!deferred.isEmpty() && !packLayer && !IrisCompat.isUsingShaderPack()) {
-                OpaqueDepthCapture.demand();
-            }
             inline.put(PhotonStage.AFTER_OPAQUE_FEATURES, resolve(opaque));
-            inline.put(PhotonStage.AFTER_TRANSLUCENT_PARTICLES, resolve(translucent));
+            var translucentStage = resolve(translucent);
+            inline.put(PhotonStage.AFTER_TRANSLUCENT_PARTICLES, translucentStage);
             var resolvedLayer = resolve(deferred);
             layer.draws.addAll(resolvedLayer.draws);
             layer.maskDraws.addAll(resolvedLayer.maskDraws);
@@ -398,6 +414,114 @@ public final class PhotonWorldRenderState {
             layer.needsSceneColor = resolvedLayer.needsSceneColor;
             layer.needsSceneDepth = resolvedLayer.needsSceneDepth;
             layer.needsLegacyDepth = resolvedLayer.needsLegacyDepth;
+            if (!packLayer && PhotonFrameSeams.isPreparingWorld() && PhotonOit.active()) {
+                // both modes: what LATE holds its layer back for (water slicing an effect, clouds over it) is what
+                // the OIT resolve gets right; the variant replaces the layer's premultiplied blend
+                claimOit(translucentStage);
+                claimOit(layer);
+            }
+            // LATE tests against the opaque depth snapshot, taken later this frame; a pack uses the live depth
+            if (!layer.isEmpty() && !packLayer && !IrisCompat.isUsingShaderPack()) {
+                OpaqueDepthCapture.demand();
+            }
+            // vanilla grows the shared index buffers once after every prepare; a later growth closes them under draws
+            for (var stage : List.of(inline.get(PhotonStage.AFTER_OPAQUE_FEATURES), translucentStage, layer, oit)) {
+                stage.sequentialIndexCounts.forEach((topology, count) ->
+                        RenderSystem.getSequentialBuffer(topology).requestIndexCount(count));
+            }
+        }
+
+        /** Moves what of {@code from} can join the OIT passes into {@link #oit}, mask draws with their geometry. */
+        private void claimOit(Stage from) {
+            if (from.isEmpty()) {
+                return;
+            }
+            var moved = Collections.newSetFromMap(new IdentityHashMap<Draw, Boolean>());
+            var kept = new ArrayList<Draw>();
+            for (var draw : from.draws) {
+                if (joinsOit(draw)) {
+                    oit.draws.add(draw);
+                    moved.add(draw);
+                } else {
+                    kept.add(draw);
+                }
+            }
+            if (moved.isEmpty()) {
+                return;
+            }
+            from.draws.clear();
+            from.draws.addAll(kept);
+            var keptMasks = new ArrayList<MaskDraw>();
+            for (var mask : from.maskDraws) {
+                (moved.contains(mask.geometry()) ? oit.maskDraws : keptMasks).add(mask);
+            }
+            from.maskDraws.clear();
+            from.maskDraws.addAll(keptMasks);
+            recount(from);
+            recount(oit);
+        }
+
+        /**
+         * At the after-opaque seam, before the OIT passes (inside which nothing can be made): the OIT draws' indices,
+         * the opaque depth their soft fades read, the lights' bindings and their mask.
+         */
+        public void prepareOit() {
+            if (oit.isEmpty() || oitIndices != null) {
+                return;
+            }
+            oitIndices = Indices.of(oit);
+            if (oit.needsSceneDepth) {
+                var depth = PhotonRenderOutput.depth();
+                var capture = depth == null ? null : PhotonSceneCapture.captureDepth(depth);
+                oitSceneDepth = capture != null ? capture : PhotonSceneCapture.standInDepth();
+                if (oit.needsLegacyDepth) {
+                    oitLegacyDepth = capture != null ? PhotonSceneCapture.legacyDepth(capture)
+                            : PhotonSceneCapture.legacyStandInDepth();
+                }
+            }
+            DynamicLightRenderer.ensureBindings();
+            // against the opaque depth: past the composite their own nearest depth would z-fight the redraw
+            writeMask(oit, settings.effects() ? settings.postEffects() : null);
+        }
+
+        /** The OIT draws into vanilla's pass for {@code stage}, which holds the OIT targets and default uniforms. */
+        public void executeOit(OitStage stage, RenderPass pass) {
+            if (oit.isEmpty() || oitIndices == null) {
+                return;
+            }
+            // light adds nothing to the transmittance (vanilla's shader discards every such fragment there): not drawn
+            var skipLight = stage == OitStage.TRANSMITTANCE;
+            var recorded = recordInto(pass, oit.draws, oitIndices,
+                    draw -> skipLight && PhotonOit.addsLight(draw.pipeline()) ? null
+                            : PhotonOit.variant(draw.pipeline(), stage),
+                    null, oitSceneDepth, oitLegacyDepth, stage == OitStage.ACCUMULATE, true);
+            // hand the pass back as it came: what draws after us has no instance stream
+            pass.setVertexBuffer(1, null);
+            if (stage == OitStage.ACCUMULATE && recorded > 0) {
+                oitDrawn = true;
+                PhotonOit.noteDrawn(PhotonConfig.INSTANCE.enableBloom.get() && settings.bloom(), recorded);
+            }
+        }
+
+        /**
+         * Whether {@link #execute}{@code (stage)} would do anything: draw, merge the layer, run the chain or light a
+         * scene. Asked by a seam before it splits a pass for the frame; prepares the frame first if it has not been.
+         */
+        public boolean hasWork(PhotonStage stage) {
+            prepare();
+            var inlineStage = inline.get(stage);
+            if (inlineStage != null && !inlineStage.isEmpty()) {
+                return true;
+            }
+            if (settings.lights() != null) {
+                return true;
+            }
+            if (stage != PhotonStage.LAST) {
+                return false;
+            }
+            var stack = settings.effects() ? settings.postEffects() : null;
+            // an earlier stage that drew into the layer (under a shader pack) leaves its merge to the last one
+            return drewIntoLayer || !layer.isEmpty() || !oit.isEmpty() || stack != null && stack.wantsExecution();
         }
 
         /** The last stage also draws and merges the layer and runs the post-effect chain, even with no jobs. */
@@ -412,10 +536,20 @@ public final class PhotonWorldRenderState {
                 var bloom = PhotonConfig.INSTANCE.enableBloom.get() && settings.bloom();
                 var chainStack = settings.effects() ? settings.postEffects() : null;
                 var inlineStage = inline.get(stage);
-                // with a layer, the chain runs after the layer composite instead (PhotonPostFX)
-                var runChainHere = last && layer.isEmpty();
+                // with a layer, the chain runs after the layer composite instead (PhotonPostFX) — also when only an
+                // earlier stage drew into it
+                var runChainHere = last && layer.isEmpty() && !drewIntoLayer;
+                if (last && !oit.isEmpty() && !oitDrawn) {
+                    // the OIT passes never drew them (the frame went classic after all): in place, as ever
+                    drain(oit, bloom, chainStack, false, false, false);
+                }
                 if (inlineStage != null) {
-                    drain(inlineStage, bloom, chainStack, runChainHere, false, false);
+                    // under a shader pack whatever lands on the main target is overwritten by the pack: earlier stages
+                    // draw into the FX layer too, merged and bloomed with the last one
+                    var intoLayer = packLayer && !last;
+                    drain(inlineStage, bloom && !intoLayer, intoLayer ? null : chainStack, runChainHere && !intoLayer,
+                            intoLayer, false);
+                    drewIntoLayer |= intoLayer && !inlineStage.isEmpty();
                 }
                 if (settings.lights() != null && stage == PhotonStage.AFTER_OPAQUE_FEATURES) {
                     // as in the world: the opaque FX are lit with the blocks
@@ -423,6 +557,10 @@ public final class PhotonWorldRenderState {
                 }
                 if (last) {
                     drain(layer, bloom, chainStack, false, true, !packLayer);
+                    if (bloom && drewIntoLayer && layer.isEmpty()) {
+                        // only an earlier stage drew into the layer: its drain left the bloom to this one
+                        bloomLayer(outputSize());
+                    }
                     // inside the level render: Iris consumes its colortex at the end of renderLevel
                     finishLayer(outputSize());
                     if (settings.lights() != null) {
@@ -435,6 +573,54 @@ public final class PhotonWorldRenderState {
                     PhotonGlobals.restore();
                 }
             }
+        }
+    }
+
+    /** Whether {@code draw} joins the OIT passes: its emitter lets it, it has variants, and it reads no scene colour. */
+    private static boolean joinsOit(Draw draw) {
+        if (!draw.oit()) {
+            return false;
+        }
+        for (var name : draw.sceneSamplers()) {
+            // a distortion bends what lies behind it, and in an OIT phase nothing translucent is behind it yet
+            if (!name.contains("Depth")) {
+                return false;
+            }
+        }
+        return PhotonOit.set(draw.pipeline()) != null;
+    }
+
+    /** {@code stage}'s index counts and scene needs, again from what it now holds. */
+    private static void recount(Stage stage) {
+        stage.sequentialIndexCounts.clear();
+        stage.reversedIndexCounts.clear();
+        stage.needsSceneColor = false;
+        stage.needsSceneDepth = false;
+        stage.needsLegacyDepth = false;
+        for (var draw : stage.draws) {
+            if (draw.indices() == null) {
+                needSequential(stage, draw.sequentialTopology(), draw.indexCount(), draw.backFacesFirst());
+            }
+            noteSceneSamplers(stage, draw.pipeline(), draw.sceneSamplers(), draw.legacyDepth());
+        }
+        for (var mask : stage.maskDraws) {
+            var geometry = mask.geometry();
+            if (geometry.indices() == null) {
+                needSequential(stage, geometry.sequentialTopology(), geometry.indexCount(), geometry.backFacesFirst());
+            }
+        }
+    }
+
+    /** {@code stage}'s mask draws into this frame's CustomMask, when a pending effect reads it. No pass open. */
+    private static void writeMask(Stage stage, @Nullable PostEffectStack maskStack) {
+        var outputColor = PhotonRenderOutput.color();
+        var depthTexture = PhotonRenderOutput.depth();
+        if (stage.maskDraws.isEmpty() || outputColor == null || depthTexture == null) {
+            return;
+        }
+        var scissor = PhotonRenderOutput.scissor(outputColor.getWidth(0), outputColor.getHeight(0));
+        if (!PhotonRenderOutput.isEmpty(scissor)) {
+            maskSubPass(stage, maskStack, outputColor, depthTexture, scissor);
         }
     }
 
@@ -475,6 +661,7 @@ public final class PhotonWorldRenderState {
                     && !next.backFacesFirst() && next.records() == null
                     && next.renderType() == job.renderType()
                     && Objects.equals(next.mask(), job.mask())
+                    && next.oit() == job.oit()
                     && !mode.connectedPrimitives) {
                 i++;
                 vertexCount += next.mesh().drawState().vertexCount();
@@ -573,7 +760,7 @@ public final class PhotonWorldRenderState {
                 null, null,
                 records == null ? null : cpuDataBlock(records.vertsPerParticle(), baseVertex),
                 null, IndexType.INT, mode, indexCount, 1, baseVertex,
-                job.backFacesFirst(), null);
+                job.backFacesFirst(), null, job.oit());
         needSequential(stage, mode, indexCount, job.backFacesFirst());
         noteSceneSamplers(stage, pipeline, info.bindings().sceneSamplers(), info.bindings().legacyDepth());
         stage.draws.add(draw);
@@ -603,7 +790,7 @@ public final class PhotonWorldRenderState {
                 geometry.points(), geometry.data(), geometry.customData(), geometry.vat(), geometry.vatInfo(),
                 null, ownIndices, IndexType.INT, PrimitiveTopology.QUADS,
                 geometry.indexCount(), geometry.instanceCount(), 0,
-                job.backFacesFirst(), geometry.reversedIndices());
+                job.backFacesFirst(), geometry.reversedIndices(), job.oit());
         if (ownIndices == null) {
             needSequential(stage, PrimitiveTopology.QUADS, geometry.indexCount(), job.backFacesFirst());
         }
@@ -756,11 +943,6 @@ public final class PhotonWorldRenderState {
                                     @Nullable GpuTextureView sceneDepth, @Nullable GpuTextureView legacyDepth,
                                     StackedDistortion.Accumulator distortions) {
         var indices = Indices.of(stage);
-        var lightmap = Minecraft.getInstance().gameRenderer.lightmap();
-        var lightmapSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
-        var engine = PhotonEngineUniforms.currentSlice();
-        var legacyEngine = PhotonEngineUniforms.legacySlice();
-        var captureSampler = PhotonSceneCapture.sampler();
 
         var index = 0;
         while (index < stage.draws.size()) {
@@ -779,54 +961,84 @@ public final class PhotonWorldRenderState {
                     pass.enableScissor(scissor.x(), scissor.y(), scissor.width(), scissor.height());
                 }
                 RenderSystem.bindDefaultUniforms(pass);
-                while (index < stage.draws.size() && stage.draws.get(index).sharesPass(first)) {
-                    var draw = stage.draws.get(index++);
-                    if (drawObserver != null) {
-                        drawObserver.accept(draw.pipeline(), draw.cpuData() != null);
-                    }
-                    pass.setPipeline(draw.pipeline());
-                    pass.setUniform("DynamicTransforms", draw.transforms());
-                    if (draw.material() != null) {
-                        pass.setUniform(PhotonMaterialUniforms.UBO_NAME, draw.material());
-                    }
-                    // legacy shaders get the inverse projection matching their legacy depth
-                    var drawEngine = draw.legacyDepth() ? legacyEngine : engine;
-                    if (drawEngine != null) {
-                        pass.setUniform(PhotonEngineUniforms.UBO_NAME, drawEngine);
-                    }
-                    if (draw.custom() != null) {
-                        pass.setUniform(PhotonCustomUniforms.UBO_NAME, draw.custom());
-                    }
-                    bindSideBuffers(pass, draw);
-                    for (var bound : draw.textures()) {
-                        pass.bindTexture(bound.sampler(), bound.view(), bound.samplerState());
-                    }
-                    pass.bindTexture("Sampler2", lightmap, lightmapSampler);
-                    if (draw.graph() != null) {
-                        draw.graph().material().bindCustomUniforms(pass);
-                    }
-                    if (draw.binder() != null) {
-                        draw.binder().bind(pass);
-                    }
-                    if (PhotonPipelines.isLit(draw.pipeline())) {
-                        DynamicLightRenderer.bindLights(pass);
-                    }
-                    // after bindCustomUniforms, which binds the renamed scene samplers to the missing texture
-                    if (sceneColor != null && draw.wireframe()) {
-                        pass.bindTexture("SamplerSceneColor", sceneColor, captureSampler);
-                    }
-                    for (var name : draw.sceneSamplers()) {
-                        var view = name.contains("Depth")
-                                ? (draw.legacyDepth() ? legacyDepth : sceneDepth)
-                                : sceneColor;
-                        if (view != null) {
-                            pass.bindTexture(name, view, captureSampler);
-                        }
-                    }
-                    drawGeometry(pass, draw, indices);
-                }
+                var end = index;
+                while (end < stage.draws.size() && stage.draws.get(end).sharesPass(first)) end++;
+                recordInto(pass, stage.draws.subList(index, end), indices, Draw::pipeline, sceneColor, sceneDepth,
+                        legacyDepth, true, false);
+                index = end;
             }
         }
+    }
+
+    /**
+     * {@code draws} into {@code pass}, each through {@code pipelineOf(draw)} (its own pipeline, or an OIT variant;
+     * null skips it). {@code dropInstances}: the pass mixes draws with and without an instance stream (vanilla's).
+     */
+    private static int recordInto(RenderPass pass, List<Draw> draws, Indices indices,
+                                   Function<Draw, RenderPipeline> pipelineOf,
+                                   @Nullable GpuTextureView sceneColor, @Nullable GpuTextureView sceneDepth,
+                                   @Nullable GpuTextureView legacyDepth, boolean observe, boolean dropInstances) {
+        var lightmap = Minecraft.getInstance().gameRenderer.lightmap();
+        var lightmapSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
+        var engine = PhotonEngineUniforms.currentSlice();
+        var legacyEngine = PhotonEngineUniforms.legacySlice();
+        var captureSampler = PhotonSceneCapture.sampler();
+        var recorded = 0;
+        for (var draw : draws) {
+            var pipeline = pipelineOf.apply(draw);
+            var compiled = pipeline == null ? null : PhotonPipelines.compiled(pipeline);
+            if (compiled == null) {
+                continue; // reported where it failed; the frame goes on without it
+            }
+            if (observe && drawObserver != null) {
+                drawObserver.accept(draw.pipeline(), draw.cpuData() != null);
+            }
+            if (dropInstances && draw.instances() == null) {
+                pass.setVertexBuffer(1, null);
+            }
+            pass.setPipeline(compiled);
+            pass.setUniform("DynamicTransforms", draw.transforms());
+            if (draw.material() != null) {
+                pass.setUniform(PhotonMaterialUniforms.UBO_NAME, draw.material());
+            }
+            // legacy shaders get the inverse projection matching their legacy depth
+            var drawEngine = draw.legacyDepth() ? legacyEngine : engine;
+            if (drawEngine != null) {
+                pass.setUniform(PhotonEngineUniforms.UBO_NAME, drawEngine);
+            }
+            if (draw.custom() != null) {
+                pass.setUniform(PhotonCustomUniforms.UBO_NAME, draw.custom());
+            }
+            bindSideBuffers(pass, draw);
+            for (var bound : draw.textures()) {
+                pass.setUniform(bound.sampler(), bound.view(), bound.samplerState());
+            }
+            pass.setUniform("Sampler2", lightmap, lightmapSampler);
+            if (draw.graph() != null) {
+                draw.graph().material().bindCustomUniforms(pass);
+            }
+            if (draw.binder() != null) {
+                draw.binder().bind(pass);
+            }
+            if (PhotonPipelines.isLit(draw.pipeline())) {
+                DynamicLightRenderer.bindLights(pass);
+            }
+            // after bindCustomUniforms, which binds the renamed scene samplers to the missing texture
+            if (sceneColor != null && draw.wireframe()) {
+                pass.setUniform("SamplerSceneColor", sceneColor, captureSampler);
+            }
+            for (var name : draw.sceneSamplers()) {
+                var view = name.contains("Depth")
+                        ? (draw.legacyDepth() ? legacyDepth : sceneDepth)
+                        : sceneColor;
+                if (view != null) {
+                    pass.setUniform(name, view, captureSampler);
+                }
+            }
+            drawGeometry(pass, draw, pipeline, indices);
+            recorded++;
+        }
+        return recorded;
     }
 
     private static void bindSideBuffers(RenderPass pass, Draw draw) {
@@ -851,8 +1063,9 @@ public final class PhotonWorldRenderState {
     /**
      * A back-faces-first draw goes twice, through the reversed winding first: a pipeline only says whether to cull,
      * never which face, so the back faces are drawn as front ones of the same triangles wound the other way.
+     * {@code pipeline} is the one bound for the draw (its own, or the mask sub-pass's).
      */
-    private static void drawGeometry(RenderPass pass, Draw draw, Indices indices) {
+    private static void drawGeometry(RenderPass pass, Draw draw, RenderPipeline pipeline, Indices indices) {
         pass.setVertexBuffer(0, draw.vertices());
         if (draw.instances() != null) {
             pass.setVertexBuffer(1, draw.instances());
@@ -862,11 +1075,15 @@ public final class PhotonWorldRenderState {
                     : indices.reversed().get(draw.sequentialTopology());
             if (reversed != null) {
                 // same layout, so everything bound stays bound across the switch
-                var back = PhotonPipelines.reversedWinding(draw.pipeline());
-                if (back != draw.pipeline()) pass.setPipeline(back);
-                pass.setIndexBuffer(reversed, IndexType.INT);
-                drawIndexed(pass, draw);
-                if (back != draw.pipeline()) pass.setPipeline(draw.pipeline());
+                var back = PhotonPipelines.reversedWinding(pipeline);
+                var backCompiled = back == pipeline ? null : PhotonPipelines.compiled(back);
+                if (back == pipeline || backCompiled != null) {
+                    if (backCompiled != null) pass.setPipeline(backCompiled);
+                    pass.setIndexBuffer(reversed, IndexType.INT);
+                    drawIndexed(pass, draw);
+                    var front = backCompiled == null ? null : PhotonPipelines.compiled(pipeline);
+                    if (front != null) pass.setPipeline(front);
+                }
             }
         }
         if (draw.indices() != null) {
@@ -914,12 +1131,14 @@ public final class PhotonWorldRenderState {
                 while (index < stage.maskDraws.size()
                         && stage.maskDraws.get(index).geometry().vertexBindings() == bindings) {
                     var draw = stage.maskDraws.get(index++);
-                    pass.setPipeline(draw.pipeline());
+                    var compiled = PhotonPipelines.compiled(draw.pipeline());
+                    if (compiled == null) continue;
+                    pass.setPipeline(compiled);
                     pass.setUniform("DynamicTransforms", draw.transforms());
                     pass.setUniform(PhotonMaskUniforms.UBO_NAME, draw.block());
-                    pass.bindTexture(draw.clip().sampler(), draw.clip().view(), draw.clip().samplerState());
+                    pass.setUniform(draw.clip().sampler(), draw.clip().view(), draw.clip().samplerState());
                     bindSideBuffers(pass, draw.geometry());
-                    drawGeometry(pass, draw.geometry(), indices);
+                    drawGeometry(pass, draw.geometry(), draw.pipeline(), indices);
                 }
             }
         }
@@ -956,6 +1175,16 @@ public final class PhotonWorldRenderState {
     }
 
     private record PackTarget(GpuTextureView view, boolean writeAlpha) {
+    }
+
+    /** Bloom this frame's FX layer of {@code size}, if anything drew into it. */
+    private static void bloomLayer(long size) {
+        var layer = PhotonFXLayer.inUse((int) (size >>> 32), (int) size);
+        if (layer == null) {
+            return;
+        }
+        var view = layer.view();
+        PhotonBloom.acquire(view.getWidth(0), view.getHeight(0)).run(view);
     }
 
     /** Null holds the layer back for the post-level seam; only these two modes name a colour buffer. */

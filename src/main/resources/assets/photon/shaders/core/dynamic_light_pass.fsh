@@ -1,16 +1,17 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Irradiance from the clustered lights at ResolutionScale, position and normal from depth. Alpha carries
 // the lights' contribution-weighted vanilla ambient, which the composite divides out of the frame.
 
-#moj_import <photon:dynamic_light.glsl>
-#moj_import <photon:dynamic_light_depth.glsl>
-#moj_import <photon:dynamic_light_voxel.glsl>
+#include <photon:dynamic_light.glsl>
+#include <photon:dynamic_light_depth.glsl>
+#include <photon:dynamic_light_voxel.glsl>
 
 // 26.1's lightmap is GPU-only: a light carries its packed block/sky level (t3.z) and the colour is read here
 uniform sampler2D LightmapSampler;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 float pixelFootprint(float viewZ) {
     return 2.0 * -viewZ / (LightProjMat[1][1] * ScreenSize.y);

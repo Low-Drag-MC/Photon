@@ -52,7 +52,7 @@ import dev.vfyjxf.taffy.style.AlignItems;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -1755,10 +1755,10 @@ public class FXTimelineView extends View implements TimelineContext {
     }
 
     private void onKeyDown(UIEvent event) {
-        if (event.keyCode == GLFW.GLFW_KEY_SPACE) {
+        if (event.keyCode == InputConstants.KEY_SPACE) {
             togglePlay();
             event.stopPropagation();
-        } else if (event.keyCode == GLFW.GLFW_KEY_DELETE) {
+        } else if (event.keyCode == InputConstants.KEY_DELETE) {
             deleteSelection();
             event.stopPropagation();
         }

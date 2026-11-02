@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.collision.BlockBoxSource;
@@ -17,10 +17,9 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.material.MaterialRend
 import com.lowdragmc.photon.client.gameobject.particle.renderer.CpuParticleRecords;
 import com.lowdragmc.photon.client.render.*;
 import com.lowdragmc.photon.client.render.PremultipliedBlendPlan;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
@@ -407,14 +406,15 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                 }
                 bakeJob(out, renderType, mode, camera, partialTicks, stage,
                         renderer.getOrderInLayer(), sortOrigin, baker, mask, materialSetting.isBackFacesFirst(),
-                        recordPipeline == null || records == null ? null : records.with(recordPipeline));
+                        recordPipeline == null || records == null ? null : records.with(recordPipeline),
+                        renderer.mayJoinOit());
             }
         }
         if (settings.wireframe()) {
             // overlay always on top of everything, whatever layer the emitter itself draws in
             bakeJob(out, MaterialRenderTypes.wireframe(mode), mode, camera, partialTicks,
                     PhotonStage.AFTER_TRANSLUCENT_PARTICLES, Integer.MAX_VALUE, null, baker,
-                    null, false, null); // an editor overlay is not content — it never writes the mask
+                    null, false, null, false); // an editor overlay is not content — it never writes the mask
         }
     }
 
@@ -713,7 +713,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                                 info.bindings().legacyDepth(), info.bindings().binder()),
                         positionOffset,
                         stage, renderer.getOrderInLayer(), distanceSq, geometryKey, mask,
-                        renderer.getMaterials().get(m).isBackFacesFirst()));
+                        renderer.getMaterials().get(m).isBackFacesFirst(), renderer.mayJoinOit()));
             }
         }
         if (wireframe) {
@@ -736,7 +736,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                             null, false),
                     positionOffset,
                     PhotonStage.AFTER_TRANSLUCENT_PARTICLES, Integer.MAX_VALUE, distanceSq,
-                    wfGeometryKey, null, false)); // an editor overlay is not content — it never writes the mask
+                    wfGeometryKey, null, false, false)); // an editor overlay is not content — it never writes the mask
         }
         return true;
     }
@@ -786,7 +786,10 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
             // the stage decides how a material's pipeline key blends (see bakeGroup); put back after, as a preloadNow
             // may run inside a bake
             var accumulating = PremultipliedBlendPlan.accumulating();
-            PremultipliedBlendPlan.setAccumulating(PremultipliedBlendPlan.isLayerStage(renderer.effectiveStage()));
+            var stage = renderer.effectiveStage();
+            PremultipliedBlendPlan.setAccumulating(PremultipliedBlendPlan.isLayerStage(stage));
+            // a translucent group draws through its OIT variants while improved transparency is on
+            var oit = stage != PhotonStage.AFTER_OPAQUE_FEATURES && renderer.mayJoinOit() && PhotonOit.active();
             try {
                 var geometry = variant == null ? null : preloadGeometry(renderer, setting, variant);
                 var instanced = geometry != null && instances(renderer, geometry);
@@ -797,16 +800,16 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                     if (onCpu) {
                         var info = preloadRenderType(context, materialSetting.getRenderType(mode));
                         if (info != null) {
-                            precompile(info.programs().main(), backFacesFirst);
+                            precompile(info.programs().main(), backFacesFirst, oit);
                             if (records && readsParticleRecords(materialSetting)) {
-                                precompile(PhotonRenderTypes.cpuDataPipeline(info), backFacesFirst);
+                                precompile(PhotonRenderTypes.cpuDataPipeline(info), backFacesFirst, oit);
                             }
                         }
                     }
                     if (instanced) {
                         var info = preloadRenderType(context, materialSetting.getRenderType(PrimitiveTopology.QUADS));
                         if (info != null) {
-                            precompile(instancedPipeline(info, geometry), backFacesFirst);
+                            precompile(instancedPipeline(info, geometry), backFacesFirst, oit);
                         }
                     }
                 }
@@ -859,17 +862,19 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
     }
 
     private static void precompile(@Nullable RenderPipeline pipeline) {
-        precompile(pipeline, false);
+        precompile(pipeline, false, false);
     }
 
-    private static void precompile(@Nullable RenderPipeline pipeline, boolean backFacesFirst) {
+    /** {@code oit}: also its order-independent variants ({@link PhotonOit#set}, which compiles them). */
+    private static void precompile(@Nullable RenderPipeline pipeline, boolean backFacesFirst, boolean oit) {
         if (pipeline == null) return;
-        RenderSystem.getDevice().precompilePipeline(pipeline);
+        PhotonPipelines.compile(pipeline);
+        if (oit) PhotonOit.set(pipeline);
         // a stacked distortion's first draw also builds the pass that bends the frame by it
         if (StackedDistortion.isStacked(pipeline)) StackedDistortion.preload();
         if (backFacesFirst) {
             var back = PhotonPipelines.reversedWinding(pipeline);
-            if (back != pipeline) RenderSystem.getDevice().precompilePipeline(back);
+            if (back != pipeline) PhotonPipelines.compile(back);
         }
     }
 
@@ -881,7 +886,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
                          @Nullable Vector3fc sortOrigin,
                          GeometryBaker baker,
                          @Nullable PhotonWorldRenderState.MaskWrite mask, boolean backFacesFirst,
-                         @Nullable PhotonWorldRenderState.CpuRecords records) {
+                         @Nullable PhotonWorldRenderState.CpuRecords records, boolean oit) {
         var buffer = new ByteBufferBuilder(64 * 1024);
         var builder = new BufferBuilder(buffer, mode, PhotonPipelines.PARTICLE_FORMAT);
         baker.bake(builder, camera, partialTicks);
@@ -897,7 +902,7 @@ public abstract class Emitter extends FXObject implements IParticleEmitter {
         var eye = PhotonCameraUtils.facingEye(camera);
         var distanceSq = transform.position().distanceSquared(eye);
         out.add(new PhotonWorldRenderState.Job(renderType, mesh, buffer, stage, orderInLayer,
-                distanceSq, mask, backFacesFirst, records));
+                distanceSq, mask, backFacesFirst, records, oit));
     }
 
     /** Whether a material reads per-particle data, which the CPU path otherwise feeds it as zeros. */

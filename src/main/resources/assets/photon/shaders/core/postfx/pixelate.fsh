@@ -1,4 +1,5 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Mosaic: snaps sampling to PixelSize-sized blocks (RenderPixelatedPass-style).
 
@@ -9,8 +10,8 @@ layout(std140) uniform PhotonPass {
     vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
 };
 
-in vec2 texCoord;
-out vec4 fragColor;
+layout(location = 0) in vec2 texCoord;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     vec2 blockUv = DiffuseSampler_TexelSize.zw * max(PixelSize, 1.0);

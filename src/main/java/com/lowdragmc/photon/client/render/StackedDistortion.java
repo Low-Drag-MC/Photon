@@ -4,20 +4,20 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.compat.iris.IrisCompat;
 import com.lowdragmc.photon.client.compat.iris.IrisCompositeMode;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.pipeline.BindGroupLayout;
-import com.mojang.blaze3d.pipeline.BlendEquation;
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.BlendFactor;
-import com.mojang.blaze3d.platform.BlendOp;
-import com.mojang.blaze3d.shaders.UniformType;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
+import com.mojang.renderpearl.api.pipeline.BlendEquation;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.BlendFactor;
+import com.mojang.renderpearl.api.pipeline.BlendOp;
+import com.mojang.renderpearl.api.pipeline.UniformType;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.ScissorState;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import org.joml.Vector4f;
 
@@ -72,9 +72,8 @@ public final class StackedDistortion {
 
     /** Compile the bends of the formats a frame comes in ahead of the first stacked draw. */
     public static void preload() {
-        var device = RenderSystem.getDevice();
-        device.precompilePipeline(bendPipeline(PhotonPipelines.HDR_FORMAT));
-        device.precompilePipeline(bendPipeline(
+        PhotonPipelines.compile(bendPipeline(PhotonPipelines.HDR_FORMAT));
+        PhotonPipelines.compile(bendPipeline(
                 Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture().getFormat()));
     }
 
@@ -103,9 +102,9 @@ public final class StackedDistortion {
         return BENDS.computeIfAbsent(format, f -> PhotonFullscreenPass.builder(Photon.id("core/kila_stack"))
                 .withLocation(Photon.id("pipeline/kila_stack_" + f.name().toLowerCase(Locale.ROOT)))
                 .withBindGroupLayout(BindGroupLayout.builder()
-                        .withSampler("DiffuseSampler")
-                        .withSampler("OffsetSampler")
-                        .withSampler("DepthSampler")
+                        .withUniform("DiffuseSampler", UniformType.COMBINED_IMAGE_SAMPLER)
+                        .withUniform("OffsetSampler", UniformType.COMBINED_IMAGE_SAMPLER)
+                        .withUniform("DepthSampler", UniformType.COMBINED_IMAGE_SAMPLER)
                         .withUniform(PhotonEngineUniforms.UBO_NAME, UniformType.UNIFORM_BUFFER)
                         .build())
                 // the frame's alpha is not ours: in the editor it is the coverage the PIP composite reads
@@ -172,9 +171,9 @@ public final class StackedDistortion {
             var nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
             PhotonFullscreenPass.draw("Photon stacked distortion bend", bendPipeline(frame.texture().getFormat()),
                     frame, scissor, pass -> {
-                        pass.bindTexture("DiffuseSampler", frameCopy, linear);
-                        pass.bindTexture("OffsetSampler", buffers.offsetsView, nearest);
-                        pass.bindTexture("DepthSampler", depthCopy, nearest);
+                        pass.setUniform("DiffuseSampler", frameCopy, linear);
+                        pass.setUniform("OffsetSampler", buffers.offsetsView, nearest);
+                        pass.setUniform("DepthSampler", depthCopy, nearest);
                         pass.setUniform(PhotonEngineUniforms.UBO_NAME, engine);
                     });
         }

@@ -14,8 +14,8 @@ import com.lowdragmc.photon.client.postfx.shadergraph.FullscreenShaderGraph;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.gui.editor.resource.FullscreenShaderGraphResource;
 import com.lowdragmc.photon.gui.editor.resource.PhotonShaderFunctionGraphResource;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
 import org.jetbrains.annotations.Nullable;
@@ -80,7 +80,8 @@ public final class FullscreenGraphRuntime {
         @Nullable
         public RenderTypeGraphMaterial material() {
             if (material == null && !materialFailed && compiled != null) {
-                material = RenderTypeFactory.createMaterial(compiled);
+                // the value store of a fullscreen pass, never drawn as a render type: no OIT pipelines
+                material = RenderTypeFactory.createPreviewMaterial(compiled);
                 if (material == null) {
                     materialFailed = true; // KilaGraph logged why; don't retry every frame
                 }

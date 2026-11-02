@@ -21,7 +21,7 @@ import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
 import org.joml.Vector2fc;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -108,7 +108,7 @@ public abstract class AbstractCurveGraph<T> extends BindableUIElement<T> {
         addChild(graphView);
         // Delete removes the selection; the graph focuses itself on any press so the key routes here
         addEventListener(UIEvents.KEY_DOWN, e -> {
-            if (e.keyCode == GLFW.GLFW_KEY_DELETE && !selectedPoints.isEmpty()) {
+            if (e.keyCode == InputConstants.KEY_DELETE && !selectedPoints.isEmpty()) {
                 deleteSelection();
                 e.stopPropagation();
             }

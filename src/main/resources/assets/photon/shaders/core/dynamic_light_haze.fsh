@@ -1,15 +1,16 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // The volumetric haze over the finished frame, particles included: blended ONE, ONE_MINUS_SRC_COLOR, which is the
 // soft add 1 - (1 - frame) * exp(-haze) without reading the frame back. Fog that hides what is behind it first
 // darkens the frame by its transmittance, blended ZERO, SRC_COLOR.
 // StepParams.x: 0 the light the haze adds, 1 the transmittance of the fog.
 
-#moj_import <photon:dynamic_light_depth.glsl>
+#include <photon:dynamic_light_depth.glsl>
 
 uniform sampler2D VolumeSampler;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     ivec2 pixel = ivec2(gl_FragCoord.xy);

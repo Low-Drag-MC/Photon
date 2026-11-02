@@ -1,4 +1,5 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Zoom blur toward Center; Strength = how far the ray samples reach (0..1).
 
@@ -9,8 +10,8 @@ layout(std140) uniform PhotonPass {
     float Strength;
 };
 
-in vec2 texCoord;
-out vec4 fragColor;
+layout(location = 0) in vec2 texCoord;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     vec2 dir = texCoord - Center;

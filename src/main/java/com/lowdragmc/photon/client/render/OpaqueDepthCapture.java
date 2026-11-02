@@ -1,9 +1,9 @@
 package com.lowdragmc.photon.client.render;
 
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 
 import javax.annotation.Nullable;
 
@@ -40,7 +40,12 @@ public final class OpaqueDepthCapture {
         demanded = true;
     }
 
-    /** Called at AfterOpaqueFeatures. */
+    /** Whether this frame asked for the snapshot. */
+    public static boolean isDemanded() {
+        return demanded;
+    }
+
+    /** Called at Photon's after-opaque seam ({@code PhotonFrameSeams}), where no pass is open. */
     public static void capture() {
         capturedFrom = null;
         if (!demanded) {
@@ -69,6 +74,15 @@ public final class OpaqueDepthCapture {
         }
         RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(source, texture, 0, 0, 0, 0, 0, w, h);
         capturedFrom = source;
+    }
+
+    /** Frame boundary: a snapshot no frame asked for is not kept. */
+    public static void endFrame() {
+        if (capturedFrom == null) {
+            release();
+        }
+        capturedFrom = null;
+        demanded = false;
     }
 
     /** This frame's snapshot of {@code liveDepth}, or null. */

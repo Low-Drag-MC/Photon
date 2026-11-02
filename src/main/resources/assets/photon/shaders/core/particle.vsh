@@ -1,19 +1,20 @@
-#version 330 core
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <fog.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
-#moj_import <minecraft:projection.glsl>
-#moj_import <minecraft:sample_lightmap.glsl>
-#moj_import <photon:particle.glsl>
+#include <fog.glsl>
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:projection.glsl>
+#include <minecraft:sample_lightmap.glsl>
+#include <photon:particle.glsl>
 
 uniform sampler2D Sampler2;
 
-out float sphericalVertexDistance;
-out float cylindricalVertexDistance;
-out vec2 texCoord0;
-out vec4 vertexColor;
-out vec3 photonViewPos;
-out vec3 photonBaseColor;
+layout(location = 0) out float sphericalVertexDistance;
+layout(location = 1) out float cylindricalVertexDistance;
+layout(location = 2) out vec2 texCoord0;
+layout(location = 3) out vec4 vertexColor;
+layout(location = 4) out vec3 photonViewPos;
+layout(location = 5) out vec3 photonBaseColor;
 
 void main() {
     ParticleData data = getParticleData();

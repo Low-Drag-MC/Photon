@@ -16,7 +16,7 @@ import javax.annotation.Nullable;
  *       data rather than colour, so the layer has to bypass the pack's own passes entirely.</li>
  * </ul>
  *
- * <p>Whether a chain of custom post-effects may run at {@code AFTER_PARTICLES} depends on this being
+ * <p>Whether a chain of custom post-effects may run at the after-translucent seam depends on this being
  * empty: effects there would run over a frame that does not contain the FX yet. {@code PhotonPostFX}
  * asks {@link #isPending()} for exactly that reason.
  *

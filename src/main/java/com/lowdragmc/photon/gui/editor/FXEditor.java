@@ -14,9 +14,9 @@ import com.lowdragmc.photon.gui.editor.view.FXHierarchyView;
 import com.lowdragmc.photon.gui.editor.view.FXTimelineView;
 import com.lowdragmc.photon.gui.editor.view.scene.SceneView;
 import net.minecraft.resources.Identifier;
+import org.lwjgl.sdl.SDLKeycode;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
-import org.lwjgl.glfw.GLFW;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.File;
@@ -130,13 +130,13 @@ public class FXEditor extends Editor {
                 context -> !sceneView.sceneEditor.isCameraMoving(), KeyContext.SPECIFICITY_STATE));
 
         keymap.registerAll(
-                gizmoAction(PhotonEditorActions.GIZMO_NONE, TransformGizmo.Mode.NONE, GLFW.GLFW_KEY_Q, gizmoUsable),
-                gizmoAction(PhotonEditorActions.GIZMO_TRANSLATE, TransformGizmo.Mode.TRANSLATE, GLFW.GLFW_KEY_W, gizmoUsable),
-                gizmoAction(PhotonEditorActions.GIZMO_ROTATE, TransformGizmo.Mode.ROTATE, GLFW.GLFW_KEY_E, gizmoUsable),
-                gizmoAction(PhotonEditorActions.GIZMO_SCALE, TransformGizmo.Mode.SCALE, GLFW.GLFW_KEY_R, gizmoUsable),
+                gizmoAction(PhotonEditorActions.GIZMO_NONE, TransformGizmo.Mode.NONE, SDLKeycode.SDLK_Q, gizmoUsable),
+                gizmoAction(PhotonEditorActions.GIZMO_TRANSLATE, TransformGizmo.Mode.TRANSLATE, SDLKeycode.SDLK_W, gizmoUsable),
+                gizmoAction(PhotonEditorActions.GIZMO_ROTATE, TransformGizmo.Mode.ROTATE, SDLKeycode.SDLK_E, gizmoUsable),
+                gizmoAction(PhotonEditorActions.GIZMO_SCALE, TransformGizmo.Mode.SCALE, SDLKeycode.SDLK_R, gizmoUsable),
                 EditorAction.builder(PhotonEditorActions.GIZMO_SPACE)
                         .category(PhotonEditorActions.CATEGORY_SCENE)
-                        .defaultChord(KeyChord.key(GLFW.GLFW_KEY_X))
+                        .defaultChord(KeyChord.key(SDLKeycode.SDLK_X))
                         .when(gizmoUsable)
                         .onAction(context -> {
                             var gizmo = sceneView.sceneEditor.getTransformGizmo();
@@ -147,7 +147,7 @@ public class FXEditor extends Editor {
                         .build(),
                 EditorAction.builder(PhotonEditorActions.CYCLE_DRAW_MODE)
                         .category(PhotonEditorActions.CATEGORY_SCENE)
-                        .defaultChord(KeyChord.key(GLFW.GLFW_KEY_Z))
+                        .defaultChord(KeyChord.key(SDLKeycode.SDLK_Z))
                         .when(notTyping)
                         .onAction(context -> {
                             var modes = SceneView.DrawMode.values();
@@ -157,7 +157,7 @@ public class FXEditor extends Editor {
                         .build(),
                 EditorAction.builder(PhotonEditorActions.TOGGLE_BLOOM)
                         .category(PhotonEditorActions.CATEGORY_SCENE)
-                        .defaultChord(KeyChord.key(GLFW.GLFW_KEY_B))
+                        .defaultChord(KeyChord.key(SDLKeycode.SDLK_B))
                         .when(notTyping)
                         .onAction(context -> {
                             sceneView.setBloomEnabled(!sceneView.isBloomEnabled());
@@ -167,39 +167,41 @@ public class FXEditor extends Editor {
 
                 EditorAction.builder(PhotonEditorActions.PLAY_PAUSE)
                         .category(PhotonEditorActions.CATEGORY_PLAYBACK)
-                        .defaultChord(KeyChord.key(GLFW.GLFW_KEY_SPACE))
+                        .defaultChord(KeyChord.key(SDLKeycode.SDLK_SPACE))
                         .when(notTyping)
                         .onAction(context -> withProject(timelineView::togglePlay))
                         .build(),
                 EditorAction.builder(PhotonEditorActions.STOP)
                         .category(PhotonEditorActions.CATEGORY_PLAYBACK)
-                        .defaultChord(KeyChord.shift(GLFW.GLFW_KEY_SPACE))
+                        .defaultChord(KeyChord.shift(SDLKeycode.SDLK_SPACE))
                         .when(notTyping)
                         .onAction(context -> withProject(timelineView::stop))
                         .build(),
                 EditorAction.builder(PhotonEditorActions.STEP_BACK)
                         .category(PhotonEditorActions.CATEGORY_PLAYBACK)
-                        .defaultChord(KeyChord.key(GLFW.GLFW_KEY_COMMA))
+                        .defaultChord(KeyChord.key(SDLKeycode.SDLK_COMMA))
                         .when(notTyping)
                         .onAction(context -> withProject(() -> timelineView.stepFrames(-1)))
                         .build(),
                 EditorAction.builder(PhotonEditorActions.STEP_FORWARD)
                         .category(PhotonEditorActions.CATEGORY_PLAYBACK)
-                        .defaultChord(KeyChord.key(GLFW.GLFW_KEY_PERIOD))
+                        .defaultChord(KeyChord.key(SDLKeycode.SDLK_PERIOD))
                         .when(notTyping)
                         .onAction(context -> withProject(() -> timelineView.stepFrames(1)))
                         .build(),
                 EditorAction.builder(PhotonEditorActions.RELOAD_EFFECT)
                         .category(PhotonEditorActions.CATEGORY_PLAYBACK)
-                        .defaultChord(KeyChord.ctrl(GLFW.GLFW_KEY_R))
+                        .defaultChord(KeyChord.ctrl(SDLKeycode.SDLK_R))
                         .when(KeyContext.withProject())
                         .onAction(context -> withProject(this::reloadEffect))
                         .build()
         );
     }
 
-    /** Switching to the mode it already has still counts as handled — letting the chord fall
-     *  through would hand W to something else mid-edit. */
+    /**
+     * Switching to the mode it already has still counts as handled — letting the chord fall through would hand W to
+     * something else mid-edit. {@code key}: an SDL keycode, as chords match what a key means under the layout.
+     */
     private EditorAction gizmoAction(Identifier id, TransformGizmo.Mode mode, int key, KeyContext when) {
         return EditorAction.builder(id)
                 .category(PhotonEditorActions.CATEGORY_SCENE)

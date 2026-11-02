@@ -1,10 +1,10 @@
 package com.lowdragmc.photon.client.render;
 
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.buffers.Std140Builder;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.systems.TransientMemory;
+import com.mojang.renderpearl.api.buffers.TransientMemory;
 import org.lwjgl.system.MemoryUtil;
 
 import javax.annotation.Nullable;

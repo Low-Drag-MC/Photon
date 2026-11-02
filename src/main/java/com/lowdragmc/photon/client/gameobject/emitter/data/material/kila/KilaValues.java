@@ -1,8 +1,8 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material.kila;
 
 import com.lowdragmc.photon.Photon;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.systems.RenderSystem;
 
 import javax.annotation.Nullable;

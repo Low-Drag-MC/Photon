@@ -36,7 +36,7 @@ import com.lowdragmc.photon.gui.editor.view.timeline.PhotonTrackTypes;
 import net.minecraft.nbt.ListTag;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -69,9 +69,9 @@ public class FxObjectClipboardScenario implements UIScenario {
             clickRow(g, "Parent");
             g.step("the hierarchy has the focus",
                     ctx -> ctx.check("hierarchy focused", editor(ctx).hierarchyView.isFocused()));
-            chord(g, GLFW.GLFW_KEY_D);
+            chord(g, InputConstants.KEY_D);
             g.step("the subtree was duplicated", FxObjectClipboardScenario::checkDuplicate);
-            chord(g, GLFW.GLFW_KEY_D);
+            chord(g, InputConstants.KEY_D);
             g.step("a second Ctrl+D duplicates the duplicate", ctx -> {
                 var added = added(ctx);
                 ctx.check("six objects added", added.size() == 6, 6, added.size());
@@ -80,10 +80,10 @@ public class FxObjectClipboardScenario implements UIScenario {
                 ctx.check("one more parent, under the root", second.size() == 1
                         && second.getFirst().transform().parent() == root(ctx), 1, second.size());
             });
-            chord(g, GLFW.GLFW_KEY_Z);
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("two undos take both away", ctx -> checkOriginal(ctx, "after undo"));
-            chord(g, GLFW.GLFW_KEY_Y);
+            chord(g, InputConstants.KEY_Y);
             g.step("redo brings the first back", ctx -> {
                 ctx.check("three objects back", added(ctx).size() == 3, 3, added(ctx).size());
                 ctx.check("three tracks back", addedTracks(ctx).size() == 3, 3, addedTracks(ctx).size());
@@ -91,13 +91,13 @@ public class FxObjectClipboardScenario implements UIScenario {
                 ctx.check("the same copy, linked as before",
                         copy.transform().parent() == root(ctx) && copy.children().size() == 2);
             });
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("and undo again", ctx -> checkOriginal(ctx, "after the last undo"));
         });
 
         s.group("Ctrl+C then Ctrl+V", g -> {
             clickRow(g, "Parent");
-            chord(g, GLFW.GLFW_KEY_C);
+            chord(g, InputConstants.KEY_C);
             g.step("copying adds nothing", ctx -> {
                 ctx.check("an FX object clipboard",
                         ClipboardManager.INSTANCE.getClipboardType() == FXObjectClipboard.class);
@@ -108,7 +108,7 @@ public class FxObjectClipboardScenario implements UIScenario {
             });
             g.frames(2);
             clickRow(g, "Child2");
-            chord(g, GLFW.GLFW_KEY_V);
+            chord(g, InputConstants.KEY_V);
             g.step("the snapshot is pasted next to the selection", ctx -> {
                 var added = added(ctx);
                 ctx.check("three objects added", added.size() == 3, 3, added.size());
@@ -120,7 +120,7 @@ public class FxObjectClipboardScenario implements UIScenario {
                 ctx.check("fresh ids", freshIds(ctx, added));
                 ctx.check("the paste is selected", selectedKeys(ctx).equals(Set.of(pasted)), pasted, selectedKeys(ctx));
             });
-            chord(g, GLFW.GLFW_KEY_V);
+            chord(g, InputConstants.KEY_V);
             g.step("a second paste gets ids of its own", ctx -> {
                 var added = added(ctx);
                 ctx.check("six objects added", added.size() == 6, 6, added.size());
@@ -131,8 +131,8 @@ public class FxObjectClipboardScenario implements UIScenario {
                         added.stream().filter(o -> "Parent".equals(o.getName()))
                                 .allMatch(o -> o.transform().parent() == object(ctx, "Renamed").transform()));
             });
-            chord(g, GLFW.GLFW_KEY_Z);
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("both pastes undone", ctx -> {
                 object(ctx, "Renamed").setName("Parent");
                 checkOriginal(ctx, "after undoing the pastes");
@@ -142,7 +142,7 @@ public class FxObjectClipboardScenario implements UIScenario {
         s.group("Ctrl+D on two siblings", g -> {
             g.step("select both children", ctx -> editor(ctx).hierarchyView.treeList.setSelected(
                     Set.of(nodeOf(ctx, object(ctx, "Child")), nodeOf(ctx, object(ctx, "Child2"))), true));
-            chord(g, GLFW.GLFW_KEY_D);
+            chord(g, InputConstants.KEY_D);
             g.step("each copy lands next to its original", ctx -> {
                 var added = added(ctx);
                 ctx.check("two objects added", added.size() == 2, 2, added.size());
@@ -151,7 +151,7 @@ public class FxObjectClipboardScenario implements UIScenario {
                         added.stream().allMatch(o -> o.transform().parent() == parent));
                 ctx.check("both selected", selectedKeys(ctx).equals(Set.copyOf(added)), added, selectedKeys(ctx));
             });
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("undone", ctx -> checkOriginal(ctx, "after undoing the sibling duplicate"));
         });
 
@@ -163,7 +163,7 @@ public class FxObjectClipboardScenario implements UIScenario {
                 // Other is animated; copying it on its last frame used to freeze the copy there
                 seek(ctx, 30);
             });
-            chord(g, GLFW.GLFW_KEY_D);
+            chord(g, InputConstants.KEY_D);
             g.step("Ctrl+D in the scene duplicated the selection", ctx -> {
                 var added = added(ctx);
                 ctx.check("one object added", added.size() == 1, 1, added.size());
@@ -188,7 +188,7 @@ public class FxObjectClipboardScenario implements UIScenario {
                 ctx.check("both end at x=10", Math.abs(end[0] - 10) < 1e-3f && Math.abs(end[1] - 10) < 1e-3f,
                         "10, 10", end[0] + ", " + end[1]);
             });
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("Ctrl+Z in the scene undid it", ctx -> checkOriginal(ctx, "after undo in the scene"));
         });
 
@@ -204,17 +204,17 @@ public class FxObjectClipboardScenario implements UIScenario {
                 ctx.check("three objects added", added(ctx).size() == 3, 3, added(ctx).size());
                 ctx.check("the hierarchy has the focus again", editor(ctx).hierarchyView.isFocused());
             });
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("so Ctrl+Z right after undoes it", ctx -> checkOriginal(ctx, "after undoing the menu duplicate"));
             clickRow(g, "Parent");
             rightClickRow(g, "Parent");
             g.waitUntil("the menu offers Copy", ctx -> menuEntry(ctx, "Copy") != null);
             clickOn(g, "Copy in the menu", Keys.MOUSE_LEFT, ctx -> centreOf(Objects.requireNonNull(menuEntry(ctx, "Copy"))));
             g.frames(2);
-            chord(g, GLFW.GLFW_KEY_V);
+            chord(g, InputConstants.KEY_V);
             g.step("Ctrl+V right after the menu's Copy pastes", ctx ->
                     ctx.check("three objects added", added(ctx).size() == 3, 3, added(ctx).size()));
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("undone", ctx -> checkOriginal(ctx, "after undoing the paste"));
         });
 

@@ -7,6 +7,7 @@ import com.lowdragmc.lowdraglib2.editor.resource.BuiltinResourceProvider;
 import com.lowdragmc.photon.client.fx.ParticleTickHost;
 import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.postfx.runtime.PostEffectStack;
+import com.lowdragmc.photon.client.render.PhotonRenderOutput;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
 import com.lowdragmc.photon.client.render.PhotonTime;
 import com.lowdragmc.photon.client.render.PhotonViewSettings;
@@ -165,8 +166,9 @@ public class PhotonParticleManager extends ParticleManager implements ParticleTi
                             .createFullPath("show_mask"),
                     Map.of(), 1f);
         }
-        // the scene's own target size, for U_ViewPort and KG_ScreenSize
-        var sceneTarget = RenderSystem.outputColorTextureOverride;
+        // the scene's own target size, for U_ViewPort and KG_ScreenSize (the scene's view is Photon's output while
+        // LDLib2 draws it — see WorldSceneRendererMixin)
+        var sceneTarget = PhotonRenderOutput.color();
         var mainTarget = Minecraft.getInstance().gameRenderer.mainRenderTarget();
         var targetWidth = sceneTarget != null ? sceneTarget.getWidth(0) : mainTarget.width;
         var targetHeight = sceneTarget != null ? sceneTarget.getHeight(0) : mainTarget.height;

@@ -23,7 +23,9 @@ import java.util.stream.Stream;
  * Converts 1.21-format Photon custom shaders — both stages — to the 26.1 contract
  * (see {@code assets/photon/shaders/core/circle.fsh} for the reference output):
  * <ul>
- *   <li>{@code #version} → 330, and {@code #moj_import} paths gain their {@code minecraft:} namespace.
+ *   <li>{@code #version} → 330, and {@code #moj_import} becomes {@code #include}, its paths gaining their
+ *       {@code minecraft:} namespace. (The interface locations 26.3 requires are numbered when the pipeline is built,
+ *       by {@code CustomShaderAdapter}, which also adapts shaders written for 26.1/26.2 by hand.)
  *       The blocks a stage needs are added: {@code dynamictransforms} for ModelViewMat/ColorModulator,
  *       {@code projection} for ProjMat, {@code globals} for GameTime, {@code sample_lightmap} when a
  *       lightmap fetch was rewritten, {@code photon:engine} for the {@code U_*} values.</li>
@@ -66,7 +68,7 @@ public final class ShaderFormatConverter {
     private static final Pattern PHOTON_INCLUDE = Pattern.compile("<photon:([\\w./]+)>");
     /** The includes a custom shader may import (assets/photon/shaders/include); the rest are Photon's own passes'. */
     static final List<String> SHIPPED_PHOTON_INCLUDES = List.of("particle.glsl", "particle_utils.glsl", "engine.glsl",
-            "lit_particle.glsl", "dynamic_light.glsl", "soft_particle.glsl");
+            "lit_particle.glsl", "dynamic_light.glsl", "soft_particle.glsl", "oit.glsl");
     /** 1.21: {@code photon_soft_particle(color)}, reading the {@code SoftParticleParams} uniform the include declared. */
     private static final Pattern SOFT_PARTICLE_CALL = Pattern.compile("\\bphoton_soft_particle\\s*\\(");
     private static final String SOFT_PARTICLE_PARAMS = "SoftParticleParams";
@@ -164,6 +166,7 @@ public final class ShaderFormatConverter {
             var trimmed = line.trim();
             if (trimmed.startsWith("#moj_import")) {
                 var rewritten = line
+                        .replace("#moj_import", "#include")
                         .replace("<fog.glsl>", "<minecraft:fog.glsl>")
                         .replace("<projection.glsl>", "<minecraft:projection.glsl>")
                         .replace("<globals.glsl>", "<minecraft:globals.glsl>")
@@ -247,12 +250,12 @@ public final class ShaderFormatConverter {
         // ModelViewMat/ColorModulator live in DynamicTransforms, ProjMat in Projection: their loose declarations were
         // dropped above, so the blocks are imported instead
         var added = new ArrayList<String>();
-        if (joined.contains("apply_fog")) added.add("#moj_import <minecraft:fog.glsl>");
-        if (usesColorModulator || source.contains("ModelViewMat")) added.add("#moj_import <minecraft:dynamictransforms.glsl>");
-        if (source.contains("ProjMat")) added.add("#moj_import <minecraft:projection.glsl>");
-        if (usesLightmapFetch) added.add("#moj_import <minecraft:sample_lightmap.glsl>");
-        if (usesGlobals) added.add("#moj_import <minecraft:globals.glsl>");
-        if (usesEngineBlock) added.add("#moj_import <photon:engine.glsl>");
+        if (joined.contains("apply_fog")) added.add("#include <minecraft:fog.glsl>");
+        if (usesColorModulator || source.contains("ModelViewMat")) added.add("#include <minecraft:dynamictransforms.glsl>");
+        if (source.contains("ProjMat")) added.add("#include <minecraft:projection.glsl>");
+        if (usesLightmapFetch) added.add("#include <minecraft:sample_lightmap.glsl>");
+        if (usesGlobals) added.add("#include <minecraft:globals.glsl>");
+        if (usesEngineBlock) added.add("#include <photon:engine.glsl>");
         // ahead of the shader's own: a file is pasted where it is first imported, and an include may import one of
         // these under its #ifdef (soft_particle.glsl's engine.glsl), where a define left out would lose it
         Stream.concat(added.stream(), imports.stream()).distinct().forEach(imp -> out.append(imp).append('\n'));

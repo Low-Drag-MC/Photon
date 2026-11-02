@@ -2,13 +2,14 @@ package com.lowdragmc.photon.client.postfx.runtime;
 
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.pipeline.BindGroupLayout;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
+import com.mojang.renderpearl.api.pipeline.UniformType;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 
 import java.util.EnumMap;
 import java.util.Locale;
@@ -43,7 +44,7 @@ public final class SceneBlit {
     private static RenderPipeline pipeline(GpuFormat format) {
         return PIPELINES.computeIfAbsent(format, f -> PhotonFullscreenPass.builder(Photon.id("core/bloom_blit"))
                 .withLocation(Photon.id("pipeline/postfx_writeback_" + f.name().toLowerCase(Locale.ROOT)))
-                .withBindGroupLayout(BindGroupLayout.builder().withSampler("inputSampler").build())
+                .withBindGroupLayout(BindGroupLayout.builder().withUniform("inputSampler", UniformType.COMBINED_IMAGE_SAMPLER).build())
                 .withShaderDefine("OUTPUT_SCALE", 1f)
                 .withColorTargetState(new ColorTargetState(Optional.empty(), f, ColorTargetState.WRITE_COLOR))
                 .build());
@@ -52,7 +53,7 @@ public final class SceneBlit {
     /** Replace {@code to}'s RGB with {@code from}'s, leaving its alpha untouched. */
     public static void writeBack(GpuTextureView from, GpuTextureView to) {
         PhotonFullscreenPass.draw("Photon postfx write-back", pipeline(to.texture().getFormat()), to, pass ->
-                pass.bindTexture("inputSampler", from,
+                pass.setUniform("inputSampler", from,
                         RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR)));
     }
 }

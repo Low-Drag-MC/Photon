@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.postfx.graph;
 
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 
 /**
  * The pixel format of a pass's output render target ({@link #RGBA16F} is the HDR pipeline

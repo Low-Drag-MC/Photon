@@ -1,4 +1,5 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // The ADD half of 1.21 bloom_final_scatter_pass. Its formula OUTPUT = fx + I*(bloom - highlight)
 // assumed a separate OUTPUT target; 26.1 composites in place on the main color attachment (which
@@ -14,9 +15,9 @@ uniform sampler2D inputSampler;
 #define OUTPUT_SCALE 1.0
 #endif
 
-in vec2 texCoord;
+layout(location = 0) in vec2 texCoord;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     fragColor = vec4(texture(inputSampler, texCoord).rgb * OUTPUT_SCALE, 1.0);

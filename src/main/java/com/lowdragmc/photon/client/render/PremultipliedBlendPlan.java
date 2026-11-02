@@ -2,10 +2,10 @@ package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.compat.iris.IrisCompat;
-import com.mojang.blaze3d.pipeline.BlendEquation;
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.platform.BlendFactor;
-import com.mojang.blaze3d.platform.BlendOp;
+import com.mojang.renderpearl.api.pipeline.BlendEquation;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.BlendFactor;
+import com.mojang.renderpearl.api.pipeline.BlendOp;
 
 /**
  * Translates an authored blend into the blend Photon must use while accumulating into a

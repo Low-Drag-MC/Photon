@@ -1,14 +1,15 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <minecraft:dynamictransforms.glsl>
-#moj_import <minecraft:projection.glsl>
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:projection.glsl>
 
-// every input up to the last one read, in PARTICLE_FORMAT's order: Vulkan numbers them by counting
-in vec3 Position;
-in vec4 Color;
-in vec2 UV0;
+// paired with PARTICLE_FORMAT's elements by name
+layout(location = 0) in vec3 Position;
+layout(location = 1) in vec4 Color;
+layout(location = 2) in vec2 UV0;
 
-out vec2 texCoord0;
+layout(location = 0) out vec2 texCoord0;
 
 void main() {
     gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);

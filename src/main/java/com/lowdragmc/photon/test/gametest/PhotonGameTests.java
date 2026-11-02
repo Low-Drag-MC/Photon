@@ -66,19 +66,8 @@ public final class PhotonGameTests {
     /** Reuse LDLib2's empty structure — FX tests don't need world blocks. */
     public static TestData<Holder<TestEnvironmentDefinition<?>>> defaultTestData(
             Holder<TestEnvironmentDefinition<?>> environment) {
-        return new TestData<>(
-                environment,
-                Identifier.fromNamespaceAndPath("ldlib2", "empty"),
-                20,
-                0,
-                true,
-                Rotation.NONE,
-                false,
-                1,
-                1,
-                false,
-                0
-        );
+        return new TestData<>(environment, Identifier.fromNamespaceAndPath("ldlib2", "empty"), 20, 0, true,
+                Rotation.NONE);
     }
 
     public static void registerFunctionTest(

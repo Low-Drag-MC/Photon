@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.model;
 
 import com.lowdragmc.photon.client.AutoCloseCleaner;
-import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.system.MemoryUtil;

@@ -15,7 +15,6 @@ import com.lowdragmc.photon.client.compat.iris.IrisOverlay;
 import com.lowdragmc.photon.client.postfx.PhotonPostFX;
 import com.lowdragmc.photon.client.postfx.runtime.PostFXPreview;
 import com.lowdragmc.photon.client.render.MaterialPreviewRenderer;
-import com.lowdragmc.photon.client.render.OpaqueDepthCapture;
 import com.lowdragmc.photon.client.render.PhotonCameraUtils;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
 import com.lowdragmc.photon.client.render.PhotonFeatureRenderer;
@@ -73,8 +72,7 @@ public class PhotonClientListeners {
     }
 
     @SubscribeEvent
-    public static void onTagsUpdated(TagsUpdatedEvent event) {
-        if (event.getUpdateCause() != TagsUpdatedEvent.UpdateCause.CLIENT_PACKET_RECEIVED) return;
+    public static void onTagsUpdated(TagsUpdatedEvent.ClientPacketReceived event) {
         VoxelWorld.clearMasks();
         BlockFilter.tagsChanged();
         var level = Minecraft.getInstance().level;
@@ -121,24 +119,8 @@ public class PhotonClientListeners {
         PhotonWorldRenderState.endFrame();
     }
 
-    /**
-     * After the solid features, Photon's opaque stage among them: the opaque scene is down and nothing translucent
-     * is — what the dynamic lights light. Then the opaque-only depth {@code FXCompositeMode.LATE} tests against.
-     */
-    @SubscribeEvent
-    public static void onRenderLevelStageAfterOpaque(RenderLevelStageEvent.AfterOpaqueFeatures event) {
-        IrisCompat.runWithoutPackPrograms(DynamicLightRenderer::afterOpaque);
-        OpaqueDepthCapture.capture();
-    }
-
-    /** Standalone post-effect consumption for frames without Photon particles. */
-    @SubscribeEvent
-    public static void onRenderLevelStage(RenderLevelStageEvent.AfterTranslucentParticles event) {
-        IrisCompat.runWithoutPackPrograms(() -> {
-            PhotonPostFX.onLevelStageAfterParticles();
-            DynamicLightRenderer.afterParticles();
-        });
-    }
+    // The opaque scene's lights, the opaque depth snapshot and the standalone chain run at PhotonFrameSeams: 26.3
+    // hands every RenderLevelStageEvent but AfterSky/AfterLevel an open pass.
 
     /**
      * Per-world-frame engine-uniform upload (U_* block for custom shaders) and the frame's dynamic lights — culled,
@@ -157,7 +139,7 @@ public class PhotonClientListeners {
                 target.width, target.height);
         IrisCompat.runWithoutPackPrograms(() -> DynamicLightRenderer.prepareWorld(camera.pos,
                 event.getModelViewMatrix(), projection, event.getFrustum(),
-                event.getDeltaTracker().getGameTimeDeltaPartialTick(false), camera.fogData));
+                Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false), camera.fogData));
     }
 
     /**

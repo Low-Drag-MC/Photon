@@ -1,15 +1,16 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Per shadowed light, the distance to the first voxel in every direction out to its range, as an octahedral map:
 // what the haze, fog volumes and lit particles are shadowed from.
 // StepParams: texels per map side (x), maps per atlas row (y), maps (z).
 
-#moj_import <photon:dynamic_light_voxel.glsl>
+#include <photon:dynamic_light_voxel.glsl>
 
 // one texel per map: the light's view position and range
 uniform samplerBuffer VisibilityLights;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 // [0, 1]^2 back to a unit direction, the inverse of photon_octEncode
 vec3 octDecode(vec2 uv) {

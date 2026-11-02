@@ -57,8 +57,8 @@ public class ShaderFormatConverterTest {
         var source = conversion.source();
 
         assertTrue(source.startsWith("#version 330"));
-        assertTrue(source.contains("#moj_import <minecraft:fog.glsl>"));
-        assertTrue(source.contains("#moj_import <minecraft:dynamictransforms.glsl>"));
+        assertTrue(source.contains("#include <minecraft:fog.glsl>"));
+        assertTrue(source.contains("#include <minecraft:dynamictransforms.glsl>"));
         // engine uniforms gone
         assertFalse(source.contains("uniform vec4 ColorModulator"));
         assertFalse(source.contains("uniform float FogStart"));
@@ -91,8 +91,8 @@ public class ShaderFormatConverterTest {
         assertTrue(conversion.changed());
         assertEquals(List.of(), conversion.warnings(), "both includes ship in 26.1");
         var source = conversion.source();
-        assertTrue(source.contains("#moj_import <photon:lit_particle.glsl>"));
-        assertTrue(source.contains("#moj_import <photon:soft_particle.glsl>"));
+        assertTrue(source.contains("#include <photon:lit_particle.glsl>"));
+        assertTrue(source.contains("#include <photon:soft_particle.glsl>"));
         var block = source.substring(source.indexOf("uniform PhotonCustomMaterial {"), source.indexOf("};"));
         for (var own : List.of("DiscardThreshold", "HDR", "HDRMode", "SoftParticleParams")) {
             assertTrue(block.contains(" " + own + ";"), own + " is the shader's own value");
@@ -156,9 +156,9 @@ public class ShaderFormatConverterTest {
                 }
                 """;
         var source = ShaderFormatConverter.convertFragment(legacy, Map.of("Alpha", new float[]{1f})).source();
-        assertTrue(source.indexOf("#moj_import <photon:engine.glsl>") >= 0, source);
-        assertTrue(source.indexOf("#moj_import <photon:engine.glsl>")
-                < source.indexOf("#moj_import <photon:soft_particle.glsl>"), source);
+        assertTrue(source.indexOf("#include <photon:engine.glsl>") >= 0, source);
+        assertTrue(source.indexOf("#include <photon:engine.glsl>")
+                < source.indexOf("#include <photon:soft_particle.glsl>"), source);
     }
 
     /** A uniform the json does not list has no value in 26.1: it stays out of the block both stages share. */
@@ -247,9 +247,9 @@ public class ShaderFormatConverterTest {
         var conversion = ShaderFormatConverter.convertFragment(legacy, Map.of());
         assertTrue(conversion.changed());
         var source = conversion.source();
-        assertTrue(source.contains("#moj_import <minecraft:globals.glsl>")); // GameTime home
+        assertTrue(source.contains("#include <minecraft:globals.glsl>")); // GameTime home
         // the known U_* dynamic uniforms live in the PhotonEngine std140 block now
-        assertTrue(source.contains("#moj_import <photon:engine.glsl>"));
+        assertTrue(source.contains("#include <photon:engine.glsl>"));
         assertFalse(source.contains("uniform vec3 U_CameraPosition"));
         assertFalse(source.contains("frozen"));
         assertTrue(source.contains("uniform sampler2D SamplerSceneDepth;")); // samplers stay
@@ -306,8 +306,8 @@ public class ShaderFormatConverterTest {
         assertFalse(source.contains("uniform mat4 ModelViewMat;"));
         assertFalse(source.contains("uniform mat4 ProjMat;"));
         assertFalse(source.contains("uniform int FogShape;")); // no such uniform in 26.1
-        assertTrue(source.contains("#moj_import <minecraft:dynamictransforms.glsl>"));
-        assertTrue(source.contains("#moj_import <minecraft:projection.glsl>"));
+        assertTrue(source.contains("#include <minecraft:dynamictransforms.glsl>"));
+        assertTrue(source.contains("#include <minecraft:projection.glsl>"));
         // the uses stay verbatim — the std140 blocks declare the very same names
         assertTrue(source.contains("ModelViewMat * vec4(data.Position, 1.0)"));
         assertTrue(source.contains("gl_Position     = ProjMat * viewPos4;"));
@@ -325,7 +325,7 @@ public class ShaderFormatConverterTest {
         assertFalse(source.contains("fog_distance("));
         assertTrue(source.contains("sample_lightmap(Sampler2, data.LightUV)"));
         assertFalse(source.contains("texelFetch(Sampler2"));
-        assertTrue(source.contains("#moj_import <minecraft:sample_lightmap.glsl>"));
+        assertTrue(source.contains("#include <minecraft:sample_lightmap.glsl>"));
         assertEquals(List.of(), ShaderFormatConverter.convertVertex(LEGACY_VERTEX, Map.of()).warnings());
     }
 

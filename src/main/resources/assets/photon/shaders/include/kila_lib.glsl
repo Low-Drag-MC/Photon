@@ -1,13 +1,16 @@
+#ifndef PHOTON_KILA_LIB_GLSL
+#define PHOTON_KILA_LIB_GLSL
+
 // Shared helpers of photon:kila. Polar, rotation and noise follow Unity's (and KilaGraph's) node formulas, so a
 // ported material keeps its numbers.
 
 // GameTime and the view the particle is drawn through come from the engine's blocks (Photon substitutes Globals
 // for an editor scene, which runs on its timeline's clock).
-#moj_import <minecraft:globals.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
+#include <minecraft:globals.glsl>
+#include <minecraft:dynamictransforms.glsl>
 // not in the slot preview: an unread std140 block stays active, and its pipeline binds no engine block
 #ifndef KILA_SLOT_PREVIEW
-#moj_import <photon:engine.glsl>
+#include <photon:engine.glsl>
 #endif
 
 // One std140 block per variant: KilaLayout hands the members over as KILA_BLOCK, so a member exists only under its
@@ -199,3 +202,5 @@ float kila_noise(vec2 uv, vec4 noise) {
 vec2 kila_noise2(vec2 uv, vec4 noise) {
     return vec2(kila_noise(uv, noise), kila_noise(uv + vec2(17.31, 5.27), noise));
 }
+
+#endif

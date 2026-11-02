@@ -1,15 +1,16 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // One axis of a depth-aware blur that integrates the 4x4 tile of shadow samples into penumbrae: box4 * box4
 // has a double zero at the tile's frequencies, and taps are weighted against the depth the centre's plane
 // predicts, so surfaces seen at an angle blur as evenly as those facing the camera.
 // StepParams: blur direction (x, y), where sky texels stand (z; below 0, the light buffer, they are left alone).
 
-#moj_import <photon:dynamic_light_depth.glsl>
+#include <photon:dynamic_light_depth.glsl>
 
 uniform sampler2D IrradianceSampler;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 float depthAt(ivec2 lightPixel) {
     float z = lightTexelDepth(lightPixel);

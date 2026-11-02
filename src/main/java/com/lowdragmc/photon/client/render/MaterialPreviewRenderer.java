@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.render;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.gui.texture.GuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.GUIContext;
 import com.lowdragmc.photon.Photon;
@@ -8,13 +8,13 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialSetting;
 import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.IMaterial;
 import com.mojang.blaze3d.ProjectionType;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -519,6 +519,10 @@ public final class MaterialPreviewRenderer {
         var sequential = RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS);
         var indices = sequential.getBuffer(6);
 
+        var compiled = PhotonPipelines.compiled(info.programs().main());
+        if (compiled == null) {
+            throw new IllegalStateException("the material's pipeline does not compile");
+        }
         RenderSystem.backupProjectionMatrix();
         // ortho that maps the unit quad straight to the target: ProjMat * identity(ModelView) * (±1,±1,0)
         RenderSystem.setProjectionMatrix(projBuffer().getBuffer(PREVIEW_ORTHO),
@@ -527,7 +531,7 @@ public final class MaterialPreviewRenderer {
         try (RenderPass pass = device.createCommandEncoder().createRenderPass(
                 () -> "Photon material preview", hdr, Optional.of(TRANSPARENT),
                 depthView(entry.size), OptionalDouble.of(RenderSystem.DEFAULT_DEPTH_CLEAR_VALUE))) {
-            pass.setPipeline(info.programs().main());
+            pass.setPipeline(compiled);
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", dynamicTransforms);
             pass.setUniform(PhotonMaterialUniforms.UBO_NAME, materialSlice);
@@ -537,9 +541,9 @@ public final class MaterialPreviewRenderer {
             var customSlice = custom == null ? null : custom.slice();
             if (customSlice != null) pass.setUniform(PhotonCustomUniforms.UBO_NAME, customSlice);
             for (var e : textures) {
-                pass.bindTexture(e.getKey(), e.getValue().getTextureView(), e.getValue().getSampler());
+                pass.setUniform(e.getKey(), e.getValue().getTextureView(), e.getValue().getSampler());
             }
-            pass.bindTexture("Sampler2", Minecraft.getInstance().gameRenderer.lightmap(),
+            pass.setUniform("Sampler2", Minecraft.getInstance().gameRenderer.lightmap(),
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
             // A preview has no scene of its own, but every declared sampler must still be bound — and a
             // blank stand-in makes a Scene Color/Depth material preview a useless flat black. Prefer the
@@ -562,7 +566,7 @@ public final class MaterialPreviewRenderer {
             }
             // Photon-owned scene samplers, after the graph's own binds — see PhotonWorldRenderState.recordDraws.
             if (PhotonPipelines.isWireframe(info.programs().main())) {
-                pass.bindTexture("SamplerSceneColor",
+                pass.setUniform("SamplerSceneColor",
                         previewSceneColor != null ? previewSceneColor : dummyColorView(), sceneSampler);
             }
             for (var name : info.bindings().sceneSamplers()) {
@@ -573,7 +577,7 @@ public final class MaterialPreviewRenderer {
                 } else {
                     view = previewSceneColor != null ? previewSceneColor : dummyColorView();
                 }
-                pass.bindTexture(name, view, sceneSampler);
+                pass.setUniform(name, view, sceneSampler);
             }
             pass.setVertexBuffer(0, quad().slice());
             pass.setIndexBuffer(indices, sequential.type());

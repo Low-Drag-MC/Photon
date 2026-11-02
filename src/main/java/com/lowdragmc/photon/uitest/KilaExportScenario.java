@@ -48,7 +48,6 @@ import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
 import com.lowdragmc.photon.client.shadergraph.runtime.ShaderGraphRuntime;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
@@ -680,23 +679,23 @@ public class KilaExportScenario implements UIScenario {
                 continue;
             }
             // the generated GLSL reaches the device through KilaGraph's source registry, as a graph material's own does
-            RenderTypeFactory.getOrBuildPipeline(compiled);
+            RenderTypeFactory.getOrBuildPipelines(compiled);
             for (var variant : variants) {
                 // what the graph's own drain would build: the data it reads, on the variant's geometry
                 if (variant == null) {
-                    if (!RenderSystem.getDevice().precompilePipeline(
-                            PhotonPipelines.graphShader(compiled, null, key, null)).isValid()) {
+                    if (!PhotonPipelines.compile(
+                            PhotonPipelines.graphShader(compiled, null, key, null))) {
                         broken.add(entry.getKey() + " / cpu");
                     }
-                    if (!RenderSystem.getDevice().precompilePipeline(PhotonPipelines.graphShader(compiled, null, key,
-                            new PhotonPipelines.CpuData(true, true))).isValid()) {
+                    if (!PhotonPipelines.compile(PhotonPipelines.graphShader(compiled, null, key,
+                            new PhotonPipelines.CpuData(true, true)))) {
                         broken.add(entry.getKey() + " / cpu records");
                     }
                     continue;
                 }
                 var pipeline = PhotonPipelines.graphShader(compiled, new PhotonPipelines.InstancedGeometryKey(variant,
                         variant.layout, true, variant.usesCustomData), key);
-                if (!RenderSystem.getDevice().precompilePipeline(pipeline).isValid()) {
+                if (!PhotonPipelines.compile(pipeline)) {
                     broken.add(entry.getKey() + " / " + String.join("+", variant.defines));
                 }
             }

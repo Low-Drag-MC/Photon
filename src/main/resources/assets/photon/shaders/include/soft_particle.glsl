@@ -1,3 +1,6 @@
+#ifndef PHOTON_SOFT_PARTICLE_GLSL
+#define PHOTON_SOFT_PARTICLE_GLSL
+
 // Soft particles: fade a fragment out as it approaches the opaque surface behind it, so a quad
 // intersecting the ground stops showing the hard line where it slices through. Unity's Soft Particles /
 // Unreal's DepthFade, and the same expression the shadergraph's photon_depth_fade node compiles to.
@@ -9,7 +12,7 @@
 
 #ifdef PHOTON_SOFT
 
-#moj_import <photon:engine.glsl>
+#include <photon:engine.glsl>
 
 uniform sampler2D SamplerSceneDepth;
 
@@ -48,5 +51,7 @@ vec4 photon_soft_particle(vec4 color, vec4 params) {
 vec4 photon_soft_particle(vec4 color, vec4 params) {
     return color;
 }
+
+#endif
 
 #endif

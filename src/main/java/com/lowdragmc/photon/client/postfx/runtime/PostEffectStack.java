@@ -6,7 +6,7 @@ import com.lowdragmc.photon.PhotonConfig;
 import com.lowdragmc.photon.client.postfx.graph.TargetFormat;
 import com.lowdragmc.photon.client.postfx.shadergraph.runtime.FullscreenGraphRuntime;
 import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -268,16 +268,20 @@ public final class PostEffectStack {
         uniforms.set("MaskFilter", maskFilter);
         uniforms.upload();
         var boundMask = maskTexture;
-        PhotonFullscreenPass.draw("photonfx mix", pipeline, mixed.view(), pass -> {
-            pass.bindTexture("SamplerA", chain, RenderGraphExecutor.linearClamp());
-            pass.bindTexture("SamplerB", output.view(), RenderGraphExecutor.linearClamp());
+        var drawn = PhotonFullscreenPass.draw("photonfx mix", pipeline, mixed.view(), pass -> {
+            pass.setUniform("SamplerA", chain, RenderGraphExecutor.linearClamp());
+            pass.setUniform("SamplerB", output.view(), RenderGraphExecutor.linearClamp());
             if (cullGroups != null) {
-                pass.bindTexture("MaskSampler", boundMask == null
+                pass.setUniform("MaskSampler", boundMask == null
                         ? RenderGraphExecutor.missingView() : boundMask, RenderGraphExecutor.linearClamp());
             }
             uniforms.bindTo(pass);
         });
         PostFXTargetPool.release(unionMask);
+        if (!drawn) {
+            PostFXTargetPool.release(mixed);
+            return null;
+        }
         return mixed;
     }
 
@@ -320,10 +324,14 @@ public final class PostEffectStack {
         uniforms.set("IdsB", ids[4], ids[5], ids[6], ids[7]);
         uniforms.set("IdCount", count);
         uniforms.upload();
-        PhotonFullscreenPass.draw("photonfx mask union", pipeline, target.view(), pass -> {
-            pass.bindTexture("MaskSampler", mask, RenderGraphExecutor.linearClamp());
+        var drawn = PhotonFullscreenPass.draw("photonfx mask union", pipeline, target.view(), pass -> {
+            pass.setUniform("MaskSampler", mask, RenderGraphExecutor.linearClamp());
             uniforms.bindTo(pass);
         });
+        if (!drawn) {
+            PostFXTargetPool.release(target);
+            return null;
+        }
         return target;
     }
 

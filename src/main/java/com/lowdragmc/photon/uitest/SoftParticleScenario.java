@@ -25,8 +25,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.number.NumberFunction
 import com.lowdragmc.photon.client.gameobject.emitter.particle.ParticleEmitter;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonSceneCapture;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ProblemReporter;
@@ -227,7 +226,7 @@ public class SoftParticleScenario implements UIScenario {
         Throwable failure = null;
         var valid = false;
         try {
-            valid = RenderSystem.getDevice().precompilePipeline(pipeline).isValid();
+            valid = PhotonPipelines.compile(pipeline);
         } catch (Throwable e) {
             failure = e;
         }

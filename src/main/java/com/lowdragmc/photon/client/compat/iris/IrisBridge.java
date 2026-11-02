@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.compat.iris;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 
 /**

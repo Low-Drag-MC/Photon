@@ -5,10 +5,10 @@ import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.renderpearl.api.GpuFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.texture.AbstractTexture;
@@ -85,6 +85,11 @@ public final class PostFXPreview {
      *  sentinel and reports true forever, which had every world frame copying the screen. */
     private static boolean captureWanted() {
         return requestFrame >= PostFXTargetPool.currentFrame() - 1;
+    }
+
+    /** Whether a preview asked for the clean scene within the last frame. */
+    public static boolean isCaptureWanted() {
+        return captureWanted();
     }
 
     /** Copy the clean scene if a preview wants it; drop the captures once none does. */

@@ -1,3 +1,6 @@
+#ifndef PHOTON_DYNAMIC_LIGHT_GLSL
+#define PHOTON_DYNAMIC_LIGHT_GLSL
+
 // Photon dynamic lights, shared by the light pass and any shader that wants to be lit. Java side: DynamicLightRenderer
 // (light list, block) and LightClusters (cluster lists) — LOCKSTEP with both.
 //
@@ -93,3 +96,5 @@ float photon_visibility(vec4 t3, vec3 fromLight, float distance) {
     int map = int(t3.y + 0.5) - 1;
     return map >= 0 && map < PhotonVisibilityInfo.z ? photon_mapVisibility(map, fromLight, distance) : 1.0;
 }
+
+#endif

@@ -20,6 +20,7 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.model.IModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.JsonModelSource;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.mojang.blaze3d.vertex.*;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import dev.vfyjxf.taffy.style.AlignItems;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import lombok.Getter;
@@ -356,7 +357,8 @@ public final class MeshData implements IConfigurable, IPersistedSerializable {
             framed[0] = mesh;
             frame(s);
         });
-        scene.setAfterWorldRender(s -> drawLineFrames(new PoseStack()));
+        // drawn into the scene's pass, over everything in it
+        scene.setOverlay(ctx -> drawLineFrames(ctx.renderPass(), new PoseStack()));
         return scene;
     }
 
@@ -384,11 +386,11 @@ public final class MeshData implements IConfigurable, IPersistedSerializable {
         scene.setCameraYawAndPitch(-135, 25);
     }
 
-    // drawn through LDLib2's immediate path with the vanilla lines render type
-    public void drawLineFrames(PoseStack poseStack) {
+    // drawn through LDLib2's immediate path with the vanilla lines render type, into the scene's pass
+    public void drawLineFrames(RenderPass pass, PoseStack poseStack) {
         var edges = getEdges();
         if (edges.isEmpty()) return;
-        RenderUtils.drawImmediate(RenderTypes.lines(), buffer -> emitLineFrames(poseStack, buffer, edges));
+        RenderUtils.drawImmediate(pass, RenderTypes.lines(), buffer -> emitLineFrames(poseStack, buffer, edges));
     }
 
     private static void emitLineFrames(PoseStack poseStack, VertexConsumer buffer, List<Edge> edges) {

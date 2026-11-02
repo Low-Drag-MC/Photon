@@ -1,8 +1,9 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Bends the finished frame by what KilaMaterial's stacked screen distortions added up (StackedDistortion).
 
-#moj_import <photon:engine.glsl>
+#include <photon:engine.glsl>
 
 uniform sampler2D DiffuseSampler;
 // rg = the summed push in screen uv, b = how far their tints darken (negative brightens),
@@ -10,7 +11,7 @@ uniform sampler2D DiffuseSampler;
 uniform sampler2D OffsetSampler;
 uniform sampler2D DepthSampler;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     // texelFetch: offsets and frame match texel for texel

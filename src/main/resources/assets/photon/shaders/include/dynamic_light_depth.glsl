@@ -1,6 +1,9 @@
+#ifndef PHOTON_DYNAMIC_LIGHT_DEPTH_GLSL
+#define PHOTON_DYNAMIC_LIGHT_DEPTH_GLSL
+
 // Depth helpers shared by every dynamic-light pass, which must agree texel for texel.
 
-#moj_import <photon:dynamic_light_frame.glsl>
+#include <photon:dynamic_light_frame.glsl>
 
 uniform sampler2D SceneDepthSampler;
 
@@ -101,3 +104,5 @@ float tileStratum() {
     ivec2 cell = tileCell();
     return (float(cell.x * 4 + cell.y) + 0.5) / 16.0;
 }
+
+#endif

@@ -13,7 +13,7 @@ import com.lowdragmc.photon.client.render.PhotonCameraUtils;
 import com.lowdragmc.photon.client.render.PhotonReversedIndices;
 import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.lowdragmc.photon.client.render.PhotonWorldRenderState;
-import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.ints.IntArrayList;

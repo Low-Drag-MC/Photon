@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.trail;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.photon.client.gameobject.emitter.data.MaterialRequirements;
 import com.lowdragmc.lowdraglib2.configurator.ui.ConfiguratorGroup;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;

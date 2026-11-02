@@ -1,4 +1,5 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // three.js FilmShader: animated grain + scanlines. GameTime is engine-driven (0..1 per day cycle).
 
@@ -11,8 +12,8 @@ layout(std140) uniform PhotonPass {
     float GameTime;
 };
 
-in vec2 texCoord;
-out vec4 fragColor;
+layout(location = 0) in vec2 texCoord;
+layout(location = 0) out vec4 fragColor;
 
 float rand(vec2 co) {
     return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);

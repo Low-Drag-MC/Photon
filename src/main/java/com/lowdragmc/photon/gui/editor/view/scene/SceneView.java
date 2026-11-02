@@ -16,6 +16,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.*;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.rendering.IGUIContext;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.TrackedDummyWorld;
+import com.lowdragmc.photon.client.render.PhotonRenderOutput;
 import com.lowdragmc.photon.client.FXSceneOptions;
 import com.lowdragmc.photon.client.PhotonIcons;
 import com.lowdragmc.photon.client.PhotonParticleManager;
@@ -132,8 +133,9 @@ public class SceneView extends View implements FXSceneOptions {
         // bloom and the PIP blit all resolve against one consistent background.
         var renderer = sceneEditor.scene.<WorldSceneRenderer>getRenderer();
         if (renderer != null) {
+            // before the scene's pass opens; the target is the scene's, which Photon's output names while it draws
             renderer.setBeforeWorldRender(r -> {
-                var target = RenderSystem.outputColorTextureOverride;
+                var target = PhotonRenderOutput.color();
                 if (target != null) {
                     RenderSystem.getDevice().createCommandEncoder()
                             .clearColorTexture(target.texture(), SCENE_BACKGROUND);
@@ -301,7 +303,7 @@ public class SceneView extends View implements FXSceneOptions {
         protected void renderAfterWorld(SceneRenderContext ctx) {
             var partialTicks = ctx.partialTicks();
             if (fxObjectInfoView.getInspected() != null) {
-                try (var draw = new RenderUtils.ImmediateDraw()) {
+                try (var draw = new RenderUtils.ImmediateDraw(ctx.renderPass())) {
                     fxObjectInfoView.getInspected().drawEditorAfterWorld(this, draw, partialTicks);
                     if (isCullBoxVisible && fxObjectInfoView.getInspected() instanceof FXObject fxObject) {
                         var cullBox = fxObject.getRenderBoundingBox(partialTicks);

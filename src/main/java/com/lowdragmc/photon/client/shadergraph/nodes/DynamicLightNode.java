@@ -63,7 +63,7 @@ public class DynamicLightNode extends ShaderNode {
     @Override
     public String glslExample() {
         return """
-                // #moj_import <photon:lit_particle.glsl>
+                // #include <photon:lit_particle.glsl>
                 light = photon_surface_light(viewPos,
                     viewNormal, wrap);""";
     }

@@ -39,7 +39,7 @@ final class LightSite {
             var server = level.getServer();
             // the time is on the dimension's clock, the weather on the server
             dayTime = level.dimensionTypeRegistration().value().defaultClock()
-                    .map(clock -> server.clockManager().getTotalTicks(clock)).orElse(null);
+                    .map(clock -> server.clockManager().getInstance(clock).totalTicks()).orElse(null);
             daylight = TestClock.advancing(level);
             var weather = server.getWeatherData();
             clearTime = weather.getClearWeatherTime();

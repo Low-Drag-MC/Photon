@@ -7,17 +7,22 @@ import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
 import com.lowdragmc.photon.client.gameobject.emitter.data.material.LitParticles;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.PrimitiveTopology;
-import com.mojang.blaze3d.pipeline.BindGroupLayout;
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.DepthStencilState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.CompareOp;
-import com.mojang.blaze3d.platform.PolygonMode;
-import com.mojang.blaze3d.shaders.UniformType;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.DepthStencilState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.CompiledRenderPipeline;
+import com.lowdragmc.kilagraph.rendertype.runtime.KGPipelines;
+import com.lowdragmc.photon.core.mixins.accessor.PipelineCacheAccessor;
+import com.lowdragmc.photon.core.mixins.accessor.RenderSystemAccessor;
+import com.mojang.renderpearl.api.pipeline.CompareOp;
+import com.mojang.renderpearl.api.pipeline.PolygonMode;
+import com.mojang.renderpearl.api.pipeline.UniformType;
+import com.mojang.renderpearl.api.pipeline.ShaderType;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
@@ -201,21 +206,39 @@ public final class PhotonPipelines {
      */
     public static RenderPipeline reversedWinding(RenderPipeline pipeline) {
         return REVERSED_WINDING.computeIfAbsent(pipeline, base -> {
-            var fragment = PhotonShaderSources.reversedWinding(base.getFragmentShader());
+            var fragment = PhotonShaderSources.reversedWinding(base.getShaders().get(ShaderType.FRAGMENT));
             if (fragment == null) return base;
-            var builder = base.toBuilder()
+            return base.toBuilder()
                     .withLocation(base.getLocation().withSuffix("/reversed_winding"))
-                    .withFragmentShader(fragment);
-            // toBuilder copies the colour targets but not how many are active, so build() would fall back to the default
-            var targets = base.getColorTargetStates();
-            for (int i = 0; i < targets.length; i++) {
-                if (targets[i] != null) builder.withColorTargetState(i, targets[i]);
-            }
-            return builder.build();
+                    .withFragmentShader(fragment)
+                    .build();
         });
     }
 
     private PhotonPipelines() {
+    }
+
+    // ---- compiling --------------------------------------------------------------------------------
+
+    /**
+     * Compiles {@code pipeline} into the current pipeline cache before any pass opens; false if it doesn't compile
+     * (remembered until the next shader reload). Render thread.
+     */
+    public static boolean compile(RenderPipeline pipeline) {
+        return KGPipelines.ensureCompiled(pipeline);
+    }
+
+    /**
+     * The compiled form of {@code pipeline}, or null when it doesn't compile (the draw is skipped). Read straight from the
+     * pipeline cache: {@code RenderSystem.getCompiledPipeline} is where Iris swaps shader-pack programs in. Render thread.
+     */
+    @Nullable
+    public static CompiledRenderPipeline compiled(RenderPipeline pipeline) {
+        if (!compile(pipeline)) {
+            return null;
+        }
+        var cache = RenderSystemAccessor.photon$currentPipelineCache();
+        return cache == null ? null : ((PipelineCacheAccessor) cache).photon$cache().get(pipeline);
     }
 
     // ---- layout plumbing -------------------------------------------------------------------------
@@ -283,7 +306,7 @@ public final class PhotonPipelines {
                 switch (entry.kind()) {
                     case UNIFORM -> layout.withUniform(name, UniformType.UNIFORM_BUFFER);
                     case TEXEL -> layout.withUniform(name, UniformType.TEXEL_BUFFER, entry.format());
-                    case SAMPLER -> layout.withSampler(name);
+                    case SAMPLER -> layout.withUniform(name, UniformType.COMBINED_IMAGE_SAMPLER);
                 }
             });
             builder.withBindGroupLayout(layout.build());
@@ -671,8 +694,9 @@ public final class PhotonPipelines {
     }
 
     public static void register(RegisterRenderPipelinesEvent event) {
-        // precompile the common case; a registered pipeline that fails to compile crashes resource load
-        event.registerPipeline(hdrParticle(ParticlePipelineKey.DEFAULT));
+        // precompile the common case with the reload; optional, so a pipeline that fails to compile (an outdated
+        // resource pack overriding one of Photon's shaders, say) is logged rather than failing the reload
+        event.registerOptionalPipeline(hdrParticle(ParticlePipelineKey.DEFAULT));
     }
 
     // ---- custom user shaders (user vsh + fsh, the 1.21 JSON is the metadata) ----------------------
@@ -774,6 +798,7 @@ public final class PhotonPipelines {
         INSTANCED_CUSTOM_VARIANTS.clear();
         // sources may have changed; the device drops its compiled programs itself
         REVERSED_WINDING.clear();
+        PhotonOit.onResourceReload();
     }
 
     private static void forget(RenderPipeline pipeline) {

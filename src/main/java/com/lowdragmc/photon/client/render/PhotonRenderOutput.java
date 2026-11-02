@@ -2,52 +2,71 @@ package com.lowdragmc.photon.client.render;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.ScissorState;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 
 import javax.annotation.Nullable;
+import java.util.ArrayDeque;
 
 /**
- * Where drawing is going right now — the 26.1 answer to "the surface I am compositing into".
- *
- * <p>{@code Minecraft.getMainRenderTarget()} means "the game window", and those two are the same thing
- * only while the window is the only place a frame can land. That assumption is already wrong here: a UI
- * element with a mask or a sub-one opacity renders through LDLib2's picture-in-picture pass, and a UI
- * hosted in its own operating-system window has a different target entirely. Anything Photon copies from,
- * sizes itself after, or writes back into has to follow the redirect or it composites into a frame
- * nobody is looking at. (1.21 expressed this as {@code UISurface.currentTarget()}; there is no render
- * target to name in 26.1 — "where drawing goes" IS the pair of output overrides on {@link RenderSystem},
- * which the command encoder resolves when it opens a pass.)
- *
- * <p>Code that genuinely means the game's own frame regardless of where UI is being drawn — the Iris
- * bridge reading the pack's buffers, say — should keep asking Minecraft directly.
- *
- * <p>Render thread only (the overrides are render-thread state).
+ * The surface Photon draws into right now: an editor scene's target while one is pushed ({@link #push}), otherwise the
+ * game's main target. 26.3 has no global output override, so whoever hands Photon a surface names it. Render thread.
  */
 public final class PhotonRenderOutput {
 
+    private record Output(GpuTextureView color, @Nullable GpuTextureView depth) {
+    }
+
+    private static final ArrayDeque<Output> STACK = new ArrayDeque<>();
+
     private PhotonRenderOutput() {
+    }
+
+    /** Ends a {@link #push}; closing it twice is harmless. */
+    public interface Scope extends AutoCloseable {
+        @Override
+        void close();
+    }
+
+    /** Photon draws into {@code color} (and tests against {@code depth}) until the scope closes. Nests. */
+    public static Scope push(GpuTextureView color, @Nullable GpuTextureView depth) {
+        var output = new Output(color, depth);
+        STACK.push(output);
+        return new Scope() {
+            private boolean closed;
+
+            @Override
+            public void close() {
+                if (closed) return;
+                closed = true;
+                STACK.remove(output);
+            }
+        };
+    }
+
+    /** The game's own frame: its main render target. */
+    public static Scope world() {
+        var main = Minecraft.getInstance().gameRenderer.mainRenderTarget();
+        return push(main.getColorTextureView(), main.getDepthTextureView());
     }
 
     /** The colour attachment being drawn into, or null when the main target has none. */
     @Nullable
     public static GpuTextureView color() {
-        return RenderSystem.outputColorTextureOverride != null
-                ? RenderSystem.outputColorTextureOverride
-                : Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTextureView();
+        var top = STACK.peek();
+        return top != null ? top.color() : Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTextureView();
     }
 
     /** The depth attachment being drawn into, or null when the target has none. */
     @Nullable
     public static GpuTextureView depth() {
-        return RenderSystem.outputDepthTextureOverride != null
-                ? RenderSystem.outputDepthTextureOverride
-                : Minecraft.getInstance().gameRenderer.mainRenderTarget().getDepthTextureView();
+        var top = STACK.peek();
+        return top != null ? top.depth() : Minecraft.getInstance().gameRenderer.mainRenderTarget().getDepthTextureView();
     }
 
     /**
-     * The engine's render-type scissor clamped to the target; 26.2 rejects a box outside the render area.
-     * Check {@link #isEmpty} before drawing.
+     * The engine's render-type scissor clamped to the target; a box outside the render area is rejected. Check
+     * {@link #isEmpty} before drawing.
      */
     public static ScissorState scissor(int width, int height) {
         var clip = new ScissorState(RenderSystem.getScissorStateForRenderTypeDraws());

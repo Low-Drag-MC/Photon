@@ -1,3 +1,6 @@
+#ifndef PHOTON_PARTICLE_UTILS_GLSL
+#define PHOTON_PARTICLE_UTILS_GLSL
+
 const float INV_TEX_SIZE = 1.0 / 128.0;
 const float MAX_U = 1.0 - 0.5 * INV_TEX_SIZE;
 
@@ -8,3 +11,5 @@ float getCurveValue(sampler2D curveTexture, int curveIndex, float x) {
 vec4 getGradientValue(sampler2D gradientTexture, int gradientIndex, float x) {
     return texture(gradientTexture, vec2(clamp(x, 0.0, MAX_U), (float(gradientIndex) + 0.5) * INV_TEX_SIZE));
 }
+
+#endif

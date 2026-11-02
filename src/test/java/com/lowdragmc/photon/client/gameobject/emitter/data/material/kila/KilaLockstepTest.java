@@ -84,6 +84,9 @@ class KilaLockstepTest {
             while (m.find()) defined.add(m.group(1));
             m = test.matcher(source);
             while (m.find()) tested.add(m.group(1) != null ? m.group(1) : m.group(2));
+            // an include's guard (#ifndef X_GLSL / #define X_GLSL) is the one macro both defined and tested on purpose
+            defined.removeIf(name -> name.endsWith("_GLSL"));
+            tested.removeIf(name -> name.endsWith("_GLSL"));
         }
         // every switch on, each in a layout of its own so none is left out for the samplers
         var main = new KilaMainTexture();
@@ -231,7 +234,7 @@ class KilaLockstepTest {
         assertTrue(fsh.contains("} else if (reads == " + KilaUI.TextureKind.SCALAR.ordinal() + ") {"));
         assertEquals(KilaUI.TextureKind.values().length - 1, KilaUI.TextureKind.VECTOR.ordinal(),
                 "red and green is the preview's fall-through");
-        assertTrue(fsh.contains("#moj_import <photon:kila_lib.glsl>"), "the same uv chain and noise as the material");
+        assertTrue(fsh.contains("#include <photon:kila_lib.glsl>"), "the same uv chain and noise as the material");
         assertTrue(fsh.contains("kila_noise(uv, KilaPreviewNoise)") && fsh.contains("kila_noise2(uv, KilaPreviewNoise)"));
     }
 
@@ -347,7 +350,7 @@ class KilaLockstepTest {
         assertFalse(cpuBlock.contains("uniform samplerBuffer"), "the records follow PHOTON_DATA / PHOTON_CUSTOM_DATA");
         assertTrue(glsl.contains("#ifdef " + PhotonPipelines.DATA_DEFINE + "\nuniform samplerBuffer PhotonData;"));
         assertTrue(glsl.contains("#ifdef " + PhotonPipelines.CUSTOM_DATA_DEFINE + "\nuniform samplerBuffer PhotonCustomData;"));
-        assertTrue(glsl.contains("#define PHOTON_RECORD_INDEX ((gl_VertexID - PhotonRecordBase) / max(PhotonVertsPerParticle, 1))"));
+        assertTrue(glsl.contains("#define PHOTON_RECORD_INDEX ((gl_VertexIndex - PhotonRecordBase) / max(PhotonVertsPerParticle, 1))"));
         assertTrue(glsl.contains("texelFetch(PhotonData, PHOTON_RECORD_INDEX * PHOTON_DATA_TEXELS + (slot))"));
 
         for (var variant : List.of("PARTICLE_INSTANCE", "PARTICLE_MODEL_INSTANCE", "TRAIL_INSTANCE",

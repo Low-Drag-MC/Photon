@@ -2,19 +2,19 @@ package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.pipeline.BindGroupLayout;
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.BlendFactor;
-import com.mojang.blaze3d.platform.BlendOp;
-import com.mojang.blaze3d.shaders.UniformType;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.BlendFactor;
+import com.mojang.renderpearl.api.pipeline.BlendOp;
+import com.mojang.renderpearl.api.pipeline.UniformType;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.lwjgl.system.MemoryUtil;
 
 import javax.annotation.Nullable;
@@ -98,9 +98,9 @@ public final class PhotonBloom implements AutoCloseable {
     @Nullable
     private static RenderPipeline upPipeline;
 
-    private static final BindGroupLayout INPUT = BindGroupLayout.builder().withSampler("inputSampler").build();
+    private static final BindGroupLayout INPUT = BindGroupLayout.builder().withUniform("inputSampler", UniformType.COMBINED_IMAGE_SAMPLER).build();
     private static final BindGroupLayout INPUT_AND_PARAMS = BindGroupLayout.builder()
-            .withSampler("inputSampler")
+            .withUniform("inputSampler", UniformType.COMBINED_IMAGE_SAMPLER)
             .withUniform("PhotonBloom", UniformType.UNIFORM_BUFFER)
             .build();
 
@@ -137,11 +137,10 @@ public final class PhotonBloom implements AutoCloseable {
     static void preload() {
         if (!PhotonConfig.INSTANCE.enableBloom.get()) return;
         var intensity = PhotonConfig.INSTANCE.bloomIntensity.get().floatValue();
-        var device = RenderSystem.getDevice();
         PhotonFullscreenPass.precompileCopy(PhotonPipelines.HDR_FORMAT);
         for (var pipeline : List.of(brightStartPipeline(), downPipeline(), upPipeline(),
                 brightPipeline(intensity), blitPipeline(intensity))) {
-            device.precompilePipeline(pipeline);
+            PhotonPipelines.compile(pipeline);
         }
     }
 
@@ -255,6 +254,11 @@ public final class PhotonBloom implements AutoCloseable {
         }
         var threshold = PhotonConfig.INSTANCE.bloomThreshold.get().floatValue();
         var intensity = PhotonConfig.INSTANCE.bloomIntensity.get().floatValue();
+        // a stage that doesn't compile would leave the next one blending stale mips onto the target
+        for (var pipeline : new RenderPipeline[]{brightStartPipeline(), downPipeline(), upPipeline(),
+                brightPipeline(intensity), blitPipeline(intensity)}) {
+            if (PhotonPipelines.compiled(pipeline) == null) return;
+        }
 
         // Snapshot the HDR scene. The chain could sample targetColor directly — it already holds exactly
         // what bloom needs, un-clamped — except the sharp-highlight subtract below both READS its input and
@@ -278,7 +282,7 @@ public final class PhotonBloom implements AutoCloseable {
     private static void fullscreenPass(RenderPipeline pipeline, GpuTextureView target, GpuTextureView input,
                                        @Nullable GpuBufferSlice params) {
         PhotonFullscreenPass.draw("Photon bloom", pipeline, target, pass -> {
-            pass.bindTexture("inputSampler", input,
+            pass.setUniform("inputSampler", input,
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
             if (params != null) {
                 pass.setUniform("PhotonBloom", params);

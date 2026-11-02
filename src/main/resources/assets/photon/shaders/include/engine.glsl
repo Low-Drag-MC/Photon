@@ -1,3 +1,6 @@
+#ifndef PHOTON_ENGINE_GLSL
+#define PHOTON_ENGINE_GLSL
+
 // Photon per-view engine uniforms (the 1.21 U_* dynamic uniforms), bound on every Photon draw; updated once
 // per world frame (FrameGraphSetupEvent) and per editor-scene render (PhotonParticleManager).
 layout(std140) uniform PhotonEngine {
@@ -19,3 +22,5 @@ float photon_eye_depth(float depth) {
     vec4 view = U_InverseProjectionMatrix * vec4(0.0, 0.0, photon_ndc_depth(depth), 1.0);
     return -view.z / view.w;
 }
+
+#endif

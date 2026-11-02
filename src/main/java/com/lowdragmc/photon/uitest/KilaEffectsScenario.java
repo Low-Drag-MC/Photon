@@ -36,9 +36,7 @@ import com.lowdragmc.photon.client.render.FXCompositeMode;
 import com.lowdragmc.photon.client.render.PhotonEngineUniforms;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonSceneCapture;
-import com.mojang.blaze3d.opengl.GlRenderPipeline;
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
@@ -519,12 +517,11 @@ public class KilaEffectsScenario implements UIScenario {
                 var pipeline = KilaPipelines.get(lease, material.layout(), PhotonPipelines.ParticlePipelineKey.DEFAULT,
                         null, false);
                 ctx.require("the world-space variant compiled", pipeline != null);
-                var linked = RenderSystem.getDevice().precompilePipeline(pipeline);
-                ctx.check("a world-space slot declares the engine block", linked.isValid()
-                        && PipelineChecks.declared(pipeline).contains("PhotonEngine"), "PhotonEngine declared", linked);
-                if (linked instanceof GlRenderPipeline gl) {
-                    ctx.check("and reads the camera from it", gl.program().getUniforms().containsKey("PhotonEngine"),
-                            "PhotonEngine bound", gl.program().getUniforms().keySet());
+                var live = PipelineChecks.live(pipeline);
+                ctx.check("a world-space slot declares the engine block", live != null
+                        && PipelineChecks.declared(pipeline).contains("PhotonEngine"), "PhotonEngine declared", live);
+                if (live != null) {
+                    ctx.check("and reads the camera from it", live.contains("PhotonEngine"), "PhotonEngine bound", live);
                 }
             }
             var value = PhotonEngineUniforms.cameraPosition();

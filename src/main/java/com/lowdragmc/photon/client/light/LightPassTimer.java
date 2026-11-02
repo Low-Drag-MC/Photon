@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.client.light;
 
 import com.lowdragmc.lowdraglib2.Platform;
-import com.mojang.blaze3d.systems.GpuQueryPool;
+import com.mojang.renderpearl.api.commands.GpuQueryPool;
 import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
 import org.jetbrains.annotations.Nullable;

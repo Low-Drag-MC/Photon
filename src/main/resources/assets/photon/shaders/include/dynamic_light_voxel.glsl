@@ -1,10 +1,13 @@
+#ifndef PHOTON_DYNAMIC_LIGHT_VOXEL_GLSL
+#define PHOTON_DYNAMIC_LIGHT_VOXEL_GLSL
+
 // The voxel copy of the blocks around the shadowed lights, and rays through it. Positions are in blocks relative
 // to the voxel region's min corner. Java side: VoxelWorld — LOCKSTEP with its page and brick layouts.
 //
 // A page is a float (four to a texel buffer texel), a brick texel an R8_UNORM byte read back exactly from its
 // normalised value.
 
-#moj_import <photon:dynamic_light_frame.glsl>
+#include <photon:dynamic_light_frame.glsl>
 
 uniform samplerBuffer VoxelPages;
 uniform sampler2D VoxelBricks;
@@ -102,3 +105,5 @@ float voxelShadow(vec3 fromBlock, vec3 toBlock) {
     if (reach <= 0.0) return 1.0;
     return voxelTrace(fromBlock, delta / len, reach) < reach ? 0.0 : 1.0;
 }
+
+#endif

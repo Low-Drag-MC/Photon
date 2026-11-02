@@ -1,12 +1,13 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Single scattering from the volumetric lights along each view ray, up to the scene. Per light the ray is clipped to
 // its range and cone, split at the closest approach and cut into pieces of equal angle from the light: the falloff
 // 1/(r^2+1) - 1/(range^2+1) integrates exactly per piece; phase, cone and visibility are sampled once per piece, at
 // its middle, or for shadowed lights at this pixel's stratum of the 4x4 tile, which the blur integrates.
 
-#moj_import <photon:dynamic_light.glsl>
-#moj_import <photon:dynamic_light_depth.glsl>
+#include <photon:dynamic_light.glsl>
+#include <photon:dynamic_light_depth.glsl>
 
 // three texels per light from 3i: view position, range | scattered colour, cos inner (< -1.5: point) | spot axis,
 // cos outer. The tile lists are laid out like the cluster lists, with one slice.
@@ -14,7 +15,7 @@ uniform samplerBuffer VolumeLightData;
 uniform samplerBuffer VolumeTileGrid;
 uniform samplerBuffer VolumeTileIndices;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 // the t range of o + t d inside the forward nappe of the cone at apex p
 vec2 coneRange(vec3 o, vec3 d, vec3 p, vec3 axis, float cosOuter) {

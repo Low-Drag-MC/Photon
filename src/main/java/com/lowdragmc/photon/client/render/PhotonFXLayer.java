@@ -1,15 +1,16 @@
 package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.photon.Photon;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.pipeline.BindGroupLayout;
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
+import com.mojang.renderpearl.api.pipeline.UniformType;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import org.joml.Vector4f;
 
@@ -90,8 +91,8 @@ public final class PhotonFXLayer implements AutoCloseable {
     /** Compile the composites onto the main target ahead of the first merge ({@code PhotonFramePasses}). */
     static void preload() {
         var format = Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture().getFormat();
-        RenderSystem.getDevice().precompilePipeline(compositePipeline(format, true));
-        RenderSystem.getDevice().precompilePipeline(compositePipeline(format, false));
+        PhotonPipelines.compile(compositePipeline(format, true));
+        PhotonPipelines.compile(compositePipeline(format, false));
     }
 
     /**
@@ -103,7 +104,7 @@ public final class PhotonFXLayer implements AutoCloseable {
                 PhotonFullscreenPass.builder(Photon.id("core/fx_layer_composite"))
                         .withLocation(Photon.id("pipeline/fx_layer_composite_"
                                 + key.format().name().toLowerCase(Locale.ROOT) + (key.writeAlpha() ? "" : "_rgb")))
-                        .withBindGroupLayout(BindGroupLayout.builder().withSampler("colorSampler").build())
+                        .withBindGroupLayout(BindGroupLayout.builder().withUniform("colorSampler", UniformType.COMBINED_IMAGE_SAMPLER).build())
                         .withColorTargetState(new ColorTargetState(
                                 Optional.of(BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA), key.format(),
                                 key.writeAlpha() ? ColorTargetState.WRITE_ALL : ColorTargetState.WRITE_COLOR))
@@ -163,7 +164,7 @@ public final class PhotonFXLayer implements AutoCloseable {
     public void compositeTo(GpuTextureView destination, boolean writeAlpha) {
         var sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
         PhotonFullscreenPass.draw("Photon fx layer composite", compositePipeline(destination.texture().getFormat(), writeAlpha), destination,
-                pass -> pass.bindTexture("colorSampler", view, sampler));
+                pass -> pass.setUniform("colorSampler", view, sampler));
     }
 
     @Override

@@ -52,7 +52,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import org.joml.Vector2f;
 import org.joml.Vector4f;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -1389,10 +1389,10 @@ public class AnimationTrackEditor extends TrackEditor {
             container.removeChild(field);
         };
         field.addEventListener(UIEvents.KEY_DOWN, ev -> {
-            if (ev.keyCode == GLFW.GLFW_KEY_ENTER || ev.keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+            if (ev.keyCode == InputConstants.KEY_RETURN || ev.keyCode == InputConstants.KEY_NUMPADENTER) {
                 commit.run();
                 ev.stopPropagation();
-            } else if (ev.keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            } else if (ev.keyCode == InputConstants.KEY_ESCAPE) {
                 committed[0] = true;
                 container.removeChild(field);
                 ev.stopPropagation();

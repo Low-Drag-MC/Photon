@@ -3,9 +3,10 @@ package com.lowdragmc.photon.client.render;
 import com.lowdragmc.lowdraglib2.client.utils.RenderBufferUtils;
 import com.lowdragmc.lowdraglib2.client.utils.RenderUtils;
 import com.lowdragmc.photon.Photon;
-import com.mojang.blaze3d.pipeline.DepthStencilState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.CompareOp;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.DepthStencilState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.CompareOp;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
@@ -22,6 +23,8 @@ public final class PhotonGizmoLines {
             RenderSetup.builder(RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
                     .withLocation(Photon.id("pipeline/gizmo_lines"))
                     .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
+                    // 26.3 gives a pipeline without one no colour target at all (a depth-only pipeline)
+                    .withColorTargetState(ColorTargetState.DEFAULT)
                     .build()).createRenderSetup());
 
     private PhotonGizmoLines() {

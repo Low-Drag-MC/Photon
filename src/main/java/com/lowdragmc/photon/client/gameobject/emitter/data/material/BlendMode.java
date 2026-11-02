@@ -1,10 +1,10 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
 import com.lowdragmc.lowdraglib2.configurator.annotation.Configurable;
-import com.mojang.blaze3d.pipeline.BlendEquation;
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.platform.BlendFactor;
-import com.mojang.blaze3d.platform.BlendOp;
+import com.mojang.renderpearl.api.pipeline.BlendEquation;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.BlendFactor;
+import com.mojang.renderpearl.api.pipeline.BlendOp;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;

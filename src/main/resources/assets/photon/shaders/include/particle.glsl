@@ -1,5 +1,10 @@
+#ifndef PHOTON_PARTICLE_GLSL
+#define PHOTON_PARTICLE_GLSL
+
 // Vertex inputs are bound by name: MIRRORED FROM PhotonInstanceLayouts (names, types and order) and the record
-// fillers. Declare every input of a binding up to the last one read, since Vulkan numbers inputs by counting.
+// fillers. 26.3 compiles every stage to SPIR-V with no automatic location mapping, so each input carries an explicit,
+// distinct location; which one does not matter (a vertex-format element is paired with the input of its name), but a
+// custom shader's own tail inputs are numbered after PHOTON_INPUT_LOCATIONS, the first location none of these takes.
 // Side buffers are declared only under the define the pipeline sets when it binds them.
 
 // one line: line continuations need GLSL 4.20
@@ -9,15 +14,16 @@
 
 #if defined(PARTICLE_INSTANCE)
 
-in vec3 aPos;
+layout(location = 0) in vec3 aPos;
 
-in vec3 iPos;
-in vec2 iSize;
-in vec3 iScale;
-in vec4 iRot;
-in vec4 iColor;
-in vec4 iUV;
-in int iLight;
+layout(location = 1) in vec3 iPos;
+layout(location = 2) in vec2 iSize;
+layout(location = 3) in vec3 iScale;
+layout(location = 4) in vec4 iRot;
+layout(location = 5) in vec4 iColor;
+layout(location = 6) in vec4 iUV;
+layout(location = 7) in int iLight;
+#define PHOTON_INPUT_LOCATIONS 8
 
 // additional GPU data records (photon_data_*()); custom shaders read their own tail attributes after iLight.
 // Record = 5 texels — MIRRORED FROM PhotonGpuChannels (keep in lockstep).
@@ -29,16 +35,16 @@ in int iLight;
 #elif defined(PARTICLE_MODEL_INSTANCE)
 
 // ⚠️ MIRRORED FROM PhotonInstanceLayouts.MODEL / MODEL_TANGENT and TileParticleRenderer.modelMeshBuffer.
-in vec3 aPos;
-in vec2 aUV;
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec2 aUV;
 #ifdef PHOTON_TANGENT
 // Tangent setting on: brightness moves into aNormal.w so later locations stay put.
-in vec4 aNormal;  // xyz = normal, w = per-face shade brightness
-in vec4 aTangent; // xyz = tangent (dP/du), w = handedness
+layout(location = 2) in vec4 aNormal;  // xyz = normal, w = per-face shade brightness
+layout(location = 3) in vec4 aTangent; // xyz = tangent (dP/du), w = handedness
 #else
 // Setting off: byte-for-byte the pre-tangent layout.
-in vec3 aNormal;
-in float aBrightness;
+layout(location = 2) in vec3 aNormal;
+layout(location = 3) in float aBrightness;
 #endif
 
 #ifdef PHOTON_VAT
@@ -56,11 +62,12 @@ layout(std140) uniform PhotonVatInfo {
 };
 #endif
 
-in vec3 iPos;
-in vec3 iScale;
-in vec4 iRot;
-in vec4 iColor;
-in int iLight;
+layout(location = 4) in vec3 iPos;
+layout(location = 5) in vec3 iScale;
+layout(location = 6) in vec4 iRot;
+layout(location = 7) in vec4 iColor;
+layout(location = 8) in int iLight;
+#define PHOTON_INPUT_LOCATIONS 9
 
 // Record = 5 texels — MIRRORED FROM PhotonGpuChannels.
 #define PHOTON_DATA_TEXELS 5
@@ -73,10 +80,11 @@ in int iLight;
 // pos+width / premultiplied color / u); each trail's block is padded with bitwise copies of its
 // first/last point, so the c-1 / c+2 neighbor fetches stay in-trail and the endpoint-fallback
 // equality tests hold.
-in vec2 aPos;
+layout(location = 0) in vec2 aPos;
 
-in ivec2 iSeg;  // (point index of curr, packed light)
-in vec2 iSegV;  // (v0, v1)
+layout(location = 1) in ivec2 iSeg;  // (point index of curr, packed light)
+layout(location = 2) in vec2 iSegV;  // (v0, v1)
+#define PHOTON_INPUT_LOCATIONS 3
 
 uniform samplerBuffer PhotonPoints;
 // Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
@@ -91,10 +99,11 @@ uniform samplerBuffer PhotonPoints;
 // (walk order, newest-first), aPos.y in {-1,+1} the +/- bitangent side. Point data is pulled from
 // PhotonPoints (4 texels per point: pos+u / offset / normal / color); the per-point frames are
 // CPU-computed, so there are no neighbor fetches and no padding.
-in vec2 aPos;
+layout(location = 0) in vec2 aPos;
 
-in int iSeg;    // point index of curr
-in vec2 iSegV;  // (vA, vB): cross-ribbon v of the +side / -side
+layout(location = 1) in int iSeg;    // point index of curr
+layout(location = 2) in vec2 iSegV;  // (vA, vB): cross-ribbon v of the +side / -side
+#define PHOTON_INPUT_LOCATIONS 3
 
 uniform samplerBuffer PhotonPoints;
 // Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
@@ -108,9 +117,10 @@ uniform samplerBuffer PhotonPoints;
 // one instance per AraTrail ring pair; aPos = (x: curr/next ring, y/z: section polygon vertex,
 // w: uAround, all baked from the section config). Point data is pulled from PhotonPoints
 // (4 texels per point: pos+thickness / bitangent+vCoord / tangent(UNNORMALIZED) / color).
-in vec4 aPos;
+layout(location = 0) in vec4 aPos;
 
-in int iSeg;    // point index of curr
+layout(location = 1) in int iSeg;    // point index of curr
+#define PHOTON_INPUT_LOCATIONS 2
 
 uniform samplerBuffer PhotonPoints;
 // Record = 4 texels — MIRRORED FROM PhotonGpuChannels.
@@ -122,13 +132,14 @@ uniform samplerBuffer PhotonPoints;
 #elif defined(BEAM_INSTANCE)
 
 // one instance per beam; aPos.x in {0,1} selects start/end, aPos.y in {-1,+1} the width side
-in vec2 aPos;
+layout(location = 0) in vec2 aPos;
 
-in vec4 iStart; // xyz = start (camera-relative), w = half-width
-in vec3 iEnd;
-in vec4 iColor;
-in vec4 iUV;    // (u0, v0, u1, v1), uv-scroll baked in
-in int iLight;
+layout(location = 1) in vec4 iStart; // xyz = start (camera-relative), w = half-width
+layout(location = 2) in vec3 iEnd;
+layout(location = 3) in vec4 iColor;
+layout(location = 4) in vec4 iUV;    // (u0, v0, u1, v1), uv-scroll baked in
+layout(location = 5) in int iLight;
+#define PHOTON_INPUT_LOCATIONS 6
 
 // Record = 3 texels — MIRRORED FROM PhotonGpuChannels.
 #define PHOTON_DATA_TEXELS 3
@@ -138,16 +149,17 @@ in int iLight;
 
 #else
 
-in vec3 Position;
-in vec4 Color;
-in vec2 UV0;
-in ivec2 UV2;
-in vec3 Normal;
+layout(location = 0) in vec3 Position;
+layout(location = 1) in vec4 Color;
+layout(location = 2) in vec2 UV0;
+layout(location = 3) in ivec2 UV2;
+layout(location = 4) in vec3 Normal;
+#define PHOTON_INPUT_LOCATIONS 5
 
 #ifdef PHOTON_CPU_DATA
-// CPU tile path: a particle's record is (gl_VertexID - PhotonRecordBase) / PhotonVertsPerParticle — every particle
+// CPU tile path: a particle's record is (gl_VertexIndex - PhotonRecordBase) / PhotonVertsPerParticle — every particle
 // writes as many vertices, and a sort moves a particle's vertices and its record together (Emitter.sortQuads).
-// gl_VertexID counts from the start of the frame's shared vertex buffer, so the run's base vertex comes off it.
+// gl_VertexIndex counts from the start of the frame's shared vertex buffer, so the run's base vertex comes off it.
 // Tile record layout — MIRRORED FROM PhotonGpuChannels / AdditionalGPUDataSetting.MAX_CUSTOM_DATA; the block
 // MIRRORED FROM PhotonWorldRenderState.CPU_DATA_BLOCK_SIZE. The records themselves follow PHOTON_DATA /
 // PHOTON_CUSTOM_DATA below.
@@ -162,9 +174,9 @@ layout(std140) uniform PhotonCpuData {
 #endif
 
 #ifdef PHOTON_CPU_DATA
-#define PHOTON_RECORD_INDEX ((gl_VertexID - PhotonRecordBase) / max(PhotonVertsPerParticle, 1))
+#define PHOTON_RECORD_INDEX ((gl_VertexIndex - PhotonRecordBase) / max(PhotonVertsPerParticle, 1))
 #else
-#define PHOTON_RECORD_INDEX gl_InstanceID
+#define PHOTON_RECORD_INDEX gl_InstanceIndex
 #endif
 
 #ifdef PHOTON_DATA
@@ -285,11 +297,11 @@ ParticleData getParticleData() {
 
     mat3 rotMat = quatToMat(iRot);
 #ifdef PHOTON_VAT
-    // gl_VertexID is the value read out of the index buffer, which is the mesh vertex number the table
+    // gl_VertexIndex is the value read out of the index buffer, which is the mesh vertex number the table
     // was baked against
     // ⚠️ fetched inline rather than through photon_data_random()/photon_data_t(), which are declared
     // further down this file than getParticleData — slot 0 xy, LOCKSTEP with those accessors
-    vec4 photonVatData = texelFetch(PhotonData, gl_InstanceID * PHOTON_DATA_TEXELS);
+    vec4 photonVatData = texelFetch(PhotonData, gl_InstanceIndex * PHOTON_DATA_TEXELS);
     float photonVatRaw = PhotonVatParams.x
             + photonVatData.x * PhotonVatParams.y
             + photonVatData.y * PhotonVatParams.z;
@@ -301,11 +313,11 @@ ParticleData getParticleData() {
     if (mod(PhotonVatParams.w, 2.0) < 0.5) {
         photonVatBlend = step(1.0, photonVatBlend);
     }
-    vec4 photonVatTexel = texelFetch(PhotonVat, photonVatFrame * PhotonVatSize.x + gl_VertexID);
+    vec4 photonVatTexel = texelFetch(PhotonVat, photonVatFrame * PhotonVatSize.x + gl_VertexIndex);
     vec3 photonPos = photonVatTexel.xyz;
     vec3 photonNormal = photon_unpack_normal(photonVatTexel.w);
     if (photonVatBlend > 0.0) {
-        vec4 photonVatTexelNext = texelFetch(PhotonVat, (photonVatFrame + 1) * PhotonVatSize.x + gl_VertexID);
+        vec4 photonVatTexelNext = texelFetch(PhotonVat, (photonVatFrame + 1) * PhotonVatSize.x + gl_VertexIndex);
         photonPos = mix(photonPos, photonVatTexelNext.xyz, photonVatBlend);
         // the packed normals cannot be mixed as scalars; unpack both, then renormalise the blend
         photonNormal = normalize(mix(photonNormal,
@@ -527,8 +539,8 @@ mat4 photon_worldToObject() {
 
 // ---------------------------------------------------------------------------
 // additional GPU data accessors — MIRRORED FROM PhotonGpuChannels packing (keep in lockstep).
-// Instanced variants pull the packed record from the PhotonData buffer texture by gl_InstanceID, the
-// CPU tile path with PHOTON_CPU_DATA by gl_VertexID (VERTEX STAGE ONLY — the shadergraph routes these
+// Instanced variants pull the packed record from the PhotonData buffer texture by gl_InstanceIndex, the
+// CPU tile path with PHOTON_CPU_DATA by gl_VertexIndex (VERTEX STAGE ONLY — the shadergraph routes these
 // through a varying). Channels a variant doesn't support, and the plain CPU path, read 0.
 // ---------------------------------------------------------------------------
 #ifdef PHOTON_DATA
@@ -626,4 +638,6 @@ vec4 photon_custom_data(int i) {
 }
 #else
 vec4 photon_custom_data(int i) { return vec4(0.0); }
+#endif
+
 #endif

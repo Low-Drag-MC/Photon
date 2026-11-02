@@ -1,47 +1,48 @@
-#version 330 core
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <fog.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
-#moj_import <minecraft:projection.glsl>
-#moj_import <minecraft:sample_lightmap.glsl>
-#moj_import <photon:particle.glsl>
-#moj_import <photon:kila_lib.glsl>
+#include <fog.glsl>
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:projection.glsl>
+#include <minecraft:sample_lightmap.glsl>
+#include <photon:particle.glsl>
+#include <photon:kila_lib.glsl>
 
 uniform sampler2D Sampler2;
 
-out float sphericalVertexDistance;
-out float cylindricalVertexDistance;
-out vec2 texCoord0;
-out vec4 vertexColor;
-out vec4 lightColor;
-out vec3 kilaViewPos;
-out vec3 kilaViewNormal;
+layout(location = 0) out float sphericalVertexDistance;
+layout(location = 1) out float cylindricalVertexDistance;
+layout(location = 2) out vec2 texCoord0;
+layout(location = 3) out vec4 vertexColor;
+layout(location = 4) out vec4 lightColor;
+layout(location = 5) out vec3 kilaViewPos;
+layout(location = 6) out vec3 kilaViewNormal;
 #if defined(KILA_WORLD_UV) || defined(KILA_REL_POS)
 // eye-relative, so the fragment adds the camera back at full precision
-out vec3 kilaRelPos;
+layout(location = 7) out vec3 kilaRelPos;
 #endif
 
 // drivable parameters, each base + scale * source, resolved per vertex — ⚠️ groups MIRRORED FROM KilaParam
 #ifdef KILA_P0
-out vec4 kilaP0;
+layout(location = 8) out vec4 kilaP0;
 #endif
 #ifdef KILA_P1
-out vec4 kilaP1;
+layout(location = 9) out vec4 kilaP1;
 #endif
 #ifdef KILA_P2
-out vec4 kilaP2;
+layout(location = 10) out vec4 kilaP2;
 #endif
 #ifdef KILA_P3
-out vec4 kilaP3;
+layout(location = 11) out vec4 kilaP3;
 #endif
 #ifdef KILA_P4
-out vec4 kilaP4;
+layout(location = 12) out vec4 kilaP4;
 #endif
 #ifdef KILA_P5
-out vec4 kilaP5;
+layout(location = 13) out vec4 kilaP5;
 #endif
 #ifdef KILA_P6
-out vec4 kilaP6;
+layout(location = 14) out vec4 kilaP6;
 #endif
 
 // ⚠️ codes MIRRORED FROM KilaDriver.Source. The records are read only when a driver asks for them (KILA_DATA,

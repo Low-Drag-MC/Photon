@@ -1,7 +1,7 @@
 package com.lowdragmc.photon.uitest;
 
 import com.lowdragmc.photon.client.render.PhotonPipelines;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 
 import java.util.Set;
 

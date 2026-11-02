@@ -13,11 +13,11 @@ import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
 import com.lowdragmc.photon.client.render.PhotonSceneCapture;
 import com.lowdragmc.photon.client.render.PhotonTime;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.AddressMode;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.AddressMode;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
@@ -258,17 +258,17 @@ public final class RenderGraphExecutor {
         var placeholder = missingView();
 
         var linear = linearClamp();
-        PhotonFullscreenPass.draw("photonfx pass", pipeline, target.view(), renderPass -> {
+        // false when the pipeline does not compile: the target then holds a stale frame, not this pass
+        return PhotonFullscreenPass.draw("photonfx pass", pipeline, target.view(), renderPass -> {
             // every pipeline-declared sampler must be bound at draw; a sampler the effect wired nothing
             // to (the compiler allows it) gets the missing texture rather than a stale unit
             for (var sampler : shaderPass.info().samplers()) {
                 var input = bound.get(sampler);
-                renderPass.bindTexture(sampler, input != null ? input.view() : placeholder,
+                renderPass.setUniform(sampler, input != null ? input.view() : placeholder,
                         input != null ? samplerFor(input) : linear);
             }
             uniforms.bindTo(renderPass);
         });
-        return true;
     }
 
     private static boolean dispatchGraph(CompiledEffect effect, CompiledEffect.CompiledPass pass,
@@ -323,11 +323,10 @@ public final class RenderGraphExecutor {
         var transforms = RenderSystem.getDynamicUniforms()
                 .writeTransform(IDENTITY, NO_MODULATION, NO_OFFSET, IDENTITY);
 
-        PhotonFullscreenPass.draw("photonfx graph pass", pipeline, target.view(), renderPass -> {
+        return PhotonFullscreenPass.draw("photonfx graph pass", pipeline, target.view(), renderPass -> {
             renderPass.setUniform(BOUND_BUILTIN_UNIFORM, transforms);
             material.bindCustomUniforms(renderPass);
         });
-        return true;
     }
 
     /** The {@code (w, h, 1/w, 1/h)} companion every bound sampler gets; 0 sizes leave it zeroed. */

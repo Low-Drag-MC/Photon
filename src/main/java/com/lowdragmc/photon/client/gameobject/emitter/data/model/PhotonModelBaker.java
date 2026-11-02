@@ -6,6 +6,7 @@ import net.minecraft.client.renderer.block.dispatch.BlockModelRotation;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
+import net.minecraft.client.renderer.texture.SpriteLoader;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.ModelBaker;
 import net.minecraft.client.resources.model.ModelDebugName;
@@ -24,10 +25,12 @@ import net.neoforged.neoforge.client.model.UnbakedModelParser;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3fc;
 
+import java.util.AbstractMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Bakes a Minecraft JSON model into geometry, without going through the model bakery.
@@ -207,7 +210,9 @@ final class PhotonModelBaker {
     /**
      * The live atlas, where ModelManager's own baker uses the reload-time
      * {@code SpriteLoader.Preparations}. Block atlas only — that is the one Photon's models live in.
-     * The base class memoizes per {@link Material}, which is all the dedup a single bake needs.
+     * <p>
+     * 26.3's {@link MaterialBaker} bakes through the {@code Preparations} it is given: the live atlas goes in as a
+     * block preparation whose regions look sprites up on demand, the item atlas as an empty one.
      */
     private static final class LiveAtlasMaterials extends MaterialBaker {
         /** Shared: an OBJ with several untextured materials asks for this once per material. */
@@ -218,8 +223,14 @@ final class PhotonModelBaker {
         }
 
         private LiveAtlasMaterials(TextureAtlasSprite missingSprite) {
-            super(missingSprite);
+            super(live(missingSprite, new LiveRegions()), live(missingSprite, Map.of()));
             this.missing = new Material.Baked(missingSprite, false);
+        }
+
+        private static SpriteLoader.Preparations live(TextureAtlasSprite missingSprite,
+                                                      Map<Identifier, TextureAtlasSprite> regions) {
+            return new SpriteLoader.Preparations(0, 0, 0, missingSprite, regions,
+                    CompletableFuture.completedFuture(null));
         }
 
         /**
@@ -235,11 +246,6 @@ final class PhotonModelBaker {
             return id == null ? missing : super.resolveSlot(slots, id, name);
         }
 
-        @Override
-        protected Material.Baked bake(Material material) {
-            return new Material.Baked(sprite(material.sprite()), material.forceTranslucent());
-        }
-
         private static TextureAtlasSprite sprite(Identifier texture) {
             try {
                 // BLOCKS_MAPPER.sheet() rather than the deprecated TextureAtlas.LOCATION_BLOCKS;
@@ -248,6 +254,24 @@ final class PhotonModelBaker {
             } catch (Exception e) {
                 // no atlases yet (first bake raced the reload) — the whole bake is worth retrying
                 throw new AtlasNotReadyException(e);
+            }
+        }
+
+        /** The block atlas as a sprite map: only {@code get} is asked for, and answers from the live atlas. */
+        private static final class LiveRegions extends AbstractMap<Identifier, TextureAtlasSprite> {
+            @Override
+            public TextureAtlasSprite get(Object key) {
+                return key instanceof Identifier texture ? sprite(texture) : null;
+            }
+
+            @Override
+            public boolean containsKey(Object key) {
+                return key instanceof Identifier;
+            }
+
+            @Override
+            public Set<Entry<Identifier, TextureAtlasSprite>> entrySet() {
+                return Set.of();
             }
         }
     }

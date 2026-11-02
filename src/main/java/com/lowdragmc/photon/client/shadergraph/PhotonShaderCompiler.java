@@ -9,6 +9,7 @@ import com.lowdragmc.kilagraph.rendertype.compiler.TangentBasis;
 import com.lowdragmc.kilagraph.rendertype.format.KGVertexElement;
 import com.lowdragmc.kilagraph.rendertype.format.KGVertexElements;
 import com.lowdragmc.photon.client.gameobject.emitter.data.PhotonGpuChannels;
+import com.lowdragmc.photon.client.render.CustomShaderAdapter;
 import lombok.Getter;
 
 import javax.annotation.Nullable;
@@ -98,10 +99,12 @@ public class PhotonShaderCompiler extends ShaderGraphCompiler {
         }
     }
 
+
     @Override
-    protected String vertexInputsBlock() {
-        // particle.glsl declares the per-define attribute layouts and getParticleData().
-        return "#moj_import <photon:particle.glsl>\n";
+    protected String vertexInputsBlock(Locations locations) {
+        // particle.glsl declares the per-define attribute layouts (with their locations) and getParticleData().
+        locations.take(CustomShaderAdapter.PARTICLE_INPUT_LOCATIONS);
+        return "#include <photon:particle.glsl>\n";
     }
 
     @Override

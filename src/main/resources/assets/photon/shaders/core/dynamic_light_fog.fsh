@@ -1,19 +1,20 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Fog volumes, nearest first, marched at this pixel's stratum of the 4x4 tile and lit by the lights of each sample's
 // cluster; the blur integrates the tile. Blended into the volume buffer: rgb adds to the haze, alpha multiplies into
 // how much of the scene behind still shows.
 // StepParams: fog volumes (x), steps through each (y).
 
-#moj_import <photon:dynamic_light.glsl>
-#moj_import <photon:dynamic_light_depth.glsl>
+#include <photon:dynamic_light.glsl>
+#include <photon:dynamic_light_depth.glsl>
 
 // eight texels per fog volume from 8i: view to local space (three rows) | shape (0 box, 1 sphere), density per block,
 // edge falloff, absorption | colour, noise | emission, noise scale | noise offset in blocks along the local axes |
 // size of a local unit in blocks
 uniform samplerBuffer FogData;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 // the t range of the ray inside the unit box or sphere, given in the volume's local space
 vec2 shapeRange(vec3 lo, vec3 ld, bool sphere) {

@@ -3,7 +3,7 @@ package com.lowdragmc.photon.client.compat.iris.internal;
 import com.lowdragmc.photon.client.compat.iris.IrisBridge;
 import com.lowdragmc.photon.client.compat.iris.IrisCompositeMode;
 import com.lowdragmc.photon.client.compat.iris.IrisFrameTarget;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.irisshaders.iris.gl.blending.BlendModeStorage;
@@ -130,6 +130,10 @@ public final class IrisBridgeImpl implements IrisBridge {
     @Override
     public ShaderPackSelection shaderPackSelection() {
         var config = Iris.getIrisConfig();
+        if (config == null) {
+            // Iris loaded but inactive (it is GL-only: under Vulkan it applies only its Vulkan stubs)
+            return new ShaderPackSelection(null, false);
+        }
         var name = config.getShaderPackName().orElse(null);
         // no pack selected is shaders off: restoring (no name, on) would leave the last loaded pack running
         return new ShaderPackSelection(name, name != null && config.areShadersEnabled());

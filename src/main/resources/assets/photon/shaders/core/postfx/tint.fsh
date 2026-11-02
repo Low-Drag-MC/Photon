@@ -1,4 +1,5 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Color multiply: TintColor.rgb scales the scene, .a blends the effect (gradient-friendly).
 
@@ -8,8 +9,8 @@ layout(std140) uniform PhotonPass {
     vec4 TintColor;
 };
 
-in vec2 texCoord;
-out vec4 fragColor;
+layout(location = 0) in vec2 texCoord;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     vec4 texel = texture(DiffuseSampler, texCoord);

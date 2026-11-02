@@ -63,7 +63,7 @@ import net.minecraft.nbt.NbtIo;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 import java.io.File;
 import java.io.IOException;
@@ -160,13 +160,13 @@ public class FxInstanceEditorScenario implements UIScenario {
                 ctx.check("b_emit's row is blue", label instanceof TextElement text
                         && text.getTextStyle().textColor() == FXInstanceStyle.PLACED_COLOR, FXInstanceStyle.PLACED_COLOR, label);
             });
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("undo takes it away", ctx -> {
                 ctx.log("after undo: runtime %s, objects %s, history %s".formatted(System.identityHashCode(editor(ctx).runtime),
                         editor(ctx).runtime.objects.values().stream().map(IFXObject::getName).toList(), describeHistory(ctx)));
                 ctx.check("no instance", instanceNamed(ctx, "base") == null, "none", "still there");
             });
-            chord(g, GLFW.GLFW_KEY_Y);
+            chord(g, InputConstants.KEY_Y);
             g.step("redo brings back the same one", ctx -> {
                 ctx.log("after redo: runtime %s, objects %s, history %s".formatted(System.identityHashCode(editor(ctx).runtime),
                         editor(ctx).runtime.objects.values().stream().map(IFXObject::getName).toList(), describeHistory(ctx)));
@@ -223,10 +223,10 @@ public class FxInstanceEditorScenario implements UIScenario {
                 ctx.check("duration is 40 again", emitter(ctx).config.getDuration() == 40, 40, emitter(ctx).config.getDuration());
                 ctx.check("the row is no longer marked", !durationRow(ctx).isOverridden(), "not marked", "marked");
             });
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("undo brings the edit back", ctx -> ctx.check("77", emitter(ctx).config.getDuration() == 77, 77,
                     emitter(ctx).config.getDuration()));
-            chord(g, GLFW.GLFW_KEY_Y);
+            chord(g, InputConstants.KEY_Y);
             g.step("redo reverts again", ctx -> ctx.check("40", emitter(ctx).config.getDuration() == 40, 40,
                     emitter(ctx).config.getDuration()));
         });
@@ -433,9 +433,9 @@ public class FxInstanceEditorScenario implements UIScenario {
 
         s.group("copy and paste an instance", g -> {
             clickRow(g, "base");
-            chord(g, GLFW.GLFW_KEY_C);
+            chord(g, InputConstants.KEY_C);
             clickRow(g, "other");
-            chord(g, GLFW.GLFW_KEY_V);
+            chord(g, InputConstants.KEY_V);
             g.frames(4);
             g.step("the paste is another instance with the same overrides", ctx -> {
                 var editor = editor(ctx);
@@ -459,7 +459,7 @@ public class FxInstanceEditorScenario implements UIScenario {
                         .map(Track::targetId).anyMatch(InstanceIds.xor(copy.id(), B_CHILD)::equals), "bound", "missing");
                 ctx.put("copy", copy);
             });
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("undo removes the paste", ctx -> ctx.check("one instance of base", editor(ctx).runtime.objects.values().stream()
                     .filter(o -> o instanceof FXInstanceObject && "base".equals(o.getName())).count() == 1, 1, "more"));
         });
@@ -484,13 +484,13 @@ public class FxInstanceEditorScenario implements UIScenario {
                 ctx.check("the same objects, not new ones", placedObject(ctx, B_EMIT) == ctx.<Object>get("emitBefore")
                         && placedObject(ctx, B_LATE) == ctx.<Object>get("lateBefore"), "same", "replaced");
             });
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("undo goes back to the source as it was", ctx -> {
                 var late = (ParticleEmitter) placedObject(ctx, B_LATE);
                 ctx.check("b_late is back at 40", late != null && late.config.getDuration() == 40, 40,
                         late == null ? null : late.config.getDuration());
             });
-            chord(g, GLFW.GLFW_KEY_Y);
+            chord(g, InputConstants.KEY_Y);
         });
 
         s.group("the timeline holds an instance for its source's length", g -> g.step("a control clip on it defaults to the source's timeline", ctx -> {
@@ -539,7 +539,7 @@ public class FxInstanceEditorScenario implements UIScenario {
                         editor(ctx).instances.recordOf(instance(ctx)));
             });
             focusHierarchy(g);
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("one undo brings it all back", ctx -> {
                 ctx.check("b_emit's override is back", emitter(ctx).config.getDuration() == 66, 66, emitter(ctx).config.getDuration());
                 ctx.check("b_late is removed again", placedObject(ctx, B_LATE) == null, "removed", "there");
@@ -575,7 +575,7 @@ public class FxInstanceEditorScenario implements UIScenario {
                 ctx.check("and no longer base's", placedObject(ctx, B_GROUP) == null, "gone", "there");
             });
             focusHierarchy(g);
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("undo puts base back", ctx -> {
                 ctx.check("its source is base", fx("base").equals(instance(ctx).getFx()), fx("base"), instance(ctx).getFx());
                 ctx.check("base's objects are back", placedObject(ctx, B_GROUP) != null, "back", "gone");
@@ -664,8 +664,8 @@ public class FxInstanceEditorScenario implements UIScenario {
                             editor.hierarchyView.addSceneObject(extra);
                         }, () -> editor.hierarchyView.removeSceneObject(extra)));
             });
-            chord(g, GLFW.GLFW_KEY_Z);
-            chord(g, GLFW.GLFW_KEY_Z);
+            chord(g, InputConstants.KEY_Z);
+            chord(g, InputConstants.KEY_Z);
             g.step("the hierarchy shows what the project saves", ctx -> {
                 var editor = editor(ctx);
                 var project = (FXProject) editor.getCurrentProject();
@@ -1006,9 +1006,9 @@ public class FxInstanceEditorScenario implements UIScenario {
             });
             g.frames(2);
             clickRow(g, "base");
-            chord(g, GLFW.GLFW_KEY_C);
+            chord(g, InputConstants.KEY_C);
             g.step("the project becomes base", ctx -> ((FXProject) editor(ctx).getCurrentProject()).addKnownAs(fx("base")));
-            chord(g, GLFW.GLFW_KEY_V);
+            chord(g, InputConstants.KEY_V);
             g.frames(4);
             g.step("the paste places nothing, and the author is told why", ctx -> {
                 var pasted = editor(ctx).runtime.objects.values().stream()

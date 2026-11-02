@@ -1,15 +1,16 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Full-screen depth from a shader pack that draws its world into the lower-left DepthScale of the screen and upscales
 // only the colour: bilinear within a plane (window depth is affine on screen there), the nearest texel across an edge,
 // where blending would float pixels between the two surfaces. Drawn with colour writes off and depth always written.
 // StepParams.x: the pack's render scale.
 
-#moj_import <photon:dynamic_light_frame.glsl>
+#include <photon:dynamic_light_frame.glsl>
 
 uniform sampler2D DepthSampler;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 ivec2 lastTexel;
 

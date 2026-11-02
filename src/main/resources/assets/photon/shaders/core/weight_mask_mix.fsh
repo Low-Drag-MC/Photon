@@ -1,4 +1,5 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // The auto final mix with CustomMask culling: result = mix(scene, effect, Weight * match(mask)).
 // MaskFilter 0 matches ANY non-zero mask id, otherwise the exact group; outside the mask the
@@ -14,9 +15,9 @@ layout(std140) uniform PhotonPass {
     float MaskFilter;
 };
 
-in vec2 texCoord;
+layout(location = 0) in vec2 texCoord;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     float id = texture(MaskSampler, texCoord).r * 255.0;

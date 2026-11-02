@@ -1,4 +1,5 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Depth + luma Sobel edge overlay: edges tint the scene with OutlineColor (rgb, a = strength).
 // LumaThreshold gates color edges, Thickness widens the kernel in texels.
@@ -32,8 +33,8 @@ layout(std140) uniform PhotonPass {
     float ZFar;
 };
 
-in vec2 texCoord;
-out vec4 fragColor;
+layout(location = 0) in vec2 texCoord;
+layout(location = 0) out vec4 fragColor;
 
 float lumaAt(vec2 uv) {
     return dot(texture(DiffuseSampler, uv).rgb, vec3(0.299, 0.587, 0.114));

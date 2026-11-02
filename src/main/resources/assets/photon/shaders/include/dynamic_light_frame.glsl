@@ -1,3 +1,6 @@
+#ifndef PHOTON_DYNAMIC_LIGHT_FRAME_GLSL
+#define PHOTON_DYNAMIC_LIGHT_FRAME_GLSL
+
 // What every fullscreen dynamic-light pass knows about the frame it lights: one block written once per frame
 // (DynamicLightRenderer.writeView) and the StepParams each draw sets — LOCKSTEP. The members avoid the engine's
 // names, which the #defines below give back to the pass bodies, so do not import minecraft:globals.glsl after this file.
@@ -31,3 +34,5 @@ bool isSky(float depth) {
 #define ScreenSize LightScreen.xy
 #define ResolutionScale LightScreen.z
 #define DebugMode int(LightScreen.w + 0.5)
+
+#endif

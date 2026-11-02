@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.uitest;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.kilagraph.rendertype.nodes.fragment.FragmentAlphaBlock;
 import com.lowdragmc.kilagraph.rendertype.nodes.fragment.FragmentBaseColorBlock;
 import com.lowdragmc.kilagraph.rendertype.nodes.input.basic.Vec3Node;
@@ -46,9 +46,7 @@ import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
 import com.lowdragmc.photon.client.shadergraph.nodes.DynamicLightNode;
 import com.lowdragmc.photon.client.shadergraph.runtime.ShaderGraphRuntime;
 import com.lowdragmc.photon.gui.editor.resource.ShaderGraphResource;
-import com.mojang.blaze3d.opengl.GlRenderPipeline;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
@@ -227,7 +225,7 @@ public class DynamicLightMaterialScenario implements UIScenario {
             var compiled = new PhotonShaderCompiler(graph).compile();
             ctx.require("the graph " + name + " compiles", !compiled.hasStageErrors());
             // the generated GLSL reaches the device through KilaGraph's source registry, as a graph material's own does
-            RenderTypeFactory.getOrBuildPipeline(compiled);
+            RenderTypeFactory.getOrBuildPipelines(compiled);
             ctx.check("it includes the lights (" + name + ")", LitParticles.includedBy(compiled.fragmentSource()),
                     "included", "missing");
             var key = PhotonPipelines.ParticlePipelineKey.DEFAULT;
@@ -242,13 +240,12 @@ public class DynamicLightMaterialScenario implements UIScenario {
                         PhotonPipelines.InstancedGeometryKey.of(variant), key));
             }
             paths.forEach((path, pipeline) -> {
-                var linked = RenderSystem.getDevice().precompilePipeline(pipeline);
-                ctx.check("the " + path + " variant links (" + name + ")", linked.isValid(), "linked", "invalid");
+                var live = PipelineChecks.live(pipeline);
+                ctx.check("the " + path + " variant links (" + name + ")", live != null, "linked", "invalid");
                 var undeclared = lights.stream().filter(light -> !PipelineChecks.declared(pipeline).contains(light)).toList();
                 ctx.check(path + " is lit and declares every light binding (" + name + ")", undeclared.isEmpty()
                         && PhotonPipelines.isLit(pipeline), "none missing, lit", undeclared);
-                if (!(linked instanceof GlRenderPipeline gl) || !linked.isValid()) return;
-                var live = gl.program().getUniforms().keySet();
+                if (live == null) return;
                 var inactive = lights.stream().filter(light -> !live.contains(light)).toList();
                 ctx.check(path + " reads every light binding (" + name + ")", inactive.isEmpty(), "none missing",
                         inactive);
@@ -256,8 +253,7 @@ public class DynamicLightMaterialScenario implements UIScenario {
             var editor = new PhotonShaderCompiler(graph).editorPreview().compile();
             ctx.check("the editor preview compiles (" + name + ")", !editor.hasStageErrors(), "no errors",
                     editor.stageErrors());
-            ctx.check("and links (" + name + ")", !editor.hasStageErrors() && RenderSystem.getDevice()
-                    .precompilePipeline(RenderTypeFactory.getOrBuildPipeline(editor)).isValid(), "linked", "invalid");
+            ctx.check("and links (" + name + ")", !editor.hasStageErrors() && PhotonPipelines.compile(RenderTypeFactory.getOrBuildPipelines(editor).main()), "linked", "invalid");
             var lightNode = graph.graphModel.getNodeModels().stream()
                     .filter(node -> node instanceof ICustomNodeModel custom && custom.getNode() instanceof DynamicLightNode)
                     .map(NodeModel.class::cast)

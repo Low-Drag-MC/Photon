@@ -1,12 +1,13 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // CustomMask debug view: mask ids (round(R*255)) hue-colored on black, so distinct groups are
 // obvious at a glance. Empty mask = black screen.
 
 uniform sampler2D MaskSampler;
 
-in vec2 texCoord;
-out vec4 fragColor;
+layout(location = 0) in vec2 texCoord;
+layout(location = 0) out vec4 fragColor;
 
 vec3 hue(float h) {
     return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);

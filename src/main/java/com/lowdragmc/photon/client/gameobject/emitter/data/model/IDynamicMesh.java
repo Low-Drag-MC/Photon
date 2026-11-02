@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.model;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import org.jetbrains.annotations.Nullable;
 
 /**

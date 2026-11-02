@@ -1,17 +1,18 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Full resolution: upsample the light buffer (depth-aware), estimate the albedo from the frame
 // already lit by vanilla (or a shader pack), and add albedo * light. The haze goes on later, over the particles.
 
-#moj_import <minecraft:fog.glsl>
-#moj_import <photon:dynamic_light_depth.glsl>
+#include <minecraft:fog.glsl>
+#include <photon:dynamic_light_depth.glsl>
 
 uniform sampler2D SceneColorSampler;
 uniform sampler2D IrradianceSampler;
 // the frame's lightmap: its darkest texel is the least light vanilla gives a surface
 uniform sampler2D LightmapSampler;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 // vanilla's fog: a spherical environmental ramp against a cylindrical render-distance one, whichever is denser
 float fogValue(vec3 relative) {

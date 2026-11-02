@@ -49,7 +49,7 @@ class LitParticlesTest {
         var lit = resource("include/lit_particle.glsl");
         int define = lit.indexOf("#ifdef " + PhotonPipelines.LIT_DEFINE);
         assertTrue(define >= 0, "lit_particle.glsl is switched by " + PhotonPipelines.LIT_DEFINE);
-        assertTrue(lit.indexOf("#moj_import <photon:dynamic_light.glsl>") > define,
+        assertTrue(lit.indexOf("#include <photon:dynamic_light.glsl>") > define,
                 "an unlit pipeline declares none of the lights' buffers");
     }
 

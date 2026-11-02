@@ -1,4 +1,5 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // CustomMask flat output: R = the pass's mask value (maskValue / 255). Post effects read this
 // through the Custom Mask input node and match groups by round(R * 255).
@@ -12,9 +13,9 @@ layout(std140) uniform PhotonMask {
     float AlphaCutoff;
 };
 
-in vec2 texCoord0;
+layout(location = 0) in vec2 texCoord0;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     if (AlphaCutoff > 0.0 && texture(Sampler0, texCoord0).a < AlphaCutoff) {

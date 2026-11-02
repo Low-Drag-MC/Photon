@@ -1,7 +1,6 @@
 package com.lowdragmc.photon.core.mixins;
 
 import com.lowdragmc.photon.client.render.PhotonGlobals;
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.GlobalSettingsUniform;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
@@ -27,7 +26,7 @@ public class GlobalSettingsUniformMixin {
 
     @Inject(method = "update", at = @At("HEAD"))
     private void photon$captureInputs(int width, int height, double glintAlpha, long gameTime,
-                                      DeltaTracker deltaTracker, int menuBlurRadius, Vec3 cameraPos,
+                                      float worldPartialTicks, int menuBlurRadius, Vec3 cameraPos,
                                       boolean useRgss, CallbackInfo ci) {
         // the time arguments are deliberately dropped: the clock is the one field Photon replaces
         PhotonGlobals.capture(width, height, glintAlpha, menuBlurRadius, cameraPos, useRgss);

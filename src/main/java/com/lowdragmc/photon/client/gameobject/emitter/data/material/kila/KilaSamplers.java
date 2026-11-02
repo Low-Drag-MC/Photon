@@ -1,9 +1,9 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material.kila;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.AddressMode;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.AddressMode;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
 
 /**
  * The GPU sampler a {@link KilaTexture} reads through: its filter, and its wrap on each axis. No mipmaps, as the shared

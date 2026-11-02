@@ -1,4 +1,5 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Per-object outline (Unreal CustomStencil-style): a Sobel edge over the "mask matches
 // MaskFilter" binary image, drawn onto the scene in OutlineColor (a = strength).
@@ -14,8 +15,8 @@ layout(std140) uniform PhotonPass {
     vec4 DiffuseSampler_TexelSize; // (w, h, 1/w, 1/h)
 };
 
-in vec2 texCoord;
-out vec4 fragColor;
+layout(location = 0) in vec2 texCoord;
+layout(location = 0) out vec4 fragColor;
 
 float matches(vec2 uv) {
     float id = texture(MaskSampler, uv).r * 255.0;

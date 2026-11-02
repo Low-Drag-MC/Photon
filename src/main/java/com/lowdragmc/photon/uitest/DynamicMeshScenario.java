@@ -8,8 +8,8 @@ import com.lowdragmc.photon.client.gameobject.emitter.data.model.DynamicMeshSour
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.IDynamicMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.model.PhotonMesh;
 import com.lowdragmc.photon.client.gameobject.emitter.data.shape.MeshData;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.system.MemoryUtil;

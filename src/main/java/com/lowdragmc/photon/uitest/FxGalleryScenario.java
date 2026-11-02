@@ -6,6 +6,7 @@ import com.lowdragmc.lowdraglib2.uitest.ScenarioBuilder;
 import com.lowdragmc.lowdraglib2.uitest.ScenarioOptions;
 import com.lowdragmc.lowdraglib2.uitest.TestContext;
 import com.lowdragmc.lowdraglib2.uitest.UIScenario;
+import com.lowdragmc.photon.client.compat.iris.IrisCompat;
 import com.lowdragmc.photon.client.fx.BlockEffectExecutor;
 import com.lowdragmc.photon.client.fx.FXHelper;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
@@ -57,6 +58,17 @@ public class FxGalleryScenario implements UIScenario {
             player.setXRot(10f);
         });
         s.frames(4);
+        // -Dphoton.gallery.oit=true: under improved transparency, so the OIT variants compile and draw too
+        var oit = Boolean.getBoolean("photon.gallery.oit");
+        if (oit) {
+            s.step("shaders off, improved transparency on", ctx -> {
+                if (IrisCompat.isModInstalled()) LightTestConfig.selectShaderPack(null);
+                LightTestConfig.set(ctx.mc().options.improvedTransparency(), true);
+            })
+                    .frames(20)
+                    .step("the level is drawn with order-independent transparency", ctx -> ctx.require(
+                            "improved transparency is on", ctx.mc().gameRenderer.useImprovedTransparency()));
+        }
 
         for (var id : effects) {
             // screenshots are taken from the next frame, so the check must be a separate step
@@ -72,6 +84,9 @@ public class FxGalleryScenario implements UIScenario {
                                 errors.isEmpty() ? "none" : String.join(" | ", errors));
                         stop(ctx);
                     });
+        }
+        if (oit) {
+            s.teardown("put the settings back", ctx -> LightTestConfig.restore());
         }
         s.teardown("stop the last effect", FxGalleryScenario::stop)
                 .teardown("stop collecting errors", ctx -> Collector.uninstall());

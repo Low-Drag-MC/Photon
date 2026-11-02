@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.render;
 
-import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.Std140Builder;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.renderer.GlobalSettingsUniform;
@@ -113,14 +113,15 @@ public final class PhotonGlobals {
         bytes.clear();
         {
             // member order mirrors GlobalSettingsUniform.update / assets/minecraft/shaders/include/globals.glsl
+            // (26.3 packs GlintAlpha behind CameraBlockPos and GameTime behind CameraOffset)
             Std140Builder.intoBuffer(bytes)
                     .putIVec3(cameraX, cameraY, cameraZ)
+                    .putFloat((float) inputs.glintAlpha())
                     .putVec3((float) (cameraX - inputs.cameraPos().x),
                             (float) (cameraY - inputs.cameraPos().y),
                             (float) (cameraZ - inputs.cameraPos().z))
-                    .putVec2(inputs.width(), inputs.height())
-                    .putFloat((float) inputs.glintAlpha())
                     .putFloat(time) // the ONE field this whole class exists to change
+                    .putVec2(inputs.width(), inputs.height())
                     .putInt(inputs.menuBlurRadius())
                     .putInt(inputs.useRgss() ? 1 : 0);
             bytes.position(GlobalSettingsUniform.UBO_SIZE).rewind();

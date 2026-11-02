@@ -342,7 +342,7 @@ class KilaBlockTest {
                         case "undef" -> {
                             if (live) defined.remove(rest);
                         }
-                        case "version", "moj_import", "extension" -> {
+                        case "version", "include", "extension" -> {
                         }
                         default -> fail("unknown directive " + text + " at " + line.file() + ":" + line.number());
                     }
@@ -372,7 +372,7 @@ class KilaBlockTest {
             if (!seen.add(path)) return;
             var source = stripComments(shader(path));
             var lines = source.split("\n", -1);
-            var importLine = Pattern.compile("^\\s*#moj_import\\s+<photon:([\\w/]+\\.glsl)>");
+            var importLine = Pattern.compile("^\\s*#include\\s*<photon:([\\w/]+\\.glsl)>");
             for (int i = 0; i < lines.length; i++) {
                 var matcher = importLine.matcher(lines[i]);
                 if (matcher.find()) {

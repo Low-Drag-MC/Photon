@@ -3,7 +3,7 @@ package com.lowdragmc.photon.client.gameobject.emitter.data.material.kila;
 import com.lowdragmc.lowdraglib2.math.GradientColor;
 import com.lowdragmc.photon.client.AutoCloseCleaner;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import org.joml.Vector2f;
 import org.joml.Vector4f;

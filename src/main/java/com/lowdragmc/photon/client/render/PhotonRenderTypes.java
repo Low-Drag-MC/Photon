@@ -1,13 +1,12 @@
 package com.lowdragmc.photon.client.render;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.kilagraph.rendertype.compiler.CompiledShaderGraph;
 import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeGraphMaterial;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.systems.RenderPass;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
@@ -178,10 +177,10 @@ public final class PhotonRenderTypes {
             return Optional.empty();
         }
         var pipeline = PhotonPipelines.customShader(key);
-        if (!RenderSystem.getDevice().precompilePipeline(pipeline).isValid()) {
+        if (!PhotonPipelines.compile(pipeline)) {
             if (FAILED_CUSTOM_SHADERS.add(key.fragmentShader())) {
-                Photon.LOGGER.warn("custom shader pipeline failed to compile: {} (must be 26.2-format GLSL: "
-                        + "uniform values in blocks, no loose uniforms)", key.fragmentShader());
+                Photon.LOGGER.warn("custom shader pipeline failed to compile: {} (uniform values in blocks, "
+                        + "no loose uniforms)", key.fragmentShader());
             }
             return Optional.empty();
         }
@@ -212,7 +211,7 @@ public final class PhotonRenderTypes {
             long usedChannelMask, boolean usesCustomData) {
         // the CPU variant reads no additional data (particle.glsl's non-instanced accessors return 0)
         var pipeline = PhotonPipelines.graphShader(compiled, null, pipelineKey);
-        if (!RenderSystem.getDevice().precompilePipeline(pipeline).isValid()) {
+        if (!PhotonPipelines.compile(pipeline)) {
             Photon.LOGGER.warn("shader graph pipeline failed to compile: {}", compiled.contentHash());
             return Optional.empty();
         }

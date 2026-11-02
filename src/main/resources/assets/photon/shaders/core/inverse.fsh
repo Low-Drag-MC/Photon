@@ -1,11 +1,12 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <fog.glsl>
-#moj_import <photon:engine.glsl>
+#include <fog.glsl>
+#include <photon:engine.glsl>
 
 uniform sampler2D SamplerSceneColor;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     // U_ViewPort.zw, NOT the window size: gl_FragCoord is relative to the framebuffer being drawn

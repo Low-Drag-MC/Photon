@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.kilagraph.rendertype.RenderTypeGraphTypes;
 import com.lowdragmc.kilagraph.rendertype.compiler.SamplerDefault;
 import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeFactory;
@@ -287,7 +287,8 @@ public class ShaderGraphMaterial extends ShaderInstanceMaterial {
                 PhotonWorldRenderState.closeAtFrameEnd(state);
                 state = null;
             }
-            var material = RenderTypeFactory.createMaterial(entry.getCompiled());
+            // only the value store: Photon builds the graph's pipelines itself, its OIT variants included
+            var material = RenderTypeFactory.createPreviewMaterial(entry.getCompiled());
             if (material != null) {
                 state = new GraphState(material);
                 AutoCloseCleaner.registerRenderThread(this, state);

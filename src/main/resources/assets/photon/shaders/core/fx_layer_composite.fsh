@@ -1,4 +1,5 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Merges Photon's standalone premultiplied FX layer onto whatever holds the picture — MC's main
 // target once the clouds are already on it (FXCompositeMode.LATE), or a shader pack's translucent
@@ -10,9 +11,9 @@
 
 uniform sampler2D colorSampler;
 
-in vec2 texCoord;
+layout(location = 0) in vec2 texCoord;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     fragColor = texture(colorSampler, texCoord);

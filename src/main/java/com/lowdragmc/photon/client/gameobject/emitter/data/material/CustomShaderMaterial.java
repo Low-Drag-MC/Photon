@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.lowdragmc.lowdraglib2.LDLib2;
@@ -309,7 +309,8 @@ public class CustomShaderMaterial extends ShaderInstanceMaterial {
         lit[0] |= LitParticles.includedBy(source);
         // the fade only where the shader imports it and lists SamplerSceneDepth (what the drain binds); its params
         // are the shader's own SoftParticleParams
-        var soft = source.contains("#moj_import <" + SoftParticles.INCLUDE + ">")
+        var soft = (source.contains("#include <" + SoftParticles.INCLUDE + ">")
+                || source.contains("#moj_import <" + SoftParticles.INCLUDE + ">"))
                 && sceneSamplers.contains(PhotonShaderCompiler.SCENE_DEPTH);
         return new ShaderMeta(vertex[0], fragment[0],
                 List.copyOf(samplerNames), List.copyOf(sceneSamplers),

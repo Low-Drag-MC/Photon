@@ -1,50 +1,51 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <fog.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
-#moj_import <photon:kila_lib.glsl>
+#include <fog.glsl>
+#include <minecraft:dynamictransforms.glsl>
+#include <photon:kila_lib.glsl>
 #if defined(KILA_DEPTH) || defined(KILA_SCREEN_DEPTH) || defined(KILA_PROJECTION) || defined(KILA_VOLUME_CLIP)
-#moj_import <photon:soft_particle.glsl>
+#include <photon:soft_particle.glsl>
 #endif
 #ifdef KILA_LIT
-#moj_import <photon:lit_particle.glsl>
+#include <photon:lit_particle.glsl>
 #endif
 
 // the size of the target being drawn into — the editor's picture-in-picture texture, not the window
 #define ScreenSize U_ViewPort.zw
 
-in float sphericalVertexDistance;
-in float cylindricalVertexDistance;
-in vec2 texCoord0;
-in vec4 vertexColor;
-in vec4 lightColor;
-in vec3 kilaViewPos;
-in vec3 kilaViewNormal;
+layout(location = 0) in float sphericalVertexDistance;
+layout(location = 1) in float cylindricalVertexDistance;
+layout(location = 2) in vec2 texCoord0;
+layout(location = 3) in vec4 vertexColor;
+layout(location = 4) in vec4 lightColor;
+layout(location = 5) in vec3 kilaViewPos;
+layout(location = 6) in vec3 kilaViewNormal;
 #if defined(KILA_WORLD_UV) || defined(KILA_REL_POS)
-in vec3 kilaRelPos;
+layout(location = 7) in vec3 kilaRelPos;
 #endif
 
 // ⚠️ slots MIRRORED FROM KilaParam
 #ifdef KILA_P0
-in vec4 kilaP0;
+layout(location = 8) in vec4 kilaP0;
 #endif
 #ifdef KILA_P1
-in vec4 kilaP1;
+layout(location = 9) in vec4 kilaP1;
 #endif
 #ifdef KILA_P2
-in vec4 kilaP2;
+layout(location = 10) in vec4 kilaP2;
 #endif
 #ifdef KILA_P3
-in vec4 kilaP3;
+layout(location = 11) in vec4 kilaP3;
 #endif
 #ifdef KILA_P4
-in vec4 kilaP4;
+layout(location = 12) in vec4 kilaP4;
 #endif
 #ifdef KILA_P5
-in vec4 kilaP5;
+layout(location = 13) in vec4 kilaP5;
 #endif
 #ifdef KILA_P6
-in vec4 kilaP6;
+layout(location = 14) in vec4 kilaP6;
 #endif
 #define KILA_ALPHA kilaP0.x
 #define KILA_INTENSITY kilaP0.y
@@ -76,7 +77,7 @@ in vec4 kilaP6;
 #define KILA_FLOW_MASK2 8
 #define KILA_FLOW_DISSOLVE 16
 
-out vec4 fragColor;
+#include <photon:oit.glsl>
 
 // where every slot starts from, set once at the top of main()
 vec2 kilaMeshUv;
@@ -970,7 +971,7 @@ void main() {
         vec3 shown = view == 1 ? debugMain.rgb * debugMain.a : view == 2 ? vec3(c.a) : view == 3 ? vec3(debugMask)
                 : view == 4 ? vec3(debugNoise) : view == 5 ? vec3(debugFlow * 5.0 + 0.5, 0.5)
                 : view == 6 ? kilaNormal * 0.5 + 0.5 : vec3(fract(kilaMeshUv), 0.0);
-        fragColor = vec4(shown, 1.0);
+        photon_write(vec4(shown, 1.0));
         return;
     }
 
@@ -1020,9 +1021,9 @@ void main() {
     // in for both (negative brightens) — ⚠️ MIRRORED IN kila_stack.fsh
     float stackSrc = preset <= 1 ? c.a : 1.0;
     float stackDst = preset == 1 ? 1.0 : preset == 0 || preset == 2 ? 1.0 - c.a : 0.0;
-    fragColor = vec4(stackPush * stackCoverage, 1.0 - stackSrc * kila_luma(max(c.rgb, 0.0)) - stackDst,
-            1.0 / (1.0 + max(-kilaViewPos.z, 0.0)));
+    photon_write(vec4(stackPush * stackCoverage, 1.0 - stackSrc * kila_luma(max(c.rgb, 0.0)) - stackDst,
+            1.0 / (1.0 + max(-kilaViewPos.z, 0.0))));
 #else
-    fragColor = c;
+    photon_write(c);
 #endif
 }

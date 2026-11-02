@@ -1,3 +1,6 @@
+#ifndef PHOTON_LIT_PARTICLE_GLSL
+#define PHOTON_LIT_PARTICLE_GLSL
+
 // Dynamic lights on a particle or surface. A billboard has no normal, so light comes from every direction.
 // Shadowed by the lights' visibility maps where they have one. Java side: LitParticles.
 //
@@ -8,7 +11,7 @@
 
 #ifdef PHOTON_LIT
 
-#moj_import <photon:dynamic_light.glsl>
+#include <photon:dynamic_light.glsl>
 
 // The light reaching viewPos, each light weighted by how square it falls on viewNormal (unit, view space);
 // a zero normal takes light from every direction. wrap > 0 lets light reach past the terminator. Saturated so the
@@ -51,3 +54,5 @@ vec3 photon_surface_light(vec3 viewPos, vec3 viewNormal, float wrap) {
 vec3 photon_particle_light(vec3 viewPos) {
     return photon_surface_light(viewPos, vec3(0.0), 0.0);
 }
+
+#endif

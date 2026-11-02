@@ -1,12 +1,12 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material.kila;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.lowdragmc.photon.client.render.PhotonRenderTypes;
 import com.lowdragmc.photon.client.render.StackedDistortion;
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.renderer.RenderPipelines;
 
@@ -99,7 +99,7 @@ public final class KilaPipelines {
         if (FAILED.contains(key)) return null;
         var held = PIPELINES.computeIfAbsent(key, k -> new Held(build(layout, k)));
         if (lease.keys.add(key)) held.leases++;
-        if (!RenderSystem.getDevice().precompilePipeline(held.pipeline).isValid()) {
+        if (!PhotonPipelines.compile(held.pipeline)) {
             if (FAILED.add(key)) Photon.LOGGER.error("Failed to compile KilaMaterial variant {} ({}, {})",
                     describe(layout), geometry == null ? state.mode() : geometry.variant(),
                     key.cpuData() ? "cpu data" : "plain");

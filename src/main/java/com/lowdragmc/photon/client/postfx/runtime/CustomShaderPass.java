@@ -1,15 +1,16 @@
 package com.lowdragmc.photon.client.postfx.runtime;
 
+import com.lowdragmc.photon.client.render.PhotonPipelines;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.postfx.shadergraph.PhotonFullscreenCompiler;
 import com.lowdragmc.photon.client.render.PhotonFullscreenPass;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.pipeline.BindGroupLayout;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.shaders.UniformType;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.lowdragmc.photon.client.render.PhotonShaderSources;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.UniformType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.GsonHelper;
@@ -23,6 +24,7 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -158,21 +160,25 @@ public final class CustomShaderPass {
     private static RenderPipeline build(String location, Info info, GpuFormat format) {
         var rl = Identifier.parse(location);
         var layout = BindGroupLayout.builder();
-        info.samplers().forEach(layout::withSampler);
+        info.samplers().forEach(name -> layout.withUniform(name, UniformType.COMBINED_IMAGE_SAMPLER));
         if (!info.layout().isEmpty()) {
             layout.withUniform(PassUniforms.BLOCK_NAME, UniformType.UNIFORM_BUFFER);
         }
-        var pipeline = PhotonFullscreenPass.builder(
-                        Identifier.fromNamespaceAndPath(rl.getNamespace(), "core/" + rl.getPath()))
+        // a pass shader written for 26.1/26.2 compiles under 26.3's rules once adapted, like a particle custom shader
+        var adapted = PhotonShaderSources.adapt(Photon.id(PhotonFullscreenPass.VERTEX_SHADER_PATH),
+                Identifier.fromNamespaceAndPath(rl.getNamespace(), "core/" + rl.getPath()), 1, Set.of(), Set.of(),
+                false);
+        var pipeline = PhotonFullscreenPass.builder(adapted.fragment())
+                .withVertexShader(adapted.vertex())
                 .withLocation(Photon.id("pipeline/postfx_" + PIPELINE_ID.getAndIncrement()))
                 .withBindGroupLayout(layout.build())
                 .withColorTargetState(PhotonFullscreenPass.opaqueTarget(format))
                 .build();
         // validate here rather than at setPipeline: a broken shader inside an open pass throws and takes
         // the frame with it, whereas a null pipeline just skips the effect (chain passthrough, logged once)
-        if (!RenderSystem.getDevice().precompilePipeline(pipeline).isValid()) {
-            Photon.LOGGER.warn("post-effect pass shader '{}' failed to compile (must be 26.2-format GLSL: "
-                    + "values in a std140 PhotonPass block, no loose uniforms)", location);
+        if (!PhotonPipelines.compile(pipeline)) {
+            Photon.LOGGER.warn("post-effect pass shader '{}' failed to compile (values in a std140 PhotonPass block, "
+                    + "no loose uniforms)", location);
             return null;
         }
         return pipeline;

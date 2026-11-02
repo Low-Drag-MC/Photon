@@ -1,15 +1,16 @@
 package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.photon.Photon;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.pipeline.BindGroupLayout;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
+import com.mojang.renderpearl.api.pipeline.UniformType;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.AddressMode;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.AddressMode;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.joml.Vector4f;
 
 import javax.annotation.Nullable;
@@ -96,13 +97,13 @@ public final class PhotonSceneCapture {
             legacyDepthPipeline = PhotonFullscreenPass.builder(Photon.id("core/photon_legacy_depth"))
                     .withLocation(Photon.id("pipeline/legacy_depth"))
                     .withBindGroupLayout(BindGroupLayout.builder()
-                            .withSampler("InSampler").build())
+                            .withUniform("InSampler", UniformType.COMBINED_IMAGE_SAMPLER).build())
                     .withColorTargetState(PhotonFullscreenPass.opaqueTarget(GpuFormat.R32_FLOAT))
                     .build();
         }
         var nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
         PhotonFullscreenPass.draw("Photon legacy scene depth", legacyDepthPipeline, legacyDepthView, null,
-                pass -> pass.bindTexture("InSampler", depthCapture, nearest));
+                pass -> pass.setUniform("InSampler", depthCapture, nearest));
         return legacyDepthView;
     }
 

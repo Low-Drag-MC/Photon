@@ -9,14 +9,15 @@ import com.lowdragmc.photon.client.render.PhotonRenderOutput;
 import com.lowdragmc.photon.client.render.PhotonSceneCapture;
 import com.lowdragmc.photon.client.render.PhotonTextureCopy;
 import com.lowdragmc.photon.client.render.PhotonUploads;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.ScissorState;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrays;
@@ -49,6 +50,8 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.OptionalDouble;
+import java.util.Optional;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -244,14 +247,30 @@ public final class DynamicLightRenderer {
                 new Matrix4f(projection), frustum, partialTick, main.width, main.height, true, fog));
     }
 
-    /** {@code AfterOpaqueFeatures}, after Photon's own opaque draws: the opaque scene is down, nothing translucent is. */
+    /**
+     * Photon's after-opaque seam ({@code PhotonFrameSeams}), after Photon's own opaque draws: the opaque scene is
+     * down, nothing translucent is. No pass is open.
+     */
     public static void afterOpaque() {
         if (!IrisCompat.isUsingShaderPack()) apply(false);
     }
 
-    /** {@code AfterTranslucentParticles}, still inside the level pass. */
+    /** Whether {@link #afterOpaque} would draw: the world's frame has lights or fog volumes, outside a shader pack. */
+    public static boolean wantsAfterOpaque() {
+        var frame = prepared;
+        return frame != null && frame.world() && (lightCount > 0 || fogCount > 0) && !IrisCompat.isUsingShaderPack();
+    }
+
+    /** Photon's after-translucent seam ({@code PhotonFrameSeams}): every translucent draw is down. No pass is open. */
     public static void afterParticles() {
         if (!IrisCompat.isUsingShaderPack()) renderMarkers();
+    }
+
+    /** Whether {@link #afterParticles} would draw: the dev light markers are on. */
+    public static boolean wantsAfterParticles() {
+        var frame = prepared;
+        return frame != null && frame.world() && LightDebug.markers && !FRAME_LIGHTS.isEmpty()
+                && !IrisCompat.isUsingShaderPack();
     }
 
     /**
@@ -355,7 +374,7 @@ public final class DynamicLightRenderer {
         pass.setUniform(PhotonPipelines.LIGHT_DATA, LIGHT_DATA.current());
         pass.setUniform(PhotonPipelines.CLUSTER_GRID, LightClusters.clusterGrid());
         pass.setUniform(PhotonPipelines.CLUSTER_INDICES, LightClusters.clusterIndices());
-        pass.bindTexture(PhotonPipelines.VISIBILITY_ATLAS, VoxelWorld.emptyTexture(), PhotonSceneCapture.sampler());
+        pass.setUniform(PhotonPipelines.VISIBILITY_ATLAS, VoxelWorld.emptyTexture(), PhotonSceneCapture.sampler());
         pass.setUniform(PhotonPipelines.LIGHTS_BLOCK, noLightsBlock());
     }
 
@@ -378,7 +397,7 @@ public final class DynamicLightRenderer {
 
     private static void bindAtlas(RenderPass pass, @Nullable Frame frame) {
         var atlas = frame != null && visibilityMapCount > 0 ? frame.scene().visibilityAtlas.view() : null;
-        pass.bindTexture(PhotonPipelines.VISIBILITY_ATLAS, atlas != null ? atlas : VoxelWorld.emptyTexture(),
+        pass.setUniform(PhotonPipelines.VISIBILITY_ATLAS, atlas != null ? atlas : VoxelWorld.emptyTexture(),
                 PhotonSceneCapture.sampler());
     }
 
@@ -687,7 +706,7 @@ public final class DynamicLightRenderer {
         rowsDrawn.enable(0, 0, atlas.getWidth(0), VISIBILITY_SIZE * rows);
         draw("Photon light visibility", LightPipelines.VISIBILITY, atlas, null, rowsDrawn, view, step, pass -> {
             pass.setUniform(LightPipelines.VOXEL_PAGES, pages);
-            pass.bindTexture(LightPipelines.VOXEL_BRICKS, bricks, PhotonSceneCapture.sampler());
+            pass.setUniform(LightPipelines.VOXEL_BRICKS, bricks, PhotonSceneCapture.sampler());
             pass.setUniform(LightPipelines.VISIBILITY_LIGHTS, lights);
         });
         LightPassTimer.mark(LightPassTimer.Stage.VISIBILITY);
@@ -711,6 +730,9 @@ public final class DynamicLightRenderer {
         if (output == null || outputDepth == null || output.getWidth(0) != frame.width()
                 || output.getHeight(0) != frame.height()) {
             return; // not the target this frame's clusters were built for
+        }
+        if (!chainCompiles(output.texture().getFormat())) {
+            return;
         }
         int width = output.getWidth(0), height = output.getHeight(0);
         float scale = config.lightResolution.get().floatValue();
@@ -742,11 +764,11 @@ public final class DynamicLightRenderer {
         boolean surfaces = lightCount > 0;
         if (surfaces) {
             draw("Photon light pass", LightPipelines.PASS, lightBuffer, null, null, view, none, pass -> {
-                pass.bindTexture(LightPipelines.SCENE_DEPTH, depth, nearest);
-                pass.bindTexture(LightPipelines.LIGHTMAP, lightmap, lightmapSampler);
+                pass.setUniform(LightPipelines.SCENE_DEPTH, depth, nearest);
+                pass.setUniform(LightPipelines.LIGHTMAP, lightmap, lightmapSampler);
                 bindLightList(pass, frame);
                 pass.setUniform(LightPipelines.VOXEL_PAGES, voxelPages);
-                pass.bindTexture(LightPipelines.VOXEL_BRICKS, voxelBricks, nearest);
+                pass.setUniform(LightPipelines.VOXEL_BRICKS, voxelBricks, nearest);
             });
         }
         LightPassTimer.mark(LightPassTimer.Stage.LIGHT);
@@ -770,7 +792,7 @@ public final class DynamicLightRenderer {
                 var volumeIndices = LightClusters.volumeIndices();
                 draw("Photon light volume", LightPipelines.VOLUME_PASS, volumeBuffer, null, null, view, none, pass -> {
                     bindLightList(pass, frame);
-                    pass.bindTexture(LightPipelines.SCENE_DEPTH, depth, nearest);
+                    pass.setUniform(LightPipelines.SCENE_DEPTH, depth, nearest);
                     pass.setUniform(LightPipelines.VOLUME_LIGHT_DATA, volumeLights);
                     pass.setUniform(LightPipelines.VOLUME_TILE_GRID, volumeGrid);
                     pass.setUniform(LightPipelines.VOLUME_TILE_INDICES, volumeIndices);
@@ -788,7 +810,7 @@ public final class DynamicLightRenderer {
                 var step = PhotonUploads.block(STEP_BLOCK_SIZE, b -> b.putVec4(fogs, steps, 0f, 0f));
                 draw("Photon light fog", LightPipelines.FOG, volumeBuffer, null, null, view, step, pass -> {
                     bindLightList(pass, frame);
-                    pass.bindTexture(LightPipelines.SCENE_DEPTH, depth, nearest);
+                    pass.setUniform(LightPipelines.SCENE_DEPTH, depth, nearest);
                     pass.setUniform(LightPipelines.FOG_DATA, fogList);
                 });
             }
@@ -811,10 +833,10 @@ public final class DynamicLightRenderer {
             draw("Photon light composite", LightPipelines.composite(output.texture().getFormat()), output, null,
                     clip, view, none, pass -> {
                 pass.setUniform("Fog", fogBlock);
-                pass.bindTexture(LightPipelines.SCENE_COLOR, snapshot, nearest);
-                pass.bindTexture(LightPipelines.SCENE_DEPTH, depth, nearest);
-                pass.bindTexture(LightPipelines.IRRADIANCE, lightBuffer, nearest);
-                pass.bindTexture(LightPipelines.LIGHTMAP, lightmap, lightmapSampler);
+                pass.setUniform(LightPipelines.SCENE_COLOR, snapshot, nearest);
+                pass.setUniform(LightPipelines.SCENE_DEPTH, depth, nearest);
+                pass.setUniform(LightPipelines.IRRADIANCE, lightBuffer, nearest);
+                pass.setUniform(LightPipelines.LIGHTMAP, lightmap, lightmapSampler);
             });
         }
         LightPassTimer.mark(LightPassTimer.Stage.COMPOSITE);
@@ -849,7 +871,7 @@ public final class DynamicLightRenderer {
         if (color == null) return depth;
         var step = PhotonUploads.block(STEP_BLOCK_SIZE, b -> b.putVec4(renderScale, 0f, 0f, 0f));
         draw("Photon light depth scale", LightPipelines.depthScale(color.texture().getFormat()), color, scaled, null,
-                view, step, pass -> pass.bindTexture(LightPipelines.DEPTH, depth, PhotonSceneCapture.sampler()));
+                view, step, pass -> pass.setUniform(LightPipelines.DEPTH, depth, PhotonSceneCapture.sampler()));
         return scaled;
     }
 
@@ -857,8 +879,8 @@ public final class DynamicLightRenderer {
                              GpuTextureView target, float dx, float dy, float skyDepth) {
         var step = PhotonUploads.block(STEP_BLOCK_SIZE, b -> b.putVec4(dx, dy, skyDepth, 0f));
         draw("Photon light blur", LightPipelines.BLUR, target, null, null, view, step, pass -> {
-            pass.bindTexture(LightPipelines.IRRADIANCE, source, PhotonSceneCapture.sampler());
-            pass.bindTexture(LightPipelines.SCENE_DEPTH, depth, PhotonSceneCapture.sampler());
+            pass.setUniform(LightPipelines.IRRADIANCE, source, PhotonSceneCapture.sampler());
+            pass.setUniform(LightPipelines.SCENE_DEPTH, depth, PhotonSceneCapture.sampler());
         });
     }
 
@@ -1004,6 +1026,16 @@ public final class DynamicLightRenderer {
         return absorbs;
     }
 
+    /** Every pass of the chain compiles: a stage that doesn't would leave the next blending a stale buffer in. */
+    private static boolean chainCompiles(GpuFormat format) {
+        for (var pipeline : new RenderPipeline[]{LightPipelines.PASS, LightPipelines.BLUR, LightPipelines.VOLUME_PASS,
+                LightPipelines.FOG, LightPipelines.composite(format), LightPipelines.depthScale(format),
+                LightPipelines.hazeAdd(format), LightPipelines.hazeAbsorb(format)}) {
+            if (PhotonPipelines.compiled(pipeline) == null) return false;
+        }
+        return true;
+    }
+
     private static void compositeHaze() {
         var haze = pendingHaze;
         pendingHaze = null;
@@ -1031,8 +1063,8 @@ public final class DynamicLightRenderer {
         var format = output.texture().getFormat();
         draw("Photon light haze", absorb ? LightPipelines.hazeAbsorb(format) : LightPipelines.hazeAdd(format), output,
                 null, clip, haze.view(), step, pass -> {
-                    pass.bindTexture(LightPipelines.SCENE_DEPTH, depth, PhotonSceneCapture.sampler());
-                    pass.bindTexture(LightPipelines.VOLUME, volume, PhotonSceneCapture.sampler());
+                    pass.setUniform(LightPipelines.SCENE_DEPTH, depth, PhotonSceneCapture.sampler());
+                    pass.setUniform(LightPipelines.VOLUME, volume, PhotonSceneCapture.sampler());
                 });
     }
 
@@ -1044,10 +1076,17 @@ public final class DynamicLightRenderer {
         if (frame == null || !frame.world() || !LightDebug.markers || FRAME_LIGHTS.isEmpty()) return;
         var camera = frame.camera();
         var matrix = new Matrix4f(frame.view());
-        // the view is in the vertices: inside the level pass RenderSystem's model-view holds it too
+        // the view is in the vertices, so the model-view is reset to identity for them
         var modelView = RenderSystem.getModelViewStack();
+        var color = PhotonRenderOutput.color();
+        var depth = PhotonRenderOutput.depth();
+        if (color == null) return;
         modelView.pushMatrix().identity();
-        try (var draw = new RenderUtils.ImmediateDraw()) {
+        // the seam has no pass open: the markers get one of their own on the frame
+        try (var pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+                () -> "Photon light markers", color, Optional.empty(), depth, OptionalDouble.empty());
+             var draw = new RenderUtils.ImmediateDraw(pass)) {
+            RenderSystem.bindDefaultUniforms(pass);
             var consumer = draw.getBuffer(RenderTypes.debugQuads());
             for (var light : FRAME_LIGHTS) {
                 if (!light.enabled) continue;

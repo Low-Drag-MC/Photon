@@ -1,4 +1,5 @@
-#version 150
+#version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Depth-of-field composite: autofocus on the depth under Center, blend toward the blurred
 // image by linear-depth distance / FocusRange (blocks). Near/Far mirror the projection planes.
@@ -14,8 +15,8 @@ layout(std140) uniform PhotonPass {
     float Far;
 };
 
-in vec2 texCoord;
-out vec4 fragColor;
+layout(location = 0) in vec2 texCoord;
+layout(location = 0) out vec4 fragColor;
 
 // reverse-Z: depth 1 is the near plane
 float linearize(float depth) {

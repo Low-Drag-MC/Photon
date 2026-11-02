@@ -1,9 +1,10 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // One KilaMaterial texture slot drawn alone for the inspector, through the material's own kila_lib uv chain and noise.
 // KILA_SLOT_PREVIEW leaves the material's block out of kila_lib: the slot has this one of its own.
 
-#moj_import <photon:kila_lib.glsl>
+#include <photon:kila_lib.glsl>
 
 uniform sampler2D Sampler0;
 
@@ -19,9 +20,9 @@ layout(std140) uniform KilaSlot {
     vec4 KilaPreviewNoise;
 };
 
-in vec2 texCoord0;
+layout(location = 0) in vec2 texCoord0;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     int flags = KilaPreviewOpts.x;

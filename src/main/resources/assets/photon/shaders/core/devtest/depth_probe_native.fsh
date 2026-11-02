@@ -1,12 +1,13 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Dev test shader (not shipped): the reverse-Z twin of depth_probe_legacy.
 
-#moj_import <photon:engine.glsl>
+#include <photon:engine.glsl>
 
 uniform sampler2D SamplerSceneDepth;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     vec2 screenUV = gl_FragCoord.xy / U_ViewPort.zw;

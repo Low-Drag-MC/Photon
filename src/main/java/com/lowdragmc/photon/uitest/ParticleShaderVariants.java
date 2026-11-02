@@ -1,12 +1,11 @@
 package com.lowdragmc.photon.uitest;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.lowdraglib2.uitest.TestContext;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.light.DynamicLightRenderer;
 import com.lowdragmc.photon.client.render.PhotonPipelines;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 
 /**
  * Compile every {@code #ifdef} branch of {@code photon:particle.glsl} on the real driver.
@@ -70,7 +69,7 @@ final class ParticleShaderVariants {
         try {
             // 26.1 logs the driver's compile/link error and hands back an invalid pipeline rather than
             // throwing, so BOTH outcomes have to be treated as a failure here.
-            valid = RenderSystem.getDevice().precompilePipeline(pipeline).isValid();
+            valid = PhotonPipelines.compile(pipeline);
         } catch (Throwable e) {
             failure = e;
         }

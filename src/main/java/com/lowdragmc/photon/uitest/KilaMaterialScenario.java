@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.uitest;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.kilagraph.rendertype.nodes.channel.SplitNode;
 import com.lowdragmc.kilagraph.rendertype.nodes.fragment.FragmentAlphaBlock;
 import com.lowdragmc.kilagraph.rendertype.runtime.RenderTypeFactory;
@@ -47,13 +47,9 @@ import com.lowdragmc.photon.client.render.StackedDistortion;
 import com.lowdragmc.photon.client.shadergraph.PhotonShaderCompiler;
 import com.lowdragmc.photon.client.shadergraph.ShaderGraph;
 import com.lowdragmc.photon.client.shadergraph.nodes.CustomDataNode;
-import com.lowdragmc.photon.core.mixins.accessor.DeviceCachesAccessor;
-import com.lowdragmc.photon.core.mixins.accessor.GpuDeviceAccessor;
-import com.lowdragmc.photon.core.mixins.accessor.ShaderKeyAccessor;
-import com.mojang.blaze3d.opengl.GlRenderPipeline;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.BlendFactor;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.lowdragmc.kilagraph.rendertype.runtime.KGPipelines;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.BlendFactor;
 import net.minecraft.client.CloudStatus;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.Identifier;
@@ -66,7 +62,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 /**
  * KilaMaterial end to end: every variant compiles on every path with every declared uniform and sampler live,
@@ -470,23 +465,18 @@ public class KilaMaterialScenario implements UIScenario {
             if (pipeline != null) pipelines.add(pipeline);
         }
         ctx.require("the variant compiled on every path", pipelines.size() == GEOMETRIES.size());
-        var device = (DeviceCachesAccessor) ((GpuDeviceAccessor) RenderSystem.getDevice()).photon$backend();
         ctx.check("while held, the device has every program", pipelines.stream()
-                .allMatch(device.photon$pipelineCache()::containsKey), "all " + pipelines.size(), pipelines.stream()
-                .filter(device.photon$pipelineCache()::containsKey).count());
+                .allMatch(KGPipelines::isCompiled), "all " + pipelines.size(), pipelines.stream()
+                .filter(KGPipelines::isCompiled).count());
         ctx.check("and Kila holds each pipeline once", KilaPipelines.heldCount() == before + pipelines.size(),
                 before + pipelines.size(), KilaPipelines.heldCount());
         lease.close();
         ctx.check("let go, Kila holds none of them", KilaPipelines.heldCount() == before, before,
                 KilaPipelines.heldCount());
+        // 26.3 compiles a pipeline's shader modules for it alone, so evicting the pipeline frees them too
         ctx.check("and the device freed every program", pipelines.stream()
-                .noneMatch(device.photon$pipelineCache()::containsKey), "none", pipelines.stream()
-                .filter(device.photon$pipelineCache()::containsKey).count());
-        // the variant's defines are its own, so no other pipeline shares its shader objects
-        var defines = pipelines.stream().map(RenderPipeline::getShaderDefines).collect(Collectors.toSet());
-        var shaders = device.photon$shaderCache().keySet().stream()
-                .filter(key -> defines.contains(((ShaderKeyAccessor) key).photon$defines())).count();
-        ctx.check("and its shader objects", shaders == 0, 0, shaders);
+                .noneMatch(KGPipelines::isCompiled), "none", pipelines.stream()
+                .filter(KGPipelines::isCompiled).count());
         ctx.check("a closed lease hands out nothing", KilaPipelines.get(lease, material.layout(),
                 PhotonPipelines.ParticlePipelineKey.DEFAULT, null, false) == null, "null", "a pipeline");
     }
@@ -576,7 +566,7 @@ public class KilaMaterialScenario implements UIScenario {
         var compiled = new PhotonShaderCompiler(graph).compile();
         ctx.require("the graph compiles", compiled != null && !compiled.hasStageErrors());
         // the generated GLSL reaches the device through KilaGraph's source registry, as a graph material's own does
-        RenderTypeFactory.getOrBuildPipeline(compiled);
+        RenderTypeFactory.getOrBuildPipelines(compiled);
         var key = PhotonPipelines.ParticlePipelineKey.DEFAULT;
         var paths = new LinkedHashMap<String, RenderPipeline>();
         paths.put(PhotonPipelines.CPU_DATA_DEFINE, PhotonPipelines.graphShader(compiled, null, key,
@@ -587,8 +577,8 @@ public class KilaMaterialScenario implements UIScenario {
                     new PhotonPipelines.InstancedGeometryKey(variant, variant.layout, false, variant.usesCustomData), key));
         }
         paths.forEach((path, pipeline) -> {
-            var linked = RenderSystem.getDevice().precompilePipeline(pipeline);
-            ctx.check("the graph's " + path + " variant links", linked.isValid(), "linked", "invalid");
+            var live = PipelineChecks.live(pipeline);
+            ctx.check("the graph's " + path + " variant links", live != null, "linked", "invalid");
             var declared = PipelineChecks.declared(pipeline);
             ctx.check(path + " declares the custom-data buffer", declared.contains(InstancedRenderBackendNames.CUSTOM),
                     "declared", declared);
@@ -596,8 +586,7 @@ public class KilaMaterialScenario implements UIScenario {
                 ctx.check("the CPU variant declares its records block", declared.contains(PhotonPipelines.CPU_DATA_BLOCK),
                         "declared", declared);
             }
-            if (!(linked instanceof GlRenderPipeline gl) || !linked.isValid()) return;
-            var live = gl.program().getUniforms().keySet();
+            if (live == null) return;
             ctx.check(path + " reads the custom-data buffer", live.contains(InstancedRenderBackendNames.CUSTOM),
                     "bound", live);
             if (path.equals(PhotonPipelines.CPU_DATA_DEFINE)) {

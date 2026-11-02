@@ -85,8 +85,14 @@ public final class PhotonPostFX {
         testEffect = null;
     }
 
+    /** Whether {@link #onLevelStageAfterParticles} has work: a pending chain or preview capture, outside a pack. */
+    public static boolean wantsStandaloneExecution() {
+        if (IrisCompat.isUsingShaderPack() || PhotonDeferredLayer.isPending()) return false;
+        return PostEffectStack.GLOBAL.wantsExecution() || PostFXPreview.isCaptureWanted();
+    }
+
     /**
-     * The preview capture fallback (RenderLevelStageEvent.AFTER_PARTICLES). The chain itself no longer
+     * The preview capture fallback (Photon's after-translucent seam). The chain itself no longer
      * needs a standalone path: the world's drain runs it whenever a request is pending, whether or not
      * a single particle queued — see {@code PhotonWorldRenderState.drain}. What is left is the editor
      * preview's clean-scene copy for the frames where the drain never got that far (effects disabled,
@@ -106,7 +112,7 @@ public final class PhotonPostFX {
     /**
      * The slot for compositing a deferred FX layer, and for the custom effect chain whenever one was
      * deferred with it. Sits after {@code LevelRenderer.renderLevel} has returned — i.e. after the
-     * clouds and weather, after Fabulous' transparency chain, and (under a pack) after Iris'
+     * clouds and weather (and, with improved transparency, the OIT composite), and (under a pack) after Iris'
      * {@code finalizeLevelRendering()} but before its colour-space conversion. Either way the main
      * render target holds a finished frame.
      *
@@ -131,7 +137,7 @@ public final class PhotonPostFX {
         if (shaderPack) {
             if (!PhotonConfig.INSTANCE.enableCustomEffectsWithShaderPack.get()) return;
         } else if (!hadPendingLayer) {
-            // nothing was deferred, so the chain already ran at AFTER_PARTICLES
+            // nothing was deferred, so the chain already ran at the after-translucent seam
             return;
         }
         runChainOverMainTarget();

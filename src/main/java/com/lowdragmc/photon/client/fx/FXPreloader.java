@@ -339,8 +339,8 @@ public final class FXPreloader {
         try {
             return TextureContents.load(resources, location);
         } catch (FileNotFoundException e) {
-            // as TextureManager says it: an absent file is no failure worth a stack trace
-            if (!TextureManager.INTENTIONAL_MISSING_TEXTURE.equals(location)) {
+            // an absent file is no failure worth a stack trace; the empty id is how a texture is left out on purpose
+            if (!location.getPath().isEmpty()) {
                 Photon.LOGGER.warn("Missing texture {}", location);
             }
             return TextureContents.createMissing();

@@ -1,6 +1,6 @@
 package com.lowdragmc.photon.client.gameobject.emitter.data.material;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.render.PhotonMaterialUniforms;
 import com.lowdragmc.photon.client.render.PhotonPipelines;

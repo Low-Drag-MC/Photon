@@ -1,8 +1,9 @@
 package com.lowdragmc.photon.client.render;
 
 import com.lowdragmc.photon.Photon;
-import com.mojang.blaze3d.shaders.ShaderType;
-import net.minecraft.client.Minecraft;
+import com.lowdragmc.photon.core.mixins.accessor.PipelineCacheAccessor;
+import com.lowdragmc.photon.core.mixins.accessor.RenderSystemAccessor;
+import com.mojang.renderpearl.api.pipeline.ShaderType;
 import net.minecraft.resources.Identifier;
 
 import javax.annotation.Nullable;
@@ -17,6 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Custom-shader sources after {@link CustomShaderAdapter}, and fragment shaders for the reversed-winding pass, served
  * by {@code ShaderManagerMixin} under {@code photon:adapted/<hash>}. Unchanged pairs keep their own ids.
+ * <p>
+  * Read from and served through the current pipeline cache's {@code ShaderSource}.
  */
 public final class PhotonShaderSources {
 
@@ -26,6 +29,8 @@ public final class PhotonShaderSources {
     }
 
     private static final Map<Key, String> SOURCES = new ConcurrentHashMap<>();
+    /** A fragment stage's twin for order-independent transparency ({@code PhotonOit}). */
+    private static final Map<Identifier, Identifier> OIT_TWINS = new ConcurrentHashMap<>();
     private static final Set<String> REPORTED = ConcurrentHashMap.newKeySet();
 
     private PhotonShaderSources() {
@@ -46,25 +51,48 @@ public final class PhotonShaderSources {
     /** Falls back to the original ids when a source is missing, so the compile reports it as usual. */
     public static Adapted adapt(Identifier vertex, Identifier fragment, int providedLocations,
                                 Set<Integer> tailLocations, Set<String> defines) {
-        var shaders = Minecraft.getInstance().getShaderManager();
-        var vertexSource = shaders.getShader(vertex, ShaderType.VERTEX);
-        var fragmentSource = shaders.getShader(fragment, ShaderType.FRAGMENT);
+        return adapt(vertex, fragment, providedLocations, tailLocations, defines, true);
+    }
+
+    /** {@code oit}: also serve the fragment stage's order-independent twin ({@link #oitTwin}). */
+    public static Adapted adapt(Identifier vertex, Identifier fragment, int providedLocations,
+                                Set<Integer> tailLocations, Set<String> defines, boolean oit) {
+        var vertexSource = source(vertex, ShaderType.VERTEX);
+        var fragmentSource = source(fragment, ShaderType.FRAGMENT);
         if (vertexSource == null || fragmentSource == null) {
             return new Adapted(vertex, fragment, Map.of());
         }
         var result = CustomShaderAdapter.adapt(vertexSource, fragmentSource, providedLocations, tailLocations,
-                defines);
+                defines, oit);
         if (!result.changed()) {
+            registerOitTwin(fragment, result);
             return new Adapted(vertex, fragment, result.tailInputs());
         }
         var id = Photon.id(PREFIX + hash(result.vertex() + "\u0000" + result.fragment()));
         SOURCES.put(new Key(id, ShaderType.VERTEX), result.vertex());
         SOURCES.put(new Key(id, ShaderType.FRAGMENT), result.fragment());
         if (REPORTED.add(vertex + "|" + fragment + "|" + String.join(",", result.notes()))) {
-            Photon.LOGGER.info("custom shader {} + {} adapted for 26.2 ({})", vertex, fragment,
+            Photon.LOGGER.info("custom shader {} + {} adapted for 26.3 ({})", vertex, fragment,
                     String.join("; ", result.notes()));
         }
+        registerOitTwin(id, result);
         return new Adapted(id, id, result.tailInputs());
+    }
+
+    private static void registerOitTwin(Identifier fragment, CustomShaderAdapter.Result result) {
+        if (result.oitFragment() == null) {
+            OIT_TWINS.remove(fragment);
+            return;
+        }
+        var twin = Photon.id(PREFIX + "oit_" + hash(result.oitFragment()));
+        SOURCES.put(new Key(twin, ShaderType.FRAGMENT), result.oitFragment());
+        OIT_TWINS.put(fragment, twin);
+    }
+
+    /** {@code fragment}'s twin written through Photon's OIT tail, or null when it has none. */
+    @Nullable
+    public static Identifier oitTwin(Identifier fragment) {
+        return OIT_TWINS.get(fragment);
     }
 
     /**
@@ -73,11 +101,18 @@ public final class PhotonShaderSources {
      */
     @Nullable
     public static Identifier reversedWinding(Identifier fragment) {
-        var source = Minecraft.getInstance().getShaderManager().getShader(fragment, ShaderType.FRAGMENT);
+        var source = source(fragment, ShaderType.FRAGMENT);
         if (source == null || !source.contains("gl_FrontFacing")) return null;
         var id = Photon.id(PREFIX + "reversed_" + hash(source));
         SOURCES.putIfAbsent(new Key(id, ShaderType.FRAGMENT), source.replace("gl_FrontFacing", "(!gl_FrontFacing)"));
         return id;
+    }
+
+    /** {@code id}'s GLSL as the current pipeline cache compiles it; null before the first shader reload, or unknown. */
+    @Nullable
+    public static String source(Identifier id, ShaderType type) {
+        var cache = RenderSystemAccessor.photon$currentPipelineCache();
+        return cache == null ? null : ((PipelineCacheAccessor) cache).photon$shaderSource().getShader(id, type);
     }
 
     private static String hash(String text) {
