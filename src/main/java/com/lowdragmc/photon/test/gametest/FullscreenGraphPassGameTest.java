@@ -157,6 +157,8 @@ public final class FullscreenGraphPassGameTest {
         compiled.uniformBlocks().forEach(block -> bound.add(block.uboName()));
         var pipeline = PhotonPipelines.fullscreenGraph(compiled, PhotonPipelines.HDR_FORMAT);
         for (var uniform : BindGroupLayout.flattenUniforms(pipeline.getBindGroupLayouts())) {
+            // samplers are checked by assertEveryPipelineSamplerIsBound
+            if (uniform.type() == UniformType.COMBINED_IMAGE_SAMPLER) continue;
             assertTrue(helper, "pipeline uniform '" + uniform.name() + "' is bound at dispatch",
                     bound.contains(uniform.name()));
         }
