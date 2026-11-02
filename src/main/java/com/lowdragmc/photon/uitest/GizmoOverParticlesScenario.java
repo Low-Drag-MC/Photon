@@ -37,6 +37,8 @@ public class GizmoOverParticlesScenario implements UIScenario {
                 .awaitModularUI()
                 .waitUntil("the editor is laid out", ctx -> !ctx.query().type(FXEditor.class).list().isEmpty())
                 .step("a magenta particle filling the view in front of the target", GizmoOverParticlesScenario::load)
+                .waitUntil("the project is loaded", ctx -> editor(ctx).runtime != null
+                        && editor(ctx).runtime.objects.size() >= 2)
                 .frames(20)
                 .step("measure the scene view", ctx -> SCENE = ScreenshotCompare.sceneViewport(ctx))
                 .step("the translate gizmo on it", ctx -> {
