@@ -58,7 +58,7 @@ public class BlockEffectExecutor extends FXEffectExecutor {
                 .add(offset.x + 0.5f, offset.y + 0.5f, offset.z + 0.5f));
         root.updateRotation(rotation);
         root.updateScale(scale);
-        this.runtime.emit(this, delay);
+        this.runtime.emit(this, delay, startSection);
         lastState = level.getBlockState(pos);
         effects.add(this);
     }

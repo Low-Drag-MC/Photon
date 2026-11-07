@@ -70,6 +70,9 @@ public abstract class FXObject extends Particle implements IFXObject {
     /** Timeline visibility flag (this node only; folded into hierarchical {@link #isVisible()}). */
     @Setter
     protected boolean selfTimelineVisible = true;
+    /** Set by {@link #windDown()}, cleared by {@link #reset()}. */
+    @Setter
+    protected boolean windingDown;
     /**
      * Optional per-tick callback used by {@link com.lowdragmc.photon.client.fx.FXRuntime} to drive
      * the timeline from the always-on root object. Runs after the start delay, before {@code updateTick}.
@@ -218,9 +221,38 @@ public abstract class FXObject extends Particle implements IFXObject {
         return false;
     }
 
-    /** Whether the particle engine dropped this object's runtime without notice; see {@link FXRuntime#isValid()}. */
+    /** Whether the particle engine dropped this object's runtime; a destroyed effect's remnants still show. */
     protected boolean isDiscarded() {
-        return scene instanceof FXRuntime runtime && !runtime.isValid();
+        return scene instanceof FXRuntime runtime && !runtime.isTracked();
+    }
+
+    /**
+     * Wind this subtree down (a non-force remove): nothing new starts, what shows ends on its own, and particles that
+     * never die of age end with it.
+     */
+    public void windDown() {
+        windingDown = true;
+        remove(false);
+        for (var child : transform.children()) {
+            if (child.sceneObject() instanceof FXObject object) {
+                object.windDown();
+            }
+        }
+    }
+
+    /** Whether nothing new should start here; an FX instance playing its own release stops the search. */
+    public boolean hasWindingDownAncestor() {
+        for (var parent = transform.parent(); parent != null; parent = parent.parent()) {
+            if (parent.sceneObject() instanceof FXObject object) {
+                if (object.windingDown) return true;
+                if (object.isPlayingOwnRelease()) return false;
+            }
+        }
+        return false;
+    }
+
+    protected boolean isPlayingOwnRelease() {
+        return false;
     }
 
     @Override
@@ -228,6 +260,7 @@ public abstract class FXObject extends Particle implements IFXObject {
         this.delay = 0;
         this.age = 0;
         this.removed = false;
+        this.windingDown = false;
         this.onGround = false;
         // restore timeline defaults; the player re-applies gating each tick for controlled objects.
         // (objects that stop being timeline-controlled must fall back to active/visible.)

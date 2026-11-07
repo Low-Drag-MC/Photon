@@ -27,6 +27,8 @@ public class Clip {
     private boolean randomSeed = true;
     /** Random seed applied to the bound object when a control clip restarts it. */
     private long seed;
+    private ExitMode exitMode = ExitMode.CUT;
+    private SeamMode seamMode = SeamMode.AUTO;
 
     /** Stable per-clip lerp source for Random* sampling functions (re-rolls with the clip seed). */
     private transient float lerpValue = Float.NaN;
@@ -88,6 +90,24 @@ public class Clip {
         return this;
     }
 
+    public ExitMode exitMode() {
+        return exitMode;
+    }
+
+    public Clip exitMode(ExitMode exitMode) {
+        this.exitMode = exitMode;
+        return this;
+    }
+
+    public SeamMode seamMode() {
+        return seamMode;
+    }
+
+    public Clip seamMode(SeamMode seamMode) {
+        this.seamMode = seamMode;
+        return this;
+    }
+
     public double start() {
         return start;
     }
@@ -119,7 +139,23 @@ public class Clip {
      * An independent value copy of this clip.
      */
     public Clip copy() {
-        return new Clip(start, duration, speed).targetId(targetId).seed(seed).randomSeed(randomSeed);
+        return new Clip(start, duration, speed).targetId(targetId).seed(seed).randomSeed(randomSeed).exitMode(exitMode)
+                .seamMode(seamMode);
+    }
+
+    /** What a control clip that stays on across a section wrap or jump does to its object. */
+    public enum SeamMode {
+        /** Keep it running while it still plays, restart it once it has finished. */
+        AUTO,
+        RESTART
+    }
+
+    /** What leaving a control clip (into a gap) does to the bound object and everything under it. */
+    public enum ExitMode {
+        /** Stop and hide it at once. */
+        CUT,
+        /** Start nothing new and let what it shows end on its own. */
+        DRAIN
     }
 
     /**

@@ -31,4 +31,7 @@ public final class PhotonIcons {
     public static final SpriteTexture TRANSPORT_PAUSE = Icons.icon(Photon.MOD_ID, "transport_pause");
     public static final SpriteTexture TRANSPORT_STEP_FORWARD = Icons.icon(Photon.MOD_ID, "transport_step_forward");
     public static final SpriteTexture TRANSPORT_TO_END = Icons.icon(Photon.MOD_ID, "transport_to_end");
+    public static final SpriteTexture SECTION_ADVANCE = Icons.icon(Photon.MOD_ID, "section_advance");
+    public static final SpriteTexture SECTION_RELEASE = Icons.icon(Photon.MOD_ID, "section_release");
+    public static final SpriteTexture SECTION_FOLLOW = Icons.icon(Photon.MOD_ID, "section_follow");
 }

@@ -36,6 +36,7 @@ import com.lowdragmc.photon.client.fx.timeline.Clip;
 import com.lowdragmc.photon.client.fx.timeline.Marker;
 import com.lowdragmc.photon.client.fx.timeline.SignalTrack;
 import com.lowdragmc.photon.client.fx.timeline.Timeline;
+import com.lowdragmc.photon.client.fx.timeline.TimelineSection;
 import com.lowdragmc.photon.client.fx.timeline.Track;
 import com.lowdragmc.photon.client.fx.timeline.TrackGroup;
 import com.lowdragmc.photon.client.gameobject.FXInstanceObject;
@@ -44,6 +45,7 @@ import com.lowdragmc.photon.client.gameobject.FXObjectType;
 import com.lowdragmc.photon.client.gameobject.emitter.Emitter;
 import com.lowdragmc.photon.gui.editor.FXEditor;
 import com.lowdragmc.photon.gui.editor.view.timeline.ClipTrackEditor;
+import com.lowdragmc.photon.gui.editor.view.timeline.SectionStrip;
 import com.lowdragmc.photon.gui.editor.view.timeline.TimelineContext;
 import com.lowdragmc.photon.gui.editor.view.timeline.TrackEditor;
 import com.lowdragmc.photon.gui.editor.view.timeline.TrackUIState;
@@ -153,6 +155,19 @@ public class FXTimelineView extends View implements TimelineContext {
     private double dragMarkerGrabOffset;
     /** Lane element per track (recorded each rebuild) so a screen-Y maps to a destination row. */
     private final Map<Track, UIElement> laneViews = new java.util.LinkedHashMap<>();
+    private final SectionStrip sectionStrip = new SectionStrip(this);
+    /** The section a drag moves, kept out of the snap targets. */
+    @Nullable
+    private TimelineSection snapExcludedSection;
+    /** Whether live playback follows the sections (loops, jumps) as in-game; off plays them in time order. */
+    private boolean followSections = true;
+    private final UIElement sectionControls = new UIElement();
+    private boolean sectionControlsShown = true;
+    /** The runtime whose clock jumps move the preview clock along. */
+    @Nullable
+    private FXRuntime clockRuntime;
+    /** What rounding a jump onto the whole-tick preview clock left over, carried into the next one so it never drifts. */
+    private double clockCarry;
 
     // playback mode (editor preview preference; not serialized)
     private enum EndMode { ALL_FINISHED, TIMELINE_END }
@@ -207,6 +222,13 @@ public class FXTimelineView extends View implements TimelineContext {
             repositionLaneItems();
             syncSignalDispatch();
             updatePlaybackEnd();
+            sectionStrip.tick();
+            var runtime = fxEditor.runtime;
+            var hasSections = runtime != null && !runtime.fxData.timeline().sections().isEmpty();
+            if (sectionControlsShown != hasSections) {
+                sectionControlsShown = hasSections;
+                sectionControls.setDisplay(hasSections);
+            }
         });
     }
 
@@ -299,7 +321,47 @@ public class FXTimelineView extends View implements TimelineContext {
         // empty flex filler pushes the mode toggles to the right of the (capped-width) time field
         var spacer = new UIElement().setId("timeline.transportSpacer").layout(layout -> layout.flex(1));
         return bar.addChildren(toStart, stepBack, playButton, stepForward, toEnd,
-                createTimeField(), spacer, createEndModeToggle(), createWrapModeToggle());
+                createTimeField(), spacer, createSectionControls(), createEndModeToggle(), createWrapModeToggle());
+    }
+
+    /** Advance / release the preview, and whether it follows the sections; shown while the timeline has sections. */
+    private UIElement createSectionControls() {
+        sectionControls.setId("timeline.sectionControls").layout(layout -> {
+            layout.heightPercent(100);
+            layout.flexDirection(FlexDirection.ROW);
+            layout.gapAll(2);
+        });
+        var advance = transportButton(new Button(), "timeline.advance", PhotonIcons.SECTION_ADVANCE,
+                "photon.gui.editor.timeline.advance.tip", this::advanceSection);
+        var release = transportButton(new Button(), "timeline.release", PhotonIcons.SECTION_RELEASE,
+                "photon.gui.editor.timeline.release.tip", this::releasePreview);
+        var follow = new Toggle().noText().setOn(followSections).setOnToggleChanged(on -> {
+            followSections = on;
+            syncSignalDispatch();
+        });
+        follow.getToggleStyle().markTexture(PhotonIcons.SECTION_FOLLOW.copy().scale(0.8f))
+                .unmarkTexture(PhotonIcons.SECTION_FOLLOW.copy().setColor(0xff555555).scale(0.8f));
+        follow.setId("timeline.followSections").layout(layout -> layout.aspectRatio(1).heightPercent(100))
+                .style(style -> style.tooltips("photon.gui.editor.timeline.follow_sections.tip"));
+        return sectionControls.addChildren(advance, release, follow);
+    }
+
+    /** Preview: stop repeating the section playing, as {@code runtime.sections().advance()} would in-game. */
+    public void advanceSection() {
+        var runtime = fxEditor.runtime;
+        if (runtime == null) return;
+        if (!isPlaying()) fxEditor.sceneView.particleManager.play();
+        syncSignalDispatch();
+        runtime.sections().advance();
+    }
+
+    /** Preview: stop the effect as the game does ({@code destroy(false)}): the release section, then wind down. */
+    public void releasePreview() {
+        var runtime = fxEditor.runtime;
+        if (runtime == null) return;
+        if (!isPlaying()) fxEditor.sceneView.particleManager.play();
+        syncSignalDispatch();
+        runtime.destroy(false);
     }
 
     /** One square icon-only transport button, sized off the bar's height. */
@@ -417,7 +479,7 @@ public class FXTimelineView extends View implements TimelineContext {
         leftScroller.addScrollViewChild(headersContainer);
         leftScroller.verticalScroller.setOnValueChanged(v -> syncScroll(leftScroller, rightScroller));
         var spacer = new UIElement().layout(layout -> layout.widthPercent(100).height(HSCROLL_HEIGHT));
-        return column.addChildren(header, markerSpacer, leftScroller, spacer);
+        return column.addChildren(header, sectionStrip.header, markerSpacer, leftScroller, spacer);
     }
 
     private void setMarkersVisible(boolean visible) {
@@ -455,6 +517,7 @@ public class FXTimelineView extends View implements TimelineContext {
         });
         // cross-track snap guides at the dragged clip's edges + the marquee box, spanning all lanes
         lanesContainer.style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) -> {
+            sectionStrip.drawGuides(graphics, x, y, w, h);
             drawGroupDragGuide(graphics);
             if (dragGuideClip != null) {
                 drawGuideLine(graphics, dragGuideClip.start(), x, y, w, h);
@@ -503,7 +566,7 @@ public class FXTimelineView extends View implements TimelineContext {
         // reads as a single line instead of a segment per track / per band
         column.style(style -> style.overlayTexture((graphics, mx, my, x, y, w, h, pt) ->
                 drawPlayhead(graphics, x, y, w, Math.max(0, h - HSCROLL_HEIGHT), pt)));
-        return column.addChildren(ruler, markerStrip, rightScroller, hScroll);
+        return column.addChildren(ruler, sectionStrip.strip, markerStrip, rightScroller, hScroll);
     }
 
     private void setupMarkerStrip() {
@@ -548,6 +611,7 @@ public class FXTimelineView extends View implements TimelineContext {
         for (var marker : runtime.fxData.timeline().markers()) {
             if (marker != exclude) snapConsider(acc, tick, marker.tick());
         }
+        snapSections(acc, tick);
         return acc[0];
     }
 
@@ -585,6 +649,7 @@ public class FXTimelineView extends View implements TimelineContext {
         } else if (e.button == 0) {
             selectedMarker = hit; // null = click on empty strip clears the selection
             if (hit != null) { // marker selection is exclusive with track/clip selection (Delete routing)
+                sectionStrip.deselect();
                 selectedTracks.clear();
                 selectedTrack = null;
                 selectedClips.clear();
@@ -648,6 +713,8 @@ public class FXTimelineView extends View implements TimelineContext {
         var menu = TreeBuilder.Menu.start();
         menu.leaf("photon.gui.editor.timeline.insert_time", () -> openInsertTimeDialog(tick));
         menu.leaf("photon.gui.editor.timeline.add_marker", () -> addMarker(tick));
+        menu.crossLine();
+        sectionStrip.addMenuItems(menu, tick);
         fxEditor.openMenu(x, y, menu);
     }
 
@@ -766,6 +833,7 @@ public class FXTimelineView extends View implements TimelineContext {
         for (var item : laneItems) {
             item.reposition().run();
         }
+        sectionStrip.reposition();
     }
 
     /** Rebuild when an expanded editor's box no longer matches its data (a keyframe/clip added or removed
@@ -1051,6 +1119,7 @@ public class FXTimelineView extends View implements TimelineContext {
         clipViews.clear();
         laneItems.clear();
         laneViews.clear();
+        sectionStrip.rebuild();
         var runtime = fxEditor.runtime;
         if (runtime == null) return;
         syncSignalDispatch();
@@ -1337,7 +1406,22 @@ public class FXTimelineView extends View implements TimelineContext {
             var d = Math.abs(marker.tick() - tick);
             if (d < bestDist) { bestDist = d; best = marker.tick(); }
         }
-        return best;
+        var acc = new double[]{best, bestDist};
+        snapSections(acc, tick);
+        return acc[0];
+    }
+
+    /** Section starts are snap targets too, but not the one being dragged. */
+    private void snapSections(double[] acc, double tick) {
+        var runtime = fxEditor.runtime;
+        if (runtime == null) return;
+        for (var section : runtime.fxData.timeline().sections()) {
+            if (section != snapExcludedSection) snapConsider(acc, tick, section.start());
+        }
+    }
+
+    public void setSnapExcludedSection(@Nullable TimelineSection section) {
+        snapExcludedSection = section;
     }
 
     @Override
@@ -1392,6 +1476,7 @@ public class FXTimelineView extends View implements TimelineContext {
         snapConsider(acc, tick, 0);
         snapConsider(acc, tick, currentTimeTicks());
         for (var marker : runtime.fxData.timeline().markers()) snapConsider(acc, tick, marker.tick());
+        snapSections(acc, tick);
         return acc[0];
     }
 
@@ -1693,7 +1778,28 @@ public class FXTimelineView extends View implements TimelineContext {
             runtime.timelinePlayer.setAudioDispatch(isPlaying());
             // in the editor, 3D clips play non-positional so they're audible in the preview
             runtime.timelinePlayer.setEditorPreview(true);
+            // sections loop and jump in live playback only; replays and seeks play them in time order
+            runtime.timelinePlayer.setFollowSections(isPlaying() && followSections);
+            if (clockRuntime != runtime) {
+                clockRuntime = runtime;
+                // the preview clock is the timeline's time: move it along when the timeline loops or jumps
+                runtime.timelinePlayer.setClockListener((from, to) -> {
+                    var pm = fxEditor.sceneView.particleManager;
+                    var exact = pm.getTime() + (to - from) + clockCarry;
+                    var time = Math.round(exact);
+                    clockCarry = exact - time;
+                    pm.setTime(Math.max(0, time));
+                });
+            }
         }
+    }
+
+    public boolean isFollowingSections() {
+        return followSections;
+    }
+
+    public SectionStrip sectionStrip() {
+        return sectionStrip;
     }
 
     /** Play/pause the editor preview. Public so the keymap can drive it. */
@@ -1725,7 +1831,7 @@ public class FXTimelineView extends View implements TimelineContext {
         var pm = fxEditor.sceneView.particleManager;
         boolean ended;
         if (endMode == EndMode.TIMELINE_END && !runtime.fxData.timeline().isEmpty()) {
-            ended = pm.getTime() > runtime.timelinePlayer.getDuration() && !runtime.hasRunningInstanceTimeline();
+            ended = runtime.timelinePlayer.isFinished() && !runtime.hasRunningInstanceTimeline();
         } else {
             ended = runtime.isFinished();
         }
@@ -1841,6 +1947,7 @@ public class FXTimelineView extends View implements TimelineContext {
         // empty onClose: re-selecting / clearing the inspector (e.g. a subsequent shift-click that grows
         // the selection) must not fire a stale callback that wipes the multi-selection.
         fxEditor.inspectorView.inspect(cte.clipConfigurator(this, track, clip), null, () -> {});
+        sectionStrip.deselect();
         selectedMarker = null;
         selectedTracks.clear();
         selectedClips.clear();
@@ -1853,6 +1960,7 @@ public class FXTimelineView extends View implements TimelineContext {
 
     @Override
     public void selectClips(java.util.Collection<Clip> clips, boolean additive) {
+        sectionStrip.deselect();
         selectedMarker = null;
         selectedTracks.clear();
         if (!additive) selectedClips.clear();
@@ -1902,6 +2010,7 @@ public class FXTimelineView extends View implements TimelineContext {
 
     @Override
     public void setActiveTrack(Track track) {
+        sectionStrip.deselect();
         selectedTrack = track;
         selectedTracks.clear();
         selectedMarker = null;
@@ -1954,6 +2063,18 @@ public class FXTimelineView extends View implements TimelineContext {
         if (editor != null) editor.pollRecording(this, recordingTrack, stateFor(recordingTrack, editor));
     }
 
+    /** A section was selected: it takes the selection over from clips, tracks, markers and FX objects. */
+    public void clearSelectionForSection() {
+        clearFxObjectSelection();
+        selectedMarker = null;
+        selectedTracks.clear();
+        selectedTrack = null;
+        selectedClips.clear();
+        selectedClip = null;
+        selectedClipTrack = null;
+        applyClipSelectionClasses();
+    }
+
     private void applyClipSelectionClasses() {
         for (var view : clipViews) {
             if (selectedClips.contains(view.clip())) {
@@ -1970,7 +2091,8 @@ public class FXTimelineView extends View implements TimelineContext {
         if (editor == null) return;
         // selecting a track keeps any property sub-selection (its lanes persist); the property is only
         // cleared by clicking a blank area of the left properties list (see AnimationTrackEditor).
-        if (selectedTrack == track && selectedClip == null && selectedTracks.size() == 1) return; // already sole
+        if (selectedTrack == track && selectedClip == null && selectedTracks.size() == 1 && sectionStrip.selected() == null) return; // already sole
+        sectionStrip.deselect();
         clearFxObjectSelection();
         fxEditor.inspectorView.inspect(editor.trackConfigurator(this, track), null, () -> {
             if (selectedTrack == track) selectedTrack = null;
@@ -1988,6 +2110,7 @@ public class FXTimelineView extends View implements TimelineContext {
     /** Ctrl/Shift-click a header: add/remove the track from the multi-selection. */
     public void toggleTrackSelection(Track track) {
         if (editorFor(track) == null) return;
+        sectionStrip.deselect();
         selectedMarker = null;
         selectedClips.clear();
         selectedClip = null;
@@ -2009,6 +2132,7 @@ public class FXTimelineView extends View implements TimelineContext {
     }
 
     private void deleteSelection() {
+        if (sectionStrip.deleteSelected()) return;
         // a selected marker takes priority (marker selection is exclusive with clips/tracks)
         if (selectedMarker != null) {
             removeMarker(selectedMarker);
@@ -2068,6 +2192,7 @@ public class FXTimelineView extends View implements TimelineContext {
         selectedTrack = null;
         selectedTracks.clear();
         selectedMarker = null;
+        sectionStrip.deselect();
         recordingTrack = null;
         groupDrag.clear();
         groupAnchor = null;

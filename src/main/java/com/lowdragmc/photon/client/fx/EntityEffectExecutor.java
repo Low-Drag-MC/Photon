@@ -107,7 +107,7 @@ public class EntityEffectExecutor extends FXEffectExecutor {
         root.updatePos(entity.getEyePosition().toVector3f().add(offset.x, offset.y, offset.z));
         root.updateRotation(rotation);
         root.updateScale(scale);
-        this.runtime.emit(this, delay);
+        this.runtime.emit(this, delay, startSection);
         effects.add(this);
     }
 }

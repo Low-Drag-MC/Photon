@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.gameobject.particle;
 import com.lowdragmc.lowdraglib2.utils.ColorUtils;
 import com.lowdragmc.photon.client.PhotonParticleManager;
 import com.lowdragmc.photon.client.collision.ContactMemory;
+import com.lowdragmc.photon.client.gameobject.FXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.IParticleEmitter;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomSpace;
@@ -73,6 +74,8 @@ public class TileParticle implements IParticle {
     // runtime
     @Getter
     protected float t;
+    /** When a particle that never dies of age ends, set once its emitter winds down; negative until then. */
+    protected float endAge = -1;
     protected Vector3f initialSize;
     protected Vector3f initialRotation;
     protected Vector4f initialColor;
@@ -202,10 +205,20 @@ public class TileParticle implements IParticle {
         return config.particleRenderType;
     }
 
+    /** A file naming no known mode reads as null: play once. */
+    private ParticleLifetime.Mode lifetimeMode() {
+        var mode = config.getLifetimeMode();
+        return mode == null ? ParticleLifetime.Mode.Once : mode;
+    }
+
     @Override
     public float getT(float partialTicks) {
         if (getLifetime() <= 0) {
             return Mth.clamp(t, 0, 1); // infinite particle: hold current t instead of dividing by zero
+        }
+        var mode = lifetimeMode();
+        if (mode.cyclic()) {
+            return ParticleLifetime.t(mode, age + partialTicks, getLifetime(), endAge);
         }
         return Mth.clamp(t + partialTicks / getLifetime(), 0, 1);
     }
@@ -464,13 +477,20 @@ public class TileParticle implements IParticle {
             runtime.subEmitters.triggerEvent(this, SubEmittersSetting.Event.Birth);
         }
 
-        // death: snap t to 1 and apply the final visual state (no motion) so over-lifetime curves
-        // reach their endpoints on the frames the dead particle still renders before removal.
-        // lifetime <= 0 intentionally never age-dies (infinite particles; they die via collision
-        // or emitter removal).
-        if (this.age >= this.lifetime && lifetime > 0) {
+        var mode = lifetimeMode();
+        var cyclic = mode.cyclic() && lifetime > 0;
+        // what never dies of age ends with its emitter winding down: infinite at once, cyclic at the end of its cycle
+        if (endAge < 0 && (cyclic || lifetime <= 0) && emitter instanceof FXObject object && object.isWindingDown()) {
+            endAge = cyclic ? ParticleLifetime.endOfCycle(age, lifetime) : age;
+        }
+        var deathAge = cyclic || lifetime <= 0 ? endAge : lifetime;
+        // death: snap t to its final value and apply the final visual state (no motion) so over-lifetime
+        // curves reach their endpoints on the frames the dead particle still renders before removal
+        if (deathAge >= 0 && this.age >= deathAge) {
             this.age += dt;
-            this.t = 1;
+            if (lifetime > 0) {
+                this.t = cyclic ? ParticleLifetime.finalT(mode, deathAge, lifetime) : 1;
+            }
             this.updateColor();
             this.updateSize();
             this.updateRotation();
@@ -485,7 +505,7 @@ public class TileParticle implements IParticle {
         if (lifetime > 0) {
             // recompute BEFORE update so curves sample this step's t (was one tick late), and clamp:
             // fractional dt can push age past lifetime here, which previously produced t > 1
-            t = Math.min(age / lifetime, 1f);
+            t = cyclic ? ParticleLifetime.t(mode, age, lifetime, endAge) : Math.min(age / lifetime, 1f);
         }
 
         // update data
