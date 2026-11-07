@@ -199,9 +199,14 @@ public class SceneView extends View implements FXSceneOptions {
     public void simulateTo(long time) {
         pendingSimulateTarget = -1; // a direct seek supersedes any pending coalesced request
         // a scrub/seek/edit-preview replay (never live play): silence timeline audio so a replayed clip
-        // doesn't start (or leave) a long sound playing. syncSignalDispatch re-enables it next UI tick if
-        // playback is actually live.
-        if (fxEditor.runtime != null) fxEditor.runtime.timelinePlayer.setAudioDispatch(false);
+        // doesn't start (or leave) a long sound playing, and its signals, which a seek while playing would
+        // otherwise fire all at once. syncSignalDispatch re-enables both next UI tick if playback is live.
+        if (fxEditor.runtime != null) {
+            fxEditor.runtime.timelinePlayer.setAudioDispatch(false);
+            fxEditor.runtime.timelinePlayer.setSignalDispatch(false);
+            // and play sections in time order, so a seek lands where a fresh linear replay would
+            fxEditor.runtime.timelinePlayer.setFollowSections(false);
+        }
         var curTime = particleManager.getTime();
         if (time > curTime) {
             runSimulationTicks(time - curTime);

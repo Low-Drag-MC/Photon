@@ -23,9 +23,15 @@ public record TimelineState(boolean tick, boolean render) {
      */
     public static TimelineState resolve(boolean hasActivator, boolean activatorActive,
                                         boolean hasControl, boolean controlActive) {
+        return resolve(hasActivator, activatorActive, hasControl, controlActive, false);
+    }
+
+    /** @param draining the object left a draining control clip and still shows something: it keeps running */
+    public static TimelineState resolve(boolean hasActivator, boolean activatorActive,
+                                        boolean hasControl, boolean controlActive, boolean draining) {
         // alive/ticking: control owns lifecycle when present; otherwise the activator freezes it;
         // otherwise it just runs (default behavior).
-        boolean alive = hasControl ? controlActive : (hasActivator ? activatorActive : true);
+        boolean alive = hasControl ? controlActive || draining : (hasActivator ? activatorActive : true);
         // render only when alive AND not hidden by an activator track.
         boolean visible = hasActivator ? activatorActive : true;
         return new TimelineState(alive, alive && visible);

@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.IScene;
 import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.ISceneObject;
 import com.lowdragmc.lowdraglib2.utils.virtuallevel.DummyWorld;
 import com.lowdragmc.photon.Photon;
+import com.lowdragmc.photon.client.fx.timeline.SectionControl;
 import com.lowdragmc.photon.client.fx.timeline.TimelinePlayer;
 import com.lowdragmc.photon.client.gameobject.EmptyFXObject;
 import com.lowdragmc.photon.client.gameobject.FXInstanceObject;
@@ -45,6 +46,7 @@ public class FXRuntime implements IScene {
     private int generationAtEmit;
     /** Playback rate for this whole runtime; see {@link #setRate}. */
     private float rate = 1f;
+    private boolean releasing;
 
     public FXRuntime(FXData fxData) {
         this.fxData = fxData;
@@ -67,11 +69,14 @@ public class FXRuntime implements IScene {
                 if (!timelinePlayer.isEmpty()) {
                     timelinePlayer.tick(rate);
                 }
+                if (releasing && timelinePlayer.isFinished()) {
+                    windDownAll();
+                }
             });
-            // and the per-frame animation pass for smooth (interpolated) transform animation
+            // and the per-frame animation pass; a frame is a share of a tick at `rate`, so rate 0 holds the pose
             fxRoot.setOnUpdateFrame(partialTicks -> {
                 if (!timelinePlayer.isEmpty()) {
-                    timelinePlayer.frame(partialTicks);
+                    timelinePlayer.frame(partialTicks * rate);
                 }
             });
         }
@@ -186,8 +191,14 @@ public class FXRuntime implements IScene {
      * timeline only gates active/visibility and restarts objects via the {@link TimelinePlayer}.
      */
     public void emit(IEffectExecutor effect, int delay) {
+        emit(effect, delay, null);
+    }
+
+    /** {@link #emit(IEffectExecutor, int)} from the start of {@code startSection} (null: from 0). */
+    public void emit(IEffectExecutor effect, int delay, @Nullable String startSection) {
         emitted = true;
         destroyed = false;
+        releasing = false;
         // track the owning engine for isValid(): same resolution as IFXObject.emit's engine pick
         this.host = effect.getLevel() instanceof DummyWorld dummyWorld
                 && dummyWorld.getParticleManager() instanceof ParticleTickHost tickHost
@@ -202,7 +213,11 @@ public class FXRuntime implements IScene {
             // set after emit: emit() resets the object, which zeroes its delay
             fxObject.setDelay(delay);
         }
-        timelinePlayer.begin(effect);
+        timelinePlayer.begin(effect, startSection);
+    }
+
+    public SectionControl sections() {
+        return timelinePlayer.sections();
     }
 
     /**
@@ -286,7 +301,12 @@ public class FXRuntime implements IScene {
      * does not invalidate (the heartbeat clock only advances when particles actually tick).
      */
     public boolean isValid() {
-        if (!emitted || destroyed) {
+        return !destroyed && isTracked();
+    }
+
+    /** {@link #isValid()} minus "not destroyed": stays true while a destroyed effect's remnants play out. */
+    public boolean isTracked() {
+        if (!emitted) {
             return false;
         }
         if (host == null || !(root instanceof FXObject fxRoot)) {
@@ -295,21 +315,50 @@ public class FXRuntime implements IScene {
         if (generationAtEmit != host.generation()) {
             return false;
         }
-        // <=1: isValid may be queried mid-engine-tick, before the root has ticked this round
+        // <=1: this may be queried mid-engine-tick, before the root has ticked this round
         return host.tickCount() - fxRoot.getLastHostTick() <= 1;
     }
 
     /**
-     * Stop this runtime for good: removes every object ({@code force} drops visible remnants
-     * immediately; otherwise they drain) and finishes the timeline so no future clip/signal/audio
-     * plays while remnants drain. A later {@link #emit} revives the runtime (editor replay).
+     * Stop this runtime for good; it is no longer {@link #isValid() valid} from here on. {@code force} drops everything
+     * at once. Otherwise the timeline's release section plays out first, if it has one, then everything winds down:
+     * nothing new starts and remnants drain. A later {@link #emit} revives the runtime (editor replay).
      */
     public void destroy(boolean force) {
-        destroyed = true;
-        timelinePlayer.stop();
-        for (var fxObject : objects.values()) {
-            fxObject.remove(force);
+        if (force) {
+            destroyed = true;
+            releasing = false;
+            timelinePlayer.stop();
+            for (var fxObject : objects.values()) {
+                fxObject.remove(true);
+            }
+            return;
         }
+        // a dead entity's executor calls this every tick
+        if (destroyed) return;
+        destroyed = true;
+        if (timelinePlayer.beginWindDown()) {
+            releasing = true;
+            return;
+        }
+        windDownAll();
+    }
+
+    private void windDownAll() {
+        releasing = false;
+        timelinePlayer.stop();
+        if (root instanceof FXObject fxRoot) {
+            fxRoot.windDown();
+        } else {
+            for (var fxObject : objects.values()) {
+                fxObject.remove(false);
+            }
+        }
+    }
+
+    /** Whether a non-forced {@link #destroy} is still playing the release section. */
+    public boolean isReleasing() {
+        return releasing;
     }
 
     @Nullable

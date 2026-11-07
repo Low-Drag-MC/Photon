@@ -3,6 +3,7 @@ package com.lowdragmc.photon.client.fx.timeline;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.gameobject.FXInstanceObject;
 import com.lowdragmc.photon.client.gameobject.FXObject;
+import com.lowdragmc.photon.client.gameobject.IFXObject;
 
 import java.util.List;
 import java.util.Set;
@@ -74,6 +75,7 @@ public class NestedTimelinePlayer extends TimelinePlayer {
             return;
         }
         // restarting the source's root restarts what the instance placed, not the instance's own clock
+        owner.setWindingDown(false);
         var seed = effect != null && clip.randomSeed() ? effect.getRandomSource().nextLong() : clip.seed();
         for (var child : owner.transform().children()) {
             if (child.sceneObject() instanceof FXObject childObject) {
@@ -83,8 +85,42 @@ public class NestedTimelinePlayer extends TimelinePlayer {
     }
 
     @Override
+    protected void windDown(FXObject object) {
+        if (object != owner) {
+            super.windDown(object);
+            return;
+        }
+        // as with restart, only what the instance placed: removing the instance would stop its own clock
+        owner.setWindingDown(true);
+        for (var child : owner.transform().children()) {
+            if (child.sceneObject() instanceof FXObject childObject) {
+                childObject.windDown();
+            }
+        }
+    }
+
+    @Override
+    protected boolean stillShowing(FXObject object) {
+        if (object != owner) {
+            return super.stillShowing(object);
+        }
+        // not the instance itself: its timeline running on would keep it draining to its end
+        for (var child : owner.transform().children()) {
+            if (child.sceneObject() instanceof IFXObject childObject && childObject.isPlaying()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
     protected boolean signalDispatch() {
         return runtime.timelinePlayer.signalDispatch();
+    }
+
+    @Override
+    protected boolean followSections() {
+        return runtime.timelinePlayer.followSections();
     }
 
     @Override

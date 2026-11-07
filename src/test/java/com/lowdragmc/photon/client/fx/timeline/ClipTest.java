@@ -130,4 +130,15 @@ class ClipTest {
         assertEquals(Clip.Transition.NONE, Clip.Transition.between(a, a), "same clip stays");
         assertEquals(Clip.Transition.SWITCH, Clip.Transition.between(a, b), "different clip switches");
     }
+
+    @Test
+    void exitAndSeamModesDefaultAndAreCopied() {
+        var clip = new Clip(0, 10, 1);
+        assertEquals(Clip.ExitMode.CUT, clip.exitMode());
+        assertEquals(Clip.SeamMode.AUTO, clip.seamMode());
+        assertEquals(Clip.ExitMode.CUT, clip.copy().exitMode());
+        clip.exitMode(Clip.ExitMode.DRAIN).seamMode(Clip.SeamMode.RESTART);
+        assertEquals(Clip.ExitMode.DRAIN, clip.copy().exitMode());
+        assertEquals(Clip.SeamMode.RESTART, clip.copy().seamMode());
+    }
 }

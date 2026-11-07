@@ -7,6 +7,7 @@ import com.lowdragmc.photon.PhotonRegistries;
 import com.lowdragmc.photon.client.fx.FX;
 import com.lowdragmc.photon.client.fx.instance.InstanceTags;
 import com.lowdragmc.photon.client.fx.timeline.Clip;
+import com.lowdragmc.photon.client.fx.timeline.TimelineSection;
 import com.lowdragmc.photon.client.gameobject.FXInstanceObject;
 import com.lowdragmc.photon.client.gameobject.IFXObject;
 import com.lowdragmc.photon.client.gameobject.emitter.data.CustomData;
@@ -210,6 +211,10 @@ public final class FXSerializationGameTest {
             var track = PhotonTrackTypes.ACTIVATOR.create().targetId(target);
             track.clips().add(new Clip(5, 20, 1));
             instance.getTimeline().tracks().add(track);
+            // sections and the release setting are top-level keys of their own: ValueIO must pass them through too
+            instance.getTimeline().sections().add(new TimelineSection("Idle", 0).repeat(TimelineSection.FOREVER));
+            instance.getTimeline().sections().add(new TimelineSection("End", 15).then(TimelineSection.Then.END));
+            instance.getTimeline().releaseSection("End").releaseNow(false);
             var first = instance.serializeWrapper();
             if (first == null) {
                 helper.fail(Component.literal("fx_instance failed to serialize"));
@@ -225,7 +230,11 @@ public final class FXSerializationGameTest {
                     || reloaded.getTimeline().tracks().size() != 1
                     || !target.equals(reloaded.getTimeline().tracks().getFirst().targetId())
                     || reloaded.getTimeline().tracks().getFirst().clips().size() != 1
-                    || reloaded.getTimeline().tracks().getFirst().clips().getFirst().start() != 5) {
+                    || reloaded.getTimeline().tracks().getFirst().clips().getFirst().start() != 5
+                    || reloaded.getTimeline().sections().size() != 2
+                    || reloaded.getTimeline().sections().getFirst().repeat() != TimelineSection.FOREVER
+                    || !"End".equals(reloaded.getTimeline().releaseSection())
+                    || reloaded.getTimeline().releaseNow()) {
                 helper.fail(Component.literal("the instance's timeline did not come back: " + first));
                 return;
             }

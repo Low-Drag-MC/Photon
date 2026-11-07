@@ -56,4 +56,30 @@ class TimelineStateTest {
         assertFalse(dead.tick(), "no control clip -> not running");
         assertFalse(dead.render(), "nothing alive to render");
     }
+
+    @Test
+    void drainingKeepsAnObjectThatLeftItsClipRunning() {
+        var draining = TimelineState.resolve(false, false, true, false, true);
+        assertTrue(draining.tick(), "draining: still runs");
+        assertTrue(draining.render(), "draining: still shows");
+
+        var done = TimelineState.resolve(false, false, true, false, false);
+        assertFalse(done.tick(), "drained: stops");
+        assertFalse(done.render(), "drained: hidden");
+    }
+
+    @Test
+    void anActivatorStillHidesADrainingObject() {
+        var hidden = TimelineState.resolve(true, false, true, false, true);
+        assertTrue(hidden.tick(), "draining runs under the activator");
+        assertFalse(hidden.render(), "but the activator hides it");
+    }
+
+    @Test
+    void drainingOnlyMattersToControlledObjects() {
+        var uncontrolled = TimelineState.resolve(true, false, false, false, true);
+        assertFalse(uncontrolled.tick(), "without a control track the activator owns the lifecycle");
+        assertEquals(TimelineState.resolve(true, true, true, true),
+                TimelineState.resolve(true, true, true, true, true), "inside a clip draining changes nothing");
+    }
 }
