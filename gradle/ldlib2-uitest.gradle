@@ -4,14 +4,18 @@
 //
 //     apply from: rootProject.file('gradle/ldlib2-uitest.gradle')
 //
-// Then:  gradlew runClient -PldTest=all
-// Docs:  https://github.com/Low-Drag-MC/LDLib2 -> docs/uitest.md
+// Then:  gradlew runClient -PldTest=all          (tests:      UIScenario)
+//        gradlew runClient -PldRecord=all        (recordings: UIRecording, videos via ffmpeg)
+// Docs:  https://github.com/Low-Drag-MC/LDLib2 -> uitest.md
 //
-// Inert unless -PldTest is given, so an ordinary runClient is completely unaffected.
+// Inert unless -PldTest or -PldRecord is given: an ordinary runClient only gains the encoding settings
+// that /ldlib2_autotest record reads.
 
 // A captured local, not an ext property: inside a run/task closure `ext` resolves to the closure's
 // delegate rather than the project, so ldTestOutDir would not be visible where it is needed.
 def ldTestOutDir = layout.buildDirectory.dir('ldlib2-uitest').get().asFile.absolutePath
+// Recordings get a directory of their own: a test run wipes ldlib2-uitest, and must not take videos with it.
+def ldRecordOutDir = layout.buildDirectory.dir('ldlib2-recordings').get().asFile.absolutePath
 
 // -PldTestHeadless: run without a visible window, on a machine that need not have a monitor at all.
 // For a display-less build box, a locked console, or a run triggered over SSH.
@@ -112,26 +116,55 @@ if (project.hasProperty('ldTestHeadless')) {
     }
 }
 
+if (project.hasProperty('ldTest') && project.hasProperty('ldRecord')) {
+    throw new GradleException("-PldTest runs tests and -PldRecord makes recordings; pass one or the other.")
+}
+
+// Settings shared by test runs and recording runs. System properties rather than program arguments:
+// Minecraft's own argument parser owns the command line and rejects what it does not recognise.
+def ldConfigureHarnessRun = { run, outDir ->
+    run.systemProperty 'ldlib2.uitest.out', outDir
+    // Run-wide default; individual scenarios override it via ScenarioOptions#guiScale.
+    run.systemProperty 'ldlib2.uitest.guiScale', project.findProperty('ldTestGuiScale') ?: '2'
+    // Empty = maximise. Pass e.g. -PldTestWindow=1280x720 to pin a size for comparable captures.
+    run.systemProperty 'ldlib2.uitest.window', project.findProperty('ldTestWindow') ?: ''
+    run.systemProperty 'ldlib2.uitest.inputMode', project.findProperty('ldTestInputMode') ?: 'SYNTHETIC'
+    run.systemProperty 'ldlib2.uitest.watchdogSec', project.findProperty('ldTestWatchdogSec') ?: '90'
+    if (project.hasProperty('ldTestKeepOpen')) {
+        run.systemProperty 'ldlib2.uitest.keepOpen', 'true'
+    }
+}
+
+// On every client run, so /ldlib2_autotest record works from a plain runClient too: where recordings go,
+// and how they are encoded. Inert unless something records. Needs ffmpeg on PATH or
+// -PldRecordFfmpeg=<path>; codec "auto" picks h264_nvenc where it works.
+runs.matching { it.name == 'client' }.configureEach { run ->
+    run.systemProperty 'ldlib2.uitest.recordingsOut', ldRecordOutDir
+    run.systemProperty 'ldlib2.uitest.recordFps', project.findProperty('ldRecordFps') ?: '60'
+    run.systemProperty 'ldlib2.uitest.recordFfmpeg', project.findProperty('ldRecordFfmpeg') ?: ''
+    run.systemProperty 'ldlib2.uitest.recordCodec', project.findProperty('ldRecordCodec') ?: 'auto'
+    run.systemProperty 'ldlib2.uitest.recordQuality', project.findProperty('ldRecordQuality') ?: '18'
+}
+
 if (project.hasProperty('ldTest')) {
-    // System properties rather than program arguments: Minecraft's own argument parser owns the
-    // command line and rejects what it does not recognise.
-    //
     // matching{}.configureEach{} rather than runs { client { } }: from a separate script the latter
     // *creates* a run called client instead of configuring the existing one, and NeoGradle then
     // rejects it for having no run type.
     runs.matching { it.name == 'client' }.configureEach { run ->
         run.systemProperty 'ldlib2.uitest.run', project.property('ldTest')
-        run.systemProperty 'ldlib2.uitest.out', ldTestOutDir
         run.systemProperty 'ldlib2.uitest.exclude', project.findProperty('ldTestExclude') ?: ''
-        // Run-wide default; individual scenarios override it via ScenarioOptions#guiScale.
-        run.systemProperty 'ldlib2.uitest.guiScale', project.findProperty('ldTestGuiScale') ?: '2'
-        // Empty = maximise. Pass e.g. -PldTestWindow=1280x720 to pin a size for comparable captures.
-        run.systemProperty 'ldlib2.uitest.window', project.findProperty('ldTestWindow') ?: ''
-        run.systemProperty 'ldlib2.uitest.inputMode', project.findProperty('ldTestInputMode') ?: 'SYNTHETIC'
-        run.systemProperty 'ldlib2.uitest.watchdogSec', project.findProperty('ldTestWatchdogSec') ?: '90'
-        if (project.hasProperty('ldTestKeepOpen')) {
-            run.systemProperty 'ldlib2.uitest.keepOpen', 'true'
-        }
+        ldConfigureHarnessRun(run, ldTestOutDir)
+    }
+}
+
+// -PldRecord=<selection>: run UIRecordings (a registry of their own, never selected by -PldTest) and
+// encode their takes to build/ldlib2-recordings/<recording>/. A bare -PldRecord means all of them.
+if (project.hasProperty('ldRecord')) {
+    runs.matching { it.name == 'client' }.configureEach { run ->
+        def selection = project.property('ldRecord').toString().trim()
+        run.systemProperty 'ldlib2.uitest.recordings', selection.isEmpty() ? 'all' : selection
+        run.systemProperty 'ldlib2.uitest.exclude', project.findProperty('ldTestExclude') ?: ''
+        ldConfigureHarnessRun(run, ldRecordOutDir)
     }
 }
 
@@ -193,10 +226,51 @@ tasks.register('ldlib2CleanUiTestReport') {
     doLast { ldTestOutDirFile.deleteDir() }
 }
 
+// Recordings: only the report is cleared up front, for the same reason as above. Videos stay - each
+// recording clears its own folder when it starts, so recording one never deletes another's.
+tasks.register('ldlib2CleanRecordingReport') {
+    onlyIf { project.hasProperty('ldRecord') }
+    doLast {
+        ['report.json', 'report.txt'].each { new File(ldRecordOutDir, it).delete() }
+        new File(ldRecordOutDir, 'screenshots').deleteDir()
+    }
+}
+
+// Fails the build if a recording's checks failed: a video of a UI that did not do what the script says
+// is not a video to publish. Lists what was written either way.
+tasks.register('verifyUiRecording') {
+    group = 'verification'
+    description = 'Fails the build if an LDLib2 UI recording failed its checks.'
+    onlyIf { project.hasProperty('ldRecord') }
+    doLast {
+        def reportFile = new File(ldRecordOutDir, 'report.json')
+        if (!reportFile.exists()) {
+            throw new GradleException("LDLib2 UI recording: no report at ${reportFile}.\n" +
+                    "The client crashed, never reached the runner, or -PldRecord matched no recordings.")
+        }
+        def report = new groovy.json.JsonSlurper().parse(reportFile)
+        report.scenarios.each { recording ->
+            def files = recording.steps.collectMany { it.captures ?: [] }.findAll { it.kind in ['VIDEO', 'POSTER', 'CAPTIONS', 'TIMELINE'] }
+            logger.lifecycle("LDLib2 UI recording '${recording.name}': ${recording.status}")
+            files.each { logger.lifecycle("  ${new File(ldRecordOutDir, it.path)}") }
+            recording.steps.findAll { it.status != 'PASS' }.each { step ->
+                logger.error("  step ${step.index} [${step.kind}] ${step.name} -> ${step.status}")
+                if (step.error) logger.error("    error: ${step.error.message}")
+                step.checks.findAll { !it.passed }.each { logger.error("    check '${it.desc}'") }
+            }
+        }
+        if (report.status != 'PASS') {
+            throw new GradleException("LDLib2 UI recording ${report.status} - full report: ${reportFile}")
+        }
+    }
+}
+
 tasks.configureEach { task ->
     if (task.name == 'runClient') {
         task.finalizedBy 'verifyUiTest'
         task.dependsOn 'ldlib2CleanUiTestReport'
+        task.finalizedBy 'verifyUiRecording'
+        task.dependsOn 'ldlib2CleanRecordingReport'
     }
     // FML's early loading window calls glfwGetPrimaryMonitor and treats NULL as fatal, so on a
     // machine with no monitor it dies long before Minecraft is reached - and it dies behind a modal
