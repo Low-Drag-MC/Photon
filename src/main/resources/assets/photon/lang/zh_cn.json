@@ -108,7 +108,6 @@
   "photon.gui.editor.timeline.section.queue": "这一遍结束后跳到这里",
   "photon.gui.editor.timeline.section.set_release": "设为 release 区段",
   "photon.gui.editor.timeline.section.unset_release": "取消 release 区段",
-  "photon.gui.editor.timeline.section.copy_java": "复制 Java 调用",
   "photon.gui.editor.timeline.section.copy_command": "复制命令",
   "photon.gui.editor.timeline.section.rename": "重命名…",
   "photon.gui.editor.timeline.section.add_here": "在此添加区段",

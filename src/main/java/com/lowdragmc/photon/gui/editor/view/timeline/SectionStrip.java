@@ -468,20 +468,14 @@ public class SectionStrip {
                     if (timeline != null) timeline.releaseSection(isRelease ? null : section.name());
                 }));
         menu.crossLine();
-        menu.leaf("photon.gui.editor.timeline.section.copy_java",
-                () -> copy("runtime.sections().jumpTo(" + quoted(section.name()) + ");"));
-        menu.leaf("photon.gui.editor.timeline.section.copy_command",
-                () -> copy("/photon fx section entity @s jump " + quoted(section.name())));
+        menu.leaf("photon.gui.editor.timeline.section.copy_command", () -> Minecraft.getInstance().keyboardHandler
+                .setClipboard("/photon fx section entity @s jump " + quoted(section.name())));
         menu.crossLine();
         menu.leaf("photon.gui.editor.timeline.section.rename", () -> rename(section));
         menu.leaf("ldlib.gui.editor.menu.remove", () -> remove(section));
     }
 
-    private static void copy(String text) {
-        Minecraft.getInstance().keyboardHandler.setClipboard(text);
-    }
-
-    /** A Java string literal, which is also a quoted command argument. */
+    /** A quoted command argument. */
     private static String quoted(String text) {
         return "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }

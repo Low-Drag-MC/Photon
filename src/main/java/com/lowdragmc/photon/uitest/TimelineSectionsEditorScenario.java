@@ -144,12 +144,12 @@ public class TimelineSectionsEditorScenario implements UIScenario {
                 .click("the Idle band's menu", ctx -> band(ctx, "Idle"), RIGHT)
                 .frames(3)
                 .step("menu", ctx -> ctx.screenshot("menu"))
-                .click("Copy Java call", ctx -> menuEntry(ctx, "Copy Java call"), LEFT)
+                .click("Copy command", ctx -> menuEntry(ctx, "Copy command"), LEFT)
                 .frames(2)
-                .step("copies the call that jumps there", ctx -> {
+                .step("copies the command that jumps there", ctx -> {
                     var clipboard = Minecraft.getInstance().keyboardHandler.getClipboard();
-                    ctx.check("clipboard", "runtime.sections().jumpTo(\"Idle\");".equals(clipboard),
-                            "runtime.sections().jumpTo(\"Idle\");", clipboard);
+                    var expected = "/photon fx section entity @s jump \"Idle\"";
+                    ctx.check("clipboard", expected.equals(clipboard), expected, clipboard);
                 })
                 .click("the Vanish band's menu", ctx -> band(ctx, "Vanish"), RIGHT)
                 .frames(3)

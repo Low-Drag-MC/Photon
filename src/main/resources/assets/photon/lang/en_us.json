@@ -108,7 +108,6 @@
   "photon.gui.editor.timeline.section.queue": "Jump here after this pass",
   "photon.gui.editor.timeline.section.set_release": "Set as release section",
   "photon.gui.editor.timeline.section.unset_release": "Unset release section",
-  "photon.gui.editor.timeline.section.copy_java": "Copy Java call",
   "photon.gui.editor.timeline.section.copy_command": "Copy command",
   "photon.gui.editor.timeline.section.rename": "Rename...",
   "photon.gui.editor.timeline.section.add_here": "Add section here",
