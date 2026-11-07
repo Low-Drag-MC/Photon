@@ -170,6 +170,12 @@ public abstract class Track {
             }
             c.putLong("seed", clip.seed());
             c.putBoolean("randomSeed", clip.randomSeed());
+            if (clip.exitMode() == Clip.ExitMode.DRAIN) {
+                c.putString("exit", "drain");
+            }
+            if (clip.seamMode() == Clip.SeamMode.RESTART) {
+                c.putString("seam", "restart");
+            }
             writeClipExtra(clip, c, provider);
             list.add(c);
         }
@@ -191,6 +197,8 @@ public abstract class Track {
                     clip.targetId(c.read("clipTarget", UUIDUtil.CODEC).orElseThrow());
                 }
                 clip.seed(c.getLongOr("seed", 0L)).randomSeed(c.getBooleanOr("randomSeed", false));
+                clip.exitMode("drain".equals(c.getStringOr("exit", "")) ? Clip.ExitMode.DRAIN : Clip.ExitMode.CUT);
+                clip.seamMode("restart".equals(c.getStringOr("seam", "")) ? Clip.SeamMode.RESTART : Clip.SeamMode.AUTO);
                 readClipExtra(clip, c, provider);
                 clips.add(clip);
             }

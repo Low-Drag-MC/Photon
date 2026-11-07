@@ -34,6 +34,10 @@ public abstract class FXEffectExecutor implements IFXEffectExecutor {
     protected boolean forcedDeath;
     @Setter
     protected boolean allowMulti;
+    /** Timeline section to start from (e.g. a persistent effect recreated mid-loop); null starts at 0. */
+    @Setter
+    @Nullable
+    protected String startSection;
 
     //runtime
     @Getter

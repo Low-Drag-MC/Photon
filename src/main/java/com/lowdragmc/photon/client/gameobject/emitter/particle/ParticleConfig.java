@@ -9,6 +9,7 @@ import com.lowdragmc.lowdraglib2.editor.ui.sceneeditor.sceneobject.TransformRef;
 import com.lowdragmc.lowdraglib2.syncdata.IPersistedSerializable;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.photon.client.gameobject.emitter.renderpipeline.PhotonFXRenderPass;
+import com.lowdragmc.photon.client.gameobject.particle.ParticleLifetime;
 import com.lowdragmc.photon.client.gameobject.emitter.data.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.*;
 import com.lowdragmc.photon.client.gameobject.emitter.data.number.color.Color;
@@ -55,6 +56,10 @@ public class ParticleConfig implements IConfigurable, IPersistedSerializable {
     @Configurable(name = "ParticleConfig.startLifetime", tips = "photon.emitter.config.startLifetime")
     @NumberFunctionConfig(types = {Constant.class, RandomConstant.class, Curve.class, RandomCurve.class}, numberType = ConfigNumber.Type.INTEGER, min = 0, defaultValue = 100, curveConfig = @CurveConfig(bound = {0, 200}, xAxis = "duration", yAxis = "life time"))
     protected NumberFunction startLifetime = NumberFunction.constant(100);
+    @Setter
+    @Getter
+    @Configurable(name = "ParticleConfig.lifetimeMode", tips = "photon.emitter.config.lifetimeMode")
+    protected ParticleLifetime.Mode lifetimeMode = ParticleLifetime.Mode.Once;
     @Setter
     @Getter
     @Configurable(name = "ParticleConfig.startSpeed", tips = "photon.emitter.config.startSpeed")
