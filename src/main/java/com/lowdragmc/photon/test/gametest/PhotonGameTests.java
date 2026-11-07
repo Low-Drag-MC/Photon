@@ -39,6 +39,7 @@ public final class PhotonGameTests {
         FXProjectImportGameTest.registerFunctions();
         FullscreenGraphPassGameTest.registerFunctions();
         BlendStageGameTest.registerFunctions();
+        EffectCommandGameTest.registerFunctions();
 
         TEST_FUNCTIONS.register(eventBus);
         eventBus.addListener(PhotonGameTests::registerGameTests);
@@ -53,6 +54,7 @@ public final class PhotonGameTests {
         FXProjectImportGameTest.register(event, environment);
         FullscreenGraphPassGameTest.register(event, environment);
         BlendStageGameTest.register(event, environment);
+        EffectCommandGameTest.register(event, environment);
     }
 
     public static void registerFunction(String path, Consumer<GameTestHelper> function) {

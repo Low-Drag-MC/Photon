@@ -25,6 +25,7 @@ public class ServerCommands {
                                         .then(RemoveBlockEffectCommand.createServerCommand())
                                         .then(RemoveEntityEffectCommand.createServerCommand())
                                 )
+                                .then(EffectSectionCommand.createServerCommand())
                         )
 
         );

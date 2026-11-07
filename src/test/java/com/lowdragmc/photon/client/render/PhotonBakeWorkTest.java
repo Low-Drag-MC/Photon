@@ -108,6 +108,22 @@ class PhotonBakeWorkTest {
     }
 
     @Test
+    void onlyADrainSharedWithTheWorkersIsCounted() {
+        for (var parallel : new boolean[]{false, true}) {
+            var sink = new PhotonBakeWork.Sink();
+            for (int i = 0; i < 4; i++) {
+                sink.defer(new TestUnit(ConcurrentHashMap.newKeySet(), null, job(i)));
+            }
+            var before = PhotonBakeWork.parallelDrains();
+            sink.drainInto(new ArrayList<>(), parallel);
+            assertEquals(before + (parallel ? 1 : 0), PhotonBakeWork.parallelDrains(), "parallel: " + parallel);
+        }
+        var before = PhotonBakeWork.parallelDrains();
+        new PhotonBakeWork.Sink().drainInto(new ArrayList<>(), true);
+        assertEquals(before, PhotonBakeWork.parallelDrains(), "a drain with nothing deferred");
+    }
+
+    @Test
     void aBakeThatFailedFreesItsDeferredUnits() {
         var unit = new TestUnit(ConcurrentHashMap.newKeySet(), null, job(0));
         var sink = new PhotonBakeWork.Sink();

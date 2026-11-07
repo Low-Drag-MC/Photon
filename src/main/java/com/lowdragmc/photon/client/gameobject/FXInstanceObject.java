@@ -9,6 +9,7 @@ import com.lowdragmc.photon.client.fx.IEffectExecutor;
 import com.lowdragmc.photon.client.fx.instance.InstanceBaker;
 import com.lowdragmc.photon.client.fx.instance.InstanceTags;
 import com.lowdragmc.photon.client.fx.timeline.NestedTimelinePlayer;
+import com.lowdragmc.photon.client.fx.timeline.SectionControl;
 import com.lowdragmc.photon.client.fx.timeline.Timeline;
 import lombok.Getter;
 import lombok.Setter;
@@ -64,6 +65,8 @@ public class FXInstanceObject extends FXObject {
     @Nullable
     private NestedTimelinePlayer player;
     private boolean begun;
+    /** Playing the source's release section before what it placed winds down. */
+    private boolean releasing;
     private boolean innerActive = true;
     private boolean innerVisible = true;
     private float innerTimeScale = 1;
@@ -108,6 +111,13 @@ public class FXInstanceObject extends FXObject {
         }
     }
 
+    /** The source timeline's sections; null until this instance is in a runtime. */
+    @Nullable
+    public SectionControl sections() {
+        var player = nestedPlayer();
+        return player == null ? null : player.sections();
+    }
+
     public boolean isTimelineRunning() {
         return begun && player != null && !player.isEmpty() && !player.isFinished();
     }
@@ -128,11 +138,34 @@ public class FXInstanceObject extends FXObject {
             return;
         }
         if (!begun) {
-            // normally started by the evaluation that activated it; this covers anything else that did
-            if (effectExecutor == null) return;
+            // normally started by the evaluation that activated it; this covers anything else that did,
+            // but never a removed instance, whose removal stopped the timeline
+            if (effectExecutor == null || removed) return;
             beginTimeline(effectExecutor);
         }
         player.tick(outerTimeScale());
+        if (releasing && player.isFinished()) {
+            releasing = false;
+            super.windDown();
+        }
+    }
+
+    @Override
+    protected boolean isPlayingOwnRelease() {
+        return releasing;
+    }
+
+    /** A running source timeline with a release section plays it first; then what this placed winds down. */
+    @Override
+    public void windDown() {
+        var player = begun && isOuterActive() ? nestedPlayer() : null;
+        if (!releasing && player != null && player.beginWindDown()) {
+            releasing = true;
+            return;
+        }
+        if (!releasing) {
+            super.windDown();
+        }
     }
 
     private void frameTimeline(float partialTicks) {
@@ -194,6 +227,7 @@ public class FXInstanceObject extends FXObject {
         innerVisible = true;
         innerTimeScale = 1;
         begun = false;
+        releasing = false;
         stopAudio();
     }
 
@@ -212,7 +246,7 @@ public class FXInstanceObject extends FXObject {
     }
 
     public boolean beginIfActive(IEffectExecutor effect) {
-        if (begun || !isOuterActive()) {
+        if (begun || removed || !isOuterActive()) {
             return false;
         }
         beginTimeline(effect);

@@ -24,8 +24,15 @@ public final class PhotonBakeWork {
     private static final int MIN_PARALLEL_WEIGHT = 4096;
     private static final int WORKERS = Math.max(1, Math.min(8, Runtime.getRuntime().availableProcessors() - 2));
     private static ExecutorService pool;
+    /** Drains whose units were shared with the workers, ever; render thread only. */
+    private static int parallelDrains;
 
     private PhotonBakeWork() {
+    }
+
+    /** How many drains have handed their units to the workers so far: a test reads it before and after a frame. */
+    public static int parallelDrains() {
+        return parallelDrains;
     }
 
     /** Geometry generated off the render thread. */
@@ -126,6 +133,7 @@ public final class PhotonBakeWork {
                 }
                 return null;
             }
+            parallelDrains++;
             // the heaviest first, pulled by the workers and the render thread alike
             var queue = new ArrayList<>(units);
             queue.sort(Comparator.comparingInt(Unit::weight).reversed());

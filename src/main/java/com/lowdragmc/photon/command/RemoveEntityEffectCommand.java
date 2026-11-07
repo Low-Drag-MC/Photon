@@ -111,7 +111,7 @@ public class RemoveEntityEffectCommand implements CustomPacketPayload {
                 var entity = context.player().level().getEntity(id);
                 if (entity != null) {
                     var effects = EntityEffectExecutor.CACHE.get(entity);
-                    if (effects == null) return;
+                    if (effects == null) continue;
                     var iter = effects.iterator();
                     while (iter.hasNext()) {
                         var effect = iter.next();

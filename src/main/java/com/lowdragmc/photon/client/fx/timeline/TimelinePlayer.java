@@ -1,7 +1,9 @@
 package com.lowdragmc.photon.client.fx.timeline;
 
+import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.client.fx.FXRuntime;
 import com.lowdragmc.photon.client.fx.IEffectExecutor;
+import com.lowdragmc.photon.client.fx.IFXEffectExecutor;
 import com.lowdragmc.photon.client.gameobject.FXObject;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
@@ -16,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
@@ -34,6 +37,8 @@ import java.util.function.Supplier;
  * Objects not referenced by any track are left untouched (default active + visible).
  */
 public class TimelinePlayer {
+    private static final Set<String> WARNED = ConcurrentHashMap.newKeySet();
+
     protected final FXRuntime runtime;
     private final Timeline timeline;
     /** Per-object previously-active control clip, used to detect restart (enter/switch) transitions. */
@@ -44,13 +49,18 @@ public class TimelinePlayer {
     private final Set<UUID> lastSpeedControlled = new HashSet<>();
     /** Animated property keys per object on the previous evaluation, for {@link #animates}. */
     private final Map<UUID, Set<String>> lastAnimated = new HashMap<>();
+    /** Objects that left a draining control clip and still show something: kept running until that has ended. */
+    private final Set<UUID> draining = new HashSet<>();
     @Nullable
     protected IEffectExecutor effect;
-    /**
-     * The master clock, in ticks. <b>Fractional</b>, because a playback can run at a rate other
-     * than 1 ({@link FXRuntime#setRate}); every track samples at a {@code double} time already.
-     */
-    private double localTime = 0;
+    /** The master clock, in fractional ticks ({@link FXRuntime#setRate}); rebuilt by {@link #begin}. */
+    private SectionClock clock = new SectionClock(List.of(), 0, null, true);
+    /** Whether the clock follows sections (repeats, jumps, requests); the editor turns it off for replays. */
+    private boolean followSections = true;
+    @Nullable
+    private SectionClock.JumpListener clockListener;
+    @Nullable
+    private SectionControl sectionControl;
     /** Content end of the current playback, snapshotted from {@link Timeline#getDuration()} in
      *  {@link #begin} (in-world data never changes mid-play; the editor re-begins on every replay). */
     private double duration = 0;
@@ -63,8 +73,6 @@ public class TimelinePlayer {
     private boolean recording = false;
     /** Whether signal tracks fire. Default true (in-world); the editor gates it to live playback only. */
     private boolean dispatchSignals = true;
-    /** Highest tick already dispatched signals for, so a forward window never re-fires (reset on begin). */
-    private double lastSignalTick = -1;
     /** Per-audio-track currently-playing sound instance and the clip that spawned it. */
     private final Map<AudioTrack, TimelineSoundInstance> audioInstances = new HashMap<>();
     private final Map<AudioTrack, AudioClip> audioClips = new HashMap<>();
@@ -88,23 +96,43 @@ public class TimelinePlayer {
     }
 
     public double localTime() {
-        return localTime;
+        return clock.time();
+    }
+
+    public SectionControl sections() {
+        if (sectionControl == null) sectionControl = new SectionControl(this);
+        return sectionControl;
+    }
+
+    SectionClock clock() {
+        return clock;
     }
 
     /** Called from {@code FXRuntime.emit} after all objects are emitted; resets the clock. */
     public void begin(IEffectExecutor effect) {
+        begin(effect, null);
+    }
+
+    /** {@link #begin(IEffectExecutor)} from the start of {@code startSection} (null or unknown: from 0). */
+    public void begin(IEffectExecutor effect, @Nullable String startSection) {
         this.effect = effect;
-        this.localTime = 0;
         this.duration = timeline.getDuration();
+        this.clock = new SectionClock(timeline.sections(), duration, timeline.releaseSection(), timeline.releaseNow());
+        if (!clock.skipped().isEmpty()) {
+            warnOnce("sections " + clock.skipped() + " are empty (sharing a start, or starting at or after the content end) and are left out");
+        }
+        clock.jumpListener(clockListener);
+        clock.follow(followSections());
+        clock.begin(startSection);
         this.stopped = false;
-        this.lastSignalTick = -1;
         this.lastControlClip.clear();
         this.lastControlled.clear();
         this.lastSpeedControlled.clear();
         this.lastAnimated.clear();
+        this.draining.clear();
         stopAllAudio();
-        // apply the t=0 state before any object ticks (avoids a one-tick artifact)
-        evaluate(0);
+        // apply the starting state before any object ticks (avoids a one-tick artifact)
+        evaluate(clock.time(), true);
     }
 
     /** Advance the master clock by one tick. */
@@ -121,8 +149,16 @@ public class TimelinePlayer {
      * evaluated before {@link #isFinished()} turns true.
      */
     public void tick(float rate) {
-        evaluate(localTime);
-        localTime += Math.max(0f, rate);
+        if (stopped) return;
+        clock.follow(followSections());
+        clock.applyPendingJump();
+        // after running into an end, every evaluation is "nothing on": what was on stops, or drains
+        var ending = clock.endPending();
+        evaluate(clock.time(), !ending && !clock.ended());
+        if (ending) clock.markEnded();
+        if (stopped) return;
+        clock.step(Math.max(0f, rate));
+        if (clock.capped()) warnOnce("a tick crossed too many section seams and was cut short: a section is very short for the playback rate");
     }
 
     /**
@@ -135,7 +171,7 @@ public class TimelinePlayer {
      * in the particle engine for future clips to reactivate/restart them.
      */
     public boolean isFinished() {
-        return isEmpty() || stopped || localTime > duration;
+        return isEmpty() || stopped || clock.ended() || clock.time() > duration;
     }
 
     /** The content end (ticks) snapshotted for the current playback; see {@link Timeline#getDuration()}. */
@@ -143,10 +179,43 @@ public class TimelinePlayer {
         return duration;
     }
 
-    /** Finish this playback for good (FX destroyed): silences audio and makes {@link #isFinished()} true. */
+    /**
+     * Finish this playback for good (FX destroyed): silences audio, makes {@link #isFinished()} true and freezes the
+     * timeline where it is. Only {@link #begin} starts it again.
+     */
     public void stop() {
         stopped = true;
         stopAllAudio();
+    }
+
+    public boolean isStopped() {
+        return stopped;
+    }
+
+    private void warnOnce(String problem) {
+        var fx = effect instanceof IFXEffectExecutor executor ? String.valueOf(executor.getFx().getFxLocation()) : "an effect";
+        if (WARNED.add(fx + problem)) Photon.LOGGER.warn("Timeline of {}: {}", fx, problem);
+    }
+
+    /** The effect is being stopped: play the release chain out (false when there is none). */
+    public boolean beginWindDown() {
+        return !stopped && !isFinished() && clock.beginWindDown();
+    }
+
+    /** The editor follows sections only during live playback, so replays and seeks stay in time order. */
+    public void setFollowSections(boolean followSections) {
+        this.followSections = followSections;
+        clock.follow(followSections());
+    }
+
+    protected boolean followSections() {
+        return followSections;
+    }
+
+    /** Hears the clock wrap or jump; the editor uses it to keep its preview clock on timeline time. */
+    public void setClockListener(@Nullable SectionClock.JumpListener clockListener) {
+        this.clockListener = clockListener;
+        clock.jumpListener(clockListener);
     }
 
     /**
@@ -156,11 +225,13 @@ public class TimelinePlayer {
      * gates it), so the pose stays put when stopped.
      */
     public void frame(float partialTicks) {
+        if (stopped || clock.ended()) return;
+        var time = Math.min(lastEvalTime + partialTicks, clock.frameCap());
         // post effects are per-render-frame requests (stop submitting = effect stops next frame);
         // they keep applying in record mode — recording only freezes transform animation
-        applyPostProcess(lastEvalTime + partialTicks);
+        applyPostProcess(time);
         if (recording()) return; // keep the user's live edits to the recording target
-        applyAnimations(lastEvalTime + partialTicks);
+        applyAnimations(time);
     }
 
     /** Submit every active post-process clip's effect (weighted by its fade envelope) to the
@@ -204,8 +275,10 @@ public class TimelinePlayer {
         this.editorPreview = editorPreview;
     }
 
-    private void evaluate(double time) {
+    /** @param live false once the timeline ran into an end: everything evaluates as off and nothing starts */
+    private void evaluate(double time, boolean live) {
         lastEvalTime = time;
+        var jumped = clock.consumeJumped();
         var leaves = timeline.leafTracks(false);
         var controlled = controlledObjectIds(leaves);
         // revert objects that are no longer controlled (e.g. their track/clip was deleted)
@@ -213,6 +286,7 @@ public class TimelinePlayer {
             if (!controlled.contains(id) && runtime.objects.get(id) instanceof FXObject object) {
                 release(object);
                 lastControlClip.remove(id);
+                draining.remove(id);
             }
         }
         lastControlled.clear();
@@ -233,7 +307,7 @@ public class TimelinePlayer {
                 if (track instanceof ActivatorTrack activator) {
                     if (id.equals(activator.targetId())) {
                         hasActivator = true;
-                        if (activator.clipAt(time) != null) {
+                        if (live && activator.clipAt(time) != null) {
                             activatorActive = true;
                         }
                     }
@@ -244,28 +318,53 @@ public class TimelinePlayer {
                             break;
                         }
                     }
-                    if (controlClip == null) {
+                    if (live && controlClip == null) {
                         controlClip = control.clipForObjectAt(id, time);
                     }
                 }
             }
 
-            // control restart: reset + reseed when entering (or switching to) a control clip
+            // control restart: reset + reseed when entering (or switching to) a control clip. Nothing new starts under
+            // something winding down, so there a clip coming on is as if it were not there. Leaving a draining clip
+            // winds the object down and keeps it running meanwhile.
             var previous = lastControlClip.get(id);
+            if (controlClip != null && controlClip != previous && object.hasWindingDownAncestor()) {
+                controlClip = null;
+            }
             if (controlClip != previous) {
                 if (controlClip != null) {
+                    draining.remove(id);
                     restart(object, controlClip);
+                } else if (previous != null && previous.exitMode() == Clip.ExitMode.DRAIN) {
+                    windDown(object);
+                    draining.add(id);
                 }
                 lastControlClip.put(id, controlClip);
+            } else if (jumped && controlClip != null && !object.hasWindingDownAncestor()
+                    && (controlClip.seamMode() == Clip.SeamMode.RESTART || !object.isPlaying())) {
+                // on across a wrap or jump: restart what has finished, carry on with what still plays
+                restart(object, controlClip);
+            }
+            if (controlClip == null && draining.contains(id) && !stillShowing(object)) {
+                draining.remove(id);
             }
 
-            var state = TimelineState.resolve(hasActivator, activatorActive, hasControl, controlClip != null);
+            var state = TimelineState.resolve(hasActivator, activatorActive, hasControl, controlClip != null,
+                    controlClip == null && draining.contains(id));
             gate(object, state.tick(), state.render());
         }
 
-        applyAnimations(time);
-        applySpeed(leaves, time);
-        dispatchSignals(leaves, time);
+        if (live) {
+            applyAnimations(time);
+            applySpeed(leaves, time);
+        }
+        dispatchSignals(leaves, time, live);
+        // a listener may have destroyed the effect: nothing after this may start anything
+        if (stopped) return;
+        if (!live) {
+            stopAllAudio();
+            return;
+        }
         applyAudio(leaves, time);
         // an FX instance this evaluation activated starts its own timeline before anything under it ticks
         if (effect != null) {
@@ -380,23 +479,32 @@ public class TimelinePlayer {
     }
 
     /**
-     * Fire every signal whose tick falls in the forward window {@code (lastSignalTick, time]}. Gated to
-     * live playback by {@link #setSignalDispatch}; the monotonic window + {@link #begin} reset prevent
-     * any double-fire (the {@code evaluate(0)} repeat, or a replay seek).
+     * Fire the signals the clock passed since the last evaluation: the rest of each pass left at a seam, then up to
+     * {@code time}. The window moves on while dispatch is off too, so nothing passed then fires later.
      */
-    private void dispatchSignals(List<Track> leaves, double time) {
-        if (!signalDispatch() || time <= lastSignalTick) return;
+    private void dispatchSignals(List<Track> leaves, double time, boolean live) {
+        for (var window : clock.takeWindows()) {
+            fireSignals(leaves, window.from(), window.to(), window.inclusive());
+        }
+        if (!live || time <= clock.signalFrom()) return;
+        var from = clock.signalFrom();
+        clock.signalFrom(time);
+        fireSignals(leaves, from, time, true);
+    }
+
+    private void fireSignals(List<Track> leaves, double from, double to, boolean inclusive) {
+        if (!signalDispatch()) return;
         for (var track : leaves) {
             if (track.mute() || !(track instanceof SignalTrack signalTrack)) continue;
             var channel = signalTrack.displayName();
             for (var signal : signalTrack.signals()) {
-                if (signal.time() > lastSignalTick && signal.time() <= time) {
+                if (stopped) return;
+                if (signal.time() > from && (inclusive ? signal.time() <= to : signal.time() < to)) {
                     if (effect != null) effect.onTimelineSignal(channel, signal.name(), signal.data(), signal.time());
                     PhotonSignals.fire(effect, channel, signal.name(), signal.data(), signal.time());
                 }
             }
         }
-        lastSignalTick = time;
     }
 
     /**
@@ -479,6 +587,14 @@ public class TimelinePlayer {
     /** An object this player stopped gating goes back to active and visible. */
     protected void release(FXObject object) {
         gate(object, true, true);
+    }
+
+    protected void windDown(FXObject object) {
+        object.windDown();
+    }
+
+    protected boolean stillShowing(FXObject object) {
+        return object.isPlaying();
     }
 
     protected void speed(FXObject object, float speed) {
