@@ -1,9 +1,9 @@
 package com.lowdragmc.photon.client.compat.iris;
 
-import com.lowdragmc.lowdraglib2.LDLib2;
 import com.lowdragmc.lowdraglib2.Platform;
 import com.lowdragmc.photon.Photon;
 import com.lowdragmc.photon.PhotonConfig;
+import net.neoforged.fml.loading.LoadingModList;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashMap;
@@ -38,7 +38,8 @@ public final class IrisCompat {
     }
 
     private static IrisBridge createBridge() {
-        if (!LDLib2.isModLoaded(MOD_ID)) {
+        // not ModList: a window resize during the mod scan reaches us through MinecraftMixin before it exists
+        if (LoadingModList.get().getModFileById(MOD_ID) == null) {
             return IrisBridge.NOOP;
         }
         try {
