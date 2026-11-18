@@ -252,7 +252,7 @@ public class RenderGraphResource extends GraphResource<RenderGraph> {
     }
 
     /** SceneColor -> half-res blur pair; dof_composite blends sharp/blurred by linearized depth
-     *  distance from the autofocus point (depth under Center). */
+     *  distance from the focus: FocusDistance, or the depth under Center (autofocus) below 0. */
     private RenderGraph buildDepthOfField() {
         var graph = new RenderGraph();
         var sceneColor = findSceneColor(graph);
